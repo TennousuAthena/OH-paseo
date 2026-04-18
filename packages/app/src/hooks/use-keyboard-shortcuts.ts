@@ -5,7 +5,7 @@ import { useHosts } from "@/runtime/host-runtime";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import {
-  buildHostSettingsRoute,
+  buildSettingsRoute,
   parseHostAgentRouteFromPathname,
   parseServerIdFromPathname,
   parseHostWorkspaceRouteFromPathname,
@@ -245,14 +245,11 @@ export function useKeyboardShortcuts({
           toggleAgentList();
           return true;
         case "settings.toggle":
-          if (pathname.endsWith("/settings")) {
+          if (pathname.startsWith("/settings")) {
             router.back();
             return true;
           }
-          if (!activeServerId) {
-            return false;
-          }
-          router.push(buildHostSettingsRoute(activeServerId));
+          router.push(buildSettingsRoute());
           return true;
         case "sidebar.toggle.both":
           if (toggleBothSidebars) {

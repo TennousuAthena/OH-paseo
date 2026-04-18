@@ -372,12 +372,35 @@ export function buildHostNewWorkspaceRoute(
   return `${base}/new?${params.toString()}` as const;
 }
 
-export function buildHostSettingsRoute(serverId: string) {
-  const base = buildHostRootRoute(serverId);
-  if (base === "/") {
-    return "/" as const;
+export const SETTINGS_SECTION_SLUGS = [
+  "general",
+  "shortcuts",
+  "integrations",
+  "permissions",
+  "diagnostics",
+  "about",
+] as const;
+
+export type SettingsSectionSlug = (typeof SETTINGS_SECTION_SLUGS)[number];
+
+export function isSettingsSectionSlug(value: string): value is SettingsSectionSlug {
+  return (SETTINGS_SECTION_SLUGS as readonly string[]).includes(value);
+}
+
+export function buildSettingsRoute() {
+  return "/settings" as const;
+}
+
+export function buildSettingsSectionRoute(section: SettingsSectionSlug) {
+  return `/settings/${section}` as const;
+}
+
+export function buildSettingsHostRoute(serverId: string) {
+  const normalized = trimNonEmpty(serverId);
+  if (!normalized) {
+    throw new Error("buildSettingsHostRoute requires a non-empty serverId");
   }
-  return `${base}/settings` as const;
+  return `/settings/hosts/${encodeSegment(normalized)}` as const;
 }
 
 export function mapPathnameToServer(pathname: string, nextServerId: string) {
@@ -389,7 +412,7 @@ export function mapPathnameToServer(pathname: string, nextServerId: string) {
   const suffix = pathname.replace(/^\/h\/[^/]+\/?/, "");
   const base = buildHostRootRoute(normalized);
   if (suffix.startsWith("settings")) {
-    return `${base}/settings` as const;
+    return buildSettingsHostRoute(normalized);
   }
   if (suffix.startsWith("sessions")) {
     return `${base}/sessions` as const;

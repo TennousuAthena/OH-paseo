@@ -85,7 +85,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   title: {
     flex: 1,
-    color: theme.colors.foreground,
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.medium,
   },
@@ -251,7 +250,7 @@ export function AdaptiveModalSheet({
       >
         <View style={styles.bottomSheetHeader} testID={testID}>
           <View style={styles.headerTitleGroup}>
-            <Text style={styles.title} numberOfLines={1}>
+            <Text style={[styles.title, { color: theme.colors.foreground }]} numberOfLines={1}>
               {title}
             </Text>
             {subtitle}
@@ -280,7 +279,7 @@ export function AdaptiveModalSheet({
     <>
       <View style={styles.header}>
         <View style={styles.headerTitleGroup}>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text style={[styles.title, { color: theme.colors.foreground }]} numberOfLines={1}>
             {title}
           </Text>
           {subtitle}

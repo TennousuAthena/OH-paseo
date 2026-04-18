@@ -47,7 +47,6 @@ const styles = StyleSheet.create((theme) => ({
 export interface PairLinkModalProps {
   visible: boolean;
   onClose: () => void;
-  targetServerId?: string;
   onCancel?: () => void;
   onSaved?: (result: {
     profile: HostProfile;
@@ -57,13 +56,7 @@ export interface PairLinkModalProps {
   }) => void;
 }
 
-export function PairLinkModal({
-  visible,
-  onClose,
-  onCancel,
-  onSaved,
-  targetServerId,
-}: PairLinkModalProps) {
+export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkModalProps) {
   const { theme } = useUnistyles();
   const daemons = useHosts();
   const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
@@ -128,15 +121,6 @@ export function PairLinkModal({
       return;
     }
 
-    if (targetServerId && parsedOffer.serverId !== targetServerId) {
-      const message = `That pairing link belongs to ${parsedOffer.serverId}, not ${targetServerId}.`;
-      setErrorMessage(message);
-      if (!isMobile) {
-        Alert.alert("Wrong daemon", message);
-      }
-      return;
-    }
-
     try {
       setIsSaving(true);
       setErrorMessage("");
@@ -165,7 +149,7 @@ export function PairLinkModal({
     } finally {
       setIsSaving(false);
     }
-  }, [daemons, handleClose, isMobile, isSaving, onSaved, targetServerId, upsertDaemonFromOfferUrl]);
+  }, [daemons, handleClose, isMobile, isSaving, onSaved, upsertDaemonFromOfferUrl]);
 
   return (
     <AdaptiveModalSheet

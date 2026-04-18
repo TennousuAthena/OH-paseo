@@ -14,7 +14,7 @@ import {
 } from "@/utils/command-center-focus-restore";
 import {
   buildHostAgentDetailRoute,
-  buildHostSettingsRoute,
+  buildSettingsRoute,
   parseServerIdFromPathname,
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
@@ -170,9 +170,8 @@ export function useCommandCenter() {
   }, [agents, open, query]);
 
   const settingsRoute = useMemo<Href>(() => {
-    const serverIdFromPath = activeServerId;
-    return serverIdFromPath ? buildHostSettingsRoute(serverIdFromPath) : "/";
-  }, [activeServerId]);
+    return buildSettingsRoute();
+  }, []);
 
   const actionItems = useMemo(() => {
     if (!open) {

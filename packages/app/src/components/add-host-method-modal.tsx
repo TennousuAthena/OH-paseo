@@ -70,6 +70,7 @@ export function AddHostMethodModal({
       <Pressable
         style={styles.option}
         onPress={handleDirect}
+        accessibilityRole="button"
         accessibilityLabel="Direct connection"
         testID="add-host-method-direct"
       >
@@ -81,7 +82,12 @@ export function AddHostMethodModal({
       </Pressable>
 
       {isNative ? (
-        <Pressable style={styles.option} onPress={handleScan} accessibilityLabel="Scan QR code">
+        <Pressable
+          style={styles.option}
+          onPress={handleScan}
+          accessibilityRole="button"
+          accessibilityLabel="Scan QR code"
+        >
           <QrCode size={18} color={theme.colors.foreground} />
           <View style={styles.optionBody}>
             <Text style={styles.optionText}>Scan QR code</Text>
@@ -93,6 +99,7 @@ export function AddHostMethodModal({
       <Pressable
         style={styles.option}
         onPress={handlePaste}
+        accessibilityRole="button"
         accessibilityLabel="Paste pairing link"
         testID="add-host-method-pair-link"
       >

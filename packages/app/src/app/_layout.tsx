@@ -404,6 +404,12 @@ function AppContainer({
 
   const isCompactLayout = useIsCompactFormFactor();
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
+  const pathname = usePathname();
+  // TODO: stop matching pathname here as a branch. `chromeEnabled` should not
+  // conflate workspace/project-specific chrome (sidebar, mobile gesture) with
+  // global concerns like keyboard shortcuts. Split those out so settings (and
+  // other non-workspace routes) don't need a special-case to keep shortcuts alive.
+  const keyboardShortcutsEnabled = chromeEnabled || pathname.startsWith("/settings");
 
   useEffect(() => {
     const bp = UnistylesRuntime.breakpoint;
@@ -435,7 +441,7 @@ function AppContainer({
   }, [isCompactLayout, chromeEnabled, isFocusModeEnabled, agentListOpen, sidebarWidth]);
 
   useKeyboardShortcuts({
-    enabled: chromeEnabled,
+    enabled: keyboardShortcutsEnabled,
     isMobile: isCompactLayout,
     toggleAgentList,
     toggleFileExplorer,
@@ -805,7 +811,8 @@ function RootStack() {
     >
       <Stack.Protected guard={storeReady}>
         <Stack.Screen name="welcome" />
-        <Stack.Screen name="settings" />
+        <Stack.Screen name="settings/index" />
+        <Stack.Screen name="settings/[section]" />
         <Stack.Screen name="pair-scan" />
       </Stack.Protected>
       <Stack.Screen
@@ -822,6 +829,7 @@ function RootStack() {
       <Stack.Screen name="h/[serverId]/open-project" />
       <Stack.Screen name="h/[serverId]/settings" />
       <Stack.Screen name="index" />
+      <Stack.Screen name="settings/hosts/[serverId]" />
     </Stack>
   );
 }

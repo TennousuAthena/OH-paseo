@@ -132,7 +132,6 @@ function buildConnectionFailureCopy(
 export interface AddHostModalProps {
   visible: boolean;
   onClose: () => void;
-  targetServerId?: string;
   onCancel?: () => void;
   onSaved?: (result: {
     profile: HostProfile;
@@ -142,13 +141,7 @@ export interface AddHostModalProps {
   }) => void;
 }
 
-export function AddHostModal({
-  visible,
-  onClose,
-  onCancel,
-  onSaved,
-  targetServerId,
-}: AddHostModalProps) {
+export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostModalProps) {
   const { theme } = useUnistyles();
   const daemons = useHosts();
   const { upsertDirectConnection } = useHostMutations();
@@ -211,15 +204,6 @@ export function AddHostModal({
         endpoint,
       });
       await client.close().catch(() => undefined);
-      if (targetServerId && serverId !== targetServerId) {
-        const message = `That endpoint belongs to ${serverId}, not ${targetServerId}.`;
-        setErrorMessage(message);
-        if (!isMobile) {
-          Alert.alert("Wrong daemon", message);
-        }
-        return;
-      }
-
       const isNewHost = !daemons.some((daemon) => daemon.serverId === serverId);
       const profile = await upsertDirectConnection({
         serverId,
@@ -245,7 +229,7 @@ export function AddHostModal({
     } finally {
       setIsSaving(false);
     }
-  }, [daemons, handleClose, isMobile, isSaving, onSaved, targetServerId, upsertDirectConnection]);
+  }, [daemons, handleClose, isMobile, isSaving, onSaved, upsertDirectConnection]);
 
   return (
     <AdaptiveModalSheet
