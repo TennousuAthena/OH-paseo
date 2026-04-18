@@ -33,7 +33,7 @@ import {
   type MessageInputRef,
   type AttachmentMenuItem,
 } from "./message-input";
-import { Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
 import { focusWithRetries } from "@/utils/web-focus";

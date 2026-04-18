@@ -101,7 +101,21 @@ function toNumericStyleValue(value: unknown): number | null {
 }
 
 function ComboboxSheetBackground({ style }: BottomSheetBackgroundProps) {
-  return <Animated.View pointerEvents="none" style={[style, styles.bottomSheetBackground]} />;
+  const { theme } = useUnistyles();
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        style,
+        {
+          backgroundColor: theme.colors.surface0,
+          borderTopLeftRadius: theme.borderRadius["2xl"],
+          borderTopRightRadius: theme.borderRadius["2xl"],
+        },
+      ]}
+    />
+  );
 }
 
 export interface SearchInputProps {
@@ -268,6 +282,7 @@ export function Combobox({
   anchorRef,
   children,
 }: ComboboxProps): ReactElement {
+  const { theme } = useUnistyles();
   const isMobile = useIsCompactFormFactor();
   const effectiveOptionsPosition = isMobile ? "below-search" : optionsPosition;
   const isDesktopAboveSearch = !isMobile && isWeb && effectiveOptionsPosition === "above-search";
@@ -714,12 +729,12 @@ export function Combobox({
         enableDismissOnClose={enableDismissOnClose}
         stackBehavior={stackBehavior}
         backgroundComponent={ComboboxSheetBackground}
-        handleIndicatorStyle={styles.bottomSheetHandle}
+        handleIndicatorStyle={{ backgroundColor: theme.colors.palette.zinc[600] }}
         keyboardBehavior="extend"
         keyboardBlurBehavior="restore"
       >
         <View style={styles.bottomSheetHeader}>
-          <Text style={styles.comboboxTitle}>{title}</Text>
+          <Text style={[styles.comboboxTitle, { color: theme.colors.foreground }]}>{title}</Text>
         </View>
         {stickyHeader}
         {!children && searchable ? searchInput : null}
@@ -908,14 +923,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
-  },
-  bottomSheetBackground: {
-    backgroundColor: theme.colors.surface0,
-    borderTopLeftRadius: theme.borderRadius["2xl"],
-    borderTopRightRadius: theme.borderRadius["2xl"],
-  },
-  bottomSheetHandle: {
-    backgroundColor: theme.colors.palette.zinc[600],
   },
   bottomSheetHeader: {
     paddingHorizontal: theme.spacing[6],

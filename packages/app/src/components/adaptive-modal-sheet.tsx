@@ -109,9 +109,6 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[4],
     flexGrow: 1,
   },
-  bottomSheetHandle: {
-    backgroundColor: theme.colors.surface2,
-  },
   bottomSheetHeader: {
     paddingHorizontal: theme.spacing[6],
     paddingTop: theme.spacing[4],
@@ -243,7 +240,7 @@ export function AdaptiveModalSheet({
         enablePanDownToClose
         stackBehavior={stackBehavior}
         backgroundComponent={SheetBackground}
-        handleIndicatorStyle={styles.bottomSheetHandle}
+        handleIndicatorStyle={{ backgroundColor: theme.colors.surface2 }}
         keyboardBehavior="extend"
         keyboardBlurBehavior="restore"
         accessible={false}

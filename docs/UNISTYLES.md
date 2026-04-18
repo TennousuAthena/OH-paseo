@@ -31,7 +31,7 @@ const styles = StyleSheet.create((theme) => ({
 
 On first mount this can paint with the current adaptive or initial theme. If app settings later load a persisted theme and call [`UnistylesRuntime.setTheme`](https://www.unistyl.es/v3/guides/theming#change-theme), the JS-side style proxy may report the new theme while the native content container keeps the old background. That is how the welcome screen ended up with a light background and dark foreground/buttons.
 
-This applies broadly to non-`style` props that carry theme-dependent values, such as component props named `color`, `trackColor`, `tintColor`, and library-specific style props. The [3rd-party view decision algorithm](https://www.unistyl.es/v3/references/3rd-party-views) recommends explicit handling for these cases, and [issue #1030](https://github.com/jpudysz/react-native-unistyles/issues/1030) shows a related native-prop update edge case around `Image.tintColor`. Treat these values as React props unless wrapped with `withUnistyles`.
+This applies broadly to non-`style` props that carry theme-dependent values, such as component props named `color`, `trackColor`, `tintColor`, `backgroundStyle`, `handleIndicatorStyle`, and other library-specific style props. The [3rd-party view decision algorithm](https://www.unistyl.es/v3/references/3rd-party-views) recommends explicit handling for these cases, and [issue #1030](https://github.com/jpudysz/react-native-unistyles/issues/1030) shows a related native-prop update edge case around `Image.tintColor`. Treat these values as React props unless wrapped with `withUnistyles`.
 
 ## Fix Patterns
 
@@ -104,6 +104,44 @@ const { theme } = useUnistyles();
 ```
 
 Keep layout and typography in `StyleSheet.create`; move only the stale theme-dependent value through React. If a larger subtree shows the same behavior, consider remounting the sheet on theme changes or moving the themed paint onto a wrapper that is mounted with the visible content.
+
+The same rule applies to bottom-sheet component props such as `backgroundStyle` and `handleIndicatorStyle`: they are library props, not the direct React Native `style` prop Unistyles registers. Prefer a custom `backgroundComponent` that calls `useUnistyles()`, or pass a small inline object from the hook theme.
+
+## Memoized Style Objects
+
+When a third-party library receives a plain style object, it is outside Unistyles' native tracking path. Make sure any memo that builds that style object depends on the actual theme values it reads.
+
+Avoid indirect keys like this:
+
+```tsx
+const { theme, rt } = useUnistyles();
+const markdownStyles = useMemo(() => createMarkdownStyles(theme), [rt.themeName]);
+```
+
+On adaptive system-theme changes, the hook can provide a light/dark theme update while an indirect runtime key is not the value that invalidates the memo. That leaves the library rendering stale colors. Assistant markdown hit this exact failure: the workspace shell switched to light, but assistant text and code spans kept the old dark-theme markdown style object.
+
+Prefer the hook theme itself, or explicit theme tokens, as the dependency:
+
+```tsx
+const { theme } = useUnistyles();
+const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
+```
+
+If a style factory is cheap, skipping `useMemo` entirely is also fine.
+
+## Static Theme Imports
+
+Do not import `theme` from `@/styles/theme` for live UI colors. That export is a dark-theme compatibility default, so using it in render code leaves icons, placeholders, or third-party props pinned to dark colors in light mode.
+
+Use `useUnistyles()` inside the component instead:
+
+```tsx
+const { theme } = useUnistyles();
+
+<ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+```
+
+Importing `baseColors`, theme-name constants, or `type Theme` is fine when the value is intentionally static or type-only.
 
 ## Adaptive Themes And Persisted Settings
 
