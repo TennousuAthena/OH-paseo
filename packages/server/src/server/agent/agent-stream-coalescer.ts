@@ -1,11 +1,13 @@
 import type { AgentProvider, AgentStreamEvent, AgentTimelineItem } from "./agent-sdk-types.js";
 
-export const AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS = 33;
+export const AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS = 200;
 
-type ChunkableTimelineKind = "assistant_message" | "reasoning";
-type ChunkableTimelineItem = Extract<AgentTimelineItem, { type: ChunkableTimelineKind }>;
-type ChunkableTimelineEvent = Extract<AgentStreamEvent, { type: "timeline" }> & {
-  item: ChunkableTimelineItem;
+type CoalescableTextKind = "assistant_message" | "reasoning";
+type CoalescableTimelineKind = CoalescableTextKind | "tool_call";
+type CoalescableTextItem = Extract<AgentTimelineItem, { type: CoalescableTextKind }>;
+type CoalescableTimelineItem = Extract<AgentTimelineItem, { type: CoalescableTimelineKind }>;
+type CoalescableTimelineEvent = Extract<AgentStreamEvent, { type: "timeline" }> & {
+  item: CoalescableTimelineItem;
 };
 
 export type AgentStreamCoalescerTimers = {
@@ -15,7 +17,7 @@ export type AgentStreamCoalescerTimers = {
 
 export type AgentStreamCoalescerFlush = {
   agentId: string;
-  item: Extract<AgentTimelineItem, { type: "assistant_message" | "reasoning" }>;
+  item: CoalescableTimelineItem;
   provider: AgentProvider;
   turnId?: string;
 };
@@ -26,25 +28,48 @@ export type AgentStreamCoalescerOptions = {
   onFlush: (payload: AgentStreamCoalescerFlush) => void;
 };
 
-type PendingAgentStreamChunk = {
-  item: ChunkableTimelineItem;
+type PendingTextEntry = {
+  kind: "text";
+  item: CoalescableTextItem;
   text: string;
   provider: AgentProvider;
   turnId?: string;
 };
 
+type PendingToolCallEntry = {
+  kind: "tool_call";
+  item: Extract<AgentTimelineItem, { type: "tool_call" }>;
+  provider: AgentProvider;
+  turnId?: string;
+};
+
+type PendingAgentStreamEntry = PendingTextEntry | PendingToolCallEntry;
+
 type PendingAgentStreamBuffer = {
   agentId: string;
-  chunks: PendingAgentStreamChunk[];
+  entries: PendingAgentStreamEntry[];
+  toolCallEntryIndexes: Map<string, number>;
   timer: ReturnType<typeof setTimeout> | null;
   flushing: boolean;
 };
 
-function isChunkableTimelineEvent(event: AgentStreamEvent): event is ChunkableTimelineEvent {
+function isCoalescableTimelineEvent(event: AgentStreamEvent): event is CoalescableTimelineEvent {
   return (
     event.type === "timeline" &&
-    (event.item.type === "assistant_message" || event.item.type === "reasoning") &&
-    typeof event.item.text === "string"
+    (event.item.type === "assistant_message" ||
+      event.item.type === "reasoning" ||
+      event.item.type === "tool_call")
+  );
+}
+
+function isTextTimelineItem(item: CoalescableTimelineItem): item is CoalescableTextItem {
+  return item.type === "assistant_message" || item.type === "reasoning";
+}
+
+function isTerminalToolCall(item: CoalescableTimelineItem): boolean {
+  return (
+    item.type === "tool_call" &&
+    (item.status === "completed" || item.status === "failed" || item.status === "canceled")
   );
 }
 
@@ -61,21 +86,21 @@ export class AgentStreamCoalescer {
   }
 
   handle(agentId: string, event: AgentStreamEvent): boolean {
-    if (!isChunkableTimelineEvent(event)) {
+    if (!isCoalescableTimelineEvent(event)) {
       return false;
     }
 
-    if (event.item.text === "") {
+    if (isTextTimelineItem(event.item) && event.item.text === "") {
       return true;
     }
 
     const buffer = this.getOrCreateBuffer(agentId);
-    buffer.chunks.push({
-      item: event.item,
-      text: event.item.text,
-      provider: event.provider,
-      ...(event.turnId !== undefined ? { turnId: event.turnId } : {}),
-    });
+    this.appendToBuffer(buffer, event);
+
+    if (isTerminalToolCall(event.item)) {
+      this.flushBuffer(agentId);
+      return true;
+    }
 
     if (!buffer.timer) {
       this.scheduleFlush(buffer);
@@ -111,12 +136,42 @@ export class AgentStreamCoalescer {
 
     const buffer: PendingAgentStreamBuffer = {
       agentId,
-      chunks: [],
+      entries: [],
+      toolCallEntryIndexes: new Map(),
       timer: null,
       flushing: false,
     };
     this.buffers.set(agentId, buffer);
     return buffer;
+  }
+
+  private appendToBuffer(buffer: PendingAgentStreamBuffer, event: CoalescableTimelineEvent): void {
+    if (isTextTimelineItem(event.item)) {
+      buffer.entries.push({
+        kind: "text",
+        item: event.item,
+        text: event.item.text,
+        provider: event.provider,
+        ...(event.turnId !== undefined ? { turnId: event.turnId } : {}),
+      });
+      return;
+    }
+
+    const existingIndex = buffer.toolCallEntryIndexes.get(event.item.callId);
+    const entry: PendingToolCallEntry = {
+      kind: "tool_call",
+      item: event.item,
+      provider: event.provider,
+      ...(event.turnId !== undefined ? { turnId: event.turnId } : {}),
+    };
+
+    if (existingIndex !== undefined) {
+      buffer.entries[existingIndex] = entry;
+      return;
+    }
+
+    buffer.toolCallEntryIndexes.set(event.item.callId, buffer.entries.length);
+    buffer.entries.push(entry);
   }
 
   private scheduleFlush(buffer: PendingAgentStreamBuffer): void {
@@ -148,24 +203,28 @@ export class AgentStreamCoalescer {
     }
 
     this.clearTimer(buffer);
-    if (buffer.chunks.length === 0) {
+    if (buffer.entries.length === 0) {
       return;
     }
 
-    const chunks = buffer.chunks;
-    buffer.chunks = [];
+    const entries = buffer.entries;
+    buffer.entries = [];
+    buffer.toolCallEntryIndexes.clear();
     buffer.flushing = true;
 
     try {
-      for (const chunk of this.collapseChunks(chunks)) {
+      for (const entry of this.collapseEntries(entries)) {
         this.onFlush({
           agentId,
-          item: {
-            ...chunk.item,
-            text: chunk.text,
-          },
-          provider: chunk.provider,
-          ...(chunk.turnId !== undefined ? { turnId: chunk.turnId } : {}),
+          item:
+            entry.kind === "text"
+              ? {
+                  ...entry.item,
+                  text: entry.text,
+                }
+              : entry.item,
+          provider: entry.provider,
+          ...(entry.turnId !== undefined ? { turnId: entry.turnId } : {}),
         });
       }
     } finally {
@@ -173,22 +232,24 @@ export class AgentStreamCoalescer {
     }
   }
 
-  private collapseChunks(chunks: PendingAgentStreamChunk[]): PendingAgentStreamChunk[] {
-    const collapsed: PendingAgentStreamChunk[] = [];
+  private collapseEntries(entries: PendingAgentStreamEntry[]): PendingAgentStreamEntry[] {
+    const collapsed: PendingAgentStreamEntry[] = [];
 
-    for (const chunk of chunks) {
+    for (const entry of entries) {
       const previous = collapsed.at(-1);
       if (
         previous &&
-        previous.item.type === chunk.item.type &&
-        previous.provider === chunk.provider &&
-        previous.turnId === chunk.turnId
+        previous.kind === "text" &&
+        entry.kind === "text" &&
+        previous.item.type === entry.item.type &&
+        previous.provider === entry.provider &&
+        previous.turnId === entry.turnId
       ) {
-        previous.text += chunk.text;
+        previous.text += entry.text;
         continue;
       }
 
-      collapsed.push({ ...chunk });
+      collapsed.push({ ...entry });
     }
 
     return collapsed;

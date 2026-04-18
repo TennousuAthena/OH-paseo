@@ -60,6 +60,33 @@ function reasoning(
   return timeline({ type: "reasoning", text }, options);
 }
 
+function toolCall(options?: {
+  callId?: string;
+  status?: "running" | "completed" | "failed" | "canceled";
+  output?: string;
+  provider?: AgentProvider;
+  turnId?: string;
+  error?: unknown;
+}): Extract<AgentStreamEvent, { type: "timeline" }> {
+  const status = options?.status ?? "running";
+  return timeline(
+    {
+      type: "tool_call",
+      callId: options?.callId ?? "tool-1",
+      name: "shell",
+      status,
+      error: status === "failed" ? (options?.error ?? "failed") : null,
+      detail: {
+        type: "shell",
+        command: "printf ok",
+        output: options?.output ?? "",
+        exitCode: status === "completed" ? 0 : null,
+      },
+    },
+    options,
+  );
+}
+
 describe("AgentStreamCoalescer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -76,7 +103,7 @@ describe("AgentStreamCoalescer", () => {
     expect(coalescer.handle("agent-1", assistant("lo"))).toBe(true);
 
     expect(flushes).toEqual([]);
-    await vi.advanceTimersByTimeAsync(32);
+    await vi.advanceTimersByTimeAsync(199);
     expect(flushes).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(1);
@@ -92,7 +119,7 @@ describe("AgentStreamCoalescer", () => {
   test("uses constructor windowMs instead of a hard-coded value", async () => {
     const { coalescer, flushes } = createHarness(10);
 
-    expect(AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS).toBe(33);
+    expect(AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS).toBe(200);
     expect(coalescer.handle("agent-1", assistant("fast"))).toBe(true);
 
     await vi.advanceTimersByTimeAsync(9);
@@ -108,7 +135,7 @@ describe("AgentStreamCoalescer", () => {
     ]);
   });
 
-  test("flushes before non-chunkable boundaries when caller invokes flushFor", () => {
+  test("flushFor drains pending coalesced events", () => {
     const { coalescer, flushes } = createHarness();
 
     expect(coalescer.handle("agent-1", assistant("before"))).toBe(true);
@@ -121,30 +148,12 @@ describe("AgentStreamCoalescer", () => {
         provider: "codex",
       },
     ]);
-    expect(
-      coalescer.handle(
-        "agent-1",
-        timeline({
-          type: "tool_call",
-          callId: "tool-1",
-          name: "shell",
-          status: "running",
-          error: null,
-        }),
-      ),
-    ).toBe(false);
+    expect(coalescer.handle("agent-1", toolCall())).toBe(true);
   });
 
   test("does not consume non-chunkable events", () => {
     const { coalescer, flushes } = createHarness();
     const nonChunkableEvents: AgentStreamEvent[] = [
-      timeline({
-        type: "tool_call",
-        callId: "tool-1",
-        name: "shell",
-        status: "completed",
-        error: null,
-      }),
       timeline({ type: "todo", items: [{ text: "ship it", completed: false }] }),
       timeline({ type: "user_message", text: "hi", messageId: "message-1" }),
       timeline({ type: "error", message: "boom" }),
@@ -194,7 +203,7 @@ describe("AgentStreamCoalescer", () => {
     coalescer.handle("agent-1", reasoning("r1"));
     coalescer.handle("agent-1", assistant("a2"));
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes).toEqual([
       {
         agentId: "agent-1",
@@ -222,7 +231,7 @@ describe("AgentStreamCoalescer", () => {
     coalescer.handle("agent-1", assistant("a2"));
     coalescer.handle("agent-1", reasoning("r2"));
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes.map((flush) => flush.item)).toEqual([
       { type: "assistant_message", text: "a1" },
       { type: "reasoning", text: "r1" },
@@ -237,7 +246,7 @@ describe("AgentStreamCoalescer", () => {
     coalescer.handle("agent-1", assistant("c", { provider: "codex" }));
     coalescer.handle("agent-1", assistant("o", { provider: "opencode" }));
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes).toEqual([
       {
         agentId: "agent-1",
@@ -258,7 +267,7 @@ describe("AgentStreamCoalescer", () => {
     coalescer.handle("agent-1", assistant("one", { turnId: "turn-1" }));
     coalescer.handle("agent-1", assistant("two", { turnId: "turn-2" }));
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes).toEqual([
       {
         agentId: "agent-1",
@@ -281,7 +290,7 @@ describe("AgentStreamCoalescer", () => {
     expect(coalescer.handle("agent-1", assistant(""))).toBe(true);
     expect(coalescer.handle("agent-2", reasoning(""))).toBe(true);
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes).toEqual([]);
   });
 
@@ -293,7 +302,7 @@ describe("AgentStreamCoalescer", () => {
     coalescer.handle("agent-1", assistant("\t"));
     coalescer.handle("agent-1", assistant(" mixed \n\t whitespace "));
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes).toEqual([
       {
         agentId: "agent-1",
@@ -323,7 +332,7 @@ describe("AgentStreamCoalescer", () => {
       coalescer.handle("agent-1", assistant(chunk));
     }
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes).toEqual([
       {
         agentId: "agent-1",
@@ -341,7 +350,7 @@ describe("AgentStreamCoalescer", () => {
     coalescer.handle("agent-1", assistant("b"));
     coalescer.handle("agent-2", assistant("y"));
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes).toEqual([
       {
         agentId: "agent-1",
@@ -422,7 +431,7 @@ describe("AgentStreamCoalescer", () => {
       },
     ]);
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes).toEqual([
       {
         agentId: "agent-1",
@@ -443,7 +452,7 @@ describe("AgentStreamCoalescer", () => {
     coalescer.handle("agent-1", assistant("manual"));
     coalescer.flushFor("agent-1");
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes).toEqual([
       {
         agentId: "agent-1",
@@ -459,7 +468,7 @@ describe("AgentStreamCoalescer", () => {
     coalescer.handle("agent-1", assistant("durable"));
     coalescer.flushAndDiscard("agent-1");
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes).toEqual([
       {
         agentId: "agent-1",
@@ -523,7 +532,7 @@ describe("AgentStreamCoalescer", () => {
     coalescer.handle("agent-1", timeline(firstItem));
     coalescer.handle("agent-1", assistant("llo"));
 
-    await vi.advanceTimersByTimeAsync(33);
+    await vi.advanceTimersByTimeAsync(200);
     expect(flushes).toEqual([
       {
         agentId: "agent-1",
@@ -534,6 +543,133 @@ describe("AgentStreamCoalescer", () => {
         },
         provider: "codex",
       },
+    ]);
+  });
+
+  test("coalesces tool call updates by callId with latest snapshot winning", async () => {
+    const { coalescer, flushes } = createHarness();
+
+    expect(coalescer.handle("agent-1", toolCall({ output: "first" }))).toBe(true);
+    expect(coalescer.handle("agent-1", toolCall({ output: "second" }))).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(flushes).toEqual([
+      {
+        agentId: "agent-1",
+        item: {
+          type: "tool_call",
+          callId: "tool-1",
+          name: "shell",
+          status: "running",
+          error: null,
+          detail: {
+            type: "shell",
+            command: "printf ok",
+            output: "second",
+            exitCode: null,
+          },
+        },
+        provider: "codex",
+      },
+    ]);
+  });
+
+  test("coalesces interleaved tool call updates independently by callId", async () => {
+    const { coalescer, flushes } = createHarness();
+
+    coalescer.handle("agent-1", toolCall({ callId: "tool-1", output: "one-a" }));
+    coalescer.handle("agent-1", toolCall({ callId: "tool-2", output: "two-a" }));
+    coalescer.handle("agent-1", toolCall({ callId: "tool-1", output: "one-b" }));
+    coalescer.handle("agent-1", toolCall({ callId: "tool-2", output: "two-b" }));
+
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(flushes.map((flush) => flush.item)).toEqual([
+      {
+        type: "tool_call",
+        callId: "tool-1",
+        name: "shell",
+        status: "running",
+        error: null,
+        detail: {
+          type: "shell",
+          command: "printf ok",
+          output: "one-b",
+          exitCode: null,
+        },
+      },
+      {
+        type: "tool_call",
+        callId: "tool-2",
+        name: "shell",
+        status: "running",
+        error: null,
+        detail: {
+          type: "shell",
+          command: "printf ok",
+          output: "two-b",
+          exitCode: null,
+        },
+      },
+    ]);
+  });
+
+  test("terminal tool call statuses flush immediately", () => {
+    const { coalescer, flushes } = createHarness();
+
+    coalescer.handle("agent-1", toolCall({ output: "running" }));
+    expect(flushes).toEqual([]);
+
+    expect(coalescer.handle("agent-1", toolCall({ status: "completed", output: "done" }))).toBe(
+      true,
+    );
+
+    expect(flushes.map((flush) => flush.item)).toEqual([
+      {
+        type: "tool_call",
+        callId: "tool-1",
+        name: "shell",
+        status: "completed",
+        error: null,
+        detail: {
+          type: "shell",
+          command: "printf ok",
+          output: "done",
+          exitCode: 0,
+        },
+      },
+    ]);
+  });
+
+  test("preserves mixed text and tool call arrival order within a flush", async () => {
+    const { coalescer, flushes } = createHarness();
+
+    coalescer.handle("agent-1", assistant("a"));
+    coalescer.handle("agent-1", toolCall({ output: "running" }));
+    coalescer.handle("agent-1", reasoning("r"));
+    coalescer.handle("agent-1", toolCall({ output: "latest" }));
+    coalescer.handle("agent-1", assistant("b"));
+
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(flushes.map((flush) => flush.item)).toEqual([
+      { type: "assistant_message", text: "a" },
+      {
+        type: "tool_call",
+        callId: "tool-1",
+        name: "shell",
+        status: "running",
+        error: null,
+        detail: {
+          type: "shell",
+          command: "printf ok",
+          output: "latest",
+          exitCode: null,
+        },
+      },
+      { type: "reasoning", text: "r" },
+      { type: "assistant_message", text: "b" },
     ]);
   });
 });

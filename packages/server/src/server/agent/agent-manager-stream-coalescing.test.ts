@@ -57,6 +57,28 @@ const TOOL_CALL: AgentTimelineItem = {
   },
 };
 
+function toolCall(options?: {
+  callId?: string;
+  status?: "running" | "completed" | "failed" | "canceled";
+  output?: string;
+  error?: unknown;
+}): Extract<AgentTimelineItem, { type: "tool_call" }> {
+  const status = options?.status ?? "running";
+  return {
+    type: "tool_call",
+    callId: options?.callId ?? "tool-1",
+    name: "shell",
+    status,
+    error: status === "failed" ? (options?.error ?? "failed") : null,
+    detail: {
+      type: "shell",
+      command: "printf ok",
+      output: options?.output ?? "",
+      exitCode: status === "completed" ? 0 : null,
+    },
+  };
+}
+
 class TestAgentSession implements AgentSession {
   readonly capabilities = TEST_CAPABILITIES;
   readonly id: string;
@@ -347,7 +369,7 @@ afterEach(() => {
 });
 
 describe("target coalesced behavior", () => {
-  test("coalesces a same-tick assistant burst after the 33ms window", async () => {
+  test("coalesces a same-tick assistant burst after the 200ms window", async () => {
     vi.useFakeTimers();
     const harness = createHarness();
     try {
@@ -358,7 +380,7 @@ describe("target coalesced behavior", () => {
       }
       await waitForSessionEventQueue();
 
-      await vi.advanceTimersByTimeAsync(32);
+      await vi.advanceTimersByTimeAsync(199);
       expect(await harness.manager.getTimelineRows(agentId)).toHaveLength(0);
       expect(getTimelineStreamEvents(harness.events, agentId)).toHaveLength(0);
 
@@ -386,7 +408,7 @@ describe("target coalesced behavior", () => {
     }
   });
 
-  test("coalesces same-tick reasoning chunks after the 33ms window", async () => {
+  test("coalesces same-tick reasoning chunks after the 200ms window", async () => {
     vi.useFakeTimers();
     const harness = createHarness();
     try {
@@ -397,7 +419,7 @@ describe("target coalesced behavior", () => {
       }
       await waitForSessionEventQueue();
 
-      await vi.advanceTimersByTimeAsync(33);
+      await vi.advanceTimersByTimeAsync(200);
       const rows = await harness.manager.getTimelineRows(agentId);
       const events = getTimelineStreamEvents(harness.events, agentId);
 
@@ -410,21 +432,26 @@ describe("target coalesced behavior", () => {
     }
   });
 
-  test("preserves order when an atomic timeline event lands between two large bursts", async () => {
+  test("coalesces running tool calls without flushing buffered text", async () => {
     vi.useFakeTimers();
     const harness = createHarness();
     try {
       const { agentId, session } = await createManagedSession(harness);
+      const runningToolCall = toolCall({ output: "running" });
 
       for (let i = 0; i < 500; i++) {
         session.pushEvent(assistant("a"));
       }
-      session.pushEvent(timelineEvent(TOOL_CALL));
+      session.pushEvent(timelineEvent(runningToolCall));
       await waitForSessionEventQueue();
 
+      expect(await harness.manager.getTimelineRows(agentId)).toHaveLength(0);
+      expect(getTimelineStreamEvents(harness.events, agentId)).toHaveLength(0);
+
+      await vi.advanceTimersByTimeAsync(200);
       expect(getTimelineItems(await harness.manager.getTimelineRows(agentId))).toEqual([
         { type: "assistant_message", text: "a".repeat(500) },
-        TOOL_CALL,
+        runningToolCall,
       ]);
       expectContiguousLiveSeqs(getTimelineStreamEvents(harness.events, agentId), [1, 2]);
 
@@ -432,7 +459,7 @@ describe("target coalesced behavior", () => {
         session.pushEvent(assistant("b"));
       }
       await waitForSessionEventQueue();
-      await vi.advanceTimersByTimeAsync(32);
+      await vi.advanceTimersByTimeAsync(199);
       expect(await harness.manager.getTimelineRows(agentId)).toHaveLength(2);
 
       await vi.advanceTimersByTimeAsync(1);
@@ -441,11 +468,131 @@ describe("target coalesced behavior", () => {
 
       expect(getTimelineItems(rows)).toEqual([
         { type: "assistant_message", text: "a".repeat(500) },
-        TOOL_CALL,
+        runningToolCall,
         { type: "assistant_message", text: "b".repeat(500) },
       ]);
       expectContiguousRowSeqs(rows, [1, 2, 3]);
       expectContiguousLiveSeqs(events, [1, 2, 3]);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("coalesces same-window tool call updates to the latest snapshot", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    try {
+      const { agentId, session } = await createManagedSession(harness);
+
+      for (let i = 0; i < 200; i++) {
+        session.pushEvent(timelineEvent(toolCall({ output: `chunk-${i}` })));
+      }
+      await waitForSessionEventQueue();
+
+      await vi.advanceTimersByTimeAsync(199);
+      expect(await harness.manager.getTimelineRows(agentId)).toHaveLength(0);
+      expect(getTimelineStreamEvents(harness.events, agentId)).toHaveLength(0);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const rows = await harness.manager.getTimelineRows(agentId);
+      const events = getTimelineStreamEvents(harness.events, agentId);
+
+      expect(getTimelineItems(rows)).toEqual([toolCall({ output: "chunk-199" })]);
+      expect(events).toHaveLength(1);
+      expectContiguousRowSeqs(rows, [1]);
+      expectContiguousLiveSeqs(events, [1]);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("coalesces interleaved tool calls independently and preserves first arrival order", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    try {
+      const { agentId, session } = await createManagedSession(harness);
+
+      session.pushEvent(timelineEvent(toolCall({ callId: "tool-1", output: "one-a" })));
+      session.pushEvent(timelineEvent(toolCall({ callId: "tool-2", output: "two-a" })));
+      session.pushEvent(timelineEvent(toolCall({ callId: "tool-1", output: "one-b" })));
+      session.pushEvent(timelineEvent(toolCall({ callId: "tool-2", output: "two-b" })));
+      await waitForSessionEventQueue();
+      await vi.advanceTimersByTimeAsync(200);
+
+      const rows = await harness.manager.getTimelineRows(agentId);
+      const events = getTimelineStreamEvents(harness.events, agentId);
+
+      expect(getTimelineItems(rows)).toEqual([
+        toolCall({ callId: "tool-1", output: "one-b" }),
+        toolCall({ callId: "tool-2", output: "two-b" }),
+      ]);
+      expect(events).toHaveLength(2);
+      expectContiguousRowSeqs(rows, [1, 2]);
+      expectContiguousLiveSeqs(events, [1, 2]);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("terminal tool call statuses flush immediately with pending text", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    try {
+      const { agentId, session } = await createManagedSession(harness);
+
+      session.pushEvent(assistant("before"));
+      session.pushEvent(timelineEvent(toolCall({ output: "running" })));
+      await waitForSessionEventQueue();
+      expect(await harness.manager.getTimelineRows(agentId)).toHaveLength(0);
+
+      session.pushEvent(timelineEvent(toolCall({ status: "completed", output: "done" })));
+      await waitForSessionEventQueue();
+
+      const rows = await harness.manager.getTimelineRows(agentId);
+      const events = getTimelineStreamEvents(harness.events, agentId);
+
+      expect(getTimelineItems(rows)).toEqual([
+        { type: "assistant_message", text: "before" },
+        toolCall({ status: "completed", output: "done" }),
+      ]);
+      expect(events).toHaveLength(2);
+      expectContiguousRowSeqs(rows, [1, 2]);
+      expectContiguousLiveSeqs(events, [1, 2]);
+
+      await vi.advanceTimersByTimeAsync(200);
+      expect(await harness.manager.getTimelineRows(agentId)).toHaveLength(2);
+      expect(getTimelineStreamEvents(harness.events, agentId)).toHaveLength(2);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("preserves mixed text and tool call order after coalescing", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    try {
+      const { agentId, session } = await createManagedSession(harness);
+
+      session.pushEvent(assistant("a"));
+      session.pushEvent(timelineEvent(toolCall({ output: "first" })));
+      session.pushEvent(reasoning("r"));
+      session.pushEvent(timelineEvent(toolCall({ output: "latest" })));
+      session.pushEvent(assistant("b"));
+      await waitForSessionEventQueue();
+      await vi.advanceTimersByTimeAsync(200);
+
+      const rows = await harness.manager.getTimelineRows(agentId);
+      const events = getTimelineStreamEvents(harness.events, agentId);
+
+      expect(getTimelineItems(rows)).toEqual([
+        { type: "assistant_message", text: "a" },
+        toolCall({ output: "latest" }),
+        { type: "reasoning", text: "r" },
+        { type: "assistant_message", text: "b" },
+      ]);
+      expect(events).toHaveLength(4);
+      expectContiguousRowSeqs(rows, [1, 2, 3, 4]);
+      expectContiguousLiveSeqs(events, [1, 2, 3, 4]);
     } finally {
       harness.cleanup();
     }
@@ -462,7 +609,7 @@ describe("target coalesced behavior", () => {
       session.pushEvent(reasoning("r2"));
       session.pushEvent(assistant("a2"));
       await waitForSessionEventQueue();
-      await vi.advanceTimersByTimeAsync(33);
+      await vi.advanceTimersByTimeAsync(200);
 
       const rows = await harness.manager.getTimelineRows(agentId);
       const events = getTimelineStreamEvents(harness.events, agentId);
@@ -491,7 +638,7 @@ describe("target coalesced behavior", () => {
         session.pushEvent(reasoning(`r${i}`));
       }
       await waitForSessionEventQueue();
-      await vi.advanceTimersByTimeAsync(33);
+      await vi.advanceTimersByTimeAsync(200);
 
       const rows = await harness.manager.getTimelineRows(agentId);
       const events = getTimelineStreamEvents(harness.events, agentId);
@@ -542,7 +689,7 @@ describe("target coalesced behavior", () => {
       first.session.pushEvent(assistant("a"));
       second.session.pushEvent(assistant("b"));
       await waitForSessionEventQueue();
-      await vi.advanceTimersByTimeAsync(33);
+      await vi.advanceTimersByTimeAsync(200);
 
       const firstRows = await harness.manager.getTimelineRows(first.agentId);
       const secondRows = await harness.manager.getTimelineRows(second.agentId);
@@ -572,7 +719,7 @@ describe("target coalesced behavior", () => {
       session.pushEvent(assistant("codex", "codex"));
       session.pushEvent(assistant("claude", "claude"));
       await waitForSessionEventQueue();
-      await vi.advanceTimersByTimeAsync(33);
+      await vi.advanceTimersByTimeAsync(200);
 
       const rows = await harness.manager.getTimelineRows(agentId);
       const events = getTimelineStreamEvents(harness.events, agentId);
@@ -605,7 +752,7 @@ describe("target coalesced behavior", () => {
       session.pushEvent(assistant("one", "codex", "turn-1"));
       session.pushEvent(assistant("two", "codex", "turn-2"));
       await waitForSessionEventQueue();
-      await vi.advanceTimersByTimeAsync(33);
+      await vi.advanceTimersByTimeAsync(200);
 
       const rows = await harness.manager.getTimelineRows(agentId);
       const events = getTimelineStreamEvents(harness.events, agentId);
@@ -646,7 +793,7 @@ describe("target coalesced behavior", () => {
       session.pushEvent(assistant("\n\t"));
       session.pushEvent(assistant("done"));
       await waitForSessionEventQueue();
-      await vi.advanceTimersByTimeAsync(33);
+      await vi.advanceTimersByTimeAsync(200);
 
       const rows = await harness.manager.getTimelineRows(agentId);
       const events = getTimelineStreamEvents(harness.events, agentId);
@@ -704,7 +851,7 @@ describe("target coalesced behavior", () => {
             : undefined,
         ).toBe(undefined);
 
-        await vi.advanceTimersByTimeAsync(33);
+        await vi.advanceTimersByTimeAsync(200);
         expect(await harness.manager.getTimelineRows(agentId)).toHaveLength(
           expectedTimelineEventCount,
         );
@@ -804,7 +951,7 @@ describe("target coalesced behavior", () => {
       });
       second.session.pushEvent(assistant("new"));
       await waitForSessionEventQueue();
-      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(200);
 
       expect(getTimelineItems(await reuseHarness.manager.getTimelineRows(second.agentId))).toEqual([
         { type: "assistant_message", text: "new" },
@@ -878,7 +1025,7 @@ describe("target coalesced behavior", () => {
       session.pushEvent(assistant("A"));
       await waitForSessionEventQueue();
 
-      await vi.advanceTimersByTimeAsync(33);
+      await vi.advanceTimersByTimeAsync(200);
       await waitForSessionEventQueue();
 
       const rowsAfterFirstFlush = await reentryHarness.manager.getTimelineRows(agentId);
@@ -887,7 +1034,7 @@ describe("target coalesced behavior", () => {
       ]);
       expect(getTimelineStreamEvents(reentryHarness.events, agentId)).toHaveLength(1);
 
-      await vi.advanceTimersByTimeAsync(33);
+      await vi.advanceTimersByTimeAsync(200);
       await waitForSessionEventQueue();
 
       const rowsAfterSecondFlush = await reentryHarness.manager.getTimelineRows(agentId);
