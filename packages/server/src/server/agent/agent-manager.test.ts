@@ -1426,7 +1426,7 @@ describe("AgentManager", () => {
     expect(fetched.rows.map((row) => row.seq)).toEqual([1, 2]);
   });
 
-  test("streams assistant chunks incrementally and persists canonical chunk rows", async () => {
+  test("coalesces assistant chunks and persists the canonical row", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-provisional-timeline-"));
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
@@ -1481,46 +1481,30 @@ describe("AgentManager", () => {
     const assistantTimelineEvents = streamEvents.filter(
       (event) => event.itemType === "assistant_message",
     );
-    expect(assistantTimelineEvents).toHaveLength(2);
+    expect(assistantTimelineEvents).toHaveLength(1);
     expect(assistantTimelineEvents[0]).toMatchObject({
       eventType: "timeline",
       itemType: "assistant_message",
-      text: "final ",
+      text: "final reply",
       seq: 1,
-      epoch: expect.any(String),
-    });
-    expect(assistantTimelineEvents[1]).toMatchObject({
-      eventType: "timeline",
-      itemType: "assistant_message",
-      text: "reply",
-      seq: 2,
       epoch: expect.any(String),
     });
 
     expect(manager.getTimeline(snapshot.id)).toEqual([
       {
         type: "assistant_message",
-        text: "final ",
-      },
-      {
-        type: "assistant_message",
-        text: "reply",
+        text: "final reply",
       },
     ]);
     const fetched = await manager.fetchTimeline(snapshot.id, {
       direction: "tail",
       limit: 0,
     });
-    expect(fetched.rows).toHaveLength(2);
+    expect(fetched.rows).toHaveLength(1);
     expect(assistantTimelineEvents[0]?.epoch).toBe(fetched.epoch);
-    expect(assistantTimelineEvents[1]?.epoch).toBe(fetched.epoch);
     expect(fetched.rows[0]?.item).toEqual({
       type: "assistant_message",
-      text: "final ",
-    });
-    expect(fetched.rows[1]?.item).toEqual({
-      type: "assistant_message",
-      text: "reply",
+      text: "final reply",
     });
   });
 

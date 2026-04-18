@@ -15,6 +15,7 @@ import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-m
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
 import {
   type ServerInfoStatusPayload,
+  type SessionOutboundMessage,
   type WSHelloMessage,
   WSInboundMessageSchema,
   type ServerCapabilityState,
@@ -348,6 +349,12 @@ export class VoiceAssistantWebSocketServer {
   };
   private readonly inboundMessageCounts = new Map<string, number>();
   private readonly inboundSessionRequestCounts = new Map<string, number>();
+  private readonly outboundMessageCounts = new Map<string, number>();
+  private readonly outboundSessionMessageCounts = new Map<string, number>();
+  private readonly outboundAgentStreamCounts = new Map<string, number>();
+  private readonly outboundAgentStreamByAgentCounts = new Map<string, number>();
+  private readonly outboundBinaryFrameCounts = new Map<string, number>();
+  private readonly bufferedAmountSamples: number[] = [];
   private readonly requestLatencies = new Map<string, number[]>();
   private runtimeMetricsInterval: ReturnType<typeof setInterval> | null = null;
   private unsubscribeSpeechReadiness: (() => void) | null = null;
@@ -516,6 +523,7 @@ export class VoiceAssistantWebSocketServer {
       // WebSocket.OPEN = 1
       if (ws.readyState === 1) {
         ws.send(payload);
+        this.recordOutboundMessage(message, ws);
       }
     }
   }
@@ -627,6 +635,7 @@ export class VoiceAssistantWebSocketServer {
     // WebSocket.OPEN = 1
     if (ws.readyState === 1) {
       ws.send(JSON.stringify(message));
+      this.recordOutboundMessage(message, ws);
     }
   }
 
@@ -635,6 +644,7 @@ export class VoiceAssistantWebSocketServer {
       return;
     }
     ws.send(frame);
+    this.recordOutboundBinaryFrame(ws);
   }
 
   private sendToConnection(connection: SessionConnection, message: WSOutboundMessage): void {
@@ -1327,6 +1337,44 @@ export class VoiceAssistantWebSocketServer {
     this.incrementCount(this.inboundSessionRequestCounts, type);
   }
 
+  private recordOutboundMessage(message: WSOutboundMessage, ws: WebSocketLike): void {
+    if (message.type !== "session") {
+      this.incrementCount(this.outboundMessageCounts, message.type);
+      this.recordBufferedAmount(ws);
+      return;
+    }
+
+    this.incrementCount(this.outboundMessageCounts, "session_message");
+    this.incrementCount(this.outboundSessionMessageCounts, message.message.type);
+
+    if (message.message.type === "agent_stream") {
+      this.recordOutboundAgentStreamMessage(message.message.payload);
+    }
+
+    this.recordBufferedAmount(ws);
+  }
+
+  private recordOutboundAgentStreamMessage(
+    payload: Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"],
+  ): void {
+    const { agentId, event } = payload;
+    const eventType = event.type === "timeline" ? `timeline:${event.item.type}` : event.type;
+    this.incrementCount(this.outboundAgentStreamCounts, eventType);
+    this.incrementCount(this.outboundAgentStreamByAgentCounts, agentId);
+  }
+
+  private recordOutboundBinaryFrame(ws: WebSocketLike): void {
+    this.incrementCount(this.outboundBinaryFrameCounts, "binary");
+    this.recordBufferedAmount(ws);
+  }
+
+  private recordBufferedAmount(ws: WebSocketLike): void {
+    if (typeof ws.bufferedAmount !== "number") {
+      return;
+    }
+    this.bufferedAmountSamples.push(ws.bufferedAmount);
+  }
+
   private recordRequestLatency(type: string, durationMs: number): void {
     let latencies = this.requestLatencies.get(type);
     if (!latencies) {
@@ -1370,6 +1418,22 @@ export class VoiceAssistantWebSocketServer {
     return stats.slice(0, 15);
   }
 
+  private computeBufferedAmountStats(): {
+    p95: number;
+    max: number;
+  } {
+    if (this.bufferedAmountSamples.length === 0) {
+      return { p95: 0, max: 0 };
+    }
+
+    const samples = [...this.bufferedAmountSamples].sort((a, b) => a - b);
+    const p95Index = Math.ceil(samples.length * 0.95) - 1;
+    return {
+      p95: samples[p95Index] ?? 0,
+      max: samples[samples.length - 1] ?? 0,
+    };
+  }
+
   private collectSessionRuntimeMetrics(): WebSocketRuntimeMetrics {
     const uniqueConnections = new Set<SessionConnection>(this.externalSessionsByKey.values());
     let terminalDirectorySubscriptionCount = 0;
@@ -1407,6 +1471,7 @@ export class VoiceAssistantWebSocketServer {
     ).length;
     const sessionMetrics = this.collectSessionRuntimeMetrics();
     const latencyStats = this.computeLatencyStats();
+    const bufferedAmountStats = this.computeBufferedAmountStats();
     const agentSnapshot = this.agentManager.getMetricsSnapshot();
 
     this.logger.info(
@@ -1425,6 +1490,12 @@ export class VoiceAssistantWebSocketServer {
         counters: { ...this.runtimeCounters },
         inboundMessageTypesTop: this.getTopCounts(this.inboundMessageCounts, 12),
         inboundSessionRequestTypesTop: this.getTopCounts(this.inboundSessionRequestCounts, 20),
+        outboundMessageTypesTop: this.getTopCounts(this.outboundMessageCounts, 12),
+        outboundSessionMessageTypesTop: this.getTopCounts(this.outboundSessionMessageCounts, 20),
+        outboundAgentStreamTypesTop: this.getTopCounts(this.outboundAgentStreamCounts, 20),
+        outboundAgentStreamAgentsTop: this.getTopCounts(this.outboundAgentStreamByAgentCounts, 20),
+        outboundBinaryFrameTypesTop: this.getTopCounts(this.outboundBinaryFrameCounts, 12),
+        bufferedAmount: bufferedAmountStats,
         runtime: sessionMetrics,
         latency: latencyStats,
         agents: agentSnapshot,
@@ -1439,6 +1510,12 @@ export class VoiceAssistantWebSocketServer {
     }
     this.inboundMessageCounts.clear();
     this.inboundSessionRequestCounts.clear();
+    this.outboundMessageCounts.clear();
+    this.outboundSessionMessageCounts.clear();
+    this.outboundAgentStreamCounts.clear();
+    this.outboundAgentStreamByAgentCounts.clear();
+    this.outboundBinaryFrameCounts.clear();
+    this.bufferedAmountSamples.length = 0;
     this.requestLatencies.clear();
     this.runtimeWindowStartedAt = now;
   }

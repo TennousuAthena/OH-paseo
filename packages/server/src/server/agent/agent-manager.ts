@@ -44,6 +44,10 @@ import type {
   AgentTimelineRow,
   AgentTimelineStore,
 } from "./agent-timeline-store-types.js";
+import {
+  AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS,
+  AgentStreamCoalescer,
+} from "./agent-stream-coalescer.js";
 import { getAgentProviderDefinition } from "./provider-manifest.js";
 
 export { AGENT_LIFECYCLE_STATUSES, type AgentLifecycleStatus };
@@ -97,6 +101,7 @@ export type AgentManagerOptions = {
   durableTimelineStore?: AgentTimelineStore;
   terminalManager?: TerminalManager | null;
   mcpBaseUrl?: string;
+  agentStreamCoalesceWindowMs?: number;
   logger: Logger;
 };
 
@@ -310,6 +315,7 @@ export class AgentManager {
   private readonly durableTimelineStore?: AgentTimelineStore;
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
   private readonly backgroundTasks = new Set<Promise<void>>();
+  private readonly agentStreamCoalescer: AgentStreamCoalescer;
   private mcpBaseUrl: string | null;
   private onAgentAttention?: AgentAttentionCallback;
   private logger: Logger;
@@ -321,6 +327,14 @@ export class AgentManager {
     this.onAgentAttention = options?.onAgentAttention;
     this.mcpBaseUrl = options?.mcpBaseUrl ?? null;
     this.logger = options.logger.child({ module: "agent", component: "agent-manager" });
+    this.agentStreamCoalescer = new AgentStreamCoalescer({
+      windowMs: options.agentStreamCoalesceWindowMs ?? AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS,
+      timers: { setTimeout, clearTimeout },
+      onFlush: ({ agentId, item, provider, turnId }) => {
+        const event = this.recordAndDispatchTimelineItem(agentId, item, provider, turnId);
+        this.notifyForegroundTurnWaiters(agentId, event);
+      },
+    });
     if (options?.clients) {
       for (const [provider, client] of Object.entries(options.clients)) {
         if (client) {
@@ -699,6 +713,7 @@ export class AgentManager {
       ? await client.resumeSession(handle, normalizedConfig, launchContext)
       : await client.createSession(normalizedConfig, launchContext);
 
+    this.agentStreamCoalescer.flushAndDiscard(agentId);
     // Remove the existing agent entry before swapping sessions
     this.agents.delete(agentId);
     if (existing.unsubscribeSession) {
@@ -1937,6 +1952,7 @@ export class AgentManager {
     agent: LiveManagedAgent,
     cancelReason: string,
   ): ManagedAgentClosed {
+    this.agentStreamCoalescer.flushAndDiscard(agent.id);
     this.agents.delete(agent.id);
     this.previousStatuses.delete(agent.id);
     if (agent.unsubscribeSession) {
@@ -2018,7 +2034,11 @@ export class AgentManager {
             (waiter) => waiter.turnId === turnId && !waiter.settled,
           );
 
-    await this.handleStreamEvent(agent, event);
+    const shouldNotifyWaiters = await this.handleStreamEvent(agent, event);
+
+    if (!shouldNotifyWaiters) {
+      return;
+    }
 
     for (const waiter of matchingWaiters) {
       waiter.callback(event);
@@ -2192,6 +2212,24 @@ export class AgentManager {
     }
   }
 
+  private notifyForegroundTurnWaiters(agentId: string, event: AgentStreamEvent): void {
+    const turnId = (event as { turnId?: string }).turnId;
+    if (turnId == null) {
+      return;
+    }
+
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      return;
+    }
+
+    for (const waiter of agent.foregroundTurnWaiters) {
+      if (waiter.turnId === turnId && !waiter.settled) {
+        waiter.callback(event);
+      }
+    }
+  }
+
   private async handleStreamEvent(
     agent: ActiveManagedAgent,
     event: AgentStreamEvent,
@@ -2199,17 +2237,21 @@ export class AgentManager {
       fromHistory?: boolean;
       canonicalUserMessagesById?: ReadonlyMap<string, string>;
     },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const eventTurnId = (event as { turnId?: string }).turnId;
     const isForegroundEvent = Boolean(eventTurnId && agent.activeForegroundTurnId === eventTurnId);
 
     // Only update timestamp for live events, not history replay
     if (!options?.fromHistory) {
       this.touchUpdatedAt(agent);
+      if (this.agentStreamCoalescer.handle(agent.id, event)) {
+        return false;
+      }
+      this.agentStreamCoalescer.flushFor(agent.id);
     }
 
-    let timelineRow: AgentTimelineRow | null = null;
     let shouldDispatchEvent = true;
+    let shouldNotifyWaiters = true;
 
     switch (event.type) {
       case "thread_started":
@@ -2230,36 +2272,48 @@ export class AgentManager {
         this.emitState(agent);
         break;
       case "timeline":
-        // Skip provider-replayed user_message items during history hydration.
-        if (options?.fromHistory && event.item.type === "user_message") {
-          const eventMessageId = normalizeMessageId(event.item.messageId);
-          if (eventMessageId) {
-            const canonicalText = options?.canonicalUserMessagesById?.get(eventMessageId);
-            if (canonicalText === event.item.text) {
-              break;
+        {
+          // Skip provider-replayed user_message items during history hydration.
+          if (options?.fromHistory && event.item.type === "user_message") {
+            const eventMessageId = normalizeMessageId(event.item.messageId);
+            if (eventMessageId) {
+              const canonicalText = options?.canonicalUserMessagesById?.get(eventMessageId);
+              if (canonicalText === event.item.text) {
+                shouldDispatchEvent = false;
+                shouldNotifyWaiters = false;
+                break;
+              }
             }
           }
-        }
-        // Suppress user_message echoes for the active foreground turn —
-        // these are already recorded by recordUserMessage().
-        if (!options?.fromHistory && event.item.type === "user_message" && isForegroundEvent) {
-          const eventMessageId = normalizeMessageId(event.item.messageId);
-          const eventText = event.item.text;
-          if (eventMessageId) {
+
+          // Suppress user_message echoes for the active foreground turn.
+          if (!options?.fromHistory && event.item.type === "user_message" && isForegroundEvent) {
+            const eventMessageId = normalizeMessageId(event.item.messageId);
             if (
-              await this.hasCommittedUserMessageFromStores(agent.id, {
+              eventMessageId &&
+              (await this.hasCommittedUserMessageFromStores(agent.id, {
                 messageId: eventMessageId,
-                text: eventText,
-              })
+                text: event.item.text,
+              }))
             ) {
               break;
             }
           }
-        }
-        timelineRow = this.recordTimeline(agent.id, event.item);
-        if (!options?.fromHistory && event.item.type === "user_message") {
-          agent.lastUserMessageAt = new Date();
-          this.emitState(agent);
+
+          if (options?.fromHistory) {
+            this.recordTimeline(agent.id, event.item);
+            shouldDispatchEvent = false;
+            shouldNotifyWaiters = false;
+            break;
+          }
+
+          this.recordAndDispatchTimelineItem(agent.id, event.item, event.provider, event.turnId);
+          if (event.item.type === "user_message") {
+            agent.lastUserMessageAt = new Date();
+            this.emitState(agent);
+          }
+          shouldDispatchEvent = false;
+          shouldNotifyWaiters = true;
         }
         break;
       case "turn_completed":
@@ -2397,17 +2451,30 @@ export class AgentManager {
 
     // Skip dispatching individual stream events during history replay.
     if (!options?.fromHistory && shouldDispatchEvent) {
-      this.dispatchStream(
-        agent.id,
-        event,
-        timelineRow
-          ? {
-              seq: timelineRow.seq,
-              epoch: this.timelineStore.getEpoch(agent.id),
-            }
-          : undefined,
-      );
+      this.dispatchStream(agent.id, event);
     }
+
+    return shouldNotifyWaiters;
+  }
+
+  private recordAndDispatchTimelineItem(
+    agentId: string,
+    item: AgentTimelineItem,
+    provider: AgentProvider,
+    turnId?: string,
+  ): AgentStreamEvent {
+    const row = this.recordTimeline(agentId, item);
+    const event: AgentStreamEvent = {
+      type: "timeline",
+      item,
+      provider,
+      ...(turnId !== undefined ? { turnId } : {}),
+    };
+    this.dispatchStream(agentId, event, {
+      seq: row.seq,
+      epoch: this.timelineStore.getEpoch(agentId),
+    });
+    return event;
   }
 
   private async appendSystemErrorTimelineMessage(
@@ -2584,6 +2651,7 @@ export class AgentManager {
    * Used by daemon shutdown paths to avoid unhandled rejections after cleanup.
    */
   async flush(): Promise<void> {
+    this.agentStreamCoalescer.flushAll();
     // Drain tasks, including tasks spawned while awaiting.
     while (this.backgroundTasks.size > 0) {
       const pending = Array.from(this.backgroundTasks);
