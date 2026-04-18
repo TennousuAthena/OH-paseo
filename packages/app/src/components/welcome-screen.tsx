@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Pressable, Text, View, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { QrCode, Link2, ClipboardPaste, ExternalLink, Settings } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HostProfile } from "@/types/host-connection";
@@ -20,6 +20,8 @@ import { buildHostRootRoute } from "@/utils/host-routes";
 import { PaseoLogo } from "@/components/icons/paseo-logo";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { isWeb, isNative } from "@/constants/platform";
+
+const ThemedScrollView = withUnistyles(ScrollView);
 
 type WelcomeAction = {
   key: "scan-qr" | "direct-connection" | "paste-pairing-link";
@@ -237,35 +239,6 @@ export interface WelcomeScreenProps {
 
 export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const { theme } = useUnistyles();
-  useEffect(() => {
-    const probe = (tag: string) => {
-      // eslint-disable-next-line no-console
-      console.log(`[trace-theme] ${tag}`, {
-        runtimeName: UnistylesRuntime.themeName,
-        hookSurface0: theme.colors.surface0,
-        hookForeground: theme.colors.foreground,
-        hookSurface2: theme.colors.surface2,
-        stylesContainerBg: (styles.container as { backgroundColor?: string } | undefined)
-          ?.backgroundColor,
-        stylesTitleColor: (styles.title as { color?: string } | undefined)?.color,
-        stylesActionButtonBg: (styles.actionButton as { backgroundColor?: string } | undefined)
-          ?.backgroundColor,
-        stylesActionButtonPrimaryBg: (
-          styles.actionButtonPrimary as { backgroundColor?: string } | undefined
-        )?.backgroundColor,
-        stylesSubtitleColor: (styles.subtitle as { color?: string } | undefined)?.color,
-      });
-    };
-    probe("poll-t0");
-    const t1 = setTimeout(() => probe("poll-t1s"), 1000);
-    const t2 = setTimeout(() => probe("poll-t3s"), 3000);
-    const t3 = setTimeout(() => probe("poll-t6s"), 6000);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, [theme]);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const appVersion = resolveAppVersion();
@@ -336,14 +309,11 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const showHostList = hosts.length > 0 && !anyOnlineServerId;
 
   return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: "#00ffff" }]}
+    <ThemedScrollView
+      style={styles.scrollView}
       contentContainerStyle={[
         styles.container,
-        {
-          backgroundColor: "#ff00ff",
-          paddingBottom: theme.spacing[6] + insets.bottom,
-        },
+        { paddingBottom: theme.spacing[6] + insets.bottom },
       ]}
       showsVerticalScrollIndicator={false}
       testID="welcome-screen"
@@ -430,6 +400,6 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
           finishOnboarding(serverId);
         }}
       />
-    </ScrollView>
+    </ThemedScrollView>
   );
 }
