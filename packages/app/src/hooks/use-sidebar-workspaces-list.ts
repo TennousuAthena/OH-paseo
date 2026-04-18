@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import type { WorkspaceDescriptorPayload } from "@server/shared/messages";
 import {
   mergeWorkspaceSnapshotWithExisting,
   normalizeWorkspaceDescriptor,
   useSessionStore,
+  type WorkspaceDescriptor,
 } from "@/stores/session-store";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
-import type { WorkspaceDescriptor } from "@/stores/session-store";
-import type { WorkspaceDescriptorPayload } from "@server/shared/messages";
 import { projectDisplayNameFromProjectId } from "@/utils/project-display-name";
 
 const EMPTY_ORDER: string[] = [];
@@ -20,10 +20,15 @@ export interface SidebarWorkspaceEntry {
   workspaceKey: string;
   serverId: string;
   workspaceId: string;
+  projectRootPath?: string;
+  workspaceDirectory?: string;
+  projectKind: WorkspaceDescriptor["projectKind"];
   workspaceKind: WorkspaceDescriptor["workspaceKind"];
   name: string;
   statusBucket: SidebarStateBucket;
   diffStat: { additions: number; deletions: number } | null;
+  scripts: WorkspaceDescriptor["scripts"];
+  hasRunningScripts: boolean;
 }
 
 export interface SidebarProjectEntry {
@@ -75,7 +80,6 @@ function compareWorkspaceBaseline(
   }
 
   return left.workspaceId.localeCompare(right.workspaceId, undefined, {
-    numeric: true,
     sensitivity: "base",
   });
 }
@@ -103,7 +107,7 @@ export function buildSidebarProjectsFromWorkspaces(input: {
         projectName:
           workspace.projectDisplayName || projectDisplayNameFromProjectId(workspace.projectId),
         projectKind: workspace.projectKind,
-        iconWorkingDir: workspace.projectRootPath || workspace.id,
+        iconWorkingDir: workspace.projectRootPath,
         statusBucket: "done",
         activeCount: 0,
         totalWorkspaces: 0,
@@ -114,10 +118,15 @@ export function buildSidebarProjectsFromWorkspaces(input: {
       workspaceKey: `${input.serverId}:${workspace.id}`,
       serverId: input.serverId,
       workspaceId: workspace.id,
+      projectRootPath: workspace.projectRootPath,
+      workspaceDirectory: workspace.workspaceDirectory,
+      projectKind: workspace.projectKind,
       workspaceKind: workspace.workspaceKind,
       name: workspace.name,
       statusBucket: workspace.status,
       diffStat: workspace.diffStat,
+      scripts: workspace.scripts,
+      hasRunningScripts: workspace.scripts.some((script) => script.lifecycle === "running"),
     };
 
     project.workspaces.push(row);

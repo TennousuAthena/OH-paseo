@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { useSessionStore } from "@/stores/session-store";
 import { queryClient } from "@/query/query-client";
+import {
+  buildWorkspaceTabPersistenceKey,
+  useWorkspaceLayoutStore,
+} from "@/stores/workspace-layout-store";
+import { useWorkspaceTabsStore } from "@/stores/workspace-tabs-store";
 
 const SUCCESS_DISPLAY_MS = 1000;
 
@@ -121,6 +126,19 @@ function removeWorktreeFromCachedLists(input: { serverId: string; worktreePath: 
     },
     removeFromList,
   );
+}
+
+function purgeArchivedWorkspaceState(input: { serverId: string; worktreePath: string }): void {
+  const serverId = input.serverId.trim();
+  const workspaceId = input.worktreePath.trim();
+  if (!serverId || !workspaceId) {
+    return;
+  }
+  const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+  if (workspaceKey) {
+    useWorkspaceLayoutStore.getState().purgeWorkspace(workspaceKey);
+  }
+  useWorkspaceTabsStore.getState().purgeWorkspace({ serverId, workspaceId });
 }
 
 const successTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -320,6 +338,7 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
         }
         removeWorktreeFromCachedLists({ serverId, worktreePath });
         invalidateWorktreeList();
+        purgeArchivedWorkspaceState({ serverId, worktreePath });
       },
     });
   },

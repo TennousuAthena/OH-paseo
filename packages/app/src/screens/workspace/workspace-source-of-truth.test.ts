@@ -13,11 +13,13 @@ describe("workspace source of truth consumption", () => {
       projectId: "remote:github.com/getpaseo/paseo",
       projectDisplayName: "getpaseo/paseo",
       projectRootPath: "/repo/main",
+      workspaceDirectory: "/repo/main",
       projectKind: "git",
-      workspaceKind: "local_checkout",
+      workspaceKind: "checkout",
       name: "feat/workspace-sot",
       status: "running",
       diffStat: null,
+      scripts: [],
     };
 
     const header = resolveWorkspaceHeader({ workspace });

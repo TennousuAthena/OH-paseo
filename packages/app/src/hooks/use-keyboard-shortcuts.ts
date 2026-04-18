@@ -5,7 +5,7 @@ import { useHosts } from "@/runtime/host-runtime";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import {
-  buildHostSettingsRoute,
+  buildSettingsRoute,
   parseHostAgentRouteFromPathname,
   parseServerIdFromPathname,
   parseHostWorkspaceRouteFromPathname,
@@ -15,7 +15,6 @@ import {
   type MessageInputKeyboardActionKind,
   type KeyboardShortcutPayload,
 } from "@/keyboard/actions";
-import { canToggleFileExplorerShortcut } from "@/keyboard/keyboard-shortcut-routing";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import {
   type ChordState,
@@ -33,7 +32,6 @@ export function useKeyboardShortcuts({
   enabled,
   isMobile,
   toggleAgentList,
-  selectedAgentId,
   toggleFileExplorer,
   toggleBothSidebars,
   toggleFocusMode,
@@ -42,7 +40,6 @@ export function useKeyboardShortcuts({
   enabled: boolean;
   isMobile: boolean;
   toggleAgentList: () => void;
-  selectedAgentId?: string;
   toggleFileExplorer?: () => void;
   toggleBothSidebars?: () => void;
   toggleFocusMode?: () => void;
@@ -248,14 +245,11 @@ export function useKeyboardShortcuts({
           toggleAgentList();
           return true;
         case "settings.toggle":
-          if (pathname.endsWith("/settings")) {
+          if (pathname.startsWith("/settings")) {
             router.back();
             return true;
           }
-          if (!activeServerId) {
-            return false;
-          }
-          router.push(buildHostSettingsRoute(activeServerId));
+          router.push(buildSettingsRoute());
           return true;
         case "sidebar.toggle.both":
           if (toggleBothSidebars) {
@@ -263,19 +257,9 @@ export function useKeyboardShortcuts({
           }
           return true;
         case "sidebar.toggle.right":
-          if (!toggleFileExplorer) {
-            return false;
+          if (toggleFileExplorer) {
+            toggleFileExplorer();
           }
-          if (
-            !canToggleFileExplorerShortcut({
-              selectedAgentId,
-              pathname,
-              toggleFileExplorer,
-            })
-          ) {
-            return false;
-          }
-          toggleFileExplorer();
           return true;
         case "view.toggle.focus":
           if (toggleFocusMode) {
@@ -360,11 +344,6 @@ export function useKeyboardShortcuts({
           isDesktop: isDesktopApp,
           focusScope,
           commandCenterOpen: store.commandCenterOpen,
-          hasSelectedAgent: canToggleFileExplorerShortcut({
-            selectedAgentId,
-            pathname,
-            toggleFileExplorer,
-          }),
         },
         chordState: chordStateRef.current,
         onChordReset: () => {
@@ -445,7 +424,6 @@ export function useKeyboardShortcuts({
     openProjectPickerAction,
     pathname,
     resetModifiers,
-    selectedAgentId,
     toggleAgentList,
     toggleFileExplorer,
     toggleFocusMode,

@@ -38,6 +38,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { z } from "zod";
 import { loadCodexPersistedTimeline } from "./codex-rollout-timeline.js";
+import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 import {
   mapCodexRolloutToolCall,
   mapCodexToolCallFromThreadItem,
@@ -2355,6 +2356,15 @@ export async function codexAppServerTurnInputFromPrompt(
           text: `User attached image (failed to write temp file): ${message}`,
         });
       }
+      continue;
+    }
+    if (record.type === "github_pr" || record.type === "github_issue") {
+      output.push({
+        type: "text",
+        text: renderPromptAttachmentAsText(
+          record as Extract<AgentPromptContentBlock, { type: "github_pr" | "github_issue" }>,
+        ),
+      });
       continue;
     }
     output.push(block);

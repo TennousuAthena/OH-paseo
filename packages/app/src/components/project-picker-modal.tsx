@@ -41,9 +41,9 @@ export function ProjectPickerModal() {
 
   const recommendedPaths = useMemo(() => {
     if (!workspaces) return [];
-    return Array.from(workspaces.values()).map(
-      (workspace) => workspace.projectRootPath || workspace.id,
-    );
+    return Array.from(workspaces.values())
+      .map((workspace) => workspace.projectRootPath)
+      .filter((path) => path.length > 0);
   }, [workspaces]);
 
   const directorySuggestionsQuery = useQuery({

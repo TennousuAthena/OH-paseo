@@ -54,6 +54,7 @@ import {
   resolveBinaryVersion,
   toDiagnosticErrorMessage,
 } from "./diagnostic-utils.js";
+import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 
 const OPENCODE_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -662,6 +663,10 @@ function buildOpenCodePromptParts(
   for (const part of prompt) {
     if (part.type === "text") {
       output.push({ type: "text", text: part.text });
+      continue;
+    }
+    if (part.type === "github_pr" || part.type === "github_issue") {
+      output.push({ type: "text", text: renderPromptAttachmentAsText(part) });
       continue;
     }
     attachmentOrdinal += 1;

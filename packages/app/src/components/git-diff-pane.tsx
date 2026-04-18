@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef, memo, type ReactElement } from "react";
 import { useRouter } from "expo-router";
+import { DiffStat } from "@/components/diff-stat";
 import {
   View,
   Text,
@@ -488,8 +489,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
           )}
         </View>
         <View style={styles.fileHeaderRight}>
-          <Text style={styles.additions}>+{file.additions}</Text>
-          <Text style={styles.deletions}>-{file.deletions}</Text>
+          <DiffStat additions={file.additions} deletions={file.deletions} />
         </View>
       </Pressable>
     </View>

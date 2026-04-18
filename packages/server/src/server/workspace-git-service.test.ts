@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import path from "node:path";
+import type { GitHubService } from "../services/github-service.js";
 import type { CheckoutStatusGit, PullRequestStatusResult } from "../utils/checkout-git.js";
 import {
   WorkspaceGitServiceImpl,
@@ -139,11 +140,36 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
+function createGitHubServiceStub(): GitHubService {
+  return {
+    listPullRequests: vi.fn(async () => []),
+    listIssues: vi.fn(async () => []),
+    getPullRequest: vi.fn(async () => ({
+      number: 1,
+      title: "PR",
+      url: "https://github.com/acme/repo/pull/1",
+      state: "OPEN",
+      body: null,
+      baseRefName: "main",
+      headRefName: "feature",
+      labels: [],
+    })),
+    getPullRequestHeadRef: vi.fn(async () => "feature"),
+    getCurrentPullRequestStatus: vi.fn(async () => null),
+    createPullRequest: vi.fn(async () => ({
+      url: "https://github.com/acme/repo/pull/1",
+      number: 1,
+    })),
+    isAuthenticated: vi.fn(async () => true),
+    invalidate: vi.fn(),
+  };
+}
+
 function createService(options?: {
   getCheckoutStatus?: ReturnType<typeof vi.fn>;
   getCheckoutShortstat?: ReturnType<typeof vi.fn>;
   getPullRequestStatus?: ReturnType<typeof vi.fn>;
-  resolveGhPath?: ReturnType<typeof vi.fn>;
+  github?: GitHubService;
   resolveAbsoluteGitDir?: ReturnType<typeof vi.fn>;
   hasOriginRemote?: ReturnType<typeof vi.fn>;
   runGitFetch?: ReturnType<typeof vi.fn>;
@@ -168,7 +194,7 @@ function createService(options?: {
         })),
       getPullRequestStatus:
         options?.getPullRequestStatus ?? vi.fn(async () => createPullRequestStatusResult()),
-      resolveGhPath: options?.resolveGhPath ?? vi.fn(async () => "/usr/bin/gh"),
+      github: options?.github ?? createGitHubServiceStub(),
       resolveAbsoluteGitDir: options?.resolveAbsoluteGitDir ?? vi.fn(async () => "/tmp/repo/.git"),
       hasOriginRemote: options?.hasOriginRemote ?? vi.fn(async () => false),
       runGitFetch: options?.runGitFetch ?? vi.fn(async () => {}),

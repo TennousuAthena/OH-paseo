@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveStatusControlMode } from "./agent-input-area.status-controls";
+import { resolveStatusControlMode } from "./composer.status-controls";
 
 describe("resolveStatusControlMode", () => {
   it("uses ready mode when no controlled status controls are provided", () => {

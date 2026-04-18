@@ -552,6 +552,39 @@ describe("HostRuntimeController", () => {
     unsubscribe();
   });
 
+  it("preserves transport disconnect reasons on the runtime snapshot", async () => {
+    const host = makeHost({
+      connections: [
+        {
+          id: "direct:lan:6767",
+          type: "directTcp",
+          endpoint: "lan:6767",
+        },
+      ],
+    });
+    const clients: FakeDaemonClient[] = [];
+    const controller = new HostRuntimeController({
+      host,
+      deps: makeDeps(
+        {
+          "direct:lan:6767": 12,
+        },
+        clients,
+      ),
+    });
+
+    await controller.start({ autoProbe: false });
+    clients[0]?.setConnectionState({
+      status: "disconnected",
+      reason: "transport closed",
+    });
+
+    expect(controller.getSnapshot()).toMatchObject({
+      connectionStatus: "error",
+      lastError: "transport closed",
+    });
+  });
+
   it("does not emit legacy typed reason-code transition logs", async () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     try {

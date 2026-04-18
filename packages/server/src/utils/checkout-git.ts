@@ -3,11 +3,18 @@ import { existsSync, realpathSync } from "fs";
 import { open as openFile, stat as statFile } from "fs/promises";
 import { TTLCache } from "@isaacs/ttlcache";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
+import type { GitHubSearchKind } from "../shared/messages.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
-import { findExecutable } from "./executable.js";
+import {
+  GitHubAuthenticationError,
+  GitHubCliMissingError,
+  createGitHubService,
+  resolveGitHubRepo,
+  type GitHubService,
+} from "../services/github-service.js";
+export { parseStatusCheckRollup } from "../services/github-service.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import { runGitCommand } from "./run-git-command.js";
-import { execCommand } from "./spawn.js";
 import { isPaseoOwnedWorktreeCwd } from "./worktree.js";
 import { requirePaseoWorktreeBaseRefName } from "./worktree-metadata.js";
 const READ_ONLY_GIT_ENV: NodeJS.ProcessEnv = {
@@ -17,11 +24,15 @@ const READ_ONLY_GIT_ENV: NodeJS.ProcessEnv = {
 
 const DEFAULT_PULL_REQUEST_STATUS_CACHE_TTL_MS = 30_000;
 const PULL_REQUEST_STATUS_CACHE_MAX = 1_000;
+const DEFAULT_SHORTSTAT_CACHE_TTL_MS = 15_000;
+const SHORTSTAT_CACHE_MAX = 1_000;
 
 let pullRequestStatusCacheTtlMs = DEFAULT_PULL_REQUEST_STATUS_CACHE_TTL_MS;
 let pullRequestStatusCache = createPullRequestStatusCache(pullRequestStatusCacheTtlMs);
 const pullRequestStatusInFlight = new Map<string, Promise<PullRequestStatusResult>>();
-let cachedGhPath: string | null | undefined = undefined;
+let shortstatCacheTtlMs = DEFAULT_SHORTSTAT_CACHE_TTL_MS;
+let shortstatCache = createShortstatCache(shortstatCacheTtlMs);
+const shortstatInFlight = new Map<string, Promise<CheckoutShortstat | null>>();
 
 function createPullRequestStatusCache(ttlMs: number) {
   return new TTLCache<string, PullRequestStatusResult>({
@@ -31,7 +42,19 @@ function createPullRequestStatusCache(ttlMs: number) {
   });
 }
 
+function createShortstatCache(ttlMs: number) {
+  return new TTLCache<string, CheckoutShortstat | null>({
+    ttl: ttlMs,
+    max: SHORTSTAT_CACHE_MAX,
+    checkAgeOnGet: true,
+  });
+}
+
 function getPullRequestStatusCacheKey(cwd: string): string {
+  return resolve(cwd);
+}
+
+function getShortstatCacheKey(cwd: string): string {
   return resolve(cwd);
 }
 
@@ -51,12 +74,20 @@ export function __setPullRequestStatusCacheTtlForTests(ttlMs: number): void {
   pullRequestStatusInFlight.clear();
 }
 
-export function __resetGhPathCacheForTests(): void {
-  cachedGhPath = undefined;
+export function __resetCheckoutShortstatCacheForTests(): void {
+  shortstatCache.clear();
+  shortstatCache.cancelTimer();
+  shortstatCacheTtlMs = DEFAULT_SHORTSTAT_CACHE_TTL_MS;
+  shortstatCache = createShortstatCache(shortstatCacheTtlMs);
+  shortstatInFlight.clear();
 }
 
-export function __setGhPathForTests(path: string | null): void {
-  cachedGhPath = path;
+export function __setCheckoutShortstatCacheTtlForTests(ttlMs: number): void {
+  shortstatCache.clear();
+  shortstatCache.cancelTimer();
+  shortstatCacheTtlMs = ttlMs;
+  shortstatCache = createShortstatCache(ttlMs);
+  shortstatInFlight.clear();
 }
 
 type CheckoutFileChange = {
@@ -1133,7 +1164,7 @@ export interface CheckoutShortstat {
   deletions: number;
 }
 
-export async function getCheckoutShortstat(
+async function getCheckoutShortstatUncached(
   cwd: string,
   context?: CheckoutContext,
 ): Promise<CheckoutShortstat | null> {
@@ -1210,6 +1241,64 @@ export async function getCheckoutShortstat(
   } catch {
     return null;
   }
+}
+
+function getOrLoadCheckoutShortstat(
+  cwd: string,
+  context?: CheckoutContext,
+): Promise<CheckoutShortstat | null> {
+  const cacheKey = getShortstatCacheKey(cwd);
+  const cached = shortstatCache.get(cacheKey);
+  if (cached !== undefined) {
+    return Promise.resolve(cached);
+  }
+
+  const existing = shortstatInFlight.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
+  const load = getCheckoutShortstatUncached(cwd, context)
+    .then((shortstat) => {
+      shortstatCache.set(cacheKey, shortstat);
+      return shortstat;
+    })
+    .finally(() => {
+      shortstatInFlight.delete(cacheKey);
+    });
+
+  shortstatInFlight.set(cacheKey, load);
+  return load;
+}
+
+export async function getCheckoutShortstat(
+  cwd: string,
+  context?: CheckoutContext,
+): Promise<CheckoutShortstat | null> {
+  return getOrLoadCheckoutShortstat(cwd, context);
+}
+
+export function getCachedCheckoutShortstat(cwd: string): CheckoutShortstat | null | undefined {
+  return shortstatCache.get(getShortstatCacheKey(cwd));
+}
+
+export function warmCheckoutShortstatInBackground(
+  cwd: string,
+  context?: CheckoutContext,
+  onComplete?: () => void,
+): void {
+  const cacheKey = getShortstatCacheKey(cwd);
+  if (shortstatCache.get(cacheKey) !== undefined || shortstatInFlight.has(cacheKey)) {
+    return;
+  }
+
+  void getOrLoadCheckoutShortstat(cwd, context)
+    .then(() => {
+      onComplete?.();
+    })
+    .catch(() => {
+      // Non-critical: keep listing path resilient even if git commands fail.
+    });
 }
 
 export async function getCheckoutDiff(
@@ -1369,7 +1458,12 @@ export async function getCheckoutDiff(
       // `git diff -w --name-status` can still report a modified path even when the
       // whitespace-filtered patch and numstat are both empty. Skip emitting a
       // structured placeholder in that case so whitespace-only edits truly disappear.
-      if (ignoreWhitespace && !trackedDiffTruncated && stat === null) {
+      if (
+        ignoreWhitespace &&
+        !trackedDiffTruncated &&
+        change.status.startsWith("M") &&
+        (!stat || (!stat.isBinary && stat.additions === 0 && stat.deletions === 0))
+      ) {
         continue;
       }
 
@@ -1720,6 +1814,9 @@ export interface PullRequestStatus {
   baseRefName: string;
   headRefName: string;
   isMerged: boolean;
+  checks?: PullRequestCheck[];
+  checksStatus?: ChecksStatus;
+  reviewDecision?: ReviewDecision;
 }
 
 export interface PullRequestStatusResult {
@@ -1727,82 +1824,22 @@ export interface PullRequestStatusResult {
   githubFeaturesEnabled: boolean;
 }
 
-export async function resolveGhPath(): Promise<string> {
-  if (cachedGhPath === undefined) {
-    cachedGhPath = await findExecutable("gh");
-  }
-  if (cachedGhPath === null) {
-    throw new Error("GitHub CLI (gh) is not installed or not in PATH");
-  }
-  return cachedGhPath;
-}
+export type PullRequestCheck = {
+  name: string;
+  status: "success" | "failure" | "pending" | "skipped" | "cancelled";
+  url: string | null;
+};
 
-function getCommandErrorText(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return String(error);
-  }
-  const stderr = typeof (error as any)?.stderr === "string" ? (error as any).stderr : "";
-  const stdout = typeof (error as any)?.stdout === "string" ? (error as any).stdout : "";
-  return `${error.message}\n${stderr}\n${stdout}`.toLowerCase();
-}
+export type ChecksStatus = "none" | "pending" | "success" | "failure";
 
-function isGhAuthError(error: unknown): boolean {
-  const text = getCommandErrorText(error);
-  return (
-    text.includes("gh auth login") ||
-    text.includes("not logged into any github hosts") ||
-    text.includes("authentication failed") ||
-    text.includes("authentication required") ||
-    text.includes("bad credentials") ||
-    text.includes("http 401")
-  );
-}
-
-async function resolveGitHubRepo(cwd: string): Promise<string | null> {
-  try {
-    const { stdout } = await runGitCommand(["config", "--get", "remote.origin.url"], {
-      cwd,
-      env: READ_ONLY_GIT_ENV,
-    });
-    const url = stdout.trim();
-    if (!url) {
-      return null;
-    }
-    let cleaned = url;
-    if (cleaned.startsWith("git@github.com:")) {
-      cleaned = cleaned.slice("git@github.com:".length);
-    } else if (cleaned.startsWith("https://github.com/")) {
-      cleaned = cleaned.slice("https://github.com/".length);
-    } else if (cleaned.startsWith("http://github.com/")) {
-      cleaned = cleaned.slice("http://github.com/".length);
-    } else {
-      const marker = "github.com/";
-      const index = cleaned.indexOf(marker);
-      if (index !== -1) {
-        cleaned = cleaned.slice(index + marker.length);
-      } else {
-        return null;
-      }
-    }
-    if (cleaned.endsWith(".git")) {
-      cleaned = cleaned.slice(0, -".git".length);
-    }
-    if (!cleaned.includes("/")) {
-      return null;
-    }
-    return cleaned;
-  } catch {
-    // ignore
-  }
-  return null;
-}
+export type ReviewDecision = "approved" | "changes_requested" | "pending" | null;
 
 export async function createPullRequest(
   cwd: string,
   options: CreatePullRequestOptions,
+  github: GitHubService = createGitHubService(),
 ): Promise<{ url: string; number: number }> {
   await requireGitRepo(cwd);
-  const ghPath = await resolveGhPath();
   const repo = await resolveGitHubRepo(cwd);
   if (!repo) {
     throw new Error("Unable to determine GitHub repo from git remote");
@@ -1824,22 +1861,20 @@ export async function createPullRequest(
 
   await runGitCommand(["push", "-u", "origin", head], { cwd, timeout: 120_000 });
 
-  const ghEnv: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
-  const args = ["api", "-X", "POST", `repos/${repo}/pulls`, "-f", `title=${options.title}`];
-  args.push("-f", `head=${head}`);
-  args.push("-f", `base=${normalizedBase}`);
-  if (options.body) {
-    args.push("-f", `body=${options.body}`);
-  }
-  const { stdout } = await execCommand(ghPath, args, { cwd, env: ghEnv });
-  const parsed = JSON.parse(stdout.trim());
-  if (!parsed?.url || !parsed?.number) {
-    throw new Error("GitHub CLI did not return PR url/number");
-  }
-  return { url: parsed.url, number: parsed.number };
+  return github.createPullRequest({
+    cwd,
+    repo,
+    title: options.title,
+    body: options.body,
+    head,
+    base: normalizedBase,
+  });
 }
 
-export async function getPullRequestStatus(cwd: string): Promise<PullRequestStatusResult> {
+export async function getPullRequestStatus(
+  cwd: string,
+  github: GitHubService = createGitHubService(),
+): Promise<PullRequestStatusResult> {
   const cacheKey = getPullRequestStatusCacheKey(cwd);
   const cached = pullRequestStatusCache.get(cacheKey);
   if (cached) {
@@ -1851,7 +1886,7 @@ export async function getPullRequestStatus(cwd: string): Promise<PullRequestStat
     return existing;
   }
 
-  const lookup = getPullRequestStatusUncached(cwd)
+  const lookup = getPullRequestStatusUncached(cwd, github)
     .then((status) => {
       pullRequestStatusCache.set(cacheKey, status);
       return status;
@@ -1864,7 +1899,10 @@ export async function getPullRequestStatus(cwd: string): Promise<PullRequestStat
   return lookup;
 }
 
-async function getPullRequestStatusUncached(cwd: string): Promise<PullRequestStatusResult> {
+async function getPullRequestStatusUncached(
+  cwd: string,
+  github: GitHubService,
+): Promise<PullRequestStatusResult> {
   await requireGitRepo(cwd);
   const head = await getCurrentBranch(cwd);
   if (!head) {
@@ -1873,52 +1911,116 @@ async function getPullRequestStatusUncached(cwd: string): Promise<PullRequestSta
       githubFeaturesEnabled: false,
     };
   }
-  let ghPath: string;
   try {
-    ghPath = await resolveGhPath();
-  } catch {
+    const status = await github.getCurrentPullRequestStatus({ cwd, headRef: head });
     return {
-      status: null,
-      githubFeaturesEnabled: false,
-    };
-  }
-  try {
-    const { stdout } = await execCommand(
-      ghPath,
-      ["pr", "view", "--json", "url,title,state,baseRefName,headRefName,mergedAt"],
-      { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
-    );
-    const pr = JSON.parse(stdout.trim());
-    if (!pr || typeof pr !== "object" || !pr.url || !pr.title) {
-      return { status: null, githubFeaturesEnabled: true };
-    }
-    const mergedAt =
-      typeof pr.mergedAt === "string" && pr.mergedAt.trim().length > 0 ? pr.mergedAt : null;
-    const state =
-      mergedAt !== null
-        ? "merged"
-        : typeof pr.state === "string" && pr.state.trim().length > 0
-          ? pr.state.toLowerCase()
-          : "";
-    return {
-      status: {
-        url: pr.url,
-        title: pr.title,
-        state,
-        baseRefName: pr.baseRefName ?? "",
-        headRefName: pr.headRefName ?? head,
-        isMerged: mergedAt !== null,
-      },
+      status,
       githubFeaturesEnabled: true,
     };
   } catch (error) {
-    if (isGhAuthError(error)) {
+    if (error instanceof GitHubCliMissingError || error instanceof GitHubAuthenticationError) {
       return { status: null, githubFeaturesEnabled: false };
     }
-    // gh pr view exits non-zero when no PR exists for the branch
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("no pull requests found") || message.includes("Could not resolve")) {
-      return { status: null, githubFeaturesEnabled: true };
+    throw error;
+  }
+}
+
+export interface GitHubSearchResult {
+  items: Array<{
+    kind: "issue" | "pr";
+    number: number;
+    title: string;
+    url: string;
+    state: string;
+    body: string | null;
+    labels: string[];
+    baseRefName?: string | null;
+    headRefName?: string | null;
+  }>;
+  githubFeaturesEnabled: boolean;
+}
+
+interface SearchGitHubIssuesAndPrsOptions {
+  kinds?: GitHubSearchKind[];
+}
+
+export async function searchGitHubIssuesAndPrs(
+  cwd: string,
+  query: string,
+  limit = 20,
+  github: GitHubService = createGitHubService(),
+  options: SearchGitHubIssuesAndPrsOptions = {},
+): Promise<GitHubSearchResult> {
+  await requireGitRepo(cwd);
+  try {
+    const kinds = options.kinds ?? ["github-issue", "github-pr"];
+    const shouldFetchIssues = kinds.includes("github-issue");
+    const shouldFetchPullRequests = kinds.includes("github-pr");
+    const issuesResult = shouldFetchIssues
+      ? await github.listIssues({ cwd, query, limit }).then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason) => ({ status: "rejected" as const, reason }),
+        )
+      : null;
+    const prsResult = shouldFetchPullRequests
+      ? await github.listPullRequests({ cwd, query, limit }).then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason) => ({ status: "rejected" as const, reason }),
+        )
+      : null;
+
+    const items: GitHubSearchResult["items"] = [];
+    const requestedResults = [issuesResult, prsResult].filter((result) => result !== null);
+    const failures = requestedResults.filter((result) => result.status === "rejected");
+    if (
+      requestedResults.length > 0 &&
+      failures.length === requestedResults.length &&
+      failures.every(
+        (result) =>
+          result.status === "rejected" &&
+          (result.reason instanceof GitHubCliMissingError ||
+            result.reason instanceof GitHubAuthenticationError),
+      )
+    ) {
+      return { items: [], githubFeaturesEnabled: false };
+    }
+
+    if (issuesResult?.status === "fulfilled") {
+      for (const item of issuesResult.value) {
+        items.push({
+          kind: "issue",
+          number: item.number,
+          title: item.title,
+          url: item.url,
+          state: item.state,
+          body: item.body,
+          labels: item.labels,
+          baseRefName: null,
+          headRefName: null,
+        });
+      }
+    }
+
+    if (prsResult?.status === "fulfilled") {
+      for (const item of prsResult.value) {
+        items.push({
+          kind: "pr",
+          number: item.number,
+          title: item.title,
+          url: item.url,
+          state: item.state,
+          body: item.body,
+          labels: item.labels,
+          baseRefName: item.baseRefName,
+          headRefName: item.headRefName,
+        });
+      }
+    }
+
+    return { items, githubFeaturesEnabled: true };
+  } catch (error) {
+    if (error instanceof GitHubCliMissingError || error instanceof GitHubAuthenticationError) {
+      return { items: [], githubFeaturesEnabled: false };
     }
     throw error;
   }

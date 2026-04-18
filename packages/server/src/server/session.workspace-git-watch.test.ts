@@ -5,6 +5,10 @@ import type {
   WorkspaceGitRuntimeSnapshot,
   WorkspaceGitService,
 } from "./workspace-git-service.js";
+import {
+  createPersistedProjectRecord,
+  createPersistedWorkspaceRecord,
+} from "./workspace-registry.js";
 
 function createWorkspaceRuntimeSnapshot(
   cwd: string,
@@ -60,6 +64,8 @@ function createWorkspaceRuntimeSnapshot(
 function createSessionForWorkspaceGitWatchTests(): {
   session: Session;
   emitted: Array<{ type: string; payload: unknown }>;
+  projects: Map<string, ReturnType<typeof createPersistedProjectRecord>>;
+  workspaces: Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>;
   workspaceGitService: WorkspaceGitService & {
     subscribe: ReturnType<typeof vi.fn>;
     peekSnapshot: ReturnType<typeof vi.fn>;
@@ -76,8 +82,8 @@ function createSessionForWorkspaceGitWatchTests(): {
   }>;
 } {
   const emitted: Array<{ type: string; payload: unknown }> = [];
-  const projects = new Map<string, any>();
-  const workspaces = new Map<string, any>();
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
   const subscriptions: Array<{
     params: { cwd: string };
     listener: WorkspaceGitListener;
@@ -136,19 +142,13 @@ function createSessionForWorkspaceGitWatchTests(): {
       existsOnDisk: async () => true,
       list: async () => Array.from(projects.values()),
       get: async (projectId: string) => projects.get(projectId) ?? null,
-      upsert: async (record: any) => {
+      upsert: async (record: ReturnType<typeof createPersistedProjectRecord>) => {
         projects.set(record.projectId, record);
       },
       archive: async (projectId: string, archivedAt: string) => {
         const existing = projects.get(projectId);
-        if (!existing) {
-          return;
-        }
-        projects.set(projectId, {
-          ...existing,
-          archivedAt,
-          updatedAt: archivedAt,
-        });
+        if (!existing) return;
+        projects.set(projectId, { ...existing, archivedAt, updatedAt: archivedAt });
       },
       remove: async (projectId: string) => {
         projects.delete(projectId);
@@ -159,19 +159,13 @@ function createSessionForWorkspaceGitWatchTests(): {
       existsOnDisk: async () => true,
       list: async () => Array.from(workspaces.values()),
       get: async (workspaceId: string) => workspaces.get(workspaceId) ?? null,
-      upsert: async (record: any) => {
+      upsert: async (record: ReturnType<typeof createPersistedWorkspaceRecord>) => {
         workspaces.set(record.workspaceId, record);
       },
       archive: async (workspaceId: string, archivedAt: string) => {
         const existing = workspaces.get(workspaceId);
-        if (!existing) {
-          return;
-        }
-        workspaces.set(workspaceId, {
-          ...existing,
-          archivedAt,
-          updatedAt: archivedAt,
-        });
+        if (!existing) return;
+        workspaces.set(workspaceId, { ...existing, archivedAt, updatedAt: archivedAt });
       },
       remove: async (workspaceId: string) => {
         workspaces.delete(workspaceId);
@@ -198,34 +192,63 @@ function createSessionForWorkspaceGitWatchTests(): {
     terminalManager: null,
   }) as any;
 
-  session.listAgentPayloads = async () => [];
+  (session as any).listAgentPayloads = async () => [];
 
   return {
     session,
     emitted,
+    projects,
+    workspaces,
     workspaceGitService: workspaceGitService as any,
     subscriptions,
   };
 }
 
+function seedGitWorkspace(input: {
+  projects: Map<string, ReturnType<typeof createPersistedProjectRecord>>;
+  workspaces: Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>;
+  projectId: string;
+  workspaceId: string;
+  cwd: string;
+  name: string;
+}) {
+  input.projects.set(
+    input.projectId,
+    createPersistedProjectRecord({
+      projectId: input.projectId,
+      rootPath: "/tmp/repo",
+      displayName: "repo",
+      kind: "git",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    }),
+  );
+  input.workspaces.set(
+    input.workspaceId,
+    createPersistedWorkspaceRecord({
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      cwd: input.cwd,
+      displayName: input.name,
+      kind: "local_checkout",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    }),
+  );
+}
+
 describe("workspace git watch targets", () => {
   test("emits one workspace_update when the workspace git service emits a changed snapshot", async () => {
-    const { session, emitted, workspaceGitService, subscriptions } =
+    const { session, emitted, projects, workspaces, workspaceGitService, subscriptions } =
       createSessionForWorkspaceGitWatchTests();
     const sessionAny = session as any;
-
-    sessionAny.buildProjectPlacement = async (cwd: string) => ({
-      projectKey: cwd,
-      projectName: "repo",
-      checkout: {
-        cwd,
-        isGit: true,
-        currentBranch: "main",
-        remoteUrl: "https://github.com/acme/repo.git",
-        worktreeRoot: cwd,
-        isPaseoOwnedWorktree: false,
-        mainRepoRoot: null,
-      },
+    seedGitWorkspace({
+      projects,
+      workspaces,
+      projectId: "proj-1",
+      workspaceId: "ws-10",
+      cwd: "/tmp/repo",
+      name: "main",
     });
     sessionAny.workspaceUpdatesSubscription = {
       subscriptionId: "sub-1",
@@ -234,11 +257,10 @@ describe("workspace git watch targets", () => {
       pendingUpdatesByWorkspaceId: new Map(),
       lastEmittedByWorkspaceId: new Map(),
     };
-    sessionAny.reconcileActiveWorkspaceRecords = async () => new Set();
 
     let descriptor = {
-      id: "/tmp/repo",
-      projectId: "/tmp/repo",
+      id: "ws-10",
+      projectId: "proj-1",
       projectDisplayName: "repo",
       projectRootPath: "/tmp/repo",
       projectKind: "git",
@@ -247,11 +269,12 @@ describe("workspace git watch targets", () => {
       status: "done",
       activityAt: null,
       diffStat: { additions: 1, deletions: 0 },
+      workspaceDirectory: "/tmp/repo",
     };
 
     sessionAny.buildWorkspaceDescriptorMap = async () => new Map([[descriptor.id, descriptor]]);
 
-    await sessionAny.ensureWorkspaceRegistered("/tmp/repo");
+    await sessionAny.syncWorkspaceGitWatchTarget("/tmp/repo", { isGit: true });
 
     expect(workspaceGitService.subscribe).toHaveBeenCalledWith(
       { cwd: "/tmp/repo" },
@@ -281,7 +304,7 @@ describe("workspace git watch targets", () => {
     expect(workspaceUpdates[0]?.payload).toMatchObject({
       kind: "upsert",
       workspace: {
-        id: "/tmp/repo",
+        id: "ws-10",
         name: "renamed-branch",
         diffStat: { additions: 1, deletions: 0 },
       },

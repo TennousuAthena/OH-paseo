@@ -42,6 +42,7 @@ import {
   formatProviderDiagnosticError,
   toDiagnosticErrorMessage,
 } from "./diagnostic-utils.js";
+import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 
 import type {
   AgentPermissionAction,
@@ -2240,6 +2241,8 @@ class ClaudeAgentSession implements AgentSession {
               data: chunk.data,
             },
           });
+        } else if (chunk.type === "github_pr" || chunk.type === "github_issue") {
+          content.push({ type: "text", text: renderPromptAttachmentAsText(chunk) });
         }
       }
     } else {

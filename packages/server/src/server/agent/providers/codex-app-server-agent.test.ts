@@ -240,6 +240,31 @@ describe("Codex app-server provider", () => {
     }
   });
 
+  test("maps github_pr prompt attachments to Codex text input", async () => {
+    const input = await codexAppServerTurnInputFromPrompt(
+      [
+        {
+          type: "github_pr",
+          mimeType: "application/github-pr",
+          number: 123,
+          title: "Fix race in worktree setup",
+          url: "https://github.com/getpaseo/paseo/pull/123",
+          body: "Review body",
+          baseRefName: "main",
+          headRefName: "fix/worktree-race",
+        },
+      ],
+      logger,
+    );
+
+    expect(input).toEqual([
+      {
+        type: "text",
+        text: expect.stringContaining("GitHub PR #123: Fix race in worktree setup"),
+      },
+    ]);
+  });
+
   test("maps patch notifications with array-style changes and alias diff keys", () => {
     const item = __codexAppServerInternals.mapCodexPatchNotificationToToolCall({
       callId: "patch-array-alias",
