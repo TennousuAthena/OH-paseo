@@ -56,6 +56,7 @@ import {
   markScrollInvestigationRender,
 } from "@/utils/scroll-jank-investigation";
 import { isWeb } from "@/constants/platform";
+import { useComposerHeightMirror } from "./composer-height-mirror";
 
 export type ImageAttachment = AttachmentMetadata;
 
@@ -330,7 +331,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     },
   }));
   const inputHeightRef = useRef(MIN_INPUT_HEIGHT);
-  const baselineInputHeightRef = useRef<number | null>(null);
   const overlayTransition = useSharedValue(0);
   const sendAfterTranscriptRef = useRef(false);
   const valueRef = useRef(value);
@@ -399,12 +399,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
         }
       } else {
         onChangeText(nextValue);
-      }
-
-      if (isWeb && typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => {
-          measureWebInputHeight("dictation");
-        });
       }
     },
     [onChangeText, onSubmit, onQueue, attachments, cwd, isAgentRunning, defaultSendBehavior],
@@ -832,76 +826,27 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     };
   }, [getWebTextArea]);
 
-  function measureWebInputHeight(source: string): boolean {
-    if (!isWeb) return false;
-    const textarea = getWebTextArea();
-    if (!textarea || typeof textarea.scrollHeight !== "number") return false;
-    const scrollHeight = textarea.scrollHeight ?? 0;
-
-    if (baselineInputHeightRef.current === null && scrollHeight > 0) {
-      baselineInputHeightRef.current = scrollHeight;
-      logWebStickyBottom("composer_baseline_measured", {
-        source,
-        baseline: scrollHeight,
-      });
-    }
-
-    const baseline = baselineInputHeightRef.current ?? MIN_INPUT_HEIGHT;
-    const rawTarget = scrollHeight > 0 ? scrollHeight : baseline;
-    const bounded = Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, rawTarget));
-
-    const previousHeight = inputHeightRef.current;
-    if (Math.abs(previousHeight - bounded) >= 1) {
-      inputHeightRef.current = bounded;
-      setInputHeight(bounded);
-      onHeightChange?.(bounded);
-      logWebStickyBottom("composer_height_changed", {
-        source,
-        previousHeight,
-        nextHeight: bounded,
-        scrollHeight,
-        clientHeight: textarea.clientHeight ?? null,
-        offsetHeight: textarea.offsetHeight ?? null,
-        baseline,
-        rawTarget,
-      });
-      return true;
-    }
-    return false;
-  }
-
   function setBoundedInputHeight(nextHeight: number) {
     const bounded = Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, nextHeight));
     if (Math.abs(inputHeightRef.current - bounded) < 1) return;
-    const previousHeight = inputHeightRef.current;
     inputHeightRef.current = bounded;
     setInputHeight(bounded);
     onHeightChange?.(bounded);
-    logWebStickyBottom("composer_height_changed_native", {
-      previousHeight,
-      nextHeight: bounded,
-    });
   }
+
+  useComposerHeightMirror({
+    value,
+    textareaRef: webTextareaRef,
+    minHeight: MIN_INPUT_HEIGHT,
+    maxHeight: MAX_INPUT_HEIGHT,
+    onHeight: setBoundedInputHeight,
+  });
 
   function handleContentSizeChange(
     event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>,
   ) {
-    const contentHeight = event.nativeEvent.contentSize.height;
-    if (isWeb) {
-      logWebStickyBottom("composer_content_size_change", {
-        reportedHeight: contentHeight,
-      });
-      if (baselineInputHeightRef.current === null && contentHeight > 0) {
-        baselineInputHeightRef.current = contentHeight;
-        logWebStickyBottom("composer_baseline_measured", {
-          source: "contentSizeChange",
-          baseline: contentHeight,
-        });
-      }
-      setBoundedInputHeight(contentHeight);
-      return;
-    }
-    setBoundedInputHeight(contentHeight);
+    if (isWeb) return;
+    setBoundedInputHeight(event.nativeEvent.contentSize.height);
   }
 
   function handleSelectionChange(event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) {
