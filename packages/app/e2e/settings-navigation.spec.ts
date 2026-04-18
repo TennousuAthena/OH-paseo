@@ -93,6 +93,15 @@ test.describe("Settings — compact master-detail", () => {
     await expect(page.getByTestId("settings-sidebar")).toBeVisible();
   }
 
+  async function expectCompactSettingsRootList(page: Page) {
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page.getByTestId("settings-sidebar")).toBeVisible();
+
+    await expect(page.getByText("Theme", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Play test" })).toHaveCount(0);
+    await expect(page.locator('[data-testid^="settings-host-page-"]')).toHaveCount(0);
+  }
+
   test("/settings renders only the sidebar list (no section content)", async ({ page }) => {
     await openCompactSettingsRoot(page);
 
@@ -110,12 +119,12 @@ test.describe("Settings — compact master-detail", () => {
     ).toBeVisible();
 
     // Section detail content is NOT rendered at the root.
-    await expect(page.getByText("Theme", { exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Play test" })).toHaveCount(0);
-    await expect(page.getByTestId("host-page-label-card")).toHaveCount(0);
+    await expectCompactSettingsRootList(page);
 
-    // Root shows the menu header, not a back button.
-    await expect(page.getByRole("button", { name: "Back", exact: true })).toHaveCount(0);
+    const rootBackButton = page.getByRole("button", { name: "Back", exact: true });
+    await expect(rootBackButton).toBeVisible();
+    await rootBackButton.click();
+    await expect(page).not.toHaveURL(/\/settings(\/|$)/);
   });
 
   test("tapping a section pushes /settings/[section] and shows a back button", async ({ page }) => {
@@ -144,9 +153,8 @@ test.describe("Settings — compact master-detail", () => {
     await expect(page).toHaveURL(/\/settings\/about$/);
 
     await page.getByRole("button", { name: "Back", exact: true }).click();
-    await expect(page).toHaveURL(/\/settings$/);
-    await expect(page.getByTestId("settings-sidebar")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Back", exact: true })).toHaveCount(0);
+    await expectCompactSettingsRootList(page);
+    await expect(page.getByRole("button", { name: "Back", exact: true })).toBeVisible();
   });
 
   test("tapping a host entry pushes /settings/hosts/[serverId]", async ({ page }) => {

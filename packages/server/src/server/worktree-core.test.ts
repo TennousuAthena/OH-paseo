@@ -1,5 +1,13 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,6 +51,42 @@ function createCoreDeps(options?: {
     resolveRepositoryDefaultBranch: async () => "main",
     generateBranchName: options?.generateBranchName ?? ((seed) => seed ?? "generated-worktree"),
   };
+}
+
+function findDirectCreateWorktreeCallSites(serverSrc: string): string[] {
+  const matches: string[] = [];
+
+  function walk(directory: string) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const absolutePath = path.join(directory, entry.name);
+
+      if (entry.isDirectory()) {
+        walk(absolutePath);
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      const relativePath = path
+        .relative(serverSrc, absolutePath)
+        .split(path.sep)
+        .join(path.posix.sep);
+
+      if (relativePath === "utils/worktree.ts" || relativePath.endsWith(".test.ts")) {
+        continue;
+      }
+
+      // Keep this literal in the test file so the invariant proves tests are allowed to inspect createWorktree(.
+      if (/createWorktree\(/.test(readFileSync(absolutePath, "utf8"))) {
+        matches.push(relativePath);
+      }
+    }
+  }
+
+  walk(serverSrc);
+  return matches.sort();
 }
 
 function createGitRepo(): { tempDir: string; repoDir: string; paseoHome: string } {
@@ -435,21 +479,6 @@ describe.skipIf(process.platform === "win32")("createWorktreeCore", () => {
 
   test("keeps direct createWorktree calls isolated to the core layer", () => {
     const serverSrc = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    // Keep this literal in the test file so the invariant proves tests are allowed to inspect createWorktree(.
-    const output = execSync(
-      "rg --files-with-matches 'createWorktree\\(' . --glob '!**/utils/worktree.ts' --glob '!**/*.test.ts'",
-      {
-        cwd: serverSrc,
-        stdio: "pipe",
-      },
-    )
-      .toString()
-      .trim()
-      .split("\n")
-      .map((line) => line.replace(/^\.\//, ""))
-      .filter(Boolean)
-      .sort();
-
-    expect(output).toEqual(["server/worktree-core.ts"]);
+    expect(findDirectCreateWorktreeCallSites(serverSrc)).toEqual(["server/worktree-core.ts"]);
   });
 });

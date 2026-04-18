@@ -23,6 +23,12 @@ async function openHostPage(page: Page, serverId: string) {
   await expect(page.getByTestId(`settings-host-page-${serverId}`)).toBeVisible();
 }
 
+async function expectHostLabelHeader(page: Page) {
+  await expect(page.getByTestId("settings-detail-header-title")).toHaveText(TEST_HOST_LABEL);
+  await expect(page.getByTestId("host-page-label-edit-button")).toBeVisible();
+  await expect(page.getByTestId("host-page-label-input")).toHaveCount(0);
+}
+
 test.describe("Settings host page", () => {
   test("host page shows seeded label, connection endpoint, inject MCP toggle, and all action rows", async ({
     page,
@@ -34,16 +40,8 @@ test.describe("Settings host page", () => {
     await openSettings(page);
     await openHostPage(page, serverId);
 
-    // Label renders as a title with a pencil edit affordance; the input is hidden until edit.
-    await expect(page.getByTestId("host-page-label-card")).toBeVisible();
-    await expect(page.getByTestId("host-page-label-edit-button")).toBeVisible();
-    await expect(page.getByTestId("host-page-label-input")).toHaveCount(0);
-    await expect(
-      page.getByTestId("host-page-label-card").getByText(TEST_HOST_LABEL, { exact: true }),
-    ).toBeVisible();
-
-    // Desktop detail pane shows a ScreenHeader with the host label.
-    await expect(page.getByTestId("settings-detail-header-title")).toHaveText(TEST_HOST_LABEL);
+    // Label renders in the detail header with a pencil edit affordance; the input is hidden until edit.
+    await expectHostLabelHeader(page);
 
     // Connections is its own section with a "Connections" heading and the seeded endpoint row.
     const connectionsCard = page.getByTestId("host-page-connections-card");
@@ -124,7 +122,7 @@ test.describe("Settings host page", () => {
     await page.goto(`/settings/hosts/${encodeURIComponent(serverId)}`);
 
     await expect(page.getByTestId(`settings-host-page-${serverId}`)).toBeVisible();
-    await expect(page.getByTestId("host-page-label-card")).toBeVisible();
+    await expectHostLabelHeader(page);
     await expect(page.getByTestId("host-page-remove-host-card")).toBeVisible();
   });
 
