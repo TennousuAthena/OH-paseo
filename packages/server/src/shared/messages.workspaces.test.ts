@@ -138,9 +138,9 @@ describe("workspace message schemas", () => {
           scripts: [
             {
               scriptName: "web",
-              hostname: "web.localhost",
+              hostname: "web.paseo.localhost",
               port: 3000,
-              proxyUrl: "http://web.localhost:6767",
+              proxyUrl: "http://web.paseo.localhost:6767",
               lifecycle: "running",
               health: "healthy",
             },
@@ -157,9 +157,9 @@ describe("workspace message schemas", () => {
       {
         scriptName: "web",
         type: "service",
-        hostname: "web.localhost",
+        hostname: "web.paseo.localhost",
         port: 3000,
-        proxyUrl: "http://web.localhost:6767",
+        proxyUrl: "http://web.paseo.localhost:6767",
         lifecycle: "running",
         health: "healthy",
         exitCode: null,
@@ -204,7 +204,7 @@ describe("workspace message schemas", () => {
         scripts: [
           {
             scriptName: "web",
-            hostname: "web.localhost",
+            hostname: "web.paseo.localhost",
             port: null,
             proxyUrl: null,
             lifecycle: "stopped",

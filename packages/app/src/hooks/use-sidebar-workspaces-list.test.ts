@@ -47,9 +47,9 @@ function workspace(
 const runningScript: WorkspaceScriptPayload = {
   scriptName: "web",
   type: "service",
-  hostname: "main.web.localhost",
+  hostname: "web.paseo.localhost",
   port: 3000,
-  proxyUrl: "http://main.web.localhost:6767",
+  proxyUrl: "http://web.paseo.localhost:6767",
   lifecycle: "running",
   health: "healthy",
   exitCode: null,
@@ -58,9 +58,9 @@ const runningScript: WorkspaceScriptPayload = {
 const stoppedScript: WorkspaceScriptPayload = {
   scriptName: "api",
   type: "service",
-  hostname: "main.api.localhost",
+  hostname: "api.paseo.localhost",
   port: 3001,
-  proxyUrl: "http://main.api.localhost:6767",
+  proxyUrl: "http://api.paseo.localhost:6767",
   lifecycle: "stopped",
   health: null,
   exitCode: null,

@@ -1034,9 +1034,41 @@ describe("paseo worktree manager", () => {
 });
 
 describe("slugify", () => {
+  function expectValidHostnameLabel(label: string): void {
+    expect(label.length).toBeGreaterThan(0);
+    expect(label.length).toBeLessThanOrEqual(63);
+    expect(label).toMatch(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/);
+  }
+
   it("converts to lowercase kebab-case", () => {
     expect(slugify("Hello World")).toBe("hello-world");
     expect(slugify("FOO_BAR")).toBe("foo-bar");
+    expect(slugify("My GREAT App")).toBe("my-great-app");
+  });
+
+  it("replaces dots with hyphens", () => {
+    expect(slugify("my.app")).toBe("my-app");
+    expect(slugify("v1.2.3")).toBe("v1-2-3");
+  });
+
+  it("collapses multiple consecutive spaces to one hyphen", () => {
+    expect(slugify("feature   cool    stuff")).toBe("feature-cool-stuff");
+  });
+
+  it("replaces slashes with hyphens", () => {
+    expect(slugify("feature/cool stuff")).toBe("feature-cool-stuff");
+    expect(slugify("owner/repo")).toBe("owner-repo");
+  });
+
+  it("strips unsupported unicode characters", () => {
+    expect(slugify("café")).toBe("caf");
+    expect(slugify("日本語")).toBe("");
+  });
+
+  it("removes leading and trailing punctuation", () => {
+    expect(slugify("-foo-")).toBe("foo");
+    expect(slugify("__bar__")).toBe("bar");
+    expect(slugify(".baz.")).toBe("baz");
   });
 
   it("truncates long strings at word boundary", () => {
@@ -1044,6 +1076,7 @@ describe("slugify", () => {
       "https-stackoverflow-com-questions-68349031-only-run-actions-on-non-draft-pull-request";
     const result = slugify(longInput);
     expect(result.length).toBeLessThanOrEqual(50);
+    expectValidHostnameLabel(result);
     expect(result).toBe("https-stackoverflow-com-questions-68349031-only");
   });
 
@@ -1052,5 +1085,35 @@ describe("slugify", () => {
     const result = slugify(longInput);
     expect(result.length).toBe(50);
     expect(result.endsWith("-")).toBe(false);
+    expectValidHostnameLabel(result);
+  });
+
+  it("keeps very long names within the hostname label length limit", () => {
+    const result = slugify("Release Candidate ".repeat(12));
+
+    expect(result.length).toBeLessThanOrEqual(63);
+    expectValidHostnameLabel(result);
+  });
+
+  it("returns empty when names collapse to empty", () => {
+    expect(slugify("---")).toBe("");
+    expect(slugify("***")).toBe("");
+    expect(slugify("日本語")).toBe("");
+  });
+
+  it("is idempotent for representative inputs", () => {
+    const inputs = [
+      "my.app",
+      "feature/cool stuff",
+      "  Café Launch  ",
+      "__bar__",
+      "Release Candidate ".repeat(12),
+      "release***candidate",
+    ];
+
+    for (const input of inputs) {
+      const slug = slugify(input);
+      expect(slugify(slug)).toBe(slug);
+    }
   });
 });

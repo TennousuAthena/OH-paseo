@@ -615,9 +615,9 @@ function SelfHostedSection() {
 
 function ServiceProxySection() {
   const workspaces = [
-    { name: "fix-auth", url: "fix-auth.my-app.localhost" },
-    { name: "add-search", url: "add-search.my-app.localhost" },
-    { name: "upgrade-deps", url: "upgrade-deps.my-app.localhost" },
+    { name: "fix-auth", url: "web.fix-auth.my-app.localhost" },
+    { name: "add-search", url: "web.add-search.my-app.localhost" },
+    { name: "upgrade-deps", url: "web.upgrade-deps.my-app.localhost" },
   ];
 
   return (

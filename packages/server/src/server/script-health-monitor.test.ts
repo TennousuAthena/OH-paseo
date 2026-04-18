@@ -160,27 +160,28 @@ describe("ScriptHealthMonitor", () => {
 
     monitor.start();
     routeStore.registerRoute({
-      hostname: "api.localhost",
+      hostname: "route-b.example.localhost",
       port: healthy.port,
       workspaceId: "workspace-a",
+      projectSlug: "repo",
       scriptName: "api",
     });
 
-    expect(monitor.getHealthForHostname("api.localhost")).toBe("pending");
+    expect(monitor.getHealthForHostname("route-b.example.localhost")).toBe("pending");
 
     await advancePoll(4_000);
-    expect(monitor.getHealthForHostname("api.localhost")).toBe("pending");
+    expect(monitor.getHealthForHostname("route-b.example.localhost")).toBe("pending");
     expect(onChange).not.toHaveBeenCalled();
 
     await advancePoll(1_000);
     monitor.stop();
 
-    expect(monitor.getHealthForHostname("api.localhost")).toBe("healthy");
+    expect(monitor.getHealthForHostname("route-b.example.localhost")).toBe("healthy");
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("workspace-a", [
       {
         scriptName: "api",
-        hostname: "api.localhost",
+        hostname: "route-b.example.localhost",
         port: healthy.port,
         health: "healthy",
       },
@@ -193,9 +194,10 @@ describe("ScriptHealthMonitor", () => {
     const deadPort = await findFreePort();
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
-      hostname: "api.localhost",
+      hostname: "route-b.example.localhost",
       port: deadPort,
       workspaceId: "workspace-a",
+      projectSlug: "repo",
       scriptName: "api",
     });
 
@@ -209,22 +211,22 @@ describe("ScriptHealthMonitor", () => {
       failuresBeforeStopped: 2,
     });
 
-    expect(monitor.getHealthForHostname("api.localhost")).toBe("pending");
+    expect(monitor.getHealthForHostname("route-b.example.localhost")).toBe("pending");
 
     monitor.start();
     await advancePoll(2_000);
-    expect(monitor.getHealthForHostname("api.localhost")).toBe("pending");
+    expect(monitor.getHealthForHostname("route-b.example.localhost")).toBe("pending");
     expect(onChange).not.toHaveBeenCalled();
 
     await advancePoll(1_000);
     monitor.stop();
 
-    expect(monitor.getHealthForHostname("api.localhost")).toBe("unhealthy");
+    expect(monitor.getHealthForHostname("route-b.example.localhost")).toBe("unhealthy");
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("workspace-a", [
       {
         scriptName: "api",
-        hostname: "api.localhost",
+        hostname: "route-b.example.localhost",
         port: deadPort,
         health: "unhealthy",
       },
@@ -239,9 +241,10 @@ describe("ScriptHealthMonitor", () => {
 
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
-      hostname: "api.localhost",
+      hostname: "route-b.example.localhost",
       port: healthy.port,
       workspaceId: "workspace-a",
+      projectSlug: "repo",
       scriptName: "api",
     });
 
@@ -269,9 +272,10 @@ describe("ScriptHealthMonitor", () => {
 
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
-      hostname: "api.localhost",
+      hostname: "route-b.example.localhost",
       port: healthy.port,
       workspaceId: "workspace-a",
+      projectSlug: "repo",
       scriptName: "api",
     });
 
@@ -293,18 +297,18 @@ describe("ScriptHealthMonitor", () => {
     servers.delete(healthy.server);
 
     await advancePoll(1_000);
-    expect(monitor.getHealthForHostname("api.localhost")).toBe("healthy");
+    expect(monitor.getHealthForHostname("route-b.example.localhost")).toBe("healthy");
     expect(onChange).toHaveBeenCalledTimes(1);
 
     await advancePoll(1_000);
     monitor.stop();
 
-    expect(monitor.getHealthForHostname("api.localhost")).toBe("unhealthy");
+    expect(monitor.getHealthForHostname("route-b.example.localhost")).toBe("unhealthy");
     expect(onChange).toHaveBeenCalledTimes(2);
     expect(onChange).toHaveBeenLastCalledWith("workspace-a", [
       {
         scriptName: "api",
-        hostname: "api.localhost",
+        hostname: "route-b.example.localhost",
         port: healthy.port,
         health: "unhealthy",
       },
@@ -319,9 +323,10 @@ describe("ScriptHealthMonitor", () => {
 
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
-      hostname: "api.localhost",
+      hostname: "route-b.example.localhost",
       port: healthy.port,
       workspaceId: "workspace-a",
+      projectSlug: "repo",
       scriptName: "api",
     });
 
@@ -337,17 +342,17 @@ describe("ScriptHealthMonitor", () => {
 
     monitor.start();
     await advancePoll(1_000);
-    expect(monitor.getHealthForHostname("api.localhost")).toBe("healthy");
+    expect(monitor.getHealthForHostname("route-b.example.localhost")).toBe("healthy");
     expect(onChange).toHaveBeenCalledTimes(1);
 
-    routeStore.removeRoute("api.localhost");
+    routeStore.removeRoute("route-b.example.localhost");
     await closeServer(healthy.server);
     servers.delete(healthy.server);
 
     await advancePoll(3_000);
     monitor.stop();
 
-    expect(monitor.getHealthForHostname("api.localhost")).toBeNull();
+    expect(monitor.getHealthForHostname("route-b.example.localhost")).toBeNull();
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
@@ -361,15 +366,17 @@ describe("ScriptHealthMonitor", () => {
 
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
-      hostname: "api.localhost",
+      hostname: "route-b.example.localhost",
       port: api.port,
       workspaceId: "workspace-a",
+      projectSlug: "repo",
       scriptName: "api",
     });
     routeStore.registerRoute({
-      hostname: "web.localhost",
+      hostname: "route-c.example.localhost",
       port: web.port,
       workspaceId: "workspace-a",
+      projectSlug: "repo",
       scriptName: "web",
     });
 
@@ -390,13 +397,13 @@ describe("ScriptHealthMonitor", () => {
     expect(onChange).toHaveBeenCalledWith("workspace-a", [
       {
         scriptName: "api",
-        hostname: "api.localhost",
+        hostname: "route-b.example.localhost",
         port: api.port,
         health: "healthy",
       },
       {
         scriptName: "web",
-        hostname: "web.localhost",
+        hostname: "route-c.example.localhost",
         port: web.port,
         health: "healthy",
       },
@@ -436,9 +443,10 @@ describe("ScriptHealthMonitor", () => {
       expect(createTerminalCalls).toHaveLength(2);
       expect(routeStore.listRoutes()).toEqual([
         {
-          hostname: "api.localhost",
+          hostname: "api.repo.localhost",
           port: service.port,
           workspaceId: workspace.repoDir,
+          projectSlug: "repo",
           scriptName: "api",
         },
       ]);
@@ -460,7 +468,7 @@ describe("ScriptHealthMonitor", () => {
       expect(onChange).toHaveBeenCalledWith(workspace.repoDir, [
         {
           scriptName: "api",
-          hostname: "api.localhost",
+          hostname: "api.repo.localhost",
           port: service.port,
           health: "healthy",
         },
@@ -481,15 +489,17 @@ describe("ScriptHealthMonitor", () => {
 
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
-      hostname: "api.localhost",
+      hostname: "route-b.example.localhost",
       port: api.port,
       workspaceId: "workspace-a",
+      projectSlug: "repo",
       scriptName: "api",
     });
     routeStore.registerRoute({
-      hostname: "web.localhost",
+      hostname: "route-c.example.localhost",
       port: web.port,
       workspaceId: "workspace-a",
+      projectSlug: "repo",
       scriptName: "web",
     });
 
@@ -523,13 +533,13 @@ describe("ScriptHealthMonitor", () => {
     expect(onChange).toHaveBeenCalledWith("workspace-a", [
       {
         scriptName: "api",
-        hostname: "api.localhost",
+        hostname: "route-b.example.localhost",
         port: api.port,
         health: "unhealthy",
       },
       {
         scriptName: "web",
-        hostname: "web.localhost",
+        hostname: "route-c.example.localhost",
         port: web.port,
         health: "unhealthy",
       },

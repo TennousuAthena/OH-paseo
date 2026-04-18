@@ -2,28 +2,70 @@ import { describe, expect, it } from "vitest";
 import { buildScriptHostname } from "./script-hostname.js";
 
 describe("buildScriptHostname", () => {
-  it("slugifies script names with spaces on default branches", () => {
-    expect(buildScriptHostname(null, "npm run dev")).toBe("npm-run-dev.localhost");
+  it("builds default branch hostnames with script and project labels", () => {
+    expect(
+      buildScriptHostname({
+        projectSlug: "paseo",
+        branchName: null,
+        scriptName: "web",
+      }),
+    ).toBe("web.paseo.localhost");
   });
 
-  it("slugifies script names with special characters", () => {
-    expect(buildScriptHostname(null, "Web/API @ Dev")).toBe("web-api-dev.localhost");
+  it("omits the branch label for main and master", () => {
+    expect(
+      buildScriptHostname({
+        projectSlug: "paseo",
+        branchName: "main",
+        scriptName: "web",
+      }),
+    ).toBe("web.paseo.localhost");
+    expect(
+      buildScriptHostname({
+        projectSlug: "paseo",
+        branchName: "master",
+        scriptName: "web",
+      }),
+    ).toBe("web.paseo.localhost");
   });
 
-  it("omits the branch prefix for main and master", () => {
-    expect(buildScriptHostname("main", "npm run dev")).toBe("npm-run-dev.localhost");
-    expect(buildScriptHostname("master", "npm run dev")).toBe("npm-run-dev.localhost");
+  it("builds non-default branch hostnames with script, branch, and project labels", () => {
+    expect(
+      buildScriptHostname({
+        projectSlug: "paseo",
+        branchName: "feature-auth",
+        scriptName: "web",
+      }),
+    ).toBe("web.feature-auth.paseo.localhost");
   });
 
-  it("adds a slugified branch prefix for non-default branches", () => {
-    expect(buildScriptHostname("feature/cool stuff", "api")).toBe(
-      "feature-cool-stuff.api.localhost",
-    );
+  it("slugifies script, default branch project, and non-default branch labels", () => {
+    expect(
+      buildScriptHostname({
+        projectSlug: "Paseo App",
+        branchName: "Feature/Auth Flow",
+        scriptName: "Web/API @ Dev",
+      }),
+    ).toBe("web-api-dev.feature-auth-flow.paseo-app.localhost");
   });
 
-  it("slugifies both the branch name and script name together", () => {
-    expect(buildScriptHostname("feat/add auth", "npm run dev")).toBe(
-      "feat-add-auth.npm-run-dev.localhost",
-    );
+  it("accepts already slugified labels because slugify is idempotent", () => {
+    expect(
+      buildScriptHostname({
+        projectSlug: "paseo-app",
+        branchName: "feature-auth-flow",
+        scriptName: "web-api-dev",
+      }),
+    ).toBe("web-api-dev.feature-auth-flow.paseo-app.localhost");
+  });
+
+  it("uses untitled as the hostname-label fallback when labels collapse to empty", () => {
+    expect(
+      buildScriptHostname({
+        projectSlug: "日本語",
+        branchName: "***",
+        scriptName: "---",
+      }),
+    ).toBe("untitled.untitled.untitled.localhost");
   });
 });

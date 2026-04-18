@@ -12,6 +12,7 @@ import {
 } from "./worktree-bootstrap.js";
 import { ensureWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
 import { ScriptRouteStore } from "./script-proxy.js";
+import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import {
   createWorktree as createWorktreePrimitive,
@@ -726,6 +727,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const result = await spawnWorkspaceScript({
       repoRoot: repoDir,
       workspaceId: repoDir,
+      projectSlug: "repo",
       branchName: "feature-socket-service",
       scriptName: "api",
       daemonPort: 6767,
@@ -737,9 +739,10 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(result.scriptName).toBe("api");
     expect(routeStore.listRoutes()).toEqual([
       {
-        hostname: "feature-socket-service.api.localhost",
+        hostname: "api.feature-socket-service.repo.localhost",
         port: expect.any(Number),
         workspaceId: repoDir,
+        projectSlug: "repo",
         scriptName: "api",
       },
     ]);
@@ -750,13 +753,13 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(createTerminalCalls[0]?.env?.PASEO_PORT).toEqual(expect.any(String));
     expect(createTerminalCalls[0]?.env?.HOST).toBe("127.0.0.1");
     expect(createTerminalCalls[0]?.env?.PASEO_URL).toBe(
-      "http://feature-socket-service.api.localhost:6767",
+      "http://api.feature-socket-service.repo.localhost:6767",
     );
     expect(createTerminalCalls[0]?.env?.PASEO_SERVICE_API_PORT).toBe(
       createTerminalCalls[0]?.env?.PASEO_PORT,
     );
     expect(createTerminalCalls[0]?.env?.PASEO_SERVICE_API_URL).toBe(
-      "http://feature-socket-service.api.localhost:6767",
+      "http://api.feature-socket-service.repo.localhost:6767",
     );
     const plannedPorts = await ensureWorkspaceServicePortPlan({
       workspaceId: repoDir,
@@ -773,7 +776,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       String(plannedAppServerPort),
     );
     expect(createTerminalCalls[0]?.env?.PASEO_SERVICE_APP_SERVER_URL).toBe(
-      "http://feature-socket-service.app-server.localhost:6767",
+      "http://app-server.feature-socket-service.repo.localhost:6767",
     );
     expect(runtimeStore.get({ workspaceId: repoDir, scriptName: "api" })).toMatchObject({
       type: "service",
@@ -813,6 +816,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const firstResult = await spawnWorkspaceScript({
       repoRoot: repoDir,
       workspaceId: repoDir,
+      projectSlug: "repo",
       branchName: "feature-respawn-service",
       scriptName: "api",
       daemonPort: 6767,
@@ -824,6 +828,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const workerResult = await spawnWorkspaceScript({
       repoRoot: repoDir,
       workspaceId: repoDir,
+      projectSlug: "repo",
       branchName: "feature-respawn-service",
       scriptName: "worker",
       daemonPort: 6767,
@@ -852,11 +857,12 @@ describe("runAsyncWorktreeBootstrap", () => {
       lifecycle: "stopped",
       exitCode: 0,
     });
-    expect(routeStore.getRouteEntry("feature-respawn-service.api.localhost")).toBeNull();
+    expect(routeStore.getRouteEntry("api.feature-respawn-service.repo.localhost")).toBeNull();
 
     const secondResult = await spawnWorkspaceScript({
       repoRoot: repoDir,
       workspaceId: repoDir,
+      projectSlug: "repo",
       branchName: "feature-respawn-service",
       scriptName: "api",
       daemonPort: 6767,
@@ -873,12 +879,71 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(secondPort).not.toBe(firstPort);
     expect(secondPort).toEqual(expect.any(Number));
     expect(createTerminalCalls[2]?.env?.PASEO_SERVICE_WORKER_PORT).toBe(String(workerPort));
-    expect(routeStore.getRouteEntry("feature-respawn-service.api.localhost")).toMatchObject({
-      hostname: "feature-respawn-service.api.localhost",
+    expect(routeStore.getRouteEntry("api.feature-respawn-service.repo.localhost")).toMatchObject({
+      hostname: "api.feature-respawn-service.repo.localhost",
       port: secondPort,
       workspaceId: repoDir,
+      projectSlug: "repo",
       scriptName: "api",
     });
+  });
+
+  it("removes the current service route on exit after a branch rename", async () => {
+    writeFileSync(
+      join(repoDir, "paseo.json"),
+      JSON.stringify({
+        scripts: {
+          api: {
+            type: "service",
+            command: "npm run api",
+          },
+        },
+      }),
+    );
+    execSync("git add paseo.json", { cwd: repoDir, stdio: "pipe" });
+    execSync("git -c commit.gpgsign=false commit -m 'add renamed service script config'", {
+      cwd: repoDir,
+      stdio: "pipe",
+    });
+
+    const routeStore = new ScriptRouteStore();
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    const createTerminalCalls: CreateTerminalCall[] = [];
+    const terminalRecords: StubTerminalRecord[] = [];
+    const terminalManager = createStubTerminalManager(createTerminalCalls, terminalRecords);
+
+    await spawnWorkspaceScript({
+      repoRoot: repoDir,
+      workspaceId: repoDir,
+      projectSlug: "repo",
+      branchName: "feature-before-rename",
+      scriptName: "api",
+      daemonPort: 6767,
+      routeStore,
+      runtimeStore,
+      terminalManager,
+    });
+
+    const updateRoutesForBranchChange = createBranchChangeRouteHandler({
+      routeStore,
+      onRoutesChanged: () => {},
+    });
+    updateRoutesForBranchChange(repoDir, "feature-before-rename", "feature-after-rename");
+
+    expect(routeStore.listRoutesForWorkspace(repoDir)).toEqual([
+      expect.objectContaining({
+        hostname: "api.feature-after-rename.repo.localhost",
+        scriptName: "api",
+      }),
+    ]);
+
+    const terminal = terminalRecords[0];
+    if (!terminal) {
+      throw new Error("Expected terminal record");
+    }
+    terminal.triggerExit(0);
+
+    expect(routeStore.listRoutesForWorkspace(repoDir)).toEqual([]);
   });
 
   it("fails normalized service env name collisions before terminal creation", async () => {
@@ -911,6 +976,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       spawnWorkspaceScript({
         repoRoot: repoDir,
         workspaceId: repoDir,
+        projectSlug: "repo",
         branchName: "feature-collision-service",
         scriptName: "app-server",
         daemonPort: 6767,
@@ -922,7 +988,9 @@ describe("runAsyncWorktreeBootstrap", () => {
 
     expect(createTerminalCalls).toHaveLength(0);
     expect(routeStore.listRoutes()).toEqual([]);
-    expect(routeStore.getRouteEntry("feature-collision-service.app-server.localhost")).toBeNull();
+    expect(
+      routeStore.getRouteEntry("app-server.feature-collision-service.repo.localhost"),
+    ).toBeNull();
 
     writeFileSync(
       join(repoDir, "paseo.json"),
@@ -943,6 +1011,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     await spawnWorkspaceScript({
       repoRoot: repoDir,
       workspaceId: repoDir,
+      projectSlug: "repo",
       branchName: "feature-collision-service",
       scriptName: "app-server",
       daemonPort: 6767,
@@ -1012,16 +1081,16 @@ describe("runAsyncWorktreeBootstrap", () => {
     const apiEnv = readEnvFile(apiEnvPath);
     const webEnv = readEnvFile(webEnvPath);
 
-    expect(apiEnv.PASEO_SERVICE_API_URL).toBe("http://feature-peer-env.api.localhost:6767");
-    expect(apiEnv.PASEO_SERVICE_WEB_URL).toBe("http://feature-peer-env.web.localhost:6767");
+    expect(apiEnv.PASEO_SERVICE_API_URL).toBe("http://api.feature-peer-env.repo.localhost:6767");
+    expect(apiEnv.PASEO_SERVICE_WEB_URL).toBe("http://web.feature-peer-env.repo.localhost:6767");
     expect(apiEnv.PASEO_SERVICE_API_PORT).toEqual(expect.stringMatching(/^\d+$/));
     expect(apiEnv.PASEO_SERVICE_WEB_PORT).toEqual(expect.stringMatching(/^\d+$/));
     expect(apiEnv.PASEO_URL).toBe(apiEnv.PASEO_SERVICE_API_URL);
     expect(apiEnv.PASEO_PORT).toBe(apiEnv.PASEO_SERVICE_API_PORT);
     expect(apiEnv).not.toHaveProperty("PORT");
 
-    expect(webEnv.PASEO_SERVICE_API_URL).toBe("http://feature-peer-env.api.localhost:6767");
-    expect(webEnv.PASEO_SERVICE_WEB_URL).toBe("http://feature-peer-env.web.localhost:6767");
+    expect(webEnv.PASEO_SERVICE_API_URL).toBe("http://api.feature-peer-env.repo.localhost:6767");
+    expect(webEnv.PASEO_SERVICE_WEB_URL).toBe("http://web.feature-peer-env.repo.localhost:6767");
     expect(webEnv.PASEO_SERVICE_API_PORT).toBe(apiEnv.PASEO_SERVICE_API_PORT);
     expect(webEnv.PASEO_SERVICE_WEB_PORT).toBe(apiEnv.PASEO_SERVICE_WEB_PORT);
     expect(webEnv.PASEO_URL).toBe(webEnv.PASEO_SERVICE_WEB_URL);
@@ -1034,15 +1103,17 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(Number.isInteger(webPort)).toBe(true);
     expect(routeStore.listRoutes()).toEqual([
       {
-        hostname: "feature-peer-env.api.localhost",
+        hostname: "api.feature-peer-env.repo.localhost",
         port: apiPort,
         workspaceId: repoDir,
+        projectSlug: "repo",
         scriptName: "api",
       },
       {
-        hostname: "feature-peer-env.web.localhost",
+        hostname: "web.feature-peer-env.repo.localhost",
         port: webPort,
         workspaceId: repoDir,
+        projectSlug: "repo",
         scriptName: "web",
       },
     ]);
@@ -1084,7 +1155,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(createTerminalCalls).toHaveLength(1);
     expect(createTerminalCalls[0]?.env?.HOST).toBe("0.0.0.0");
     expect(createTerminalCalls[0]?.env?.PASEO_URL).toBe(
-      "http://feature-remote-service.web.localhost:6767",
+      "http://web.feature-remote-service.repo.localhost:6767",
     );
   });
 });

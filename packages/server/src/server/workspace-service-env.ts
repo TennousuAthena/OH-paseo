@@ -7,6 +7,7 @@ export interface WorkspaceServicePeer {
 
 export interface BuildWorkspaceServiceEnvOptions {
   scriptName: string;
+  projectSlug: string;
   branchName: string | null;
   daemonPort: number | null | undefined;
   daemonListenHost: string | null | undefined;
@@ -38,6 +39,7 @@ export function buildWorkspaceServiceEnv(
 
   if (options.daemonPort !== null && options.daemonPort !== undefined) {
     env.PASEO_URL = buildServiceProxyUrl({
+      projectSlug: options.projectSlug,
       branchName: options.branchName,
       scriptName: options.scriptName,
       daemonPort: options.daemonPort,
@@ -50,6 +52,7 @@ export function buildWorkspaceServiceEnv(
 
     if (options.daemonPort !== null && options.daemonPort !== undefined) {
       env[`PASEO_SERVICE_${envName}_URL`] = buildServiceProxyUrl({
+        projectSlug: options.projectSlug,
         branchName: options.branchName,
         scriptName: peer.scriptName,
         daemonPort: options.daemonPort,
@@ -65,13 +68,18 @@ export function resolveServiceBindHost(daemonListenHost: string | null | undefin
 }
 
 interface BuildServiceProxyUrlOptions {
+  projectSlug: string;
   branchName: string | null;
   scriptName: string;
   daemonPort: number;
 }
 
 function buildServiceProxyUrl(options: BuildServiceProxyUrlOptions): string {
-  const hostname = buildScriptHostname(options.branchName, options.scriptName);
+  const hostname = buildScriptHostname({
+    projectSlug: options.projectSlug,
+    branchName: options.branchName,
+    scriptName: options.scriptName,
+  });
   return `http://${hostname}:${options.daemonPort}`;
 }
 

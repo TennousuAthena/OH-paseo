@@ -1,12 +1,27 @@
 import { slugify } from "./worktree.js";
 
-export function buildScriptHostname(branchName: string | null, scriptName: string): string {
-  const serviceHostnameLabel = slugify(scriptName);
+type BuildScriptHostnameOptions = {
+  projectSlug: string;
+  branchName: string | null;
+  scriptName: string;
+};
+
+function toHostnameLabel(value: string): string {
+  return slugify(value) || "untitled";
+}
+
+export function buildScriptHostname({
+  projectSlug,
+  branchName,
+  scriptName,
+}: BuildScriptHostnameOptions): string {
+  const serviceHostnameLabel = toHostnameLabel(scriptName);
+  const projectHostnameLabel = toHostnameLabel(projectSlug);
   const isDefaultBranch = branchName === null || branchName === "main" || branchName === "master";
 
   if (isDefaultBranch) {
-    return `${serviceHostnameLabel}.localhost`;
+    return `${serviceHostnameLabel}.${projectHostnameLabel}.localhost`;
   }
 
-  return `${slugify(branchName)}.${serviceHostnameLabel}.localhost`;
+  return `${serviceHostnameLabel}.${toHostnameLabel(branchName)}.${projectHostnameLabel}.localhost`;
 }

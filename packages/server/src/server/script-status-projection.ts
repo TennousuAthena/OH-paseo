@@ -5,7 +5,7 @@ import type {
 } from "../shared/messages.js";
 import { buildScriptHostname } from "../utils/script-hostname.js";
 import { getScriptConfigs, isServiceScript } from "../utils/worktree.js";
-import { readGitCommand } from "./workspace-git-metadata.js";
+import { deriveProjectSlug, readGitCommand } from "./workspace-git-metadata.js";
 import type { ScriptHealthEntry, ScriptHealthState } from "./script-health-monitor.js";
 import type { ScriptRouteStore } from "./script-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
@@ -30,10 +30,6 @@ function resolveDaemonPort(daemonPort: number | null | (() => number | null)): n
   return daemonPort;
 }
 
-function resolveWorkspaceBranchName(workspaceDirectory: string): string | null {
-  return readGitCommand(workspaceDirectory, "git symbolic-ref --short HEAD");
-}
-
 function toServiceProxyUrl(hostname: string, daemonPort: number | null): string | null {
   if (daemonPort === null) {
     return null;
@@ -46,30 +42,6 @@ function toWireHealth(health: ScriptHealthState | null): WorkspaceScriptPayload[
     return null;
   }
   return health;
-}
-
-function createConfiguredPayload(input: {
-  scriptName: string;
-  type: WorkspaceScriptPayload["type"];
-  branchName: string | null;
-  daemonPort: number | null;
-  configuredPort: number | null;
-}): WorkspaceScriptPayload {
-  const hostname =
-    input.type === "service"
-      ? buildScriptHostname(input.branchName, input.scriptName)
-      : input.scriptName;
-
-  return {
-    scriptName: input.scriptName,
-    type: input.type,
-    hostname,
-    port: input.type === "service" ? input.configuredPort : null,
-    proxyUrl: input.type === "service" ? toServiceProxyUrl(hostname, input.daemonPort) : null,
-    lifecycle: "stopped",
-    health: null,
-    exitCode: null,
-  };
 }
 
 function sortPayloads(payloads: WorkspaceScriptPayload[]): WorkspaceScriptPayload[] {
@@ -86,7 +58,8 @@ export function buildWorkspaceScriptPayloads(
 ): WorkspaceScriptPayload[] {
   const workspaceId = options.workspaceId;
   const workspaceDirectory = options.workspaceDirectory;
-  const branchName = resolveWorkspaceBranchName(workspaceDirectory);
+  const projectSlug = deriveProjectSlug(workspaceDirectory);
+  const branchName = readGitCommand(workspaceDirectory, "git symbolic-ref --short HEAD");
   const scriptConfigs = getScriptConfigs(workspaceDirectory);
   const runtimeEntries = new Map(
     options.runtimeStore
@@ -102,32 +75,29 @@ export function buildWorkspaceScriptPayloads(
   const payloads: WorkspaceScriptPayload[] = [];
 
   for (const [scriptName, config] of scriptConfigs.entries()) {
-    const type = isServiceScript(config) ? "service" : "script";
+    const configIsService = isServiceScript(config);
+    const type = configIsService ? "service" : "script";
+    const configuredPort = configIsService ? (config.port ?? null) : null;
     const runtimeEntry = runtimeEntries.get(scriptName) ?? null;
     const routeEntry = routesByScriptName.get(scriptName) ?? null;
-
-    const payload = createConfiguredPayload({
-      scriptName,
-      type,
-      branchName,
-      daemonPort: options.daemonPort,
-      configuredPort: isServiceScript(config) ? (config.port ?? null) : null,
-    });
+    const hostname =
+      type === "service"
+        ? (routeEntry?.hostname ??
+          buildScriptHostname({
+            projectSlug,
+            branchName,
+            scriptName,
+          }))
+        : scriptName;
 
     payloads.push({
-      ...payload,
-      hostname:
-        type === "service" ? (routeEntry?.hostname ?? payload.hostname) : payload.scriptName,
-      port: type === "service" ? (routeEntry?.port ?? payload.port) : null,
-      proxyUrl:
-        type === "service"
-          ? toServiceProxyUrl(routeEntry?.hostname ?? payload.hostname, options.daemonPort)
-          : null,
-      lifecycle: runtimeEntry?.lifecycle ?? payload.lifecycle,
-      health:
-        type === "service"
-          ? toWireHealth(options.resolveHealth?.(routeEntry?.hostname ?? payload.hostname) ?? null)
-          : null,
+      scriptName,
+      type,
+      hostname,
+      port: type === "service" ? (routeEntry?.port ?? configuredPort) : null,
+      proxyUrl: type === "service" ? toServiceProxyUrl(hostname, options.daemonPort) : null,
+      lifecycle: runtimeEntry?.lifecycle ?? "stopped",
+      health: type === "service" ? toWireHealth(options.resolveHealth?.(hostname) ?? null) : null,
       exitCode: runtimeEntry?.exitCode ?? null,
     });
   }
@@ -141,7 +111,12 @@ export function buildWorkspaceScriptPayloads(
     const type = runtimeEntry.type;
     const hostname =
       type === "service"
-        ? (routeEntry?.hostname ?? buildScriptHostname(branchName, runtimeEntry.scriptName))
+        ? (routeEntry?.hostname ??
+          buildScriptHostname({
+            projectSlug,
+            branchName,
+            scriptName: runtimeEntry.scriptName,
+          }))
         : runtimeEntry.scriptName;
     payloads.push({
       scriptName: runtimeEntry.scriptName,

@@ -6,9 +6,9 @@ import { resolveWorkspaceScriptLink } from "./workspace-script-links";
 const runningService: WorkspaceScriptPayload = {
   scriptName: "web",
   type: "service",
-  hostname: "feature.web.localhost",
+  hostname: "web.feature.paseo.localhost",
   port: 3000,
-  proxyUrl: "http://feature.web.localhost:6767",
+  proxyUrl: "http://web.feature.paseo.localhost:6767",
   lifecycle: "running",
   health: "healthy",
   exitCode: null,
@@ -26,8 +26,8 @@ describe("resolveWorkspaceScriptLink", () => {
     expect(
       resolveLink({ type: "directTcp", endpoint: "localhost:6767", display: "localhost:6767" }),
     ).toEqual({
-      openUrl: "http://feature.web.localhost:6767",
-      labelUrl: "http://feature.web.localhost:6767",
+      openUrl: "http://web.feature.paseo.localhost:6767",
+      labelUrl: "http://web.feature.paseo.localhost:6767",
     });
   });
 
@@ -35,8 +35,8 @@ describe("resolveWorkspaceScriptLink", () => {
     expect(
       resolveLink({ type: "directSocket", endpoint: "/tmp/paseo.sock", display: "socket" }),
     ).toEqual({
-      openUrl: "http://feature.web.localhost:6767",
-      labelUrl: "http://feature.web.localhost:6767",
+      openUrl: "http://web.feature.paseo.localhost:6767",
+      labelUrl: "http://web.feature.paseo.localhost:6767",
     });
   });
 
@@ -58,7 +58,7 @@ describe("resolveWorkspaceScriptLink", () => {
       resolveLink({ type: "relay", endpoint: "relay.paseo.sh:443", display: "relay" }),
     ).toEqual({
       openUrl: null,
-      labelUrl: "http://feature.web.localhost:6767",
+      labelUrl: "http://web.feature.paseo.localhost:6767",
     });
   });
 });

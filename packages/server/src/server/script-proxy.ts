@@ -31,21 +31,13 @@ export interface ScriptRoute {
 
 export interface ScriptRouteEntry extends ScriptRoute {
   workspaceId: string;
+  projectSlug: string;
   scriptName: string;
 }
 
 export class ScriptRouteStore {
   private routes = new Map<string, ScriptRouteEntry>();
   private workspaceHostnames = new Map<string, Set<string>>();
-
-  addRoute(hostname: string, port: number): void {
-    this.registerRoute({
-      hostname,
-      port,
-      workspaceId: "",
-      scriptName: hostname,
-    });
-  }
 
   registerRoute(entry: ScriptRouteEntry): void {
     const previous = this.routes.get(entry.hostname);
@@ -65,6 +57,15 @@ export class ScriptRouteStore {
     }
     this.routes.delete(hostname);
     this.removeHostnameFromWorkspaceIndex(entry.workspaceId, hostname);
+  }
+
+  removeRouteForWorkspaceScript(params: { workspaceId: string; scriptName: string }): void {
+    const routes = this.listRoutesForWorkspace(params.workspaceId);
+    const route = routes.find((entry) => entry.scriptName === params.scriptName);
+    if (!route) {
+      return;
+    }
+    this.removeRoute(route.hostname);
   }
 
   removeRoutesForPort(port: number): void {

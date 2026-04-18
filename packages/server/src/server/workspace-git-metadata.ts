@@ -1,4 +1,6 @@
 import { execSync } from "child_process";
+import { basename } from "path";
+import { slugify } from "../utils/worktree.js";
 import { READ_ONLY_GIT_ENV } from "./checkout-git-utils.js";
 
 export type WorkspaceGitMetadata = {
@@ -32,17 +34,23 @@ export function parseGitHubRepoFromRemote(remoteUrl: string): string | null {
 
   if (cleaned.startsWith("git@github.com:")) {
     cleaned = cleaned.slice("git@github.com:".length);
-  } else if (cleaned.startsWith("https://github.com/")) {
-    cleaned = cleaned.slice("https://github.com/".length);
-  } else if (cleaned.startsWith("http://github.com/")) {
-    cleaned = cleaned.slice("http://github.com/".length);
   } else {
-    const marker = "github.com/";
-    const markerIndex = cleaned.indexOf(marker);
-    if (markerIndex === -1) {
+    let parsed: URL;
+    try {
+      parsed = new URL(cleaned);
+    } catch {
       return null;
     }
-    cleaned = cleaned.slice(markerIndex + marker.length);
+
+    if (parsed.hostname !== "github.com") {
+      return null;
+    }
+
+    try {
+      cleaned = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
+    } catch {
+      return null;
+    }
   }
 
   if (cleaned.endsWith(".git")) {
@@ -54,6 +62,23 @@ export function parseGitHubRepoFromRemote(remoteUrl: string): string | null {
   }
 
   return cleaned;
+}
+
+export function parseGitHubRepoNameFromRemote(remoteUrl: string): string | null {
+  const githubRepo = parseGitHubRepoFromRemote(remoteUrl);
+  if (!githubRepo) {
+    return null;
+  }
+
+  const repoName = githubRepo.split("/").pop();
+  return repoName && repoName.length > 0 ? repoName : null;
+}
+
+export function deriveProjectSlug(cwd: string): string {
+  const gitRemote = readGitCommand(cwd, "git config --get remote.origin.url");
+  const githubRepoName = gitRemote ? parseGitHubRepoNameFromRemote(gitRemote) : null;
+  const sourceName = githubRepoName ?? basename(cwd);
+  return slugify(sourceName) || "untitled";
 }
 
 export function detectWorkspaceGitMetadata(

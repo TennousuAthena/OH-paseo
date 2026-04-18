@@ -26,7 +26,11 @@ export function createBranchChangeRouteHandler(
 
     const updates: RouteHostnameUpdate[] = [];
     for (const route of routes) {
-      const newHostname = buildScriptHostname(newBranch, route.scriptName);
+      const newHostname = buildScriptHostname({
+        projectSlug: route.projectSlug,
+        branchName: newBranch,
+        scriptName: route.scriptName,
+      });
       if (newHostname !== route.hostname) {
         updates.push({
           oldHostname: route.hostname,
@@ -46,6 +50,7 @@ export function createBranchChangeRouteHandler(
         hostname: newHostname,
         port: route.port,
         workspaceId: route.workspaceId,
+        projectSlug: route.projectSlug,
         scriptName: route.scriptName,
       });
       options.logger?.info(

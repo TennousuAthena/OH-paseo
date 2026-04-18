@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { TerminalSession } from "../terminal/terminal.js";
 import { buildScriptHostname } from "../utils/script-hostname.js";
+import { deriveProjectSlug } from "./workspace-git-metadata.js";
 import {
   getScriptConfigs,
   getWorktreeTerminalSpecs,
@@ -693,6 +694,7 @@ interface WorkspaceServiceDeclaration {
 interface SpawnWorkspaceScriptOptions {
   repoRoot: string;
   workspaceId: string;
+  projectSlug: string;
   branchName: string | null;
   scriptName: string;
   daemonPort?: number | null;
@@ -710,6 +712,7 @@ export async function spawnWorkspaceScript(
   const {
     repoRoot,
     workspaceId,
+    projectSlug,
     branchName,
     scriptName,
     daemonPort,
@@ -727,7 +730,7 @@ export async function spawnWorkspaceScript(
   }
 
   const serviceScript = isServiceScript(config);
-  const hostname = serviceScript ? buildScriptHostname(branchName, scriptName) : null;
+  let hostname: string | null = null;
   let port: number | null = null;
   let terminal: TerminalSession | null = null;
   let runtimeRegistered = false;
@@ -740,6 +743,12 @@ export async function spawnWorkspaceScript(
 
     let env: Record<string, string> | undefined;
     if (serviceScript) {
+      const serviceHostname = buildScriptHostname({
+        projectSlug,
+        branchName,
+        scriptName,
+      });
+      hostname = serviceHostname;
       const serviceDeclarations: WorkspaceServiceDeclaration[] = [];
       for (const [configuredScriptName, scriptConfig] of scriptConfigs) {
         if (isServiceScript(scriptConfig)) {
@@ -780,6 +789,7 @@ export async function spawnWorkspaceScript(
 
       env = buildWorkspaceServiceEnv({
         scriptName,
+        projectSlug,
         branchName,
         daemonPort,
         daemonListenHost,
@@ -787,9 +797,10 @@ export async function spawnWorkspaceScript(
       });
 
       routeStore.registerRoute({
-        hostname: hostname!,
+        hostname: serviceHostname,
         port: servicePort,
         workspaceId,
+        projectSlug,
         scriptName,
       });
       routeRegistered = true;
@@ -813,7 +824,7 @@ export async function spawnWorkspaceScript(
 
     terminal.onExit((info) => {
       if (hostname) {
-        routeStore.removeRoute(hostname);
+        routeStore.removeRouteForWorkspaceScript({ workspaceId, scriptName });
       }
       runtimeStore.set({
         workspaceId,
@@ -894,6 +905,7 @@ export async function spawnWorktreeScripts(options: {
   onLifecycleChanged?: () => void;
 }): Promise<WorktreeScriptResult[]> {
   const { repoRoot } = options;
+  const projectSlug = deriveProjectSlug(repoRoot);
   const scriptConfigs = getScriptConfigs(repoRoot);
   if (scriptConfigs.size === 0) {
     return [];
@@ -904,6 +916,7 @@ export async function spawnWorktreeScripts(options: {
     results.push(
       await spawnWorkspaceScript({
         ...options,
+        projectSlug,
         scriptName,
       }),
     );

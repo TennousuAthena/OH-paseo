@@ -93,9 +93,9 @@ describe("script-status-projection", () => {
         {
           scriptName: "web",
           type: "service",
-          hostname: "web.localhost",
+          hostname: "web.repo.localhost",
           port: 3000,
-          proxyUrl: "http://web.localhost:6767",
+          proxyUrl: "http://web.repo.localhost:6767",
           lifecycle: "stopped",
           health: null,
           exitCode: null,
@@ -118,9 +118,10 @@ describe("script-status-projection", () => {
     });
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
-      hostname: "feature-card.web.localhost",
+      hostname: "web.feature-card.repo.localhost",
       port: 4321,
       workspaceId,
+      projectSlug: "repo",
       scriptName: "web",
     });
     const runtimeStore = new WorkspaceScriptRuntimeStore();
@@ -147,9 +148,9 @@ describe("script-status-projection", () => {
         {
           scriptName: "web",
           type: "service",
-          hostname: "feature-card.web.localhost",
+          hostname: "web.feature-card.repo.localhost",
           port: 4321,
-          proxyUrl: "http://feature-card.web.localhost:6767",
+          proxyUrl: "http://web.feature-card.repo.localhost:6767",
           lifecycle: "running",
           health: "healthy",
           exitCode: null,
@@ -171,9 +172,10 @@ describe("script-status-projection", () => {
     });
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
-      hostname: "web.localhost",
+      hostname: "web.repo.localhost",
       port: 4321,
       workspaceId,
+      projectSlug: "repo",
       scriptName: "web",
     });
     const runtimeStore = new WorkspaceScriptRuntimeStore();
@@ -200,9 +202,9 @@ describe("script-status-projection", () => {
         {
           scriptName: "web",
           type: "service",
-          hostname: "web.localhost",
+          hostname: "web.repo.localhost",
           port: 4321,
-          proxyUrl: "http://web.localhost:6767",
+          proxyUrl: "http://web.repo.localhost:6767",
           lifecycle: "running",
           health: null,
           exitCode: null,
@@ -218,9 +220,10 @@ describe("script-status-projection", () => {
     const workspace = createWorkspaceRepo();
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
-      hostname: "docs.localhost",
+      hostname: "docs.repo.localhost",
       port: 3002,
       workspaceId,
+      projectSlug: "repo",
       scriptName: "docs",
     });
     const runtimeStore = new WorkspaceScriptRuntimeStore();
@@ -246,9 +249,9 @@ describe("script-status-projection", () => {
         {
           scriptName: "docs",
           type: "service",
-          hostname: "docs.localhost",
+          hostname: "docs.repo.localhost",
           port: 3002,
-          proxyUrl: "http://docs.localhost:6767",
+          proxyUrl: "http://docs.repo.localhost:6767",
           lifecycle: "running",
           health: null,
           exitCode: null,
@@ -311,9 +314,10 @@ describe("script-status-projection", () => {
     });
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
-      hostname: "api.localhost",
+      hostname: "api.repo.localhost",
       port: 3001,
       workspaceId,
+      projectSlug: "repo",
       scriptName: "api",
     });
     const runtimeStore = new WorkspaceScriptRuntimeStore();
@@ -340,7 +344,7 @@ describe("script-status-projection", () => {
       emitUpdate(workspaceId, [
         {
           scriptName: "api",
-          hostname: "api.localhost",
+          hostname: "api.repo.localhost",
           port: 3001,
           health: "healthy",
         },
@@ -355,9 +359,9 @@ describe("script-status-projection", () => {
             {
               scriptName: "api",
               type: "service",
-              hostname: "api.localhost",
+              hostname: "api.repo.localhost",
               port: 3001,
-              proxyUrl: "http://api.localhost:6767",
+              proxyUrl: "http://api.repo.localhost:6767",
               lifecycle: "running",
               health: "healthy",
               exitCode: null,

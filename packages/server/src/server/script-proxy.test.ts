@@ -31,40 +31,43 @@ describe("ScriptRouteStore", () => {
   it("registerRoute and findRoute with exact match", () => {
     const store = new ScriptRouteStore();
     store.registerRoute({
-      hostname: "editor.localhost",
+      hostname: "route-a.example.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "editor",
     });
 
-    const route = store.findRoute("editor.localhost");
-    expect(route).toEqual({ hostname: "editor.localhost", port: 3000 });
+    const route = store.findRoute("route-a.example.localhost");
+    expect(route).toEqual({ hostname: "route-a.example.localhost", port: 3000 });
   });
 
   it("findRoute strips port from host header", () => {
     const store = new ScriptRouteStore();
     store.registerRoute({
-      hostname: "editor.localhost",
+      hostname: "route-a.example.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "editor",
     });
 
-    const route = store.findRoute("editor.localhost:6767");
-    expect(route).toEqual({ hostname: "editor.localhost", port: 3000 });
+    const route = store.findRoute("route-a.example.localhost:6767");
+    expect(route).toEqual({ hostname: "route-a.example.localhost", port: 3000 });
   });
 
   it("findRoute subdomain match", () => {
     const store = new ScriptRouteStore();
     store.registerRoute({
-      hostname: "editor.localhost",
+      hostname: "editor.example.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "editor",
     });
 
-    const route = store.findRoute("fix-auth.editor.localhost");
-    expect(route).toEqual({ hostname: "editor.localhost", port: 3000 });
+    const route = store.findRoute("tenant.editor.example.localhost");
+    expect(route).toEqual({ hostname: "editor.example.localhost", port: 3000 });
   });
 
   it("listRoutes returns enriched entries", () => {
@@ -73,12 +76,14 @@ describe("ScriptRouteStore", () => {
       hostname: "a.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "web",
     });
     store.registerRoute({
       hostname: "b.localhost",
       port: 4000,
       workspaceId: "/repo/.paseo/worktrees/feature-b",
+      projectSlug: "repo",
       scriptName: "docs",
     });
 
@@ -88,12 +93,14 @@ describe("ScriptRouteStore", () => {
       hostname: "a.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "web",
     });
     expect(routes).toContainEqual({
       hostname: "b.localhost",
       port: 4000,
       workspaceId: "/repo/.paseo/worktrees/feature-b",
+      projectSlug: "repo",
       scriptName: "docs",
     });
   });
@@ -104,18 +111,21 @@ describe("ScriptRouteStore", () => {
       hostname: "a.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "web",
     });
     store.registerRoute({
       hostname: "b.localhost",
       port: 4000,
       workspaceId: "/repo/.paseo/worktrees/feature-b",
+      projectSlug: "repo",
       scriptName: "docs",
     });
     store.registerRoute({
       hostname: "c.localhost",
       port: 5000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "api",
     });
 
@@ -124,12 +134,14 @@ describe("ScriptRouteStore", () => {
         hostname: "a.localhost",
         port: 3000,
         workspaceId: "/repo/.paseo/worktrees/feature-a",
+        projectSlug: "repo",
         scriptName: "web",
       },
       {
         hostname: "c.localhost",
         port: 5000,
         workspaceId: "/repo/.paseo/worktrees/feature-a",
+        projectSlug: "repo",
         scriptName: "api",
       },
     ]);
@@ -138,26 +150,28 @@ describe("ScriptRouteStore", () => {
   it("removeRoute works", () => {
     const store = new ScriptRouteStore();
     store.registerRoute({
-      hostname: "editor.localhost",
+      hostname: "route-a.example.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "editor",
     });
-    store.removeRoute("editor.localhost");
+    store.removeRoute("route-a.example.localhost");
 
-    expect(store.findRoute("editor.localhost")).toBeNull();
+    expect(store.findRoute("route-a.example.localhost")).toBeNull();
   });
 
   it("removeRoute cleans up workspace index", () => {
     const store = new ScriptRouteStore();
     store.registerRoute({
-      hostname: "editor.localhost",
+      hostname: "route-a.example.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "editor",
     });
 
-    store.removeRoute("editor.localhost");
+    store.removeRoute("route-a.example.localhost");
 
     expect(store.listRoutesForWorkspace("/repo/.paseo/worktrees/feature-a")).toEqual([]);
   });
@@ -168,18 +182,21 @@ describe("ScriptRouteStore", () => {
       hostname: "a.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "web",
     });
     store.registerRoute({
       hostname: "b.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "api",
     });
     store.registerRoute({
       hostname: "c.localhost",
       port: 4000,
       workspaceId: "/repo/.paseo/worktrees/feature-b",
+      projectSlug: "repo",
       scriptName: "docs",
     });
 
@@ -199,12 +216,14 @@ describe("ScriptRouteStore", () => {
       hostname: "a.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "web",
     });
     store.registerRoute({
       hostname: "b.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "api",
     });
 
@@ -216,9 +235,10 @@ describe("ScriptRouteStore", () => {
   it("findRoute returns null for unknown hosts", () => {
     const store = new ScriptRouteStore();
     store.registerRoute({
-      hostname: "editor.localhost",
+      hostname: "route-a.example.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
+      projectSlug: "repo",
       scriptName: "editor",
     });
 
@@ -304,7 +324,13 @@ describe("HTTP proxy", () => {
   it("proxies requests to the correct upstream based on Host header", async () => {
     const upstream = await startUpstream();
     const routeStore = new ScriptRouteStore();
-    routeStore.addRoute("test-service.localhost", upstream.port);
+    routeStore.registerRoute({
+      hostname: "test-service.localhost",
+      port: upstream.port,
+      workspaceId: "workspace-test",
+      projectSlug: "test",
+      scriptName: "service",
+    });
 
     const proxy = await startProxy(routeStore);
     const res = await httpGet(proxy.port, `test-service.localhost:${proxy.port}`);
@@ -332,7 +358,13 @@ describe("HTTP proxy", () => {
     const deadPort = await findFreePort();
 
     const routeStore = new ScriptRouteStore();
-    routeStore.addRoute("dead-service.localhost", deadPort);
+    routeStore.registerRoute({
+      hostname: "dead-service.localhost",
+      port: deadPort,
+      workspaceId: "workspace-dead",
+      projectSlug: "dead",
+      scriptName: "service",
+    });
 
     const proxy = await startProxy(routeStore);
     const res = await httpGet(proxy.port, `dead-service.localhost:${proxy.port}`);
@@ -384,7 +416,13 @@ describe("WebSocket proxy", () => {
 
     // 2. Create the proxy server with the upgrade handler
     const routeStore = new ScriptRouteStore();
-    routeStore.addRoute("ws-service.localhost", upstreamPort);
+    routeStore.registerRoute({
+      hostname: "ws-service.localhost",
+      port: upstreamPort,
+      workspaceId: "workspace-ws",
+      projectSlug: "ws",
+      scriptName: "service",
+    });
 
     const proxyPort = await findFreePort();
     const proxyServer = http.createServer((_req, res) => {

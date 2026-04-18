@@ -26,9 +26,9 @@ function workspace(input: {
 const runningScript: WorkspaceScriptPayload = {
   scriptName: "web",
   type: "service",
-  hostname: "main.web.localhost",
+  hostname: "web.paseo.localhost",
   port: 3000,
-  proxyUrl: "http://main.web.localhost:6767",
+  proxyUrl: "http://web.paseo.localhost:6767",
   lifecycle: "running",
   health: "healthy",
   exitCode: null,

@@ -75,7 +75,7 @@ import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
 import { buildWorkspaceScriptPayloads } from "./script-status-projection.js";
 import type { ScriptHealthState } from "./script-health-monitor.js";
 import { spawnWorkspaceScript } from "./worktree-bootstrap.js";
-import { readGitCommand } from "./workspace-git-metadata.js";
+import { deriveProjectSlug, readGitCommand } from "./workspace-git-metadata.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { DaemonConfigStore } from "./daemon-config-store.js";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
@@ -6378,6 +6378,7 @@ export class Session {
       const serviceResult = await spawnWorkspaceScript({
         repoRoot: workspace.cwd,
         workspaceId: workspace.workspaceId,
+        projectSlug: deriveProjectSlug(workspace.cwd),
         branchName: readGitCommand(workspace.cwd, "git symbolic-ref --short HEAD"),
         scriptName: request.scriptName,
         daemonPort: this.getDaemonTcpPort?.() ?? null,

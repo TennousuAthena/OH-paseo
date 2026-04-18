@@ -19,6 +19,7 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
+        projectSlug: "paseo",
         branchName: "main",
         daemonPort: 6767,
         daemonListenHost: null,
@@ -29,6 +30,7 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
+        projectSlug: "paseo",
         branchName: "main",
         daemonPort: 6767,
         daemonListenHost: "localhost",
@@ -41,6 +43,7 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
+        projectSlug: "paseo",
         branchName: "main",
         daemonPort: 6767,
         daemonListenHost: "100.64.0.20",
@@ -53,6 +56,7 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
+        projectSlug: "paseo",
         branchName: "main",
         daemonPort: 6767,
         daemonListenHost: null,
@@ -61,9 +65,9 @@ describe("buildWorkspaceServiceEnv", () => {
     ).toEqual({
       HOST: "127.0.0.1",
       PASEO_PORT: "5173",
-      PASEO_URL: "http://daemon.localhost:6767",
+      PASEO_URL: "http://daemon.paseo.localhost:6767",
       PASEO_SERVICE_DAEMON_PORT: "5173",
-      PASEO_SERVICE_DAEMON_URL: "http://daemon.localhost:6767",
+      PASEO_SERVICE_DAEMON_URL: "http://daemon.paseo.localhost:6767",
     });
   });
 
@@ -71,6 +75,7 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
+        projectSlug: "paseo",
         branchName: "feature-x",
         daemonPort: 6767,
         daemonListenHost: null,
@@ -79,15 +84,16 @@ describe("buildWorkspaceServiceEnv", () => {
     ).toEqual({
       HOST: "127.0.0.1",
       PASEO_PORT: "5173",
-      PASEO_URL: "http://feature-x.daemon.localhost:6767",
+      PASEO_URL: "http://daemon.feature-x.paseo.localhost:6767",
       PASEO_SERVICE_DAEMON_PORT: "5173",
-      PASEO_SERVICE_DAEMON_URL: "http://feature-x.daemon.localhost:6767",
+      PASEO_SERVICE_DAEMON_URL: "http://daemon.feature-x.paseo.localhost:6767",
     });
   });
 
   it("omits PORT while keeping PASEO_PORT", () => {
     const env = buildWorkspaceServiceEnv({
       scriptName: "daemon",
+      projectSlug: "paseo",
       branchName: "main",
       daemonPort: 6767,
       daemonListenHost: null,
@@ -102,6 +108,7 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
+        projectSlug: "paseo",
         branchName: "main",
         daemonPort: null,
         daemonListenHost: null,
@@ -118,6 +125,7 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "web",
+        projectSlug: "paseo",
         branchName: "feature-x",
         daemonPort: 6767,
         daemonListenHost: null,
@@ -129,11 +137,11 @@ describe("buildWorkspaceServiceEnv", () => {
     ).toEqual({
       HOST: "127.0.0.1",
       PASEO_PORT: "5173",
-      PASEO_URL: "http://feature-x.web.localhost:6767",
+      PASEO_URL: "http://web.feature-x.paseo.localhost:6767",
       PASEO_SERVICE_API_PORT: "4000",
-      PASEO_SERVICE_API_URL: "http://feature-x.api.localhost:6767",
+      PASEO_SERVICE_API_URL: "http://api.feature-x.paseo.localhost:6767",
       PASEO_SERVICE_WEB_PORT: "5173",
-      PASEO_SERVICE_WEB_URL: "http://feature-x.web.localhost:6767",
+      PASEO_SERVICE_WEB_URL: "http://web.feature-x.paseo.localhost:6767",
     });
   });
 
@@ -141,6 +149,7 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(() =>
       buildWorkspaceServiceEnv({
         scriptName: "app-server",
+        projectSlug: "paseo",
         branchName: "main",
         daemonPort: 6767,
         daemonListenHost: null,
