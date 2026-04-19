@@ -226,8 +226,8 @@ vi.mock("./providers/opencode-agent.js", () => ({
   },
 }));
 
-vi.mock("./providers/pi-acp-agent.js", () => ({
-  PiACPAgentClient: class PiACPAgentClient {
+vi.mock("./providers/pi-direct-agent.js", () => ({
+  PiDirectAgentClient: class PiDirectAgentClient {
     readonly capabilities = {
       supportsStreaming: true,
       supportsSessionPersistence: true,
