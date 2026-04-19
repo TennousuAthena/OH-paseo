@@ -18,6 +18,8 @@ import {
   archivePaseoWorktree,
   buildAgentSessionConfig,
   handlePaseoWorktreeArchiveRequest,
+  handlePaseoWorktreeListRequest,
+  resolveGitCreateBaseBranch,
   runWorktreeSetupInBackground,
   handleCreatePaseoWorktreeRequest,
   handleWorkspaceSetupStatusRequest,
@@ -81,6 +83,7 @@ function createGitHubServiceStub(): GitHubService {
   return {
     listPullRequests: async () => [],
     listIssues: async () => [],
+    searchIssuesAndPrs: async () => ({ items: [], githubFeaturesEnabled: true }),
     getPullRequest: async ({ number }) => ({
       number,
       title: `PR ${number}`,
@@ -213,8 +216,8 @@ function createPaseoWorktreeForTest(options: {
     const coreDeps = createWorktreeCoreDeps(createGitHubServiceStub());
     return createPaseoWorktreeService(input, {
       ...coreDeps,
-      ...(serviceOptions?.resolveRepositoryDefaultBranch
-        ? { resolveRepositoryDefaultBranch: serviceOptions.resolveRepositoryDefaultBranch }
+      ...(serviceOptions?.resolveDefaultBranch
+        ? { resolveDefaultBranch: serviceOptions.resolveDefaultBranch }
         : {}),
       projectRegistry: {
         get: async (projectId) => projects.get(projectId) ?? null,
@@ -277,6 +280,77 @@ function createManagedAgentForArchive(input: { id: string; cwd: string }): Manag
     activeForegroundTurnId: null,
   };
 }
+
+describe("handlePaseoWorktreeListRequest", () => {
+  test("lists worktrees through the workspace git service", async () => {
+    const emitted: SessionOutboundMessage[] = [];
+    const workspaceGitService = {
+      listWorktrees: vi.fn().mockResolvedValue([
+        {
+          path: "/tmp/paseo-home/worktrees/repo/feature",
+          createdAt: "2026-04-12T00:00:00.000Z",
+          branchName: "feature",
+          head: "abc123",
+        },
+      ]),
+    };
+
+    await handlePaseoWorktreeListRequest(
+      {
+        emit: (message) => emitted.push(message),
+        paseoHome: "/tmp/paseo-home",
+        workspaceGitService: workspaceGitService as any,
+      },
+      {
+        type: "paseo_worktree_list_request",
+        cwd: "/tmp/repo",
+        requestId: "request-worktrees",
+      },
+    );
+
+    expect(workspaceGitService.listWorktrees).toHaveBeenCalledTimes(1);
+    expect(workspaceGitService.listWorktrees).toHaveBeenCalledWith("/tmp/repo");
+    expect(emitted).toContainEqual({
+      type: "paseo_worktree_list_response",
+      payload: {
+        worktrees: [
+          {
+            worktreePath: "/tmp/paseo-home/worktrees/repo/feature",
+            createdAt: "2026-04-12T00:00:00.000Z",
+            branchName: "feature",
+            head: "abc123",
+          },
+        ],
+        error: null,
+        requestId: "request-worktrees",
+      },
+    });
+  });
+});
+
+describe("resolveGitCreateBaseBranch", () => {
+  test("resolves the default branch through the workspace git service", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const cwd = path.join(repoDir, "packages", "app");
+    const workspaceGitService = {
+      resolveDefaultBranch: vi.fn().mockResolvedValue("main"),
+      getSnapshot: vi.fn(async () => {
+        throw new Error("getSnapshot should not be used for default-branch resolution");
+      }),
+    };
+
+    try {
+      await expect(resolveGitCreateBaseBranch(cwd, workspaceGitService as any)).resolves.toBe(
+        "main",
+      );
+
+      expect(workspaceGitService.resolveDefaultBranch).toHaveBeenCalledWith(cwd);
+      expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
 
 function createAgentStorageStub(): Pick<AgentStorage, "list" | "remove"> {
   return {
@@ -1082,6 +1156,10 @@ describe("handleCreatePaseoWorktreeRequest", () => {
       {
         paseoHome,
         sessionLogger: createLogger(),
+        workspaceGitService: {
+          resolveRepoRoot: vi.fn(async () => repoDir),
+          resolveDefaultBranch: vi.fn(async () => "main"),
+        } as any,
         createPaseoWorktree: createPaseoWorktreeForTest({ paseoHome }),
         checkoutExistingBranch: async () => {
           throw new Error("should not checkout existing branch");
@@ -1166,7 +1244,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
     const { tempDir, repoDir } = createGitRepo();
     cleanupPaths.push(tempDir);
     const paseoHome = path.join(tempDir, ".paseo");
-    const resolveRepositoryDefaultBranch = vi.fn(async () => "main");
+    const resolveDefaultBranch = vi.fn(async () => "main");
 
     const result = await createPaseoWorktreeForTest({ paseoHome })(
       {
@@ -1176,7 +1254,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
         runSetup: false,
         paseoHome,
       },
-      { resolveRepositoryDefaultBranch },
+      { resolveDefaultBranch },
     );
 
     expect(result.intent).toMatchObject({
@@ -1184,7 +1262,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
       baseBranch: "main",
       newBranchName: "resolver-feature",
     });
-    expect(resolveRepositoryDefaultBranch).toHaveBeenCalledWith(repoDir);
+    expect(resolveDefaultBranch).toHaveBeenCalledWith(repoDir);
   });
 });
 
@@ -1507,6 +1585,53 @@ describe("archivePaseoWorktree", () => {
 
     expect(killTerminalsUnderPath).toHaveBeenCalledTimes(1);
     expect(existsSync(created.worktreePath)).toBe(false);
+  });
+
+  test("forces a workspace git snapshot refresh after archive deletes a worktree", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    cleanupPaths.push(tempDir);
+
+    const paseoHome = path.join(tempDir, ".paseo");
+    const created = await createLegacyWorktreeForTest({
+      branchName: "archive-refresh",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "archive-refresh",
+      runSetup: false,
+      paseoHome,
+    });
+    const workspaceGitService = {
+      getSnapshot: vi.fn(async () => null),
+    };
+
+    await archivePaseoWorktree(
+      {
+        paseoHome,
+        github: createGitHubServiceStub(),
+        workspaceGitService: workspaceGitService as any,
+        agentManager: {
+          listAgents: () => [],
+          closeAgent: vi.fn(async () => {}),
+        },
+        agentStorage: createAgentStorageStub(),
+        archiveWorkspaceRecord: vi.fn(async () => {}),
+        emit: vi.fn(),
+        emitWorkspaceUpdatesForCwds: vi.fn(async () => {}),
+        isPathWithinRoot: createIsPathWithinRoot(),
+        killTerminalsUnderPath: vi.fn(async () => {}),
+        sessionLogger: createLogger(),
+      },
+      {
+        targetPath: created.worktreePath,
+        repoRoot: repoDir,
+        requestId: "req-archive-refresh",
+      },
+    );
+
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith(repoDir, {
+      force: true,
+      reason: "archive-worktree",
+    });
   });
 
   test("succeeds when git has forgotten about the worktree (no repoRoot)", async () => {

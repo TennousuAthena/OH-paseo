@@ -28,7 +28,6 @@ import {
   parseWorktreeList,
   isPaseoWorktreePath,
   isDescendantPath,
-  searchGitHubIssuesAndPrs,
   warmCheckoutShortstatInBackground,
 } from "./checkout-git.js";
 import {
@@ -96,6 +95,7 @@ function createGitHubServiceForStatus(
   return {
     listPullRequests: async () => [],
     listIssues: async () => [],
+    searchIssuesAndPrs: async () => ({ items: [], githubFeaturesEnabled: true }),
     getPullRequest: async () => ({
       number: 1,
       title: "PR",
@@ -133,6 +133,27 @@ function createPullRequestStatus(overrides?: Partial<GitHubCurrentPullRequestSta
     reviewDecision: null,
     ...overrides,
   };
+}
+
+function setupRemoteTrackingMain(
+  repoDir: string,
+  tempDir: string,
+): { remoteDir: string; cloneDir: string } {
+  const remoteDir = join(tempDir, "remote.git");
+  const cloneDir = join(tempDir, "upstream-clone");
+  execSync(`git init --bare -b main ${remoteDir}`);
+  execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+  execSync("git push -u origin main", { cwd: repoDir });
+  execSync(`git clone ${remoteDir} ${cloneDir}`);
+  execSync("git config user.email 'test@test.com'", { cwd: cloneDir });
+  execSync("git config user.name 'Test'", { cwd: cloneDir });
+  return { remoteDir, cloneDir };
+}
+
+function commitFile(cwd: string, path: string, content: string, message: string): void {
+  writeFileSync(join(cwd, path), content);
+  execSync(`git add ${path}`, { cwd });
+  execSync(`git -c commit.gpgsign=false commit -m '${message}'`, { cwd });
 }
 
 describe("checkout git utilities", () => {
@@ -311,6 +332,164 @@ const x = 1;
     }
     expect(divergedStatus.aheadOfOrigin).toBe(1);
     expect(divergedStatus.behindOfOrigin).toBe(1);
+  });
+
+  it("reports incoming additions when the base branch is behind its remote", async () => {
+    const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
+    commitFile(cloneDir, "file.txt", "remote one\nremote two\n", "remote update");
+    execSync("git push", { cwd: cloneDir });
+    execSync("git fetch origin", { cwd: repoDir });
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 2, deletions: 1 });
+  });
+
+  it("reports incoming deletions when the base branch is behind its remote", async () => {
+    const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
+    commitFile(cloneDir, "file.txt", "", "remote deletion");
+    execSync("git push", { cwd: cloneDir });
+    execSync("git fetch origin", { cwd: repoDir });
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 0, deletions: 1 });
+  });
+
+  it("reports outgoing changes when the base branch is ahead of its remote", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    commitFile(repoDir, "file.txt", "local one\nlocal two\n", "local update");
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 2, deletions: 1 });
+  });
+
+  it("uses the merge-base for shortstat when the base branch diverged from its remote", async () => {
+    const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
+    commitFile(cloneDir, "file.txt", "remote one\nremote two\n", "remote update");
+    execSync("git push", { cwd: cloneDir });
+    execSync("git fetch origin", { cwd: repoDir });
+    commitFile(repoDir, "local.txt", "local\n", "local update");
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+  });
+
+  it("keeps base branch divergence pointed at local work when the remote has more commits", async () => {
+    const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
+    commitFile(cloneDir, "remote-one.txt", "remote one\n", "remote update one");
+    commitFile(cloneDir, "remote-two.txt", "remote two\n", "remote update two");
+    execSync("git push", { cwd: cloneDir });
+    execSync("git fetch origin", { cwd: repoDir });
+    commitFile(repoDir, "local.txt", "local\n", "local update");
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+  });
+
+  it("adds working tree changes to incoming shortstat when the base branch is behind", async () => {
+    commitFile(repoDir, "tracked.txt", "tracked base\n", "add tracked file");
+    const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
+    commitFile(cloneDir, "incoming.txt", "incoming\n", "remote incoming");
+    execSync("git push", { cwd: cloneDir });
+    execSync("git fetch origin", { cwd: repoDir });
+    writeFileSync(join(repoDir, "tracked.txt"), "local one\nlocal two\n");
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 3, deletions: 1 });
+  });
+
+  it("keeps feature shortstat scoped to feature changes when the base remote is ahead", async () => {
+    const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
+    execSync("git checkout -b feature", { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "feature\n", "feature update");
+    execSync("git checkout main", { cwd: cloneDir });
+    commitFile(cloneDir, "base.txt", "base\n", "base update");
+    execSync("git push", { cwd: cloneDir });
+    execSync("git fetch origin", { cwd: repoDir });
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+  });
+
+  it("reports incoming base changes when a feature branch has no local work beyond merge-base", async () => {
+    const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
+    execSync("git checkout -b feature", { cwd: repoDir });
+    execSync("git checkout main", { cwd: cloneDir });
+    commitFile(cloneDir, "incoming.txt", "incoming\n", "remote incoming");
+    execSync("git push", { cwd: cloneDir });
+    execSync("git fetch origin", { cwd: repoDir });
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+  });
+
+  it("reports feature shortstat ahead of the comparison merge-base", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    execSync("git checkout -b feature", { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "feature\n", "feature update");
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+  });
+
+  it("uses the merge-base for shortstat when a feature branch diverged from its tracked remote", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    execSync("git checkout -b feature", { cwd: repoDir });
+    execSync("git push -u origin feature", { cwd: repoDir });
+    const featureCloneDir = join(tempDir, "feature-clone");
+    execSync(`git clone ${join(tempDir, "remote.git")} ${featureCloneDir}`);
+    execSync("git config user.email 'test@test.com'", { cwd: featureCloneDir });
+    execSync("git config user.name 'Test'", { cwd: featureCloneDir });
+    execSync("git checkout feature", { cwd: featureCloneDir });
+    commitFile(featureCloneDir, "remote-feature.txt", "remote feature\n", "remote feature update");
+    execSync("git push", { cwd: featureCloneDir });
+    commitFile(repoDir, "local-feature.txt", "local feature\n", "local feature update");
+    execSync("git fetch origin", { cwd: repoDir });
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+  });
+
+  it("uses the remote-only base branch as the feature shortstat comparison", async () => {
+    const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
+    execSync("git remote set-head origin main", { cwd: repoDir });
+    execSync("git checkout -b feature", { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "feature\n", "feature update");
+    execSync("git branch -D main", { cwd: repoDir });
+    commitFile(cloneDir, "base.txt", "base\n", "base update");
+    execSync("git push", { cwd: cloneDir });
+    execSync("git fetch origin", { cwd: repoDir });
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+  });
+
+  it("returns no shortstat for a clean base branch that is up to date with its remote", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    execSync("git fetch origin", { cwd: repoDir });
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toBeNull();
+  });
+
+  it("reports working tree changes when the base branch has no ahead commits", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    writeFileSync(join(repoDir, "file.txt"), "local one\nlocal two\n");
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+
+    expect(shortstat).toEqual({ additions: 2, deletions: 1 });
   });
 
   it("uses the freshest comparison base for status and shortstat when local main is stale", async () => {
@@ -1123,129 +1302,6 @@ const x = 1;
     const status = await getPullRequestStatus(repoDir, github);
     expect(status.githubFeaturesEnabled).toBe(false);
     expect(status.status).toBeNull();
-  });
-
-  it("searches GitHub issues and PRs through the GitHub service", async () => {
-    let issueCalls = 0;
-    let pullRequestCalls = 0;
-    const github = createGitHubServiceForStatus(null);
-    github.listIssues = async (options) => {
-      issueCalls += 1;
-      expect(options).toEqual({ cwd: repoDir, query: "cache", limit: 5 });
-      return [
-        {
-          number: 55,
-          title: "Issue title",
-          url: "https://github.com/getpaseo/paseo/issues/55",
-          state: "OPEN",
-          body: "issue body",
-          labels: ["bug"],
-          updatedAt: "2026-04-18T12:00:00Z",
-        },
-      ];
-    };
-    github.listPullRequests = async (options) => {
-      pullRequestCalls += 1;
-      expect(options).toEqual({ cwd: repoDir, query: "cache", limit: 5 });
-      return [
-        {
-          number: 123,
-          title: "PR title",
-          url: "https://github.com/getpaseo/paseo/pull/123",
-          state: "OPEN",
-          body: "pr body",
-          baseRefName: "main",
-          headRefName: "feature",
-          labels: ["enhancement"],
-          updatedAt: "2026-04-18T13:00:00Z",
-        },
-      ];
-    };
-
-    const result = await searchGitHubIssuesAndPrs(repoDir, "cache", 5, github);
-
-    expect(issueCalls).toBe(1);
-    expect(pullRequestCalls).toBe(1);
-    expect(result).toEqual({
-      githubFeaturesEnabled: true,
-      items: [
-        {
-          kind: "issue",
-          number: 55,
-          title: "Issue title",
-          url: "https://github.com/getpaseo/paseo/issues/55",
-          state: "OPEN",
-          body: "issue body",
-          labels: ["bug"],
-          baseRefName: null,
-          headRefName: null,
-          updatedAt: "2026-04-18T12:00:00Z",
-        },
-        {
-          kind: "pr",
-          number: 123,
-          title: "PR title",
-          url: "https://github.com/getpaseo/paseo/pull/123",
-          state: "OPEN",
-          body: "pr body",
-          labels: ["enhancement"],
-          baseRefName: "main",
-          headRefName: "feature",
-          updatedAt: "2026-04-18T13:00:00Z",
-        },
-      ],
-    });
-  });
-
-  it("searches only GitHub PRs when the search kinds request excludes issues", async () => {
-    let issueCalls = 0;
-    let pullRequestCalls = 0;
-    const github = createGitHubServiceForStatus(null);
-    github.listIssues = async () => {
-      issueCalls += 1;
-      return [];
-    };
-    github.listPullRequests = async (options) => {
-      pullRequestCalls += 1;
-      expect(options).toEqual({ cwd: repoDir, query: "cache", limit: 5 });
-      return [
-        {
-          number: 123,
-          title: "PR title",
-          url: "https://github.com/getpaseo/paseo/pull/123",
-          state: "OPEN",
-          body: "pr body",
-          baseRefName: "main",
-          headRefName: "feature",
-          labels: ["enhancement"],
-          updatedAt: "2026-04-18T13:00:00Z",
-        },
-      ];
-    };
-
-    const result = await searchGitHubIssuesAndPrs(repoDir, "cache", 5, github, {
-      kinds: ["github-pr"],
-    });
-
-    expect(issueCalls).toBe(0);
-    expect(pullRequestCalls).toBe(1);
-    expect(result).toEqual({
-      githubFeaturesEnabled: true,
-      items: [
-        {
-          kind: "pr",
-          number: 123,
-          title: "PR title",
-          url: "https://github.com/getpaseo/paseo/pull/123",
-          state: "OPEN",
-          body: "pr body",
-          labels: ["enhancement"],
-          baseRefName: "main",
-          headRefName: "feature",
-          updatedAt: "2026-04-18T13:00:00Z",
-        },
-      ],
-    });
   });
 
   it("returns merged PR status when no open PR exists for the current branch", async () => {

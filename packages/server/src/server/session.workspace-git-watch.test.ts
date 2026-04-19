@@ -27,9 +27,11 @@ function createWorkspaceRuntimeSnapshot(
       remoteUrl: "https://github.com/acme/repo.git",
       isPaseoOwnedWorktree: false,
       isDirty: false,
+      baseRef: "main",
       aheadBehind: { ahead: 0, behind: 0 },
       aheadOfOrigin: 0,
       behindOfOrigin: 0,
+      hasRemote: true,
       diffStat: { additions: 1, deletions: 0 },
     },
     github: {
@@ -308,6 +310,153 @@ describe("workspace git watch targets", () => {
         name: "renamed-branch",
         diffStat: { additions: 1, deletions: 0 },
       },
+    });
+
+    await session.cleanup();
+  });
+
+  test("emits checkout_status_update to a client subscribed to the workspace git target", async () => {
+    const { session, emitted, projects, workspaces, workspaceGitService, subscriptions } =
+      createSessionForWorkspaceGitWatchTests();
+    const sessionAny = session as any;
+    seedGitWorkspace({
+      projects,
+      workspaces,
+      projectId: "proj-1",
+      workspaceId: "ws-10",
+      cwd: "/tmp/repo",
+      name: "main",
+    });
+    sessionAny.workspaceUpdatesSubscription = {
+      subscriptionId: "sub-1",
+      filter: undefined,
+      isBootstrapping: false,
+      pendingUpdatesByWorkspaceId: new Map(),
+      lastEmittedByWorkspaceId: new Map(),
+    };
+
+    await sessionAny.syncWorkspaceGitWatchTarget("/tmp/repo", { isGit: true });
+    emitted.length = 0;
+
+    subscriptions[0]?.listener(
+      createWorkspaceRuntimeSnapshot("/tmp/repo", {
+        git: {
+          currentBranch: "feature/server-push",
+          isDirty: true,
+          aheadBehind: { ahead: 3, behind: 1 },
+          aheadOfOrigin: 3,
+          behindOfOrigin: 1,
+        },
+      }),
+    );
+
+    const statusUpdates = emitted.filter(
+      (message) => message.type === "checkout_status_update",
+    ) as any[];
+    expect(statusUpdates).toHaveLength(1);
+    expect(statusUpdates[0]?.payload).toMatchObject({
+      cwd: "/tmp/repo",
+      isGit: true,
+      repoRoot: "/tmp/repo",
+      currentBranch: "feature/server-push",
+      isDirty: true,
+      baseRef: "main",
+      aheadBehind: { ahead: 3, behind: 1 },
+      aheadOfOrigin: 3,
+      behindOfOrigin: 1,
+      hasRemote: true,
+      remoteUrl: "https://github.com/acme/repo.git",
+      isPaseoOwnedWorktree: false,
+      error: null,
+      requestId: "subscription:/tmp/repo",
+    });
+    expect(workspaceGitService.subscribe).toHaveBeenCalledWith(
+      { cwd: "/tmp/repo" },
+      expect.any(Function),
+    );
+
+    await session.cleanup();
+  });
+
+  test("embeds PR status in checkout_status_update for GitHub-inclusive snapshot pushes", async () => {
+    const { session, emitted, projects, workspaces, subscriptions } =
+      createSessionForWorkspaceGitWatchTests();
+    const sessionAny = session as any;
+    seedGitWorkspace({
+      projects,
+      workspaces,
+      projectId: "proj-1",
+      workspaceId: "ws-10",
+      cwd: "/tmp/repo",
+      name: "main",
+    });
+    sessionAny.workspaceUpdatesSubscription = {
+      subscriptionId: "sub-1",
+      filter: undefined,
+      isBootstrapping: false,
+      pendingUpdatesByWorkspaceId: new Map(),
+      lastEmittedByWorkspaceId: new Map(),
+    };
+
+    await sessionAny.syncWorkspaceGitWatchTarget("/tmp/repo", { isGit: true });
+    emitted.length = 0;
+
+    subscriptions[0]?.listener(
+      createWorkspaceRuntimeSnapshot("/tmp/repo", {
+        github: {
+          featuresEnabled: true,
+          pullRequest: {
+            number: 456,
+            url: "https://github.com/acme/repo/pull/456",
+            title: "Runtime centralization",
+            state: "open",
+            baseRefName: "main",
+            headRefName: "workspace-git-service",
+            isMerged: false,
+            checks: [
+              {
+                name: "test",
+                status: "success",
+                url: "https://github.com/acme/repo/actions/runs/1",
+              },
+            ],
+            checksStatus: "success",
+            reviewDecision: "approved",
+          },
+          error: null,
+        },
+      }),
+    );
+
+    const statusUpdate = emitted.find((message) => message.type === "checkout_status_update") as
+      | { payload: any }
+      | undefined;
+    expect(statusUpdate?.payload.prStatus).toEqual({
+      cwd: "/tmp/repo",
+      status: {
+        number: 456,
+        url: "https://github.com/acme/repo/pull/456",
+        title: "Runtime centralization",
+        state: "open",
+        repoOwner: undefined,
+        repoName: undefined,
+        baseRefName: "main",
+        headRefName: "workspace-git-service",
+        isMerged: false,
+        isDraft: false,
+        checks: [
+          {
+            name: "test",
+            status: "success",
+            url: "https://github.com/acme/repo/actions/runs/1",
+          },
+        ],
+        checksStatus: "success",
+        reviewDecision: "approved",
+      },
+      githubFeaturesEnabled: true,
+      error: null,
+      requestId: "subscription:/tmp/repo",
     });
 
     await session.cleanup();

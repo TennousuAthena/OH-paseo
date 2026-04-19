@@ -36,7 +36,7 @@ export interface CreatePaseoWorktreeResult {
 export type CreatePaseoWorktreeFn = (
   input: CreatePaseoWorktreeInput,
   options?: {
-    resolveRepositoryDefaultBranch?: (repoRoot: string) => Promise<string>;
+    resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
   },
 ) => Promise<CreatePaseoWorktreeResult>;
 

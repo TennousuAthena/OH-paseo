@@ -945,9 +945,9 @@ export class DaemonClient {
     };
   }
 
-  on(
-    type: SessionOutboundMessage["type"],
-    handler: (message: SessionOutboundMessage) => void,
+  on<TType extends SessionOutboundMessage["type"]>(
+    type: TType,
+    handler: (message: Extract<SessionOutboundMessage, { type: TType }>) => void,
   ): () => void;
   on(handler: DaemonEventHandler): () => void;
   on(
@@ -3041,9 +3041,6 @@ export class DaemonClient {
 
       unsubscribe = this.on("agent_update", (message) => {
         if (settled) {
-          return;
-        }
-        if (message.type !== "agent_update") {
           return;
         }
         if (message.payload.kind !== "upsert") {

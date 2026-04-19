@@ -14,6 +14,7 @@ import type {
   ListPersistedAgentsOptions,
   PersistedAgentDescriptor,
 } from "./agent-sdk-types.js";
+import type { WorkspaceGitService } from "../workspace-git-service.js";
 import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
@@ -46,11 +47,13 @@ export interface ProviderDefinition extends AgentProviderDefinition {
 export type BuildProviderRegistryOptions = {
   runtimeSettings?: AgentProviderRuntimeSettingsMap;
   providerOverrides?: Record<string, ProviderOverride>;
+  workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
 };
 
 type ProviderClientFactory = (
   logger: Logger,
   runtimeSettings?: ProviderRuntimeSettings,
+  options?: Pick<BuildProviderRegistryOptions, "workspaceGitService">,
 ) => AgentClient;
 
 type ResolvedProvider = {
@@ -67,7 +70,10 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       logger,
       runtimeSettings,
     }),
-  codex: (logger, runtimeSettings) => new CodexAppServerAgentClient(logger, runtimeSettings),
+  codex: (logger, runtimeSettings, options) =>
+    new CodexAppServerAgentClient(logger, runtimeSettings, {
+      workspaceGitService: options?.workspaceGitService,
+    }),
   copilot: (logger, runtimeSettings) =>
     new CopilotACPAgentClient({
       logger,
@@ -342,6 +348,7 @@ function createRegistryEntry(
 function buildResolvedBuiltinProviders(
   providerOverrides: Record<string, ProviderOverride>,
   runtimeSettings: AgentProviderRuntimeSettingsMap | undefined,
+  options: Pick<BuildProviderRegistryOptions, "workspaceGitService">,
 ): Map<string, ResolvedProvider> {
   const resolvedProviders = new Map<string, ResolvedProvider>();
 
@@ -358,7 +365,10 @@ function buildResolvedBuiltinProviders(
       runtimeSettings: mergedRuntimeSettings,
       profileModels: override?.models ?? [],
       enabled: override?.enabled !== false,
-      createBaseClient: (logger) => factory(logger, mergedRuntimeSettings),
+      createBaseClient: (logger) =>
+        factory(logger, mergedRuntimeSettings, {
+          workspaceGitService: options.workspaceGitService,
+        }),
     });
   }
 
@@ -438,7 +448,9 @@ export function buildProviderRegistry(
 ): Record<AgentProvider, ProviderDefinition> {
   const runtimeSettings = options?.runtimeSettings;
   const providerOverrides = options?.providerOverrides ?? {};
-  const resolvedProviders = buildResolvedBuiltinProviders(providerOverrides, runtimeSettings);
+  const resolvedProviders = buildResolvedBuiltinProviders(providerOverrides, runtimeSettings, {
+    workspaceGitService: options?.workspaceGitService,
+  });
   addDerivedProviders(resolvedProviders, providerOverrides);
 
   return Object.fromEntries(

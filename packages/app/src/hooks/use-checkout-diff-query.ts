@@ -1,12 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useId, useMemo } from "react";
+import { useEffect, useId, useMemo } from "react";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { usePanelStore } from "@/stores/panel-store";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import type { SubscribeCheckoutDiffResponse } from "@server/shared/messages";
 import { orderCheckoutDiffFiles } from "./checkout-diff-order";
-
-const CHECKOUT_DIFF_STALE_TIME = 30_000;
 
 function checkoutDiffQueryKey(
   serverId: string,
@@ -95,7 +93,10 @@ export function useCheckoutDiffQuery({
       };
     },
     enabled: !!client && isConnected && !!cwd && enabled,
-    staleTime: CHECKOUT_DIFF_STALE_TIME,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
@@ -118,9 +119,6 @@ export function useCheckoutDiffQuery({
     let cancelled = false;
 
     const unsubscribeUpdate = client.on("checkout_diff_update", (message) => {
-      if (message.type !== "checkout_diff_update") {
-        return;
-      }
       if (message.payload.subscriptionId !== subscriptionId) {
         return;
       }
@@ -134,9 +132,6 @@ export function useCheckoutDiffQuery({
     const unsubscribeSubscribeResponse = client.on(
       "subscribe_checkout_diff_response",
       (message) => {
-        if (message.type !== "subscribe_checkout_diff_response") {
-          return;
-        }
         if (message.payload.subscriptionId !== subscriptionId) {
           return;
         }
@@ -207,10 +202,6 @@ export function useCheckoutDiffQuery({
     queryClient,
   ]);
 
-  const refresh = useCallback(() => {
-    return query.refetch();
-  }, [query]);
-
   const payload = query.data ?? null;
   const payloadError = payload?.error ?? null;
 
@@ -221,6 +212,5 @@ export function useCheckoutDiffQuery({
     isFetching: query.isFetching,
     isError: query.isError || Boolean(payloadError),
     error: query.error,
-    refresh,
   };
 }

@@ -6,7 +6,7 @@ import type {
   PersistedProjectRecord,
   PersistedWorkspaceRecord,
 } from "./workspace-registry.js";
-import { detectWorkspaceGitMetadata } from "./workspace-git-metadata.js";
+import type { WorkspaceGitService } from "./workspace-git-service.js";
 
 const DEFAULT_RECONCILE_INTERVAL_MS = 60_000;
 
@@ -37,6 +37,7 @@ export type WorkspaceReconciliationServiceOptions = {
   logger: pino.Logger;
   intervalMs?: number;
   onChanges?: (changes: ReconciliationChange[]) => void;
+  workspaceGitService?: Pick<WorkspaceGitService, "getWorkspaceGitMetadata">;
 };
 
 export class WorkspaceReconciliationService {
@@ -45,6 +46,7 @@ export class WorkspaceReconciliationService {
   private readonly logger: pino.Logger;
   private readonly intervalMs: number;
   private readonly onChanges: ((changes: ReconciliationChange[]) => void) | null;
+  private readonly workspaceGitService: Pick<WorkspaceGitService, "getWorkspaceGitMetadata"> | null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
 
@@ -54,6 +56,7 @@ export class WorkspaceReconciliationService {
     this.logger = options.logger.child({ module: "workspace-reconciliation" });
     this.intervalMs = options.intervalMs ?? DEFAULT_RECONCILE_INTERVAL_MS;
     this.onChanges = options.onChanges ?? null;
+    this.workspaceGitService = options.workspaceGitService ?? null;
   }
 
   start(): void {
@@ -155,7 +158,7 @@ export class WorkspaceReconciliationService {
 
       const directoryName =
         project.rootPath.split(/[\\/]/).filter(Boolean).at(-1) ?? project.rootPath;
-      const currentGit = detectWorkspaceGitMetadata(project.rootPath, directoryName);
+      const currentGit = await this.readWorkspaceGitMetadata(project.rootPath, directoryName);
 
       const projectUpdates: Partial<
         Pick<PersistedProjectRecord, "kind" | "displayName" | "rootPath">
@@ -198,7 +201,7 @@ export class WorkspaceReconciliationService {
         if (!existsSync(workspace.cwd)) continue;
 
         const wsDirName = workspace.cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? workspace.cwd;
-        const wsGit = detectWorkspaceGitMetadata(workspace.cwd, wsDirName);
+        const wsGit = await this.readWorkspaceGitMetadata(workspace.cwd, wsDirName);
 
         if (wsGit.projectKind === "git" && workspace.displayName !== wsGit.workspaceDisplayName) {
           const timestamp = new Date().toISOString();
@@ -222,5 +225,22 @@ export class WorkspaceReconciliationService {
     }
 
     return { changesApplied: changes, durationMs: Date.now() - start };
+  }
+
+  private async readWorkspaceGitMetadata(cwd: string, directoryName: string) {
+    if (!this.workspaceGitService) {
+      return {
+        projectKind: "directory" as const,
+        projectDisplayName: directoryName,
+        workspaceDisplayName: directoryName,
+        gitRemote: null,
+        isWorktree: false,
+        projectSlug: "untitled",
+        repoRoot: null,
+        currentBranch: null,
+        remoteUrl: null,
+      };
+    }
+    return this.workspaceGitService.getWorkspaceGitMetadata(cwd, { directoryName });
   }
 }

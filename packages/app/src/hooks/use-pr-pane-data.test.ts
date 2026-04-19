@@ -1,8 +1,13 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  QueryClient,
+  QueryClientProvider,
+  focusManager,
+  onlineManager,
+} from "@tanstack/react-query";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
@@ -18,14 +23,25 @@ type CheckoutPrStatus = NonNullable<CheckoutPrStatusResponse["payload"]["status"
 type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
 type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
 
-const { mockRuntime, mockClient } = vi.hoisted(() => {
+const { mockRuntime, mockClient, checkoutStatusUpdateHandlers } = vi.hoisted(() => {
+  const checkoutStatusUpdateHandlers = new Set<(message: unknown) => void>();
   const mockClient = {
     checkoutPrStatus: vi.fn(),
     pullRequestTimeline: vi.fn(),
+    on: vi.fn((type: string, handler: (message: unknown) => void) => {
+      if (type !== "checkout_status_update") {
+        return () => {};
+      }
+      checkoutStatusUpdateHandlers.add(handler);
+      return () => {
+        checkoutStatusUpdateHandlers.delete(handler);
+      };
+    }),
   };
 
   return {
     mockClient,
+    checkoutStatusUpdateHandlers,
     mockRuntime: {
       client: mockClient,
       isConnected: true,
@@ -83,6 +99,34 @@ function timelinePayload(
     githubFeaturesEnabled: true,
     ...overrides,
   };
+}
+
+async function emitCheckoutStatusUpdatePrStatus(payload: CheckoutPrStatusPayload): Promise<void> {
+  await act(async () => {
+    for (const handler of checkoutStatusUpdateHandlers) {
+      handler({
+        type: "checkout_status_update",
+        payload: {
+          cwd: payload.cwd,
+          requestId: `subscription:${payload.cwd}`,
+          isGit: true,
+          isPaseoOwnedWorktree: false,
+          repoRoot: payload.cwd,
+          currentBranch: "main",
+          isDirty: false,
+          baseRef: "main",
+          aheadBehind: { ahead: 0, behind: 0 },
+          aheadOfOrigin: 0,
+          behindOfOrigin: 0,
+          hasRemote: true,
+          remoteUrl: "https://github.com/getpaseo/paseo.git",
+          error: null,
+          prStatus: payload,
+        },
+      });
+    }
+    await Promise.resolve();
+  });
 }
 
 function unsupportedTimelineError(): Error {
@@ -246,6 +290,14 @@ describe("usePrPaneData", () => {
     mockRuntime.isConnected = true;
     mockClient.checkoutPrStatus.mockReset();
     mockClient.pullRequestTimeline.mockReset();
+    mockClient.on.mockClear();
+    checkoutStatusUpdateHandlers.clear();
+  });
+
+  afterEach(() => {
+    focusManager.setFocused(undefined);
+    onlineManager.setOnline(true);
+    vi.useRealTimers();
   });
 
   it("returns null when status has no PR number", async () => {
@@ -347,6 +399,82 @@ describe("usePrPaneData", () => {
     });
 
     expect(mockClient.checkoutPrStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("server-pushed PR status update writes into the checkout PR status cache", async () => {
+    const queryClient = createTestQueryClient();
+    mockClient.checkoutPrStatus.mockResolvedValue(
+      statusPayload({
+        status: status({
+          checksStatus: "pending",
+          checks: [{ name: "test", status: "pending", url: "https://github.com/checks/1" }],
+        }),
+      }),
+    );
+    mockClient.pullRequestTimeline.mockResolvedValue(timelinePayload());
+
+    const hook = renderPrPaneHook({ queryClient });
+    await hook.mount();
+    await waitForExpectation(() => {
+      expect(hook.latest.data?.checks[0]?.status).toBe("pending");
+    });
+
+    mockClient.checkoutPrStatus.mockClear();
+    await emitCheckoutStatusUpdatePrStatus(
+      statusPayload({
+        requestId: "server-push",
+        status: status({
+          checksStatus: "success",
+          checks: [{ name: "test", status: "success", url: "https://github.com/checks/1" }],
+        }),
+      }),
+    );
+
+    await waitForExpectation(() => {
+      expect(hook.latest.data?.checks[0]?.status).toBe("success");
+    });
+    expect(queryClient.getQueryData(["checkoutPrStatus", serverId, cwd])).toEqual(
+      statusPayload({
+        requestId: "server-push",
+        status: status({
+          checksStatus: "success",
+          checks: [{ name: "test", status: "success", url: "https://github.com/checks/1" }],
+        }),
+      }),
+    );
+    expect(mockClient.checkoutPrStatus).not.toHaveBeenCalled();
+  });
+
+  it("server-pushed PR status for a different cwd does not overwrite the current cache", async () => {
+    const queryClient = createTestQueryClient();
+    const initial = statusPayload({
+      status: status({
+        checksStatus: "pending",
+        checks: [{ name: "test", status: "pending", url: "https://github.com/checks/1" }],
+      }),
+    });
+    mockClient.checkoutPrStatus.mockResolvedValue(initial);
+    mockClient.pullRequestTimeline.mockResolvedValue(timelinePayload());
+
+    const hook = renderPrPaneHook({ queryClient });
+    await hook.mount();
+    await waitForExpectation(() => {
+      expect(hook.latest.data?.checks[0]?.status).toBe("pending");
+    });
+
+    await emitCheckoutStatusUpdatePrStatus(
+      statusPayload({
+        cwd: "/other-repo",
+        requestId: "other-server-push",
+        status: status({
+          checksStatus: "success",
+          checks: [{ name: "test", status: "success", url: "https://github.com/checks/1" }],
+        }),
+      }),
+    );
+
+    expect(queryClient.getQueryData(["checkoutPrStatus", serverId, cwd])).toEqual(initial);
+    expect(queryClient.getQueryData(["checkoutPrStatus", serverId, "/other-repo"])).toBeUndefined();
   });
 
   it("passes repoOwner and repoName to the timeline request when present", async () => {
@@ -517,6 +645,50 @@ describe("usePrPaneData", () => {
     expect(mockClient.pullRequestTimeline).not.toHaveBeenCalled();
   });
 
+  it("does not poll PR status or timeline after the initial load", async () => {
+    vi.useFakeTimers();
+    mockClient.checkoutPrStatus.mockResolvedValue(statusPayload());
+    mockClient.pullRequestTimeline.mockResolvedValue(timelinePayload());
+
+    const hook = renderPrPaneHook();
+    await hook.mount();
+
+    await waitForHookResult(() => {
+      expect(hook.latest.data?.number).toBe(42);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(120_000);
+      await Promise.resolve();
+    });
+
+    expect(mockClient.checkoutPrStatus).toHaveBeenCalledTimes(1);
+    expect(mockClient.pullRequestTimeline).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refetch PR data on focus or reconnect", async () => {
+    mockClient.checkoutPrStatus.mockResolvedValue(statusPayload());
+    mockClient.pullRequestTimeline.mockResolvedValue(timelinePayload());
+
+    const hook = renderPrPaneHook();
+    await hook.mount();
+
+    await waitForExpectation(() => {
+      expect(hook.latest.data?.number).toBe(42);
+    });
+
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
+      await Promise.resolve();
+    });
+
+    expect(mockClient.checkoutPrStatus).toHaveBeenCalledTimes(1);
+    expect(mockClient.pullRequestTimeline).toHaveBeenCalledTimes(1);
+  });
+
   it("reports first-load, background refresh, and non-suppressed errors", async () => {
     const statusDeferred = createDeferred<CheckoutPrStatusPayload>();
     mockClient.checkoutPrStatus.mockReturnValue(statusDeferred.promise);
@@ -562,6 +734,25 @@ describe("usePrPaneData", () => {
     });
   });
 });
+
+async function waitForHookResult(assertion: () => void): Promise<void> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await act(async () => {
+        vi.advanceTimersByTime(10);
+        await Promise.resolve();
+      });
+    }
+  }
+
+  throw lastError;
+}
 
 function createDeferred<T>(): {
   promise: Promise<T>;

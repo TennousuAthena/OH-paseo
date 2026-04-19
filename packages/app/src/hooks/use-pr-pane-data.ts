@@ -7,9 +7,6 @@ import type {
 import { mapPrPaneData, type PrPaneData } from "../utils/pr-pane-data";
 import { useCheckoutPrStatusQuery } from "./use-checkout-pr-status-query";
 
-const PR_PANE_TIMELINE_STALE_TIME = 15_000;
-const PR_PANE_TIMELINE_REFETCH_INTERVAL = 30_000;
-
 type CheckoutPrStatusPayloadError = CheckoutPrStatusResponse["payload"]["error"];
 type PullRequestTimeline = PullRequestTimelineResponse["payload"];
 
@@ -81,8 +78,10 @@ export function usePrPaneData({
       }
     },
     enabled: shouldFetchTimeline,
-    staleTime: PR_PANE_TIMELINE_STALE_TIME,
-    refetchInterval: PR_PANE_TIMELINE_REFETCH_INTERVAL,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
     placeholderData: keepPreviousData,
     retry: (failureCount, error) => !isUnsupportedTimelineError(error) && failureCount < 3,
   });

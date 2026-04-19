@@ -28,7 +28,6 @@ import type {
 } from "../agent-sdk-types.js";
 import type { Logger } from "pino";
 
-import { execSync } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { Dirent } from "node:fs";
@@ -59,6 +58,7 @@ import {
   resolveBinaryVersion,
   toDiagnosticErrorMessage,
 } from "./diagnostic-utils.js";
+import type { WorkspaceGitService } from "../../workspace-git-service.js";
 
 const DEFAULT_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000;
 const TURN_START_TIMEOUT_MS = 90 * 1000;
@@ -90,6 +90,10 @@ const CODEX_MODES: AgentMode[] = [
 ];
 
 const DEFAULT_CODEX_MODE_ID = "auto";
+
+type CodexAppServerAgentDeps = {
+  workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
+};
 
 const MODE_PRESETS: Record<
   string,
@@ -370,23 +374,16 @@ async function listCodexCustomPrompts(): Promise<AgentSlashCommand[]> {
   return commands.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-async function listCodexSkills(cwd: string): Promise<AgentSlashCommand[]> {
+async function listCodexSkills(
+  cwd: string,
+  workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">,
+): Promise<AgentSlashCommand[]> {
   const candidates: string[] = [];
   candidates.push(path.join(cwd, ".codex", "skills"));
 
-  const repoRoot = (() => {
-    try {
-      const output = execSync("git rev-parse --show-toplevel", {
-        cwd,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      });
-      const trimmed = output.trim();
-      return trimmed ? trimmed : null;
-    } catch {
-      return null;
-    }
-  })();
+  const repoRoot = workspaceGitService
+    ? await workspaceGitService.resolveRepoRoot(cwd).catch(() => null)
+    : null;
   if (repoRoot) {
     candidates.push(path.join(path.dirname(cwd), ".codex", "skills"));
     candidates.push(path.join(repoRoot, ".codex", "skills"));
@@ -2467,6 +2464,7 @@ class CodexAppServerAgentSession implements AgentSession {
     private readonly resumeHandle: { sessionId: string; metadata?: Record<string, unknown> } | null,
     logger: Logger,
     private readonly spawnAppServer: () => Promise<ChildProcessWithoutNullStreams>,
+    private readonly deps: CodexAppServerAgentDeps = {},
   ) {
     this.logger = logger.child({ module: "agent", provider: CODEX_PROVIDER });
     if (config.modeId === undefined) {
@@ -3315,7 +3313,9 @@ class CodexAppServerAgentSession implements AgentSession {
       argumentHint: "",
     }));
     const fallbackSkills =
-      appServerSkills.length === 0 ? await listCodexSkills(this.config.cwd) : [];
+      appServerSkills.length === 0
+        ? await listCodexSkills(this.config.cwd, this.deps.workspaceGitService)
+        : [];
     return [...appServerSkills, ...fallbackSkills, ...prompts].sort((a, b) =>
       a.name.localeCompare(b.name),
     );
@@ -4006,6 +4006,7 @@ export class CodexAppServerAgentClient implements AgentClient {
   constructor(
     private readonly logger: Logger,
     private readonly runtimeSettings?: ProviderRuntimeSettings,
+    private readonly deps: CodexAppServerAgentDeps = {},
   ) {}
 
   private async spawnAppServer(
@@ -4030,8 +4031,12 @@ export class CodexAppServerAgentClient implements AgentClient {
     launchContext?: AgentLaunchContext,
   ): Promise<AgentSession> {
     const sessionConfig: AgentSessionConfig = { ...config, provider: CODEX_PROVIDER };
-    const session = new CodexAppServerAgentSession(sessionConfig, null, this.logger, () =>
-      this.spawnAppServer(launchContext?.env),
+    const session = new CodexAppServerAgentSession(
+      sessionConfig,
+      null,
+      this.logger,
+      () => this.spawnAppServer(launchContext?.env),
+      this.deps,
     );
     await session.connect();
     return session;
@@ -4049,8 +4054,12 @@ export class CodexAppServerAgentClient implements AgentClient {
       provider: CODEX_PROVIDER,
       cwd: overrides?.cwd ?? storedConfig.cwd ?? process.cwd(),
     };
-    const session = new CodexAppServerAgentSession(merged, handle, this.logger, () =>
-      this.spawnAppServer(launchContext?.env),
+    const session = new CodexAppServerAgentSession(
+      merged,
+      handle,
+      this.logger,
+      () => this.spawnAppServer(launchContext?.env),
+      this.deps,
     );
     await session.connect();
     return session;
@@ -4274,6 +4283,7 @@ export const __codexAppServerInternals = {
   mapCodexPatchNotificationToToolCall,
   planStepsToMarkdown,
   mapCodexPlanToToolCall,
+  listCodexSkills,
   normalizeCodexOutputSchema,
   normalizeCodexQuestionPrompts,
   toAgentUsage,

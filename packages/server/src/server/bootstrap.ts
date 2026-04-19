@@ -410,11 +410,21 @@ export async function createPaseoDaemon(
       paseoHome: config.paseoHome,
       logger,
     });
+    const terminalManager = createTerminalManager();
+    const github = createGitHubService();
+    const workspaceGitService = new WorkspaceGitServiceImpl({
+      logger,
+      paseoHome: config.paseoHome,
+      deps: {
+        github,
+      },
+    });
     const agentManager = new AgentManager({
       clients: {
         ...createAllClients(logger, {
           runtimeSettings: config.agentProviderSettings,
           providerOverrides: config.providerOverrides,
+          workspaceGitService,
         }),
         ...config.agentClients,
       },
@@ -424,16 +434,7 @@ export async function createPaseoDaemon(
     const providerRegistry = buildProviderRegistry(logger, {
       runtimeSettings: config.agentProviderSettings,
       providerOverrides: config.providerOverrides,
-    });
-
-    const terminalManager = createTerminalManager();
-    const github = createGitHubService();
-    const workspaceGitService = new WorkspaceGitServiceImpl({
-      logger,
-      paseoHome: config.paseoHome,
-      deps: {
-        github,
-      },
+      workspaceGitService,
     });
 
     const detachAgentStoragePersistence = attachAgentStoragePersistence(
@@ -500,13 +501,14 @@ export async function createPaseoDaemon(
           scheduleService,
           providerRegistry,
           github,
+          workspaceGitService,
           createPaseoWorktree: (input, serviceOptions) => {
             const coreDeps = createWorktreeCoreDeps(github);
             return createPaseoWorktree(input, {
               ...coreDeps,
-              ...(serviceOptions?.resolveRepositoryDefaultBranch
+              ...(serviceOptions?.resolveDefaultBranch
                 ? {
-                    resolveRepositoryDefaultBranch: serviceOptions.resolveRepositoryDefaultBranch,
+                    resolveDefaultBranch: serviceOptions.resolveDefaultBranch,
                   }
                 : {}),
               projectRegistry,

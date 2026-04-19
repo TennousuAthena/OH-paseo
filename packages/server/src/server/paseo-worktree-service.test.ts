@@ -170,6 +170,7 @@ function createGitHubServiceStub(): GitHubService {
   return {
     listPullRequests: async () => [],
     listIssues: async () => [],
+    searchIssuesAndPrs: async () => ({ items: [], githubFeaturesEnabled: true }),
     getPullRequest: async ({ number }) => ({
       number,
       title: `PR ${number}`,
@@ -199,6 +200,14 @@ function createWorkspaceGitServiceStub(): WorkspaceGitService {
     }),
     peekSnapshot: (cwd) => createWorkspaceGitSnapshot(cwd),
     getSnapshot: async (cwd) => createWorkspaceGitSnapshot(cwd),
+    resolveRepoRoot: async (cwd) => {
+      try {
+        return createWorkspaceGitSnapshot(cwd).git.repoRoot ?? cwd;
+      } catch {
+        throw new Error("Create worktree requires a git repository");
+      }
+    },
+    resolveDefaultBranch: async () => "main",
     refresh: async () => {},
     requestWorkingTreeWatch: async (cwd) => ({
       repoRoot: cwd,
@@ -234,9 +243,11 @@ function createWorkspaceGitSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot {
       remoteUrl: null,
       isPaseoOwnedWorktree: repoRoot !== mainRepoRoot,
       isDirty: false,
+      baseRef: "main",
       aheadBehind: null,
       aheadOfOrigin: null,
       behindOfOrigin: null,
+      hasRemote: false,
       diffStat: null,
     },
     github: {

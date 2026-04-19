@@ -16,7 +16,7 @@ interface GitHubHeadRefLookup {
 interface ResolverHarness {
   github: GitHubService;
   headRefLookups: GitHubHeadRefLookup[];
-  resolveRepositoryDefaultBranch: (repoRoot: string) => Promise<string>;
+  resolveDefaultBranch: (repoRoot: string) => Promise<string>;
   generateBranchName: (seed: string | undefined) => string;
 }
 
@@ -25,6 +25,7 @@ function createResolverHarness(): ResolverHarness {
   const github: GitHubService = {
     listPullRequests: async () => [],
     listIssues: async () => [],
+    searchIssuesAndPrs: async () => ({ items: [], githubFeaturesEnabled: true }),
     getPullRequest: async ({ number }) => ({
       number,
       title: `PR ${number}`,
@@ -51,7 +52,7 @@ function createResolverHarness(): ResolverHarness {
   return {
     github,
     headRefLookups,
-    resolveRepositoryDefaultBranch: async () => "main",
+    resolveDefaultBranch: async () => "main",
     generateBranchName: (seed) => seed ?? "generated-worktree",
   };
 }

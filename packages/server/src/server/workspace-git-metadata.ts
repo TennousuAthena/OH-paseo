@@ -1,7 +1,5 @@
-import { execSync } from "child_process";
 import { basename } from "path";
 import { slugify } from "../utils/worktree.js";
-import { READ_ONLY_GIT_ENV } from "./checkout-git-utils.js";
 
 export type WorkspaceGitMetadata = {
   projectKind: "git" | "directory";
@@ -9,22 +7,11 @@ export type WorkspaceGitMetadata = {
   workspaceDisplayName: string;
   gitRemote: string | null;
   isWorktree: boolean;
+  projectSlug: string;
+  repoRoot: string | null;
+  currentBranch: string | null;
+  remoteUrl: string | null;
 };
-
-export function readGitCommand(cwd: string, command: string): string | null {
-  try {
-    const output = execSync(command, {
-      cwd,
-      env: READ_ONLY_GIT_ENV,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    const trimmed = output.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  } catch {
-    return null;
-  }
-}
 
 export function parseGitHubRepoFromRemote(remoteUrl: string): string | null {
   let cleaned = remoteUrl.trim();
@@ -74,39 +61,48 @@ export function parseGitHubRepoNameFromRemote(remoteUrl: string): string | null 
   return repoName && repoName.length > 0 ? repoName : null;
 }
 
-export function deriveProjectSlug(cwd: string): string {
-  const gitRemote = readGitCommand(cwd, "git config --get remote.origin.url");
-  const githubRepoName = gitRemote ? parseGitHubRepoNameFromRemote(gitRemote) : null;
+export function deriveProjectSlug(cwd: string, remoteUrl: string | null = null): string {
+  const githubRepoName = remoteUrl ? parseGitHubRepoNameFromRemote(remoteUrl) : null;
   const sourceName = githubRepoName ?? basename(cwd);
   return slugify(sourceName) || "untitled";
 }
 
-export function detectWorkspaceGitMetadata(
-  cwd: string,
-  directoryName: string,
-): WorkspaceGitMetadata {
-  const gitDir = readGitCommand(cwd, "git rev-parse --git-dir");
-  if (!gitDir) {
+export function buildWorkspaceGitMetadataFromSnapshot(input: {
+  cwd: string;
+  directoryName: string;
+  isGit: boolean;
+  repoRoot: string | null;
+  mainRepoRoot: string | null;
+  currentBranch: string | null;
+  remoteUrl: string | null;
+}): WorkspaceGitMetadata {
+  if (!input.isGit) {
     return {
       projectKind: "directory",
-      projectDisplayName: directoryName,
-      workspaceDisplayName: directoryName,
+      projectDisplayName: input.directoryName,
+      workspaceDisplayName: input.directoryName,
       gitRemote: null,
       isWorktree: false,
+      projectSlug: deriveProjectSlug(input.cwd, null),
+      repoRoot: null,
+      currentBranch: null,
+      remoteUrl: null,
     };
   }
 
-  const gitRemote = readGitCommand(cwd, "git config --get remote.origin.url");
-  const githubRepo = gitRemote ? parseGitHubRepoFromRemote(gitRemote) : null;
-  const branchName = readGitCommand(cwd, "git symbolic-ref --short HEAD");
-  const gitCommonDir = readGitCommand(cwd, "git rev-parse --git-common-dir");
-  const isWorktree = gitCommonDir !== null && gitDir !== gitCommonDir;
+  const githubRepo = input.remoteUrl ? parseGitHubRepoFromRemote(input.remoteUrl) : null;
+  const isWorktree =
+    input.mainRepoRoot !== null && input.repoRoot !== null && input.mainRepoRoot !== input.repoRoot;
 
   return {
     projectKind: "git",
-    projectDisplayName: githubRepo ?? directoryName,
-    workspaceDisplayName: branchName ?? directoryName,
-    gitRemote,
+    projectDisplayName: githubRepo ?? input.directoryName,
+    workspaceDisplayName: input.currentBranch ?? input.directoryName,
+    gitRemote: input.remoteUrl,
     isWorktree,
+    projectSlug: deriveProjectSlug(input.cwd, input.remoteUrl),
+    repoRoot: input.repoRoot,
+    currentBranch: input.currentBranch,
+    remoteUrl: input.remoteUrl,
   };
 }

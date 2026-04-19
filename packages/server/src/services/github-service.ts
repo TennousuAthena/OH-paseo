@@ -1,9 +1,12 @@
 import { z } from "zod";
+import type { GitHubSearchKind } from "../shared/messages.js";
 import { findExecutable } from "../utils/executable.js";
-import { runGitCommand } from "../utils/run-git-command.js";
 import { execCommand } from "../utils/spawn.js";
 
 const DEFAULT_GITHUB_CACHE_TTL_MS = 30_000;
+export const GITHUB_POLL_FAST_INTERVAL_MS = 20_000;
+export const GITHUB_POLL_SLOW_INTERVAL_MS = 120_000;
+export const GITHUB_POLL_ERROR_BACKOFF_CAP_MS = 300_000;
 const GITHUB_ENV: NodeJS.ProcessEnv = {
   ...process.env,
   GIT_TERMINAL_PROMPT: "0",
@@ -343,29 +346,62 @@ export interface GitHubPullRequestCreateResult {
   number: number;
 }
 
-export interface ListGitHubPullRequestsOptions {
+export type GitHubReadOptions =
+  | {
+      force?: false;
+      reason?: string;
+    }
+  | {
+      force: true;
+      reason: string;
+    };
+
+export type ListGitHubPullRequestsOptions = {
   cwd: string;
   query?: string;
   limit?: number;
-}
+} & GitHubReadOptions;
 
-export interface ListGitHubIssuesOptions {
+export type ListGitHubIssuesOptions = {
   cwd: string;
   query?: string;
   limit?: number;
-}
+} & GitHubReadOptions;
 
-export interface GetGitHubPullRequestOptions {
+export type GetGitHubPullRequestOptions = {
   cwd: string;
   number: number;
-}
+} & GitHubReadOptions;
 
-export interface GetGitHubPullRequestTimelineOptions {
+export type GetGitHubPullRequestTimelineOptions = {
   cwd: string;
   prNumber: number;
   repoOwner: string;
   repoName: string;
+} & GitHubReadOptions;
+
+export interface GitHubSearchResult {
+  items: Array<{
+    kind: "issue" | "pr";
+    number: number;
+    title: string;
+    url: string;
+    state: string;
+    body: string | null;
+    labels: string[];
+    baseRefName?: string | null;
+    headRefName?: string | null;
+    updatedAt?: string;
+  }>;
+  githubFeaturesEnabled: boolean;
 }
+
+export type SearchGitHubIssuesAndPrsOptions = {
+  cwd: string;
+  query: string;
+  limit?: number;
+  kinds?: GitHubSearchKind[];
+} & GitHubReadOptions;
 
 export interface CreateGitHubPullRequestOptions {
   cwd: string;
@@ -381,18 +417,28 @@ export interface GitHubService {
   listIssues(options: ListGitHubIssuesOptions): Promise<GitHubIssueSummary[]>;
   getPullRequest(options: GetGitHubPullRequestOptions): Promise<GitHubPullRequestSummary>;
   getPullRequestHeadRef(options: GetGitHubPullRequestOptions): Promise<string>;
-  getCurrentPullRequestStatus(options: {
-    cwd: string;
-    headRef: string;
-  }): Promise<GitHubCurrentPullRequestStatus | null>;
+  getCurrentPullRequestStatus(
+    options: {
+      cwd: string;
+      headRef: string;
+    } & GitHubReadOptions,
+  ): Promise<GitHubCurrentPullRequestStatus | null>;
   getPullRequestTimeline(
     options: GetGitHubPullRequestTimelineOptions,
   ): Promise<GitHubPullRequestTimeline>;
+  searchIssuesAndPrs(options: SearchGitHubIssuesAndPrsOptions): Promise<GitHubSearchResult>;
   createPullRequest(
     options: CreateGitHubPullRequestOptions,
   ): Promise<GitHubPullRequestCreateResult>;
-  isAuthenticated(options: { cwd: string }): Promise<boolean>;
+  isAuthenticated(options: { cwd: string } & GitHubReadOptions): Promise<boolean>;
+  retainCurrentPullRequestStatusPoll?(options: {
+    cwd: string;
+    headRef: string;
+    onStatus?: (status: GitHubCurrentPullRequestStatus | null) => void;
+    onError?: (error: unknown) => void;
+  }): { unsubscribe: () => void };
   invalidate(options: { cwd: string }): void;
+  dispose?(): void;
 }
 
 export class GitHubCliMissingError extends Error {
@@ -453,6 +499,18 @@ type CurrentPullRequestStatusItem = z.infer<typeof CurrentPullRequestStatusSchem
 interface InFlightCacheEntry {
   cwd: string;
   promise: Promise<unknown>;
+  force: boolean;
+}
+
+interface GitHubPollTarget {
+  cwd: string;
+  headRef: string;
+  retainCount: number;
+  timer: NodeJS.Timeout | null;
+  latestStatus: GitHubCurrentPullRequestStatus | null;
+  consecutiveErrors: number;
+  callbacks: Set<(status: GitHubCurrentPullRequestStatus | null) => void>;
+  errorCallbacks: Set<(error: unknown) => void>;
 }
 
 interface ResolvedPullRequestCandidate {
@@ -469,13 +527,20 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
   };
   const cache = new Map<string, CacheEntry>();
   const inFlight = new Map<string, InFlightCacheEntry>();
+  const pollTargets = new Map<string, GitHubPollTarget>();
+  let api!: GitHubService;
 
   async function cached<T>(params: {
     cwd: string;
     method: string;
     args: unknown;
+    readOptions?: GitHubReadOptions;
     load: () => Promise<T>;
   }): Promise<T> {
+    if (params.readOptions?.force && !params.readOptions.reason) {
+      throw new Error("GitHubService forced read requires a reason");
+    }
+
     const key = buildCacheKey({
       cwd: params.cwd,
       method: params.method,
@@ -483,12 +548,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     });
     const cachedEntry = cache.get(key);
     const now = deps.now();
-    if (cachedEntry && cachedEntry.expiresAt > now) {
+    if (!params.readOptions?.force && cachedEntry && cachedEntry.expiresAt > now) {
       return cachedEntry.value as T;
     }
 
     const existing = inFlight.get(key);
-    if (existing) {
+    if (existing && (!params.readOptions?.force || existing.force)) {
       return existing.promise as Promise<T>;
     }
 
@@ -509,7 +574,11 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
           inFlight.delete(key);
         }
       });
-    inFlight.set(key, { cwd: params.cwd, promise: request });
+    inFlight.set(key, {
+      cwd: params.cwd,
+      promise: request,
+      force: params.readOptions?.force === true,
+    });
     return request;
   }
 
@@ -529,12 +598,93 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     }
   }
 
-  return {
+  function getPollTargetKey(options: { cwd: string; headRef: string }): string {
+    return buildCacheKey({
+      cwd: options.cwd,
+      method: "getCurrentPullRequestStatus",
+      args: { headRef: options.headRef },
+    });
+  }
+
+  function updatePollTargetAfterSuccess(options: {
+    cwd: string;
+    headRef: string;
+    status: GitHubCurrentPullRequestStatus | null;
+    notify: boolean;
+  }): void {
+    const target = pollTargets.get(getPollTargetKey(options));
+    if (!target) {
+      return;
+    }
+
+    target.latestStatus = options.status;
+    target.consecutiveErrors = 0;
+    if (options.notify) {
+      for (const callback of target.callbacks) {
+        callback(options.status);
+      }
+    }
+    scheduleGitHubPoll(target);
+  }
+
+  function scheduleGitHubPoll(target: GitHubPollTarget): void {
+    scheduleGitHubPollAfter(
+      target,
+      computeGithubNextInterval(target.latestStatus, target.consecutiveErrors),
+    );
+  }
+
+  function scheduleImmediateGitHubPoll(target: GitHubPollTarget): void {
+    scheduleGitHubPollAfter(target, 0);
+  }
+
+  function scheduleGitHubPollAfter(target: GitHubPollTarget, delayMs: number): void {
+    if (target.retainCount <= 0) {
+      return;
+    }
+    if (target.timer) {
+      clearTimeout(target.timer);
+    }
+
+    target.timer = setTimeout(() => {
+      target.timer = null;
+      void runGitHubPoll(target);
+    }, delayMs);
+  }
+
+  async function runGitHubPoll(target: GitHubPollTarget): Promise<void> {
+    try {
+      await api.getCurrentPullRequestStatus({
+        cwd: target.cwd,
+        headRef: target.headRef,
+        reason: "self-heal-github",
+      });
+    } catch (error) {
+      target.consecutiveErrors += 1;
+      for (const callback of target.errorCallbacks) {
+        callback(error);
+      }
+      scheduleGitHubPoll(target);
+    }
+  }
+
+  function closeGitHubPollTarget(target: GitHubPollTarget): void {
+    if (target.timer) {
+      clearTimeout(target.timer);
+      target.timer = null;
+    }
+    target.retainCount = 0;
+    target.callbacks.clear();
+    target.errorCallbacks.clear();
+  }
+
+  api = {
     listPullRequests(options) {
       return cached({
         cwd: options.cwd,
         method: "listPullRequests",
         args: { query: options.query ?? "", limit: options.limit ?? 20 },
+        readOptions: options,
         load: async () => {
           const stdout = await run(
             [
@@ -559,6 +709,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         cwd: options.cwd,
         method: "listIssues",
         args: { query: options.query ?? "", limit: options.limit ?? 20 },
+        readOptions: options,
         load: async () => {
           const stdout = await run(
             [
@@ -583,6 +734,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         cwd: options.cwd,
         method: "getPullRequest",
         args: { number: options.number },
+        readOptions: options,
         load: async () => {
           const stdout = await run(
             [
@@ -609,6 +761,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         cwd: options.cwd,
         method: "getCurrentPullRequestStatus",
         args: { headRef: options.headRef },
+        readOptions: options,
         load: async () => {
           return resolveCurrentPullRequestView({
             cwd: options.cwd,
@@ -616,6 +769,14 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
             run,
           });
         },
+      }).then((status) => {
+        updatePollTargetAfterSuccess({
+          cwd: options.cwd,
+          headRef: options.headRef,
+          status,
+          notify: options.reason === "self-heal-github",
+        });
+        return status;
       });
     },
 
@@ -624,6 +785,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         cwd: options.cwd,
         method: "getPullRequestTimeline",
         args: { prNumber: options.prNumber },
+        readOptions: options,
         load: async () => {
           try {
             const stdout = await run(
@@ -660,6 +822,96 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       });
     },
 
+    async searchIssuesAndPrs(options) {
+      if (options.force && !options.reason) {
+        throw new Error("GitHubService forced read requires a reason");
+      }
+
+      const kinds = options.kinds ?? ["github-issue", "github-pr"];
+      const shouldFetchIssues = kinds.includes("github-issue");
+      const shouldFetchPullRequests = kinds.includes("github-pr");
+      const readOptions: GitHubReadOptions = options.force
+        ? { force: true, reason: options.reason }
+        : { force: false, reason: options.reason };
+      const [issuesResult, prsResult] = await Promise.allSettled([
+        shouldFetchIssues
+          ? this.listIssues({
+              cwd: options.cwd,
+              query: options.query,
+              limit: options.limit,
+              ...readOptions,
+            })
+          : Promise.resolve(null),
+        shouldFetchPullRequests
+          ? this.listPullRequests({
+              cwd: options.cwd,
+              query: options.query,
+              limit: options.limit,
+              ...readOptions,
+            })
+          : Promise.resolve(null),
+      ]);
+
+      const items: GitHubSearchResult["items"] = [];
+      const requestedResults = [
+        shouldFetchIssues ? issuesResult : null,
+        shouldFetchPullRequests ? prsResult : null,
+      ].filter((result) => result !== null);
+      if (
+        requestedResults.length > 0 &&
+        requestedResults.every(
+          (result) =>
+            result.status === "rejected" &&
+            (result.reason instanceof GitHubCliMissingError ||
+              result.reason instanceof GitHubAuthenticationError),
+        )
+      ) {
+        return { items: [], githubFeaturesEnabled: false };
+      }
+
+      if (shouldFetchIssues && issuesResult.status === "fulfilled") {
+        for (const item of issuesResult.value ?? []) {
+          items.push({
+            kind: "issue",
+            number: item.number,
+            title: item.title,
+            url: item.url,
+            state: item.state,
+            body: item.body,
+            labels: item.labels,
+            baseRefName: null,
+            headRefName: null,
+            updatedAt: item.updatedAt,
+          });
+        }
+      }
+
+      if (shouldFetchPullRequests && prsResult.status === "fulfilled") {
+        for (const item of prsResult.value ?? []) {
+          items.push({
+            kind: "pr",
+            number: item.number,
+            title: item.title,
+            url: item.url,
+            state: item.state,
+            body: item.body,
+            labels: item.labels,
+            baseRefName: item.baseRefName,
+            headRefName: item.headRefName,
+            updatedAt: item.updatedAt,
+          });
+        }
+      }
+
+      items.sort((left, right) => {
+        const leftTime = parseOptionalTime(left.updatedAt ?? null);
+        const rightTime = parseOptionalTime(right.updatedAt ?? null);
+        return rightTime - leftTime;
+      });
+
+      return { items, githubFeaturesEnabled: true };
+    },
+
     async createPullRequest(options) {
       const args = [
         "api",
@@ -689,6 +941,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         cwd: options.cwd,
         method: "isAuthenticated",
         args: {},
+        readOptions: options,
         load: async () => {
           try {
             await run(["auth", "status"], { cwd: options.cwd });
@@ -706,6 +959,60 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       });
     },
 
+    retainCurrentPullRequestStatusPoll(options) {
+      const key = getPollTargetKey(options);
+      let target = pollTargets.get(key);
+      if (!target) {
+        target = {
+          cwd: options.cwd,
+          headRef: options.headRef,
+          retainCount: 0,
+          timer: null,
+          latestStatus: null,
+          consecutiveErrors: 0,
+          callbacks: new Set(),
+          errorCallbacks: new Set(),
+        };
+        pollTargets.set(key, target);
+      }
+
+      const isNewlyRetained = target.retainCount === 0;
+      target.retainCount += 1;
+      if (options.onStatus) {
+        target.callbacks.add(options.onStatus);
+      }
+      if (options.onError) {
+        target.errorCallbacks.add(options.onError);
+      }
+      if (isNewlyRetained) {
+        scheduleImmediateGitHubPoll(target);
+      } else {
+        scheduleGitHubPoll(target);
+      }
+
+      let unsubscribed = false;
+      return {
+        unsubscribe: () => {
+          if (unsubscribed) {
+            return;
+          }
+          unsubscribed = true;
+          if (options.onStatus) {
+            target.callbacks.delete(options.onStatus);
+          }
+          if (options.onError) {
+            target.errorCallbacks.delete(options.onError);
+          }
+          target.retainCount -= 1;
+          if (target.retainCount > 0) {
+            return;
+          }
+          closeGitHubPollTarget(target);
+          pollTargets.delete(key);
+        },
+      };
+    },
+
     invalidate(options) {
       // Local checkout mutations that can alter the current PR identity or PR status
       // must call this with the affected cwd before broadcasting fresh git state.
@@ -720,7 +1027,40 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         }
       }
     },
+
+    dispose() {
+      for (const target of pollTargets.values()) {
+        closeGitHubPollTarget(target);
+      }
+      pollTargets.clear();
+    },
   };
+
+  return api;
+}
+
+export function computeGithubNextInterval(
+  status: GitHubCurrentPullRequestStatus | null,
+  consecutiveErrors: number,
+): number {
+  const baseInterval = isGitHubStatusPending(status)
+    ? GITHUB_POLL_FAST_INTERVAL_MS
+    : GITHUB_POLL_SLOW_INTERVAL_MS;
+  if (consecutiveErrors <= 1) {
+    return baseInterval;
+  }
+
+  return Math.min(baseInterval * 2 ** (consecutiveErrors - 1), GITHUB_POLL_ERROR_BACKOFF_CAP_MS);
+}
+
+function isGitHubStatusPending(status: GitHubCurrentPullRequestStatus | null): boolean {
+  if (!status) {
+    return false;
+  }
+  if (status.checksStatus === "pending") {
+    return true;
+  }
+  return status.checks.some((check) => check.status === "pending");
 }
 
 async function resolveGhPath(): Promise<string | null> {
@@ -1393,13 +1733,20 @@ function mapReviewDecision(value: unknown): PullRequestReviewDecision {
   return null;
 }
 
-export async function resolveGitHubRepo(cwd: string): Promise<string | null> {
+export interface GitHubRepoRemoteUrlResolver {
+  resolveRepoRemoteUrl(cwd: string, options?: GitHubReadOptions): Promise<string | null>;
+}
+
+export async function resolveGitHubRepo(
+  cwd: string,
+  options: { workspaceGitService: GitHubRepoRemoteUrlResolver; readOptions?: GitHubReadOptions },
+): Promise<string | null> {
   try {
-    const { stdout } = await runGitCommand(["config", "--get", "remote.origin.url"], {
+    const remoteUrl = await options.workspaceGitService.resolveRepoRemoteUrl(
       cwd,
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-    });
-    return parseGitHubRepoFromRemote(stdout.trim());
+      options.readOptions,
+    );
+    return parseGitHubRepoFromRemote(remoteUrl?.trim() ?? "");
   } catch {
     return null;
   }

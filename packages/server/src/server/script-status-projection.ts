@@ -5,7 +5,7 @@ import type {
 } from "../shared/messages.js";
 import { buildScriptHostname } from "../utils/script-hostname.js";
 import { getScriptConfigs, isServiceScript } from "../utils/worktree.js";
-import { deriveProjectSlug, readGitCommand } from "./workspace-git-metadata.js";
+import { deriveProjectSlug } from "./workspace-git-metadata.js";
 import type { ScriptHealthEntry, ScriptHealthState } from "./script-health-monitor.js";
 import type { ScriptRouteStore } from "./script-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
@@ -20,6 +20,10 @@ type BuildWorkspaceScriptPayloadsOptions = {
   routeStore: ScriptRouteStore;
   runtimeStore: WorkspaceScriptRuntimeStore;
   daemonPort: number | null;
+  gitMetadata?: {
+    projectSlug: string;
+    currentBranch: string | null;
+  };
   resolveHealth?: (hostname: string) => ScriptHealthState | null;
 };
 
@@ -58,8 +62,8 @@ export function buildWorkspaceScriptPayloads(
 ): WorkspaceScriptPayload[] {
   const workspaceId = options.workspaceId;
   const workspaceDirectory = options.workspaceDirectory;
-  const projectSlug = deriveProjectSlug(workspaceDirectory);
-  const branchName = readGitCommand(workspaceDirectory, "git symbolic-ref --short HEAD");
+  const projectSlug = options.gitMetadata?.projectSlug ?? deriveProjectSlug(workspaceDirectory);
+  const branchName = options.gitMetadata?.currentBranch ?? null;
   const scriptConfigs = getScriptConfigs(workspaceDirectory);
   const runtimeEntries = new Map(
     options.runtimeStore

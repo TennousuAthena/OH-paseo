@@ -2435,6 +2435,56 @@ export const CheckoutStatusResponseSchema = z.object({
   ]),
 });
 
+export const CheckoutPrStatusSchema = z.object({
+  number: z.number().optional(),
+  url: z.string(),
+  title: z.string(),
+  state: z.string(),
+  baseRefName: z.string(),
+  headRefName: z.string(),
+  isMerged: z.boolean(),
+  isDraft: z.boolean().optional().default(false),
+  checks: z
+    .array(
+      z.object({
+        name: z.string(),
+        status: z.string(),
+        url: z.string().nullable(),
+        workflow: z.string().optional(),
+        duration: z.string().optional(),
+      }),
+    )
+    .optional()
+    .default([]),
+  checksStatus: z.string().optional(),
+  reviewDecision: z.string().nullable().optional(),
+  repoOwner: z.string().optional(),
+  repoName: z.string().optional(),
+});
+
+const CheckoutPrStatusPayloadSchema = z.object({
+  cwd: z.string(),
+  status: CheckoutPrStatusSchema.nullable(),
+  githubFeaturesEnabled: z.boolean(),
+  error: CheckoutErrorSchema.nullable(),
+  requestId: z.string(),
+});
+
+const CheckoutStatusUpdateMetadataSchema = z.object({
+  prStatus: CheckoutPrStatusPayloadSchema.optional(),
+});
+
+export const CheckoutStatusUpdateSchema = z.object({
+  type: z.literal("checkout_status_update"),
+  payload: z
+    .union([
+      CheckoutStatusNotGitSchema,
+      CheckoutStatusGitNonPaseoSchema,
+      CheckoutStatusGitPaseoSchema,
+    ])
+    .and(CheckoutStatusUpdateMetadataSchema),
+});
+
 const CheckoutDiffSubscriptionPayloadSchema = z.object({
   subscriptionId: z.string(),
   cwd: z.string(),
@@ -2515,42 +2565,9 @@ export const CheckoutPrCreateResponseSchema = z.object({
   }),
 });
 
-export const CheckoutPrStatusSchema = z.object({
-  number: z.number().optional(),
-  url: z.string(),
-  title: z.string(),
-  state: z.string(),
-  baseRefName: z.string(),
-  headRefName: z.string(),
-  isMerged: z.boolean(),
-  isDraft: z.boolean().optional().default(false),
-  checks: z
-    .array(
-      z.object({
-        name: z.string(),
-        status: z.string(),
-        url: z.string().nullable(),
-        workflow: z.string().optional(),
-        duration: z.string().optional(),
-      }),
-    )
-    .optional()
-    .default([]),
-  checksStatus: z.string().optional(),
-  reviewDecision: z.string().nullable().optional(),
-  repoOwner: z.string().optional(),
-  repoName: z.string().optional(),
-});
-
 export const CheckoutPrStatusResponseSchema = z.object({
   type: z.literal("checkout_pr_status_response"),
-  payload: z.object({
-    cwd: z.string(),
-    status: CheckoutPrStatusSchema.nullable(),
-    githubFeaturesEnabled: z.boolean(),
-    error: CheckoutErrorSchema.nullable(),
-    requestId: z.string(),
-  }),
+  payload: CheckoutPrStatusPayloadSchema,
 });
 
 const PullRequestTimelineKnownErrorSchema = z.discriminatedUnion("kind", [
@@ -3092,6 +3109,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentArchivedMessageSchema,
   CloseItemsResponseSchema,
   CheckoutStatusResponseSchema,
+  CheckoutStatusUpdateSchema,
   SubscribeCheckoutDiffResponseSchema,
   CheckoutDiffUpdateSchema,
   CheckoutCommitResponseSchema,
@@ -3318,6 +3336,7 @@ export type SetAgentFeatureRequestMessage = z.infer<typeof SetAgentFeatureReques
 export type AgentPermissionResponseMessage = z.infer<typeof AgentPermissionResponseMessageSchema>;
 export type CheckoutStatusRequest = z.infer<typeof CheckoutStatusRequestSchema>;
 export type CheckoutStatusResponse = z.infer<typeof CheckoutStatusResponseSchema>;
+export type CheckoutStatusUpdate = z.infer<typeof CheckoutStatusUpdateSchema>;
 export type SubscribeCheckoutDiffRequest = z.infer<typeof SubscribeCheckoutDiffRequestSchema>;
 export type UnsubscribeCheckoutDiffRequest = z.infer<typeof UnsubscribeCheckoutDiffRequestSchema>;
 export type SubscribeCheckoutDiffResponse = z.infer<typeof SubscribeCheckoutDiffResponseSchema>;

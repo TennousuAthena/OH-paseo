@@ -741,9 +741,6 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     }
 
     const unsubscribeChanged = client.on("terminals_changed", (message) => {
-      if (message.type !== "terminals_changed") {
-        return;
-      }
       if (message.payload.cwd !== workspaceDirectory) {
         return;
       }
@@ -776,7 +773,10 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       }
       return (await client.getCheckoutStatus(workspaceDirectory)) as CheckoutStatusPayload;
     },
-    staleTime: 15_000,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
   });
   const isCheckoutStatusLoading =
     isCheckoutQueryEnabled && checkoutQuery.data === undefined && !checkoutQuery.isError;

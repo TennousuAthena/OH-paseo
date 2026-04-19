@@ -661,10 +661,8 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
   const {
     status,
     isLoading: isStatusLoading,
-    isFetching: isStatusFetching,
     isError: isStatusError,
     error: statusError,
-    refresh: refreshStatus,
   } = useCheckoutStatusQuery({ serverId, cwd });
   const gitStatus = status && status.isGit ? status : null;
   const isGit = Boolean(gitStatus);
@@ -683,10 +681,8 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
     files,
     payloadError: diffPayloadError,
     isLoading: isDiffLoading,
-    isFetching: isDiffFetching,
     isError: isDiffError,
     error: diffError,
-    refresh: refreshDiff,
   } = useCheckoutDiffQuery({
     serverId,
     cwd,
@@ -699,14 +695,11 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
     status: prStatus,
     githubFeaturesEnabled,
     payloadError: prPayloadError,
-    refresh: refreshPrStatus,
   } = useCheckoutPrStatusQuery({
     serverId,
     cwd,
     enabled: isGit,
   });
-  // Track user-initiated refresh to avoid iOS RefreshControl animation on background fetches
-  const [isManualRefresh, setIsManualRefresh] = useState(false);
   const normalizedWorkspaceRoot = useMemo(() => cwd.trim(), [cwd]);
   const workspaceStateKey = useMemo(
     () =>
@@ -732,13 +725,6 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
   const headerHeightByPathRef = useRef<Record<string, number>>({});
   const bodyHeightByPathRef = useRef<Record<string, number>>({});
   const defaultHeaderHeightRef = useRef<number>(44);
-  const handleRefresh = useCallback(() => {
-    setIsManualRefresh(true);
-    void refreshDiff();
-    void refreshStatus();
-    void refreshPrStatus();
-  }, [refreshDiff, refreshStatus, refreshPrStatus]);
-
   const shipDefaultStorageKey = useMemo(() => {
     if (!gitStatus?.repoRoot) {
       return null;
@@ -900,13 +886,6 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
       );
     }
   }, [allExpanded, files, setDiffExpandedPathsForWorkspace, workspaceStateKey]);
-
-  // Reset manual refresh flag when fetch completes
-  useEffect(() => {
-    if (!(isDiffFetching || isStatusFetching) && isManualRefresh) {
-      setIsManualRefresh(false);
-    }
-  }, [isDiffFetching, isStatusFetching, isManualRefresh]);
 
   // Clear diff mode override when auto mode changes (e.g., after commit)
   useEffect(() => {
@@ -1199,8 +1178,6 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
         onContentSizeChange={scrollbar.onContentSizeChange}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={!showDesktopWebScrollbar}
-        onRefresh={handleRefresh}
-        refreshing={isManualRefresh && isDiffFetching}
         // Mixed-height rows (header + potentially very large body) are prone to clipping artifacts.
         // Keep a larger render window and disable clipping to avoid bodies disappearing mid-scroll.
         removeClippedSubviews={false}

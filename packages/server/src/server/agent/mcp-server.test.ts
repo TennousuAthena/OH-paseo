@@ -129,6 +129,7 @@ function createGitHubServiceStub(): GitHubService {
   return {
     listPullRequests: async () => [],
     listIssues: async () => [],
+    searchIssuesAndPrs: async () => ({ items: [], githubFeaturesEnabled: true }),
     getPullRequest: async ({ number }) => ({
       number,
       title: `PR ${number}`,
@@ -168,8 +169,8 @@ function createPaseoWorktreeForMcpTest(options: {
     const coreDeps = createWorktreeCoreDeps(github);
     const result = await createPaseoWorktreeService(input, {
       ...coreDeps,
-      ...(serviceOptions?.resolveRepositoryDefaultBranch
-        ? { resolveRepositoryDefaultBranch: serviceOptions.resolveRepositoryDefaultBranch }
+      ...(serviceOptions?.resolveDefaultBranch
+        ? { resolveDefaultBranch: serviceOptions.resolveDefaultBranch }
         : {}),
       projectRegistry: {
         get: async (projectId) => projects.get(projectId) ?? null,
@@ -475,12 +476,16 @@ describe("create_agent MCP tool", () => {
       execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
       execSync("git commit -m init", { cwd: repoDir, stdio: "pipe" });
       execSync("git branch -M main", { cwd: repoDir, stdio: "pipe" });
+      const workspaceGitService = {
+        getSnapshot: vi.fn(async () => null),
+      };
 
       const server = await createAgentMcpServer({
         agentManager,
         agentStorage,
         paseoHome,
         createPaseoWorktree: createPaseoWorktreeForMcpTest({ paseoHome, broadcasts }),
+        workspaceGitService: workspaceGitService as any,
         logger,
       });
       const tool = (server as any)._registeredTools["create_worktree"];
@@ -492,11 +497,105 @@ describe("create_agent MCP tool", () => {
 
       expect(response.structuredContent.branchName).toBe("tool-worktree");
       expect(response.structuredContent.worktreePath).toContain("tool-worktree");
+      expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith(repoDir, {
+        force: true,
+        reason: "create-worktree",
+      });
+      expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith(
+        response.structuredContent.worktreePath,
+        {
+          force: true,
+          reason: "create-worktree",
+        },
+      );
       expect(broadcasts).toHaveLength(1);
       expect(broadcasts[0]).toContain("tool-worktree");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("forces a workspace git snapshot refresh when archive_worktree deletes a worktree", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const tempDir = await mkdtemp(join(tmpdir(), "paseo-mcp-archive-worktree-"));
+    const repoDir = join(tempDir, "repo");
+    const paseoHome = join(tempDir, ".paseo");
+
+    try {
+      execSync(`git init ${JSON.stringify(repoDir)}`, { stdio: "pipe" });
+      execSync("git config user.email test@example.com", { cwd: repoDir, stdio: "pipe" });
+      execSync("git config user.name Test", { cwd: repoDir, stdio: "pipe" });
+      await writeFile(join(repoDir, "README.md"), "hello\n");
+      execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
+      execSync("git commit -m init", { cwd: repoDir, stdio: "pipe" });
+      execSync("git branch -M main", { cwd: repoDir, stdio: "pipe" });
+
+      const workspaceGitService = {
+        getSnapshot: vi.fn(async () => null),
+      };
+      const server = await createAgentMcpServer({
+        agentManager,
+        agentStorage,
+        paseoHome,
+        createPaseoWorktree: createPaseoWorktreeForMcpTest({ paseoHome, broadcasts: [] }),
+        workspaceGitService: workspaceGitService as any,
+        logger,
+      });
+      const createTool = (server as any)._registeredTools["create_worktree"];
+      const archiveTool = (server as any)._registeredTools["archive_worktree"];
+      const created = await createTool.callback({
+        cwd: repoDir,
+        branchName: "archive-tool-worktree",
+        baseBranch: "main",
+      });
+      workspaceGitService.getSnapshot.mockClear();
+
+      await archiveTool.callback({
+        cwd: repoDir,
+        worktreePath: created.structuredContent.worktreePath,
+      });
+
+      expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith(repoDir, {
+        force: true,
+        reason: "archive-worktree",
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("routes list_worktrees through WorkspaceGitService", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const workspaceGitService = {
+      getSnapshot: vi.fn(async () => null),
+      listWorktrees: vi.fn(async () => [
+        {
+          path: "/tmp/paseo/worktrees/repo/feature",
+          branchName: "feature",
+          createdAt: "2026-04-12T00:00:00.000Z",
+        },
+      ]),
+    };
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      workspaceGitService: workspaceGitService as any,
+      logger,
+    });
+    const tool = (server as any)._registeredTools["list_worktrees"];
+
+    const response = await tool.callback({ cwd: "/tmp/repo" });
+
+    expect(workspaceGitService.listWorktrees).toHaveBeenCalledWith("/tmp/repo", {
+      reason: "mcp:list-worktrees",
+    });
+    expect(response.structuredContent.worktrees).toEqual([
+      {
+        path: "/tmp/paseo/worktrees/repo/feature",
+        branchName: "feature",
+        createdAt: "2026-04-12T00:00:00.000Z",
+      },
+    ]);
   });
 
   it("accepts custom provider IDs in create_agent input validation", async () => {

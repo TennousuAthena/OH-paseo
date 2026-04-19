@@ -162,6 +162,10 @@ export function NewWorkspaceScreen({
       return connectedClient.getCheckoutStatus(sourceDirectory);
     },
     enabled: isConnected && !!client,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
   });
 
   const currentBranch = checkoutStatusQuery.data?.currentBranch ?? null;

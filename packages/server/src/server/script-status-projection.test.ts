@@ -43,6 +43,7 @@ function buildPayloads(input: {
   routeStore: ScriptRouteStore;
   runtimeStore: WorkspaceScriptRuntimeStore;
   daemonPort: number | null;
+  gitMetadata?: { projectSlug: string; currentBranch: string | null };
   resolveHealth?: (hostname: string) => ScriptHealthState | null;
 }) {
   return buildWorkspaceScriptPayloads(input);
@@ -96,6 +97,49 @@ describe("script-status-projection", () => {
           hostname: "web.repo.localhost",
           port: 3000,
           proxyUrl: "http://web.repo.localhost:6767",
+          lifecycle: "stopped",
+          health: null,
+          exitCode: null,
+        },
+      ]);
+    } finally {
+      workspace.cleanup();
+    }
+  });
+
+  it("builds service hostnames from service-provided git metadata", () => {
+    const workspaceId = "workspace-service-metadata";
+    const workspace = createWorkspaceRepo({
+      branchName: "local-branch-that-should-not-be-read",
+      paseoConfig: {
+        scripts: {
+          web: { type: "service", command: "npm run web", port: 3000 },
+        },
+      },
+    });
+    const routeStore = new ScriptRouteStore();
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+
+    try {
+      expect(
+        buildPayloads({
+          workspaceId,
+          workspaceDirectory: workspace.repoDir,
+          routeStore,
+          runtimeStore,
+          daemonPort: 6767,
+          gitMetadata: {
+            projectSlug: "service-provided",
+            currentBranch: "feature/from-service",
+          },
+        }),
+      ).toEqual([
+        {
+          scriptName: "web",
+          type: "service",
+          hostname: "web.feature-from-service.service-provided.localhost",
+          port: 3000,
+          proxyUrl: "http://web.feature-from-service.service-provided.localhost:6767",
           lifecycle: "stopped",
           health: null,
           exitCode: null,

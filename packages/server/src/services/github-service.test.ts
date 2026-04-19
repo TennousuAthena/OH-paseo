@@ -1,13 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GitHubAuthenticationError,
   GitHubCliMissingError,
   GitHubCommandError,
+  computeGithubNextInterval,
   createGitHubService,
+  resolveGitHubRepo,
   type GitHubCommandRunner,
   type GitHubCommandRunnerOptions,
+  type GitHubCurrentPullRequestStatus,
+  type GitHubReadOptions,
 } from "./github-service.js";
 import { CheckoutPrStatusResponseSchema } from "../shared/messages.js";
+
+const EXPECTED_GITHUB_FAST_POLL_MS = 20_000;
+const EXPECTED_GITHUB_SLOW_POLL_MS = 120_000;
+const EXPECTED_GITHUB_ERROR_BACKOFF_CAP_MS = 300_000;
 
 interface RunnerCall {
   args: string[];
@@ -99,6 +107,37 @@ function currentPullRequestJson(overrides: Record<string, unknown> = {}): string
   });
 }
 
+function createCurrentPullRequestStatus(
+  overrides: Partial<GitHubCurrentPullRequestStatus> = {},
+): GitHubCurrentPullRequestStatus {
+  return {
+    number: 42,
+    repoOwner: "acme",
+    repoName: "repo",
+    url: "https://github.com/acme/repo/pull/42",
+    title: "Update feature",
+    state: "open",
+    baseRefName: "main",
+    headRefName: "feature",
+    isMerged: false,
+    isDraft: false,
+    checks: [],
+    checksStatus: "none",
+    reviewDecision: null,
+    ...overrides,
+  };
+}
+
+function recordCurrentPullRequestStatusReads(service: ReturnType<typeof createGitHubService>) {
+  const reads: GitHubReadOptions[] = [];
+  const getCurrentPullRequestStatus = service.getCurrentPullRequestStatus.bind(service);
+  service.getCurrentPullRequestStatus = vi.fn(async (options) => {
+    reads.push(options);
+    return getCurrentPullRequestStatus(options);
+  });
+  return reads;
+}
+
 function noPullRequestError(args: string[] = ["pr", "view"]): GitHubCommandError {
   return new GitHubCommandError({
     args,
@@ -118,6 +157,36 @@ function pullRequestJson(title: string): string {
       baseRefName: "main",
       headRefName: "feature",
       labels: [{ name: "bug" }],
+    },
+  ]);
+}
+
+function issueJson(title: string): string {
+  return JSON.stringify([
+    {
+      number: 55,
+      title,
+      url: "https://github.com/acme/repo/issues/55",
+      state: "OPEN",
+      body: "issue body",
+      labels: [{ name: "bug" }],
+      updatedAt: "2026-04-18T12:00:00Z",
+    },
+  ]);
+}
+
+function searchPullRequestJson(title: string): string {
+  return JSON.stringify([
+    {
+      number: 123,
+      title,
+      url: "https://github.com/acme/repo/pull/123",
+      state: "OPEN",
+      body: "pr body",
+      baseRefName: "main",
+      headRefName: "feature",
+      labels: [{ name: "enhancement" }],
+      updatedAt: "2026-04-18T13:00:00Z",
     },
   ]);
 }
@@ -175,6 +244,212 @@ function pullRequestTimelineJson(overrides: Record<string, unknown> = {}): strin
 }
 
 describe("GitHubService", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("computes fast cadence for pending and slow cadence for stable PR states", () => {
+    const pendingStatus = createCurrentPullRequestStatus({ checksStatus: "pending" });
+    const runningCheckStatus = createCurrentPullRequestStatus({
+      checksStatus: "success",
+      checks: [{ name: "ci", status: "pending", url: null }],
+    });
+    const stableStatus = createCurrentPullRequestStatus({ checksStatus: "success" });
+
+    expect(computeGithubNextInterval(pendingStatus, 0)).toBe(EXPECTED_GITHUB_FAST_POLL_MS);
+    expect(computeGithubNextInterval(runningCheckStatus, 0)).toBe(EXPECTED_GITHUB_FAST_POLL_MS);
+    expect(computeGithubNextInterval(stableStatus, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
+    expect(computeGithubNextInterval(null, 0)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
+  });
+
+  it("computes exponential error backoff up to the cap", () => {
+    const stableStatus = createCurrentPullRequestStatus({ checksStatus: "success" });
+
+    expect(computeGithubNextInterval(stableStatus, 1)).toBe(EXPECTED_GITHUB_SLOW_POLL_MS);
+    expect(computeGithubNextInterval(stableStatus, 2)).toBe(240_000);
+    expect(computeGithubNextInterval(stableStatus, 3)).toBe(EXPECTED_GITHUB_ERROR_BACKOFF_CAP_MS);
+    expect(computeGithubNextInterval(stableStatus, 4)).toBe(EXPECTED_GITHUB_ERROR_BACKOFF_CAP_MS);
+  });
+
+  it("polls PR status at fast cadence while checks are pending", async () => {
+    let now = 0;
+    const runner = createRunner([
+      currentPullRequestJson({
+        statusCheckRollup: [{ __typename: "StatusContext", context: "ci", state: "PENDING" }],
+      }),
+      currentPullRequestJson({
+        statusCheckRollup: [{ __typename: "StatusContext", context: "ci", state: "PENDING" }],
+      }),
+    ]);
+    const service = createGitHubService({
+      ttlMs: 0,
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => now,
+    });
+    const reads = recordCurrentPullRequestStatusReads(service);
+
+    const subscription = service.retainCurrentPullRequestStatusPoll?.({
+      cwd: "/repo",
+      headRef: "feature/fork",
+    });
+    await service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
+
+    now = EXPECTED_GITHUB_FAST_POLL_MS;
+    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_FAST_POLL_MS);
+
+    expect(runner.calls).toHaveLength(2);
+    expect(reads.map((read) => read.reason)).toEqual([undefined, "self-heal-github"]);
+
+    subscription?.unsubscribe();
+    service.dispose?.();
+  });
+
+  it("polls PR status at slow cadence after stable checks", async () => {
+    let now = 0;
+    const runner = createRunner([
+      currentPullRequestJson({
+        statusCheckRollup: [{ __typename: "StatusContext", context: "ci", state: "SUCCESS" }],
+      }),
+      currentPullRequestJson({
+        statusCheckRollup: [{ __typename: "StatusContext", context: "ci", state: "SUCCESS" }],
+      }),
+    ]);
+    const service = createGitHubService({
+      ttlMs: 0,
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => now,
+    });
+    const reads = recordCurrentPullRequestStatusReads(service);
+
+    const subscription = service.retainCurrentPullRequestStatusPoll?.({
+      cwd: "/repo",
+      headRef: "feature/fork",
+    });
+    await service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
+
+    now = EXPECTED_GITHUB_FAST_POLL_MS;
+    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_FAST_POLL_MS);
+    expect(runner.calls).toHaveLength(1);
+
+    now = EXPECTED_GITHUB_SLOW_POLL_MS;
+    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_SLOW_POLL_MS - EXPECTED_GITHUB_FAST_POLL_MS);
+    expect(runner.calls).toHaveLength(2);
+    expect(reads.map((read) => read.reason)).toEqual([undefined, "self-heal-github"]);
+
+    subscription?.unsubscribe();
+    service.dispose?.();
+  });
+
+  it("backs off consecutive poll errors and resets cadence after recovery", async () => {
+    let now = 0;
+    const runner = createScriptedRunner([
+      currentPullRequestJson({
+        statusCheckRollup: [{ __typename: "StatusContext", context: "ci", state: "PENDING" }],
+      }),
+      { error: new Error("network down") },
+      { error: new Error("network still down") },
+      currentPullRequestJson({
+        statusCheckRollup: [{ __typename: "StatusContext", context: "ci", state: "SUCCESS" }],
+      }),
+      currentPullRequestJson({
+        statusCheckRollup: [{ __typename: "StatusContext", context: "ci", state: "SUCCESS" }],
+      }),
+    ]);
+    const service = createGitHubService({
+      ttlMs: 0,
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => now,
+    });
+    const reads = recordCurrentPullRequestStatusReads(service);
+
+    const subscription = service.retainCurrentPullRequestStatusPoll?.({
+      cwd: "/repo",
+      headRef: "feature/fork",
+    });
+    await service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
+
+    now = EXPECTED_GITHUB_FAST_POLL_MS;
+    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_FAST_POLL_MS);
+    now += EXPECTED_GITHUB_FAST_POLL_MS;
+    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_FAST_POLL_MS);
+    now += EXPECTED_GITHUB_FAST_POLL_MS * 2;
+    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_FAST_POLL_MS * 2);
+    now += EXPECTED_GITHUB_SLOW_POLL_MS;
+    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_SLOW_POLL_MS);
+
+    expect(runner.calls).toHaveLength(5);
+    expect(reads.map((read) => read.reason)).toEqual([
+      undefined,
+      "self-heal-github",
+      "self-heal-github",
+      "self-heal-github",
+      "self-heal-github",
+    ]);
+
+    subscription?.unsubscribe();
+    service.dispose?.();
+  });
+
+  it("unsubscribe clears the adaptive GitHub poll timer", async () => {
+    let now = 0;
+    const runner = createRunner([
+      currentPullRequestJson({
+        statusCheckRollup: [{ __typename: "StatusContext", context: "ci", state: "PENDING" }],
+      }),
+    ]);
+    const service = createGitHubService({
+      ttlMs: 0,
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => now,
+    });
+
+    const subscription = service.retainCurrentPullRequestStatusPoll?.({
+      cwd: "/repo",
+      headRef: "feature/fork",
+    });
+    await service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
+    subscription?.unsubscribe();
+
+    now = EXPECTED_GITHUB_FAST_POLL_MS;
+    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_FAST_POLL_MS);
+
+    expect(runner.calls).toHaveLength(1);
+
+    service.dispose?.();
+  });
+
+  it("dispose clears all adaptive GitHub poll timers", async () => {
+    let now = 0;
+    const runner = createRunner([
+      currentPullRequestJson({
+        statusCheckRollup: [{ __typename: "StatusContext", context: "ci", state: "PENDING" }],
+      }),
+    ]);
+    const service = createGitHubService({
+      ttlMs: 0,
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => now,
+    });
+
+    service.retainCurrentPullRequestStatusPoll?.({ cwd: "/repo", headRef: "feature/fork" });
+    await service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
+    service.dispose?.();
+
+    now = EXPECTED_GITHUB_FAST_POLL_MS;
+    await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_FAST_POLL_MS);
+
+    expect(runner.calls).toHaveLength(1);
+  });
+
   it("fetches PR reviews and issue comments with one GraphQL call sorted chronologically", async () => {
     const runner = createRunner([pullRequestTimelineJson()]);
     const service = createGitHubService({
@@ -1215,5 +1490,231 @@ describe("GitHubService", () => {
       exitCode: 2,
       stderr: "GraphQL: unavailable",
     });
+  });
+
+  it("searches GitHub issues and PRs", async () => {
+    const runner = createRunner([issueJson("Issue title"), searchPullRequestJson("PR title")]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    await expect(
+      service.searchIssuesAndPrs({ cwd: "/repo", query: "cache", limit: 5 }),
+    ).resolves.toEqual({
+      githubFeaturesEnabled: true,
+      items: [
+        {
+          kind: "pr",
+          number: 123,
+          title: "PR title",
+          url: "https://github.com/acme/repo/pull/123",
+          state: "OPEN",
+          body: "pr body",
+          labels: ["enhancement"],
+          baseRefName: "main",
+          headRefName: "feature",
+          updatedAt: "2026-04-18T13:00:00Z",
+        },
+        {
+          kind: "issue",
+          number: 55,
+          title: "Issue title",
+          url: "https://github.com/acme/repo/issues/55",
+          state: "OPEN",
+          body: "issue body",
+          labels: ["bug"],
+          baseRefName: null,
+          headRefName: null,
+          updatedAt: "2026-04-18T12:00:00Z",
+        },
+      ],
+    });
+
+    expect(runner.calls).toEqual([
+      {
+        cwd: "/repo",
+        args: [
+          "issue",
+          "list",
+          "--search",
+          "cache",
+          "--json",
+          "number,title,url,state,body,labels,updatedAt",
+          "--limit",
+          "5",
+        ],
+      },
+      {
+        cwd: "/repo",
+        args: [
+          "pr",
+          "list",
+          "--search",
+          "cache",
+          "--json",
+          "number,title,url,state,body,labels,baseRefName,headRefName,updatedAt",
+          "--limit",
+          "5",
+        ],
+      },
+    ]);
+  });
+
+  it("searches only GitHub PRs when the search kinds request excludes issues", async () => {
+    const runner = createRunner([searchPullRequestJson("PR title")]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    await expect(
+      service.searchIssuesAndPrs({
+        cwd: "/repo",
+        query: "cache",
+        limit: 5,
+        kinds: ["github-pr"],
+      }),
+    ).resolves.toEqual({
+      githubFeaturesEnabled: true,
+      items: [
+        {
+          kind: "pr",
+          number: 123,
+          title: "PR title",
+          url: "https://github.com/acme/repo/pull/123",
+          state: "OPEN",
+          body: "pr body",
+          labels: ["enhancement"],
+          baseRefName: "main",
+          headRefName: "feature",
+          updatedAt: "2026-04-18T13:00:00Z",
+        },
+      ],
+    });
+
+    expect(runner.calls).toEqual([
+      {
+        cwd: "/repo",
+        args: [
+          "pr",
+          "list",
+          "--search",
+          "cache",
+          "--json",
+          "number,title,url,state,body,labels,baseRefName,headRefName,updatedAt",
+          "--limit",
+          "5",
+        ],
+      },
+    ]);
+  });
+
+  it("reuses cached PR status without another gh call", async () => {
+    let now = 100;
+    const runner = createRunner([currentPullRequestJson()]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => now,
+    });
+
+    await expect(
+      service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" }),
+    ).resolves.toMatchObject({ number: 42 });
+
+    now = 101;
+    await expect(
+      service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" }),
+    ).resolves.toMatchObject({ number: 42 });
+
+    expect(runner.calls).toHaveLength(1);
+  });
+
+  it("bypasses the warm PR status cache for forced reads", async () => {
+    const runner = createRunner([
+      currentPullRequestJson({ number: 41, title: "First" }),
+      currentPullRequestJson({ number: 42, title: "Forced" }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    await expect(
+      service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" }),
+    ).resolves.toMatchObject({ number: 41 });
+    await expect(
+      service.getCurrentPullRequestStatus({
+        cwd: "/repo",
+        headRef: "feature/fork",
+        force: true,
+        reason: "test",
+      }),
+    ).resolves.toMatchObject({ number: 42 });
+
+    expect(runner.calls).toHaveLength(2);
+  });
+
+  it("coalesces concurrent PR status callers", async () => {
+    const runner = createDeferredRunner();
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    const first = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
+    const second = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
+    await Promise.resolve();
+
+    expect(runner.calls).toHaveLength(1);
+    runner.resolveNext(currentPullRequestJson());
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      expect.objectContaining({ number: 42 }),
+      expect.objectContaining({ number: 42 }),
+    ]);
+  });
+
+  it("requires a reason for forced reads at runtime", async () => {
+    const service = createGitHubService({
+      runner: async () => ({ stdout: currentPullRequestJson(), stderr: "" }),
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    await expect(
+      service.getCurrentPullRequestStatus({
+        cwd: "/repo",
+        headRef: "feature/fork",
+        force: true,
+      } as never),
+    ).rejects.toThrow("GitHubService forced read requires a reason");
+  });
+
+  it("type: force true requires a reason", () => {
+    // @ts-expect-error force: true requires reason
+    const invalid: GitHubReadOptions = { force: true };
+    const valid: GitHubReadOptions = { force: true, reason: "test" };
+
+    expect(invalid.force).toBe(true);
+    expect(valid.reason).toBe("test");
+  });
+
+  it("resolves GitHub repos from a WorkspaceGitService-owned remote URL", async () => {
+    const workspaceGitService = {
+      resolveRepoRemoteUrl: async (cwd: string) => {
+        expect(cwd).toBe("/repo");
+        return "git@github.com:getpaseo/paseo.git";
+      },
+    };
+
+    await expect(resolveGitHubRepo("/repo", { workspaceGitService })).resolves.toBe(
+      "getpaseo/paseo",
+    );
   });
 });

@@ -82,7 +82,7 @@ describe("deriveProjectSlug", () => {
   ])("slugifies the GitHub repo name from %s", (remoteUrl, expectedSlug) => {
     const cwd = track(createGitWorkspace("fallback-name", remoteUrl));
 
-    expect(deriveProjectSlug(cwd)).toBe(expectedSlug);
+    expect(deriveProjectSlug(cwd, remoteUrl)).toBe(expectedSlug);
   });
 
   test("uses only the repo name, so identical repo names collide across owners", () => {
@@ -93,8 +93,8 @@ describe("deriveProjectSlug", () => {
       createGitWorkspace("other-fallback", "https://github.com/other/claude-code"),
     );
 
-    expect(deriveProjectSlug(acmeCwd)).toBe("claude-code");
-    expect(deriveProjectSlug(otherCwd)).toBe("claude-code");
+    expect(deriveProjectSlug(acmeCwd, "https://github.com/acme/claude-code")).toBe("claude-code");
+    expect(deriveProjectSlug(otherCwd, "https://github.com/other/claude-code")).toBe("claude-code");
   });
 
   test("falls through to the cwd basename for non-GitHub remotes", () => {
@@ -104,7 +104,7 @@ describe("deriveProjectSlug", () => {
     runGit(cwd, ["init"]);
     runGit(cwd, ["config", "remote.origin.url", "git@gitlab.com:acme/claude-code.git"]);
 
-    expect(deriveProjectSlug(cwd)).toBe("my-local-repo");
+    expect(deriveProjectSlug(cwd, "git@gitlab.com:acme/claude-code.git")).toBe("my-local-repo");
   });
 
   test("falls through to the cwd basename for embedded GitHub paths in non-GitHub remotes", () => {
@@ -118,7 +118,9 @@ describe("deriveProjectSlug", () => {
       "https://gitlab.example/mirror/github.com/acme/claude-code.git",
     ]);
 
-    expect(deriveProjectSlug(cwd)).toBe("embedded-github-path");
+    expect(
+      deriveProjectSlug(cwd, "https://gitlab.example/mirror/github.com/acme/claude-code.git"),
+    ).toBe("embedded-github-path");
   });
 
   test("falls through to the cwd basename for an empty remote", () => {

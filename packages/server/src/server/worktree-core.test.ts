@@ -11,16 +11,20 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, test, afterEach } from "vitest";
+import { describe, expect, test, afterEach, vi } from "vitest";
 
 import type { GitHubService } from "../services/github-service.js";
 import { UnknownBranchError } from "../utils/worktree.js";
-import { createWorktreeCore as createCoreWorktree } from "./worktree-core.js";
+import {
+  createWorktreeCore as createCoreWorktree,
+  resolveWorktreeRepoRoot,
+} from "./worktree-core.js";
 
 function createGitHubServiceStub(): GitHubService {
   return {
     listPullRequests: async () => [],
     listIssues: async () => [],
+    searchIssuesAndPrs: async () => ({ items: [], githubFeaturesEnabled: true }),
     getPullRequest: async ({ number }) => ({
       number,
       title: `PR ${number}`,
@@ -48,7 +52,10 @@ function createCoreDeps(options?: {
 }) {
   return {
     github: options?.github ?? createGitHubServiceStub(),
-    resolveRepositoryDefaultBranch: async () => "main",
+    workspaceGitService: {
+      resolveRepoRoot: async (cwd: string) => cwd,
+    },
+    resolveDefaultBranch: async () => "main",
     generateBranchName: options?.generateBranchName ?? ((seed) => seed ?? "generated-worktree"),
   };
 }
@@ -480,5 +487,25 @@ describe.skipIf(process.platform === "win32")("createWorktreeCore", () => {
   test("keeps direct createWorktree calls isolated to the core layer", () => {
     const serverSrc = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     expect(findDirectCreateWorktreeCallSites(serverSrc)).toEqual(["server/worktree-core.ts"]);
+  });
+});
+
+describe("resolveWorktreeRepoRoot", () => {
+  test("resolves repository roots through the workspace git service", async () => {
+    const workspaceGitService = {
+      resolveRepoRoot: vi.fn().mockResolvedValue("/tmp/main-repo"),
+    };
+
+    await expect(
+      resolveWorktreeRepoRoot(
+        { cwd: "/tmp/main-repo/worktrees/feature", paseoHome: "/tmp/paseo-home" },
+        workspaceGitService,
+      ),
+    ).resolves.toBe("/tmp/main-repo");
+
+    expect(workspaceGitService.resolveRepoRoot).toHaveBeenCalledTimes(1);
+    expect(workspaceGitService.resolveRepoRoot).toHaveBeenCalledWith(
+      "/tmp/main-repo/worktrees/feature",
+    );
   });
 });

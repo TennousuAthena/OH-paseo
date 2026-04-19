@@ -112,6 +112,9 @@ function createNoopWorkspaceGitService() {
         refreshedAt: null,
       },
     }),
+    resolveRepoRemoteUrl: async () => null,
+    resolveRepoRoot: async (cwd: string) => cwd,
+    resolveDefaultBranch: async () => "main",
     refresh: async () => {},
     requestWorkingTreeWatch: async (cwd: string) => ({
       repoRoot: cwd,
@@ -139,9 +142,11 @@ function createWorkspaceRuntimeSnapshot(
       remoteUrl: "https://github.com/acme/repo.git",
       isPaseoOwnedWorktree: false,
       isDirty: false,
+      baseRef: "main",
       aheadBehind: { ahead: 0, behind: 0 },
       aheadOfOrigin: 0,
       behindOfOrigin: 0,
+      hasRemote: true,
       diffStat: { additions: 1, deletions: 0 },
     },
     github: {

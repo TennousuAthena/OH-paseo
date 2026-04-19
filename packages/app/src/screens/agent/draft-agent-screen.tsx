@@ -19,10 +19,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { useQuery } from "@tanstack/react-query";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
-import {
-  CHECKOUT_STATUS_STALE_TIME,
-  checkoutStatusQueryKey,
-} from "@/hooks/use-checkout-status-query";
+import { checkoutStatusQueryKey } from "@/hooks/use-checkout-status-query";
 import { useAllAgentsList } from "@/hooks/use-all-agents-list";
 import { useHosts } from "@/runtime/host-runtime";
 import { buildBranchComboOptions, normalizeBranchOptionName } from "@/utils/branch-suggestions";
@@ -341,8 +338,10 @@ function DraftAgentScreenContent({
     },
     enabled: Boolean(trimmedWorkingDir) && canQuerySelectedHost,
     retry: false,
-    staleTime: CHECKOUT_STATUS_STALE_TIME,
-    refetchOnMount: "always",
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
   });
 
   const checkout = checkoutStatusQuery.data ?? null;
@@ -398,8 +397,10 @@ function DraftAgentScreenContent({
     enabled:
       isGitDirectory && Boolean(worktreeListRoot) && canQuerySelectedHost && !isNonGitDirectory,
     retry: false,
-    staleTime: 0,
-    refetchOnMount: "always",
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
   });
   const worktreeOptions = useMemo(() => {
     const options = (worktreeListQuery.data ?? []).map((worktree) => ({

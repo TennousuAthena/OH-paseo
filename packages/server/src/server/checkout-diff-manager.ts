@@ -1,7 +1,6 @@
 import type pino from "pino";
 import type { SubscribeCheckoutDiffRequest, SessionOutboundMessage } from "./messages.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
-import { getCheckoutDiff } from "../utils/checkout-git.js";
 import { expandTilde } from "../utils/path.js";
 import { toCheckoutError } from "./checkout-git-utils.js";
 
@@ -36,7 +35,6 @@ type CheckoutDiffWatchTarget = {
 };
 
 export class CheckoutDiffManager {
-  private readonly paseoHome: string;
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly targets = new Map<string, CheckoutDiffWatchTarget>();
 
@@ -45,7 +43,6 @@ export class CheckoutDiffManager {
     paseoHome: string;
     workspaceGitService: WorkspaceGitService;
   }) {
-    this.paseoHome = options.paseoHome;
     this.workspaceGitService = options.workspaceGitService;
   }
 
@@ -171,16 +168,12 @@ export class CheckoutDiffManager {
   ): Promise<CheckoutDiffSnapshotPayload> {
     const diffCwd = options?.diffCwd ?? cwd;
     try {
-      const diffResult = await getCheckoutDiff(
-        diffCwd,
-        {
-          mode: compare.mode,
-          baseRef: compare.baseRef,
-          ignoreWhitespace: compare.ignoreWhitespace,
-          includeStructured: true,
-        },
-        { paseoHome: this.paseoHome },
-      );
+      const diffResult = await this.workspaceGitService.getCheckoutDiff(diffCwd, {
+        mode: compare.mode,
+        baseRef: compare.baseRef,
+        ignoreWhitespace: compare.ignoreWhitespace,
+        includeStructured: true,
+      });
       const files = [...(diffResult.structured ?? [])];
       files.sort((a, b) => {
         if (a.path === b.path) return 0;

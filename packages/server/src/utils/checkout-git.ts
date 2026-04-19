@@ -3,13 +3,13 @@ import { existsSync, realpathSync } from "fs";
 import { open as openFile, stat as statFile } from "fs/promises";
 import { TTLCache } from "@isaacs/ttlcache";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
-import type { GitHubSearchKind } from "../shared/messages.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
 import {
   GitHubAuthenticationError,
   GitHubCliMissingError,
   createGitHubService,
   resolveGitHubRepo,
+  type GitHubRepoRemoteUrlResolver,
   type GitHubService,
 } from "../services/github-service.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
@@ -32,6 +32,11 @@ const pullRequestStatusInFlight = new Map<string, Promise<PullRequestStatusResul
 let shortstatCacheTtlMs = DEFAULT_SHORTSTAT_CACHE_TTL_MS;
 let shortstatCache = createShortstatCache(shortstatCacheTtlMs);
 const shortstatInFlight = new Map<string, Promise<CheckoutShortstat | null>>();
+
+interface CheckoutReadCacheOptions {
+  force?: boolean;
+  reason?: string;
+}
 
 function createPullRequestStatusCache(ttlMs: number) {
   return new TTLCache<string, PullRequestStatusResult>({
@@ -1317,6 +1322,44 @@ export interface CheckoutShortstat {
   deletions: number;
 }
 
+function parseCheckoutShortstat(text: string): CheckoutShortstat | null {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  let additions = 0;
+  let deletions = 0;
+  const addMatch = trimmed.match(/(\d+)\s+insertion/);
+  if (addMatch) {
+    additions = Number.parseInt(addMatch[1]!, 10);
+  }
+  const delMatch = trimmed.match(/(\d+)\s+deletion/);
+  if (delMatch) {
+    deletions = Number.parseInt(delMatch[1]!, 10);
+  }
+
+  if (additions === 0 && deletions === 0) {
+    return null;
+  }
+
+  return { additions, deletions };
+}
+
+function combineCheckoutShortstats(
+  first: CheckoutShortstat | null,
+  second: CheckoutShortstat | null,
+): CheckoutShortstat | null {
+  const additions = (first?.additions ?? 0) + (second?.additions ?? 0);
+  const deletions = (first?.deletions ?? 0) + (second?.deletions ?? 0);
+
+  if (additions === 0 && deletions === 0) {
+    return null;
+  }
+
+  return { additions, deletions };
+}
+
 async function getCheckoutShortstatUncached(
   cwd: string,
   context?: CheckoutContext,
@@ -1331,63 +1374,65 @@ async function getCheckoutShortstatUncached(
   const localBaseRef = configured.baseRef ?? (await resolveBaseRef(cwd));
   const currentBranch = await getCurrentBranch(cwd);
 
-  let diffTarget: string;
+  let comparisonRef: string;
 
   if (currentBranch && localBaseRef && currentBranch !== localBaseRef) {
-    // Feature branch: diff against the merge-base with the base branch
-    const comparisonBaseRef = await resolveBestComparisonBaseRef(cwd, localBaseRef);
-
     try {
-      const { stdout } = await runGitCommand(["merge-base", "HEAD", comparisonBaseRef], {
-        cwd,
-        env: READ_ONLY_GIT_ENV,
-      });
-      const mergeBase = stdout.trim();
-      if (!mergeBase) {
-        return null;
-      }
-      diffTarget = mergeBase;
+      comparisonRef = await resolveBestComparisonBaseRef(cwd, localBaseRef);
     } catch {
       return null;
     }
   } else if (currentBranch) {
-    // On the base branch (or no base ref configured): diff against remote tracking branch
     const hasOrigin = await doesGitRefExist(cwd, `refs/remotes/origin/${currentBranch}`);
     if (!hasOrigin) {
       return null;
     }
-    diffTarget = `origin/${currentBranch}`;
+    comparisonRef = `origin/${currentBranch}`;
   } else {
     return null;
   }
 
   try {
-    // Omit HEAD so the diff includes uncommitted (staged + unstaged) changes
-    const { stdout } = await runGitCommand(["diff", "--shortstat", diffTarget], {
+    const { stdout: mergeBaseOut } = await runGitCommand(["merge-base", "HEAD", comparisonRef], {
       cwd,
       env: READ_ONLY_GIT_ENV,
     });
-    const text = stdout.trim();
-    if (!text) {
+    const mergeBase = mergeBaseOut.trim();
+    if (!mergeBase) {
       return null;
     }
 
-    let additions = 0;
-    let deletions = 0;
-    const addMatch = text.match(/(\d+)\s+insertion/);
-    if (addMatch) {
-      additions = Number.parseInt(addMatch[1]!, 10);
-    }
-    const delMatch = text.match(/(\d+)\s+deletion/);
-    if (delMatch) {
-      deletions = Number.parseInt(delMatch[1]!, 10);
-    }
-
-    if (additions === 0 && deletions === 0) {
+    const { stdout: aheadBehindOut } = await runGitCommand(
+      ["rev-list", "--left-right", "--count", `HEAD...${comparisonRef}`],
+      { cwd, env: READ_ONLY_GIT_ENV },
+    );
+    const [headOnlyRaw, comparisonOnlyRaw] = aheadBehindOut.trim().split(/\s+/);
+    const headOnly = Number.parseInt(headOnlyRaw ?? "0", 10);
+    const comparisonOnly = Number.parseInt(comparisonOnlyRaw ?? "0", 10);
+    if (Number.isNaN(headOnly) || Number.isNaN(comparisonOnly)) {
       return null;
     }
 
-    return { additions, deletions };
+    // Incoming uses a two-ref diff, so add the working tree diff separately.
+    const showIncoming = headOnly === 0 && comparisonOnly > 0;
+    const { stdout } = await runGitCommand(
+      ["diff", "--shortstat", mergeBase, ...(showIncoming ? [comparisonRef] : [])],
+      {
+        cwd,
+        env: READ_ONLY_GIT_ENV,
+      },
+    );
+    const committedShortstat = parseCheckoutShortstat(stdout);
+
+    if (!showIncoming) {
+      return committedShortstat;
+    }
+
+    const { stdout: worktreeOut } = await runGitCommand(["diff", "--shortstat", "HEAD"], {
+      cwd,
+      env: READ_ONLY_GIT_ENV,
+    });
+    return combineCheckoutShortstats(committedShortstat, parseCheckoutShortstat(worktreeOut));
   } catch {
     return null;
   }
@@ -1396,16 +1441,19 @@ async function getCheckoutShortstatUncached(
 function getOrLoadCheckoutShortstat(
   cwd: string,
   context?: CheckoutContext,
+  options?: CheckoutReadCacheOptions,
 ): Promise<CheckoutShortstat | null> {
   const cacheKey = getShortstatCacheKey(cwd);
-  const cached = shortstatCache.get(cacheKey);
-  if (cached !== undefined) {
-    return Promise.resolve(cached);
-  }
+  if (!options?.force) {
+    const cached = shortstatCache.get(cacheKey);
+    if (cached !== undefined) {
+      return Promise.resolve(cached);
+    }
 
-  const existing = shortstatInFlight.get(cacheKey);
-  if (existing) {
-    return existing;
+    const existing = shortstatInFlight.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
   }
 
   const load = getCheckoutShortstatUncached(cwd, context)
@@ -1424,8 +1472,9 @@ function getOrLoadCheckoutShortstat(
 export async function getCheckoutShortstat(
   cwd: string,
   context?: CheckoutContext,
+  options?: CheckoutReadCacheOptions,
 ): Promise<CheckoutShortstat | null> {
-  return getOrLoadCheckoutShortstat(cwd, context);
+  return getOrLoadCheckoutShortstat(cwd, context, options);
 }
 
 export function getCachedCheckoutShortstat(cwd: string): CheckoutShortstat | null | undefined {
@@ -1996,9 +2045,10 @@ export async function createPullRequest(
   cwd: string,
   options: CreatePullRequestOptions,
   github: GitHubService = createGitHubService(),
+  workspaceGitService: GitHubRepoRemoteUrlResolver,
 ): Promise<{ url: string; number: number }> {
   await requireGitRepo(cwd);
-  const repo = await resolveGitHubRepo(cwd);
+  const repo = await resolveGitHubRepo(cwd, { workspaceGitService });
   if (!repo) {
     throw new Error("Unable to determine GitHub repo from git remote");
   }
@@ -2034,19 +2084,22 @@ export async function createPullRequest(
 export async function getPullRequestStatus(
   cwd: string,
   github: GitHubService = createGitHubService(),
+  options?: CheckoutReadCacheOptions,
 ): Promise<PullRequestStatusResult> {
   const cacheKey = getPullRequestStatusCacheKey(cwd);
-  const cached = pullRequestStatusCache.get(cacheKey);
-  if (cached) {
-    return cached;
+  if (!options?.force) {
+    const cached = pullRequestStatusCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const existing = pullRequestStatusInFlight.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
   }
 
-  const existing = pullRequestStatusInFlight.get(cacheKey);
-  if (existing) {
-    return existing;
-  }
-
-  const lookup = getPullRequestStatusUncached(cwd, github)
+  const lookup = getPullRequestStatusUncached(cwd, github, options)
     .then((status) => {
       pullRequestStatusCache.set(cacheKey, status);
       return status;
@@ -2062,6 +2115,7 @@ export async function getPullRequestStatus(
 async function getPullRequestStatusUncached(
   cwd: string,
   github: GitHubService,
+  options?: CheckoutReadCacheOptions,
 ): Promise<PullRequestStatusResult> {
   await requireGitRepo(cwd);
   const head = await getCurrentBranch(cwd);
@@ -2072,7 +2126,11 @@ async function getPullRequestStatusUncached(
     };
   }
   try {
-    const status = await github.getCurrentPullRequestStatus({ cwd, headRef: head });
+    const status = await github.getCurrentPullRequestStatus({
+      cwd,
+      headRef: head,
+      reason: options?.reason,
+    });
     return {
       status,
       githubFeaturesEnabled: true,
@@ -2080,110 +2138,6 @@ async function getPullRequestStatusUncached(
   } catch (error) {
     if (error instanceof GitHubCliMissingError || error instanceof GitHubAuthenticationError) {
       return { status: null, githubFeaturesEnabled: false };
-    }
-    throw error;
-  }
-}
-
-export interface GitHubSearchResult {
-  items: Array<{
-    kind: "issue" | "pr";
-    number: number;
-    title: string;
-    url: string;
-    state: string;
-    body: string | null;
-    labels: string[];
-    baseRefName?: string | null;
-    headRefName?: string | null;
-    updatedAt?: string;
-  }>;
-  githubFeaturesEnabled: boolean;
-}
-
-interface SearchGitHubIssuesAndPrsOptions {
-  kinds?: GitHubSearchKind[];
-}
-
-export async function searchGitHubIssuesAndPrs(
-  cwd: string,
-  query: string,
-  limit = 20,
-  github: GitHubService = createGitHubService(),
-  options: SearchGitHubIssuesAndPrsOptions = {},
-): Promise<GitHubSearchResult> {
-  await requireGitRepo(cwd);
-  try {
-    const kinds = options.kinds ?? ["github-issue", "github-pr"];
-    const shouldFetchIssues = kinds.includes("github-issue");
-    const shouldFetchPullRequests = kinds.includes("github-pr");
-    const issuesResult = shouldFetchIssues
-      ? await github.listIssues({ cwd, query, limit }).then(
-          (value) => ({ status: "fulfilled" as const, value }),
-          (reason) => ({ status: "rejected" as const, reason }),
-        )
-      : null;
-    const prsResult = shouldFetchPullRequests
-      ? await github.listPullRequests({ cwd, query, limit }).then(
-          (value) => ({ status: "fulfilled" as const, value }),
-          (reason) => ({ status: "rejected" as const, reason }),
-        )
-      : null;
-
-    const items: GitHubSearchResult["items"] = [];
-    const requestedResults = [issuesResult, prsResult].filter((result) => result !== null);
-    const failures = requestedResults.filter((result) => result.status === "rejected");
-    if (
-      requestedResults.length > 0 &&
-      failures.length === requestedResults.length &&
-      failures.every(
-        (result) =>
-          result.status === "rejected" &&
-          (result.reason instanceof GitHubCliMissingError ||
-            result.reason instanceof GitHubAuthenticationError),
-      )
-    ) {
-      return { items: [], githubFeaturesEnabled: false };
-    }
-
-    if (issuesResult?.status === "fulfilled") {
-      for (const item of issuesResult.value) {
-        items.push({
-          kind: "issue",
-          number: item.number,
-          title: item.title,
-          url: item.url,
-          state: item.state,
-          body: item.body,
-          labels: item.labels,
-          baseRefName: null,
-          headRefName: null,
-          updatedAt: item.updatedAt,
-        });
-      }
-    }
-
-    if (prsResult?.status === "fulfilled") {
-      for (const item of prsResult.value) {
-        items.push({
-          kind: "pr",
-          number: item.number,
-          title: item.title,
-          url: item.url,
-          state: item.state,
-          body: item.body,
-          labels: item.labels,
-          baseRefName: item.baseRefName,
-          headRefName: item.headRefName,
-          updatedAt: item.updatedAt,
-        });
-      }
-    }
-
-    return { items, githubFeaturesEnabled: true };
-  } catch (error) {
-    if (error instanceof GitHubCliMissingError || error instanceof GitHubAuthenticationError) {
-      return { items: [], githubFeaturesEnabled: false };
     }
     throw error;
   }

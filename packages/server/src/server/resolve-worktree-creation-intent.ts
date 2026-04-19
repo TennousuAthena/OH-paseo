@@ -15,7 +15,7 @@ export interface ResolveWorktreeCreationIntentInput {
 
 export interface ResolveWorktreeCreationIntentDeps {
   github: GitHubService;
-  resolveRepositoryDefaultBranch: (repoRoot: string) => Promise<string>;
+  resolveDefaultBranch: (repoRoot: string) => Promise<string>;
   generateBranchName: (seed: string | undefined) => string;
 }
 
@@ -131,7 +131,7 @@ async function resolveDefaultBranch(
   repoRoot: string,
   deps: ResolveWorktreeCreationIntentDeps,
 ): Promise<string> {
-  const baseBranch = await deps.resolveRepositoryDefaultBranch(repoRoot);
+  const baseBranch = await deps.resolveDefaultBranch(repoRoot);
   if (!baseBranch) {
     throw new Error("Unable to resolve repository default branch");
   }

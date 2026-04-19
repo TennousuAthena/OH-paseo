@@ -20,11 +20,7 @@ import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
 } from "./timeline-append.js";
-import {
-  deletePaseoWorktree,
-  listPaseoWorktrees,
-  type WorktreeConfig,
-} from "../../utils/worktree.js";
+import { deletePaseoWorktree, type WorktreeConfig } from "../../utils/worktree.js";
 import { WaitForAgentTracker } from "./wait-for-agent-tracker.js";
 import { scheduleAgentMetadataGeneration } from "./agent-metadata-generator.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../voice-types.js";
@@ -51,6 +47,7 @@ import {
   waitForAgentWithTimeout,
 } from "./mcp-shared.js";
 import type { GitHubService } from "../../services/github-service.js";
+import type { WorkspaceGitService } from "../workspace-git-service.js";
 import type {
   CreatePaseoWorktreeFn,
   CreatePaseoWorktreeInput,
@@ -66,6 +63,7 @@ export interface AgentMcpServerOptions {
   scheduleService?: ScheduleService | null;
   providerRegistry?: Record<AgentProvider, ProviderDefinition> | null;
   github?: GitHubService;
+  workspaceGitService?: Pick<WorkspaceGitService, "getSnapshot" | "listWorktrees">;
   createPaseoWorktree?: CreatePaseoWorktreeFn;
   paseoHome?: string;
   /**
@@ -562,7 +560,9 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
               paseoHome: options.paseoHome,
             },
             createPaseoWorktree: options.createPaseoWorktree,
-            resolveRepositoryDefaultBranch: baseBranch ? async () => baseBranch : undefined,
+            resolveDefaultBranch: baseBranch ? async () => baseBranch : undefined,
+            workspaceGitService: options.workspaceGitService,
+            logger: options.logger,
           });
           resolvedCwd = createdWorktree.worktree.worktreePath;
           worktreeConfig = createdWorktree.worktree;
@@ -622,6 +622,11 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         explicitTitle: snapshot.config.title,
         paseoHome: options.paseoHome,
         logger: childLogger,
+        deps: options.workspaceGitService
+          ? {
+              workspaceGitService: options.workspaceGitService,
+            }
+          : undefined,
       });
 
       try {
@@ -1521,9 +1526,11 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     },
     async ({ cwd }) => {
       const resolvedCwd = resolveScopedCwd(cwd, { required: true });
-      const worktrees = await listPaseoWorktrees({
-        cwd: resolvedCwd,
-        paseoHome: options.paseoHome,
+      if (!options.workspaceGitService) {
+        throw new Error("WorkspaceGitService is required to list worktrees");
+      }
+      const worktrees = await options.workspaceGitService.listWorktrees(resolvedCwd, {
+        reason: "mcp:list-worktrees",
       });
 
       return {
@@ -1570,7 +1577,9 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
           paseoHome: options.paseoHome,
         },
         createPaseoWorktree: options.createPaseoWorktree,
-        resolveRepositoryDefaultBranch: baseBranch ? async () => baseBranch : undefined,
+        resolveDefaultBranch: baseBranch ? async () => baseBranch : undefined,
+        workspaceGitService: options.workspaceGitService,
+        logger: options.logger,
       });
       const { worktree } = createdWorktree;
 
@@ -1602,12 +1611,25 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       },
     },
     async ({ cwd, worktreePath, worktreeSlug }) => {
+      const repoRoot = resolveScopedCwd(cwd, { required: true });
       await deletePaseoWorktree({
-        cwd: resolveScopedCwd(cwd, { required: true }),
+        cwd: repoRoot,
         worktreePath,
         worktreeSlug,
         paseoHome: options.paseoHome,
       });
+      options.github?.invalidate({ cwd: repoRoot });
+      try {
+        await options.workspaceGitService?.getSnapshot(repoRoot, {
+          force: true,
+          reason: "archive-worktree",
+        });
+      } catch (error) {
+        options.logger.warn(
+          { err: error, cwd: repoRoot },
+          "Failed to force-refresh workspace git snapshot after archiving worktree",
+        );
+      }
 
       return {
         content: [],
@@ -1759,7 +1781,9 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
 interface CreateMcpWorktreeOptions {
   input: CreatePaseoWorktreeInput;
   createPaseoWorktree: CreatePaseoWorktreeFn | undefined;
-  resolveRepositoryDefaultBranch?: (repoRoot: string) => Promise<string>;
+  resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
+  workspaceGitService?: Pick<WorkspaceGitService, "getSnapshot">;
+  logger: Logger;
 }
 
 async function createMcpWorktree(
@@ -1769,9 +1793,34 @@ async function createMcpWorktree(
     if (!options.createPaseoWorktree) {
       throw new Error("Paseo worktree service is not configured");
     }
-    return await options.createPaseoWorktree(options.input, {
-      resolveRepositoryDefaultBranch: options.resolveRepositoryDefaultBranch,
+    const result = await options.createPaseoWorktree(options.input, {
+      resolveDefaultBranch: options.resolveDefaultBranch,
     });
+    if (options.workspaceGitService) {
+      const refreshResults = await Promise.allSettled([
+        options.workspaceGitService.getSnapshot(options.input.cwd, {
+          force: true,
+          reason: "create-worktree",
+        }),
+        options.workspaceGitService.getSnapshot(result.worktree.worktreePath, {
+          force: true,
+          reason: "create-worktree",
+        }),
+      ]);
+      for (const [index, refreshResult] of refreshResults.entries()) {
+        if (refreshResult.status === "fulfilled") {
+          continue;
+        }
+        options.logger.warn(
+          {
+            err: refreshResult.reason,
+            cwd: index === 0 ? options.input.cwd : result.worktree.worktreePath,
+          },
+          "Failed to force-refresh workspace git snapshot after creating worktree",
+        );
+      }
+    }
+    return result;
   } catch (error) {
     throw toWorktreeRequestError(error);
   }
