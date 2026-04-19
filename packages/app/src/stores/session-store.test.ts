@@ -9,6 +9,7 @@ import {
   useSessionStore,
   type WorkspaceDescriptor,
 } from "./session-store";
+import { patchWorkspaceScripts } from "../contexts/session-workspace-scripts";
 
 function createWorkspace(
   input: Partial<WorkspaceDescriptor> & Pick<WorkspaceDescriptor, "id">,
@@ -31,6 +32,23 @@ function createWorkspace(
 afterEach(() => {
   useSessionStore.getState().clearSession("test-server");
 });
+
+function initializeTestSession(): void {
+  useSessionStore.getState().initializeSession("test-server", null as unknown as DaemonClient);
+}
+
+function getTestSessionReferences() {
+  const state = useSessionStore.getState();
+  const session = state.sessions["test-server"];
+  if (!session) {
+    throw new Error("test session is not initialized");
+  }
+  return {
+    sessions: state.sessions,
+    session,
+    workspaces: session.workspaces,
+  };
+}
 
 describe("normalizeWorkspaceDescriptor", () => {
   it("normalizes workspace scripts and invalid activity timestamps", () => {
@@ -137,6 +155,126 @@ describe("mergeWorkspaces", () => {
         exitCode: null,
       },
     ]);
+  });
+
+  it("preserves identity when merging content-equal workspace descriptors", () => {
+    const store = useSessionStore.getState();
+    initializeTestSession();
+    const workspace = createWorkspace({ id: "/repo/main" });
+
+    store.mergeWorkspaces("test-server", [workspace]);
+    const first = getTestSessionReferences();
+
+    store.mergeWorkspaces("test-server", [{ ...workspace, scripts: [...workspace.scripts] }]);
+    const second = getTestSessionReferences();
+
+    expect(second.sessions).toBe(first.sessions);
+    expect(second.session).toBe(first.session);
+    expect(second.workspaces).toBe(first.workspaces);
+    expect(second.workspaces.get("/repo/main")).toBe(first.workspaces.get("/repo/main"));
+  });
+
+  it("preserves unaffected workspace entry identity when one workspace changes", () => {
+    const store = useSessionStore.getState();
+    initializeTestSession();
+    const workspaceA = createWorkspace({ id: "/repo/a", name: "main" });
+    const workspaceB = createWorkspace({ id: "/repo/b", name: "feature" });
+
+    store.mergeWorkspaces("test-server", [workspaceA, workspaceB]);
+    const before = getTestSessionReferences();
+    const beforeA = before.workspaces.get("/repo/a");
+    const beforeB = before.workspaces.get("/repo/b");
+
+    store.mergeWorkspaces("test-server", [{ ...workspaceA, status: "running" }]);
+    const after = getTestSessionReferences();
+
+    expect(after.sessions).not.toBe(before.sessions);
+    expect(after.session).not.toBe(before.session);
+    expect(after.workspaces).not.toBe(before.workspaces);
+    expect(after.workspaces.get("/repo/a")).not.toBe(beforeA);
+    expect(after.workspaces.get("/repo/b")).toBe(beforeB);
+  });
+});
+
+describe("setWorkspaces", () => {
+  it("preserves identity when replacing workspaces with content-equal entries", () => {
+    const store = useSessionStore.getState();
+    initializeTestSession();
+    const workspace = createWorkspace({ id: "/repo/main" });
+    store.setWorkspaces("test-server", new Map([[workspace.id, workspace]]));
+    const before = getTestSessionReferences();
+
+    store.setWorkspaces(
+      "test-server",
+      new Map([[workspace.id, { ...workspace, scripts: [...workspace.scripts] }]]),
+    );
+    const after = getTestSessionReferences();
+
+    expect(after.sessions).toBe(before.sessions);
+    expect(after.session).toBe(before.session);
+    expect(after.workspaces).toBe(before.workspaces);
+    expect(after.workspaces.get(workspace.id)).toBe(before.workspaces.get(workspace.id));
+  });
+
+  it("stores replacement descriptors as-is when diff stat is cleared", () => {
+    const store = useSessionStore.getState();
+    initializeTestSession();
+    const workspace = createWorkspace({
+      id: "/repo/main",
+      diffStat: { additions: 2, deletions: 1 },
+    });
+    store.setWorkspaces("test-server", new Map([[workspace.id, workspace]]));
+    const before = getTestSessionReferences();
+
+    store.setWorkspaces("test-server", new Map([[workspace.id, { ...workspace, diffStat: null }]]));
+    const after = getTestSessionReferences();
+
+    expect(after.sessions).not.toBe(before.sessions);
+    expect(after.session).not.toBe(before.session);
+    expect(after.workspaces).not.toBe(before.workspaces);
+    expect(after.workspaces.get(workspace.id)?.diffStat).toBeNull();
+  });
+});
+
+describe("removeWorkspace", () => {
+  it("preserves identity when removing a missing workspace", () => {
+    const store = useSessionStore.getState();
+    initializeTestSession();
+    const workspace = createWorkspace({ id: "/repo/main" });
+    store.setWorkspaces("test-server", new Map([[workspace.id, workspace]]));
+    const before = getTestSessionReferences();
+
+    store.removeWorkspace("test-server", "/repo/missing");
+    const after = getTestSessionReferences();
+
+    expect(after.sessions).toBe(before.sessions);
+    expect(after.session).toBe(before.session);
+    expect(after.workspaces).toBe(before.workspaces);
+  });
+});
+
+describe("patchWorkspaceScripts", () => {
+  it("preserves workspace entry identity when scripts are content-equal", () => {
+    const script = {
+      scriptName: "web",
+      type: "service" as const,
+      hostname: "web.paseo.localhost",
+      port: 3000,
+      proxyUrl: "http://web.paseo.localhost:6767",
+      lifecycle: "running" as const,
+      health: "healthy" as const,
+      exitCode: null,
+    };
+    const workspace = createWorkspace({ id: "/repo/main", scripts: [script] });
+    const current = new Map([[workspace.id, workspace]]);
+
+    const next = patchWorkspaceScripts(current, {
+      workspaceId: workspace.id,
+      scripts: [{ ...script }],
+    });
+
+    expect(next).toBe(current);
+    expect(next.get(workspace.id)).toBe(workspace);
   });
 });
 

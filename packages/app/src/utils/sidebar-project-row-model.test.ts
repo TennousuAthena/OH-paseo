@@ -31,9 +31,6 @@ function project(overrides: Partial<SidebarProjectEntry> = {}): SidebarProjectEn
     projectName: "paseo",
     projectKind: "git",
     iconWorkingDir: "/repo",
-    statusBucket: "done",
-    activeCount: 0,
-    totalWorkspaces: 1,
     workspaces: [workspace()],
     ...overrides,
   };

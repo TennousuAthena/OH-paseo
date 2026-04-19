@@ -56,6 +56,7 @@ import {
 } from "@/utils/host-routes";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import {
+  createSidebarWorkspaceEntry,
   type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
@@ -92,7 +93,12 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { type PrHint, useWorkspacePrHint } from "@/hooks/use-checkout-pr-status-query";
 import { buildSidebarProjectRowModel } from "@/utils/sidebar-project-row-model";
 import { useNavigationActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
-import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
+import {
+  normalizeWorkspaceDescriptor,
+  useSessionStore,
+  type WorkspaceDescriptor,
+} from "@/stores/session-store";
+import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { buildWorkspaceArchiveRedirectRoute } from "@/utils/workspace-archive-navigation";
 import { openExternalUrl } from "@/utils/open-external-url";
 import {
@@ -114,7 +120,6 @@ function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): 
 const workspaceKeyExtractor = (workspace: SidebarWorkspaceEntry) => workspace.workspaceKey;
 
 const projectKeyExtractor = (project: SidebarProjectEntry) => project.projectKey;
-const EMPTY_WORKSPACES = new Map();
 const WORKSPACE_STATUS_DOT_WIDTH = 14;
 const DEFAULT_STATUS_DOT_SIZE = 7;
 const EMPHASIZED_STATUS_DOT_SIZE = 9;
@@ -192,6 +197,19 @@ interface WorkspaceRowInnerProps {
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
   archiveShortcutKeys?: ShortcutKey[][] | null;
+}
+
+function useSidebarWorkspaceEntry(
+  serverId: string | null,
+  workspaceId: string | null,
+): SidebarWorkspaceEntry | null {
+  const projectWorkspaceEntry = useCallback(
+    (workspace: WorkspaceDescriptor): SidebarWorkspaceEntry =>
+      createSidebarWorkspaceEntry({ serverId: serverId ?? "", workspace }),
+    [serverId],
+  );
+
+  return useWorkspaceFields(serverId, workspaceId, projectWorkspaceEntry);
 }
 
 export function PrBadge({ hint }: { hint: PrHint }) {
@@ -1151,9 +1169,6 @@ function WorkspaceRowWithMenu({
   const toast = useToast();
   const activeWorkspaceSelection = useNavigationActiveWorkspaceSelection();
   const archiveWorktree = useCheckoutGitActionsStore((state) => state.archiveWorktree);
-  const sessionWorkspaces = useSessionStore(
-    (state) => state.sessions[workspace.serverId]?.workspaces ?? EMPTY_WORKSPACES,
-  );
   const [isArchivingWorkspace, setIsArchivingWorkspace] = useState(false);
   const workspaceDirectory = resolveWorkspaceExecutionDirectory({
     workspaceDirectory: workspace.workspaceDirectory,
@@ -1181,10 +1196,11 @@ function WorkspaceRowWithMenu({
       buildWorkspaceArchiveRedirectRoute({
         serverId: workspace.serverId,
         archivedWorkspaceId: workspace.workspaceId,
-        workspaces: sessionWorkspaces.values(),
+        workspaces:
+          useSessionStore.getState().sessions[workspace.serverId]?.workspaces.values() ?? [],
       }),
     );
-  }, [activeWorkspaceSelection, sessionWorkspaces, workspace.serverId, workspace.workspaceId]);
+  }, [activeWorkspaceSelection, workspace.serverId, workspace.workspaceId]);
 
   const handleArchiveWorktree = useCallback(() => {
     if (isArchiving) {
@@ -1378,9 +1394,6 @@ function NonGitProjectRowWithMenuContent({
   const toast = useToast();
   const contextMenu = useContextMenu();
   const activeWorkspaceSelection = useNavigationActiveWorkspaceSelection();
-  const sessionWorkspaces = useSessionStore(
-    (state) => state.sessions[workspace.serverId]?.workspaces ?? EMPTY_WORKSPACES,
-  );
   const [isArchivingWorkspace, setIsArchivingWorkspace] = useState(false);
   const redirectAfterArchive = useCallback(() => {
     if (
@@ -1394,10 +1407,11 @@ function NonGitProjectRowWithMenuContent({
       buildWorkspaceArchiveRedirectRoute({
         serverId: workspace.serverId,
         archivedWorkspaceId: workspace.workspaceId,
-        workspaces: sessionWorkspaces.values(),
+        workspaces:
+          useSessionStore.getState().sessions[workspace.serverId]?.workspaces.values() ?? [],
       }) as any,
     );
-  }, [activeWorkspaceSelection, sessionWorkspaces, workspace.serverId, workspace.workspaceId]);
+  }, [activeWorkspaceSelection, workspace.serverId, workspace.workspaceId]);
 
   const handleArchiveWorkspace = useCallback(() => {
     if (isArchivingWorkspace) {
@@ -1542,13 +1556,19 @@ function FlattenedProjectRow({
   onRemoveProject?: () => void;
   removeProjectStatus?: "idle" | "pending";
 }) {
+  const workspace = useSidebarWorkspaceEntry(serverId, rowModel.workspace.workspaceId);
+
+  if (!workspace) {
+    return null;
+  }
+
   if (project.projectKind === "directory") {
     return (
       <NonGitProjectRowWithMenu
         project={project}
         displayName={displayName}
         iconDataUri={iconDataUri}
-        workspace={rowModel.workspace}
+        workspace={workspace}
         selected={rowModel.selected}
         onPress={onPress}
         shortcutNumber={shortcutNumber}
@@ -1565,7 +1585,7 @@ function FlattenedProjectRow({
       project={project}
       displayName={displayName}
       iconDataUri={iconDataUri}
-      workspace={rowModel.workspace}
+      workspace={workspace}
       selected={rowModel.selected}
       chevron={rowModel.chevron}
       onPress={onPress}
@@ -1609,9 +1629,15 @@ function WorkspaceRow({
   canCopyBranchName: boolean;
   isCreating?: boolean;
 }) {
+  const hydratedWorkspace = useSidebarWorkspaceEntry(workspace.serverId, workspace.workspaceId);
+
+  if (!hydratedWorkspace) {
+    return null;
+  }
+
   return (
     <WorkspaceRowWithMenu
-      workspace={workspace}
+      workspace={hydratedWorkspace}
       selected={selected}
       shortcutNumber={shortcutNumber}
       showShortcutBadge={showShortcutBadge}

@@ -11,9 +11,9 @@ import { useDraftAgentCreateFlow } from "@/hooks/use-draft-agent-create-flow";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
-import { type Agent, useSessionStore } from "@/stores/session-store";
+import type { Agent } from "@/stores/session-store";
+import { useWorkspaceExecutionAuthority } from "@/stores/session-store-hooks";
 import { encodeImages } from "@/utils/encode-images";
-import { getWorkspaceExecutionAuthority } from "@/utils/workspace-execution";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import type { AgentCapabilityFlags } from "@server/server/agent/agent-sdk-types";
 import type { AgentSnapshotPayload } from "@server/shared/messages";
@@ -50,9 +50,8 @@ export function WorkspaceDraftAgentTab({
 }: WorkspaceDraftAgentTabProps) {
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
-  const workspaceAuthority = getWorkspaceExecutionAuthority({ workspaces, workspaceId });
-  const workspaceExecutionAuthority = workspaceAuthority.ok ? workspaceAuthority.authority : null;
+  const workspaceAuthority = useWorkspaceExecutionAuthority(serverId, workspaceId);
+  const workspaceExecutionAuthority = workspaceAuthority?.ok ? workspaceAuthority.authority : null;
   const workspaceDirectory = workspaceExecutionAuthority?.workspaceDirectory ?? null;
   const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
   const draftStoreKey = useMemo(

@@ -66,6 +66,7 @@ import {
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
+import { useWorkspace } from "@/stores/session-store-hooks";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import {
   checkoutStatusQueryKey,
@@ -79,7 +80,7 @@ import { useStableEvent } from "@/hooks/use-stable-event";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
 import {
-  resolveWorkspaceExecutionAuthority,
+  getWorkspaceExecutionAuthority,
   resolveWorkspaceRouteId,
 } from "@/utils/workspace-execution";
 import {
@@ -617,9 +618,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     resolveWorkspaceRouteId({
       routeWorkspaceId: workspaceId,
     }) ?? "";
-  const sessionWorkspaces = useSessionStore(
-    (state) => state.sessions[normalizedServerId]?.workspaces,
-  );
+  const workspaceDescriptor = useWorkspace(normalizedServerId, normalizedWorkspaceId);
 
   const workspaceTerminalScopeKey =
     normalizedServerId && normalizedWorkspaceId
@@ -632,17 +631,18 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const queryClient = useQueryClient();
   const client = useHostRuntimeClient(normalizedServerId);
   const isConnected = useHostRuntimeIsConnected(normalizedServerId);
-  const workspaceDescriptor = sessionWorkspaces?.get(normalizedWorkspaceId) ?? null;
   const workspaceAuthority = useMemo(
     () =>
-      resolveWorkspaceExecutionAuthority({
-        workspaces: sessionWorkspaces,
-        workspaceId: normalizedWorkspaceId,
+      getWorkspaceExecutionAuthority({
+        workspace: workspaceDescriptor,
       }),
-    [normalizedWorkspaceId, sessionWorkspaces],
+    [workspaceDescriptor],
   );
-  const workspaceDirectory = workspaceAuthority?.workspaceDirectory ?? null;
-  const isMissingWorkspaceExecutionAuthority = Boolean(workspaceDescriptor && !workspaceAuthority);
+  const workspaceExecutionAuthority = workspaceAuthority.ok ? workspaceAuthority.authority : null;
+  const workspaceDirectory = workspaceExecutionAuthority?.workspaceDirectory ?? null;
+  const isMissingWorkspaceExecutionAuthority = Boolean(
+    workspaceDescriptor && !workspaceExecutionAuthority,
+  );
 
   // Warm the server-side provider snapshot for this workspace cwd so the model
   // picker is ready when opened. Consumers share the same query cache key.

@@ -1,3 +1,4 @@
+import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@server/client/daemon-client";
@@ -157,6 +158,41 @@ export function mergeWorkspaceSnapshotWithExisting(input: {
     ...incoming,
     diffStat: incoming.diffStat ?? existing.diffStat,
   };
+}
+
+function preserveWorkspaceDescriptorIdentity(
+  incoming: WorkspaceDescriptor,
+  existing?: WorkspaceDescriptor | null,
+): WorkspaceDescriptor {
+  if (existing && equal(existing, incoming)) {
+    return existing;
+  }
+  return incoming;
+}
+
+function preserveWorkspaceMapIdentity(
+  existing: Map<string, WorkspaceDescriptor>,
+  incoming: Map<string, WorkspaceDescriptor>,
+): Map<string, WorkspaceDescriptor> {
+  if (existing === incoming) {
+    return existing;
+  }
+
+  const next = new Map<string, WorkspaceDescriptor>();
+  let changed = existing.size !== incoming.size;
+  const existingEntries = existing.entries();
+
+  for (const [key, workspace] of incoming) {
+    const existingWorkspace = existing.get(key);
+    const nextWorkspace = preserveWorkspaceDescriptorIdentity(workspace, existingWorkspace);
+    next.set(key, nextWorkspace);
+    const existingEntry = existingEntries.next().value;
+    if (!existingEntry || existingEntry[0] !== key || existingEntry[1] !== nextWorkspace) {
+      changed = true;
+    }
+  }
+
+  return changed ? next : existing;
 }
 
 export type ExplorerEntryKind = "file" | "directory";
@@ -938,14 +974,18 @@ export const useSessionStore = create<SessionStore>()(
           }
           const nextWorkspaces =
             typeof workspaces === "function" ? workspaces(session.workspaces) : workspaces;
-          if (session.workspaces === nextWorkspaces) {
+          const preservedWorkspaces = preserveWorkspaceMapIdentity(
+            session.workspaces,
+            nextWorkspaces,
+          );
+          if (session.workspaces === preservedWorkspaces) {
             return prev;
           }
           return {
             ...prev,
             sessions: {
               ...prev.sessions,
-              [serverId]: { ...session, workspaces: nextWorkspaces },
+              [serverId]: { ...session, workspaces: preservedWorkspaces },
             },
           };
         });
@@ -962,13 +1002,15 @@ export const useSessionStore = create<SessionStore>()(
           let changed = false;
           for (const workspace of nextEntries) {
             const existing = next.get(workspace.id);
-            if (existing === workspace) {
+            const mergedWorkspace = mergeWorkspaceSnapshotWithExisting({
+              incoming: workspace,
+              existing,
+            });
+            const nextWorkspace = preserveWorkspaceDescriptorIdentity(mergedWorkspace, existing);
+            if (existing === nextWorkspace) {
               continue;
             }
-            next.set(
-              workspace.id,
-              mergeWorkspaceSnapshotWithExisting({ incoming: workspace, existing }),
-            );
+            next.set(workspace.id, nextWorkspace);
             changed = true;
           }
           if (!changed) {

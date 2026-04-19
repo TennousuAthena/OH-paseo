@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgentProvider, ProviderSnapshotEntry } from "@server/server/agent/agent-sdk-types";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import { useSessionForServer } from "./use-session-directory";
+import { useSessionStore } from "@/stores/session-store";
 import { queryClient as singletonQueryClient } from "@/query/query-client";
 
 function normalizeProvidersSnapshotCwdKey(cwd?: string | null): string | null {
@@ -39,9 +39,8 @@ export function useProvidersSnapshot(
   const isConnected = useHostRuntimeIsConnected(serverId ?? "");
   const normalizedCwd = cwd?.trim() || undefined;
   const normalizedCwdKey = normalizeProvidersSnapshotCwdKey(normalizedCwd);
-  const supportsSnapshot = useSessionForServer(
-    serverId,
-    (session) => session?.serverInfo?.features?.providersSnapshot === true,
+  const supportsSnapshot = useSessionStore(
+    (state) => state.sessions[serverId ?? ""]?.serverInfo?.features?.providersSnapshot === true,
   );
 
   const queryKey = useMemo(

@@ -8,7 +8,7 @@ import { TerminalPane } from "@/components/terminal-pane";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
-import { getWorkspaceExecutionAuthority } from "@/utils/workspace-execution";
+import { useWorkspaceExecutionAuthority } from "@/stores/session-store-hooks";
 
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
 
@@ -25,11 +25,7 @@ function useTerminalPanelDescriptor(
   context: { serverId: string; workspaceId: string },
 ): PanelDescriptor {
   const client = useSessionStore((state) => state.sessions[context.serverId]?.client ?? null);
-  const workspaces = useSessionStore((state) => state.sessions[context.serverId]?.workspaces);
-  const workspaceAuthority = getWorkspaceExecutionAuthority({
-    workspaces,
-    workspaceId: context.workspaceId,
-  });
+  const workspaceAuthority = useWorkspaceExecutionAuthority(context.serverId, context.workspaceId)!;
   const workspaceDirectory = workspaceAuthority.ok
     ? workspaceAuthority.authority.workspaceDirectory
     : null;
@@ -63,8 +59,7 @@ function useTerminalPanelDescriptor(
 function TerminalPanel() {
   const isFocused = useIsFocused();
   const { serverId, workspaceId, target, isPaneFocused } = usePaneContext();
-  const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
-  const workspaceAuthority = getWorkspaceExecutionAuthority({ workspaces, workspaceId });
+  const workspaceAuthority = useWorkspaceExecutionAuthority(serverId, workspaceId)!;
   const workspaceDirectory = workspaceAuthority.ok
     ? workspaceAuthority.authority.workspaceDirectory
     : null;

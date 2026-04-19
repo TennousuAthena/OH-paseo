@@ -1,9 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.hoisted(() => {
+  (globalThis as unknown as { __DEV__: boolean }).__DEV__ = false;
+});
+
 import {
   resolveWorkspaceHeader,
   shouldRenderMissingWorkspaceDescriptor,
 } from "./workspace-header-source";
-import { buildSidebarProjectsFromWorkspaces } from "@/hooks/use-sidebar-workspaces-list";
+import { createSidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 
 describe("workspace source of truth consumption", () => {
@@ -23,17 +28,15 @@ describe("workspace source of truth consumption", () => {
     };
 
     const header = resolveWorkspaceHeader({ workspace });
-    const sidebarProjects = buildSidebarProjectsFromWorkspaces({
+    const sidebarWorkspace = createSidebarWorkspaceEntry({
       serverId: "srv",
-      workspaces: [workspace],
-      projectOrder: [],
-      workspaceOrderByScope: {},
+      workspace,
     });
 
     expect(header.title).toBe("feat/workspace-sot");
     expect(header.subtitle).toBe("getpaseo/paseo");
-    expect(sidebarProjects[0]?.workspaces[0]?.name).toBe(header.title);
-    expect(sidebarProjects[0]?.workspaces[0]?.statusBucket).toBe("running");
+    expect(sidebarWorkspace.name).toBe(header.title);
+    expect(sidebarWorkspace.statusBucket).toBe("running");
   });
 
   it("renders explicit missing state only after workspace hydration", () => {
