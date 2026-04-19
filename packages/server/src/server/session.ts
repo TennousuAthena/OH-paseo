@@ -3024,6 +3024,7 @@ export class Session {
           this.createPaseoWorktree(input, serviceOptions),
         checkoutExistingBranch: (cwd, branch) => this.checkoutExistingBranch(cwd, branch),
         createBranchFromBase: (params) => this.createBranchFromBase(params),
+        github: this.github,
       },
       config,
       gitOptions,
@@ -4341,6 +4342,7 @@ export class Session {
 
     try {
       await this.checkoutExistingBranch(cwd, branch);
+      this.github.invalidate({ cwd });
       this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
 
       // Push a workspace_update immediately so the sidebar/header reflect
@@ -4551,7 +4553,7 @@ export class Session {
         baseRef = baseRef.slice("origin/".length);
       }
 
-      await mergeToBase(
+      const mutatedCwd = await mergeToBase(
         cwd,
         {
           baseRef,
@@ -4559,6 +4561,7 @@ export class Session {
         },
         { paseoHome: this.paseoHome },
       );
+      this.github.invalidate({ cwd: mutatedCwd });
       this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
 
       this.emit({
@@ -4603,6 +4606,7 @@ export class Session {
         baseRef: msg.baseRef,
         requireCleanTarget: msg.requireCleanTarget ?? true,
       });
+      this.github.invalidate({ cwd });
       this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
 
       this.emit({
@@ -4634,6 +4638,7 @@ export class Session {
 
     try {
       await pullCurrentBranch(cwd);
+      this.github.invalidate({ cwd });
       this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
 
       this.emit({
@@ -4665,6 +4670,7 @@ export class Session {
 
     try {
       await pushCurrentBranch(cwd);
+      this.github.invalidate({ cwd });
       this.emit({
         type: "checkout_push_response",
         payload: {
@@ -4790,6 +4796,7 @@ export class Session {
     return handleWorktreeArchiveRequest(
       {
         paseoHome: this.paseoHome,
+        github: this.github,
         agentManager: this.agentManager,
         agentStorage: this.agentStorage,
         archiveWorkspaceRecord: async (workspaceDirectory) => {

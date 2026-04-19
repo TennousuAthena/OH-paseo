@@ -25,6 +25,7 @@ import {
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { ScriptRouteStore } from "./script-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
+import type { GitHubService } from "../services/github-service.js";
 import { getCheckoutStatus, resolveRepositoryDefaultBranch } from "../utils/checkout-git.js";
 import { expandTilde } from "../utils/path.js";
 import {
@@ -80,10 +81,12 @@ type BuildAgentSessionConfigDependencies = {
     baseBranch: string;
     newBranchName: string;
   }) => Promise<void>;
+  github?: Pick<GitHubService, "invalidate">;
 };
 
 type ArchivePaseoWorktreeDependencies = {
   paseoHome?: string;
+  github: GitHubService;
   agentManager: Pick<AgentManager, "listAgents" | "closeAgent">;
   agentStorage: Pick<AgentStorage, "list" | "remove">;
   archiveWorkspaceRecord: (workspaceId: string) => Promise<void>;
@@ -210,8 +213,10 @@ export async function buildAgentSessionConfig(
       baseBranch,
       newBranchName: normalized.newBranchName!,
     });
+    dependencies.github?.invalidate({ cwd });
   } else if (normalized.baseBranch) {
     await dependencies.checkoutExistingBranch(cwd, normalized.baseBranch);
+    dependencies.github?.invalidate({ cwd });
   }
 
   return {
@@ -476,6 +481,10 @@ export async function archivePaseoWorktree(
     worktreesRoot: options.worktreesRoot,
     paseoHome: dependencies.paseoHome,
   });
+
+  for (const cwd of affectedWorkspaceCwds) {
+    dependencies.github.invalidate({ cwd });
+  }
 
   for (const workspaceId of affectedWorkspaceIds) {
     try {

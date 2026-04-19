@@ -58,6 +58,7 @@ export async function createPaseoWorktree(
     deps,
   });
 
+  deps.github.invalidate({ cwd: createdWorktree.worktree.worktreePath });
   await deps.primeWorkspaceGitWatchFingerprints(workspace);
   await deps.broadcastWorkspaceUpdate(workspace.workspaceId);
 

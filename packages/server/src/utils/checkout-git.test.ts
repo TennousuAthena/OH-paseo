@@ -571,6 +571,36 @@ const x = 1;
     expect(currentBranch).toBe("feature");
   });
 
+  it("reports the base worktree cwd when merge-to-base mutates a separate checkout", async () => {
+    execSync("git checkout -b develop", { cwd: repoDir });
+    writeFileSync(join(repoDir, "develop.txt"), "develop\n");
+    execSync("git add develop.txt", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'develop commit'", { cwd: repoDir });
+    execSync("git checkout main", { cwd: repoDir });
+
+    const baseWorktreePath = join(tempDir, "base-worktree");
+    execSync(`git worktree add ${baseWorktreePath} develop`, { cwd: repoDir });
+
+    const featureWorktree = await createLegacyWorktreeForTest({
+      branchName: "feature",
+      cwd: repoDir,
+      baseBranch: "develop",
+      worktreeSlug: "feature-worktree",
+      paseoHome,
+    });
+
+    writeFileSync(join(featureWorktree.worktreePath, "feature.txt"), "feature\n");
+    execSync("git add feature.txt", { cwd: featureWorktree.worktreePath });
+    execSync("git -c commit.gpgsign=false commit -m 'feature commit'", {
+      cwd: featureWorktree.worktreePath,
+    });
+
+    const mutatedCwd = await mergeToBase(featureWorktree.worktreePath, {}, { paseoHome });
+
+    expect(mutatedCwd).toBe(baseWorktreePath);
+    expect(mutatedCwd).not.toBe(featureWorktree.worktreePath);
+  });
+
   it("merges from the most-ahead base ref (origin/main when it is ahead)", async () => {
     const remoteDir = join(tempDir, "remote.git");
     execSync(`git init --bare -b main ${remoteDir}`);
@@ -667,6 +697,23 @@ const x = 1;
 
     execSync(`git merge-base --is-ancestor ${remoteCommit} HEAD`, { cwd: repoDir });
     expect(readFileSync(join(repoDir, "pulled.txt"), "utf8")).toBe("remote\n");
+  });
+
+  it("invalidates GitHub cache after successful local git mutation paths", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    execSync(`git init --bare -b main ${remoteDir}`);
+    execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+    execSync("git push -u origin main", { cwd: repoDir });
+
+    const invalidatedCwds: string[] = [];
+    const github = createGitHubServiceForStatus(null);
+    github.invalidate = ({ cwd }) => {
+      invalidatedCwds.push(cwd);
+    };
+
+    await pullCurrentBranch(repoDir, github);
+
+    expect(invalidatedCwds).toEqual([repoDir]);
   });
 
   it("aborts pull on merge conflicts and leaves no merge in progress", async () => {

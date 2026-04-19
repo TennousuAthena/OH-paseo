@@ -1573,7 +1573,7 @@ export async function mergeToBase(
   cwd: string,
   options: MergeToBaseOptions = {},
   context?: CheckoutContext,
-): Promise<void> {
+): Promise<string> {
   await requireGitRepo(cwd);
   const currentBranch = await getCurrentBranch(cwd);
   const configured = await getConfiguredBaseRefForCwd(cwd, context);
@@ -1589,11 +1589,11 @@ export async function mergeToBase(
   }
   let normalizedBaseRef = baseRef;
   normalizedBaseRef = normalizeLocalBranchRefName(normalizedBaseRef);
+  const currentWorktreeRoot = (await getWorktreeRoot(cwd)) ?? cwd;
   if (normalizedBaseRef === currentBranch) {
-    return;
+    return currentWorktreeRoot;
   }
 
-  const currentWorktreeRoot = (await getWorktreeRoot(cwd)) ?? cwd;
   const baseWorktree = await getWorktreePathForBranch(cwd, normalizedBaseRef);
   const operationCwd = baseWorktree ?? currentWorktreeRoot;
   const isSameCheckout = resolve(operationCwd) === resolve(currentWorktreeRoot);
@@ -1681,6 +1681,7 @@ export async function mergeToBase(
       }
     }
   }
+  return operationCwd;
 }
 
 export async function mergeFromBase(
@@ -1776,7 +1777,7 @@ export async function mergeFromBase(
   }
 }
 
-export async function pullCurrentBranch(cwd: string): Promise<void> {
+export async function pullCurrentBranch(cwd: string, github?: GitHubService): Promise<void> {
   await requireGitRepo(cwd);
   const currentBranch = await getCurrentBranch(cwd);
   if (!currentBranch || currentBranch === "HEAD") {
@@ -1788,13 +1789,14 @@ export async function pullCurrentBranch(cwd: string): Promise<void> {
   }
   try {
     await runGitCommand(["pull"], { cwd, timeout: 120_000 });
+    github?.invalidate({ cwd });
   } catch (error) {
     await abortGitPullConflictState(cwd);
     throw error;
   }
 }
 
-export async function pushCurrentBranch(cwd: string): Promise<void> {
+export async function pushCurrentBranch(cwd: string, github?: GitHubService): Promise<void> {
   await requireGitRepo(cwd);
   const currentBranch = await getCurrentBranch(cwd);
   if (!currentBranch || currentBranch === "HEAD") {
@@ -1805,6 +1807,7 @@ export async function pushCurrentBranch(cwd: string): Promise<void> {
     throw new Error("Remote 'origin' is not configured.");
   }
   await runGitCommand(["push", "-u", "origin", currentBranch], { cwd, timeout: 120_000 });
+  github?.invalidate({ cwd });
 }
 
 export interface CreatePullRequestOptions {
@@ -1869,7 +1872,7 @@ export async function createPullRequest(
 
   await runGitCommand(["push", "-u", "origin", head], { cwd, timeout: 120_000 });
 
-  return github.createPullRequest({
+  const result = await github.createPullRequest({
     cwd,
     repo,
     title: options.title,
@@ -1877,6 +1880,8 @@ export async function createPullRequest(
     head,
     base: normalizedBase,
   });
+  github.invalidate({ cwd });
+  return result;
 }
 
 export async function getPullRequestStatus(

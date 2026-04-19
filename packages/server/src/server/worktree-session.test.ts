@@ -1105,6 +1105,63 @@ describe("handleCreatePaseoWorktreeRequest", () => {
     expect(path.basename(result.worktreeBootstrap?.worktree.worktreePath ?? "")).toBe("feature-x");
   });
 
+  test("buildAgentSessionConfig invalidates GitHub cache after branch setup mutations", async () => {
+    const invalidate = vi.fn();
+    const createBranchFromBase = vi.fn(async () => {});
+    const checkoutExistingBranch = vi.fn(async () => {});
+    const createPaseoWorktree = vi.fn(async () => {
+      throw new Error("should not create worktree");
+    });
+
+    await buildAgentSessionConfig(
+      {
+        sessionLogger: createLogger(),
+        createPaseoWorktree,
+        checkoutExistingBranch,
+        createBranchFromBase,
+        github: { invalidate },
+      },
+      {
+        provider: "codex",
+        cwd: "/tmp/repo",
+      },
+      {
+        createNewBranch: true,
+        baseBranch: "main",
+        newBranchName: "feature-x",
+      },
+    );
+
+    expect(createBranchFromBase).toHaveBeenCalledWith({
+      cwd: "/tmp/repo",
+      baseBranch: "main",
+      newBranchName: "feature-x",
+    });
+    expect(invalidate).toHaveBeenCalledWith({ cwd: "/tmp/repo" });
+
+    invalidate.mockClear();
+
+    await buildAgentSessionConfig(
+      {
+        sessionLogger: createLogger(),
+        createPaseoWorktree,
+        checkoutExistingBranch,
+        createBranchFromBase,
+        github: { invalidate },
+      },
+      {
+        provider: "codex",
+        cwd: "/tmp/repo",
+      },
+      {
+        baseBranch: "release",
+      },
+    );
+
+    expect(checkoutExistingBranch).toHaveBeenCalledWith("/tmp/repo", "release");
+    expect(invalidate).toHaveBeenCalledWith({ cwd: "/tmp/repo" });
+  });
+
   test("createPaseoWorktreeForTest forwards the default branch resolver for branch-off intents", async () => {
     const { tempDir, repoDir } = createGitRepo();
     cleanupPaths.push(tempDir);
@@ -1371,6 +1428,7 @@ describe("archivePaseoWorktree", () => {
     const removedAgents = await archivePaseoWorktree(
       {
         paseoHome,
+        github: createGitHubServiceStub(),
         agentManager: {
           listAgents: () => [
             createManagedAgentForArchive({ id: "agent-1", cwd: created.worktreePath }),
@@ -1427,6 +1485,7 @@ describe("archivePaseoWorktree", () => {
     await archivePaseoWorktree(
       {
         paseoHome,
+        github: createGitHubServiceStub(),
         agentManager: {
           listAgents: () => [],
           closeAgent: vi.fn(async () => {}),
@@ -1475,6 +1534,7 @@ describe("archivePaseoWorktree", () => {
     await handlePaseoWorktreeArchiveRequest(
       {
         paseoHome,
+        github: createGitHubServiceStub(),
         agentManager: {
           listAgents: () => [],
           closeAgent: vi.fn(async () => {}),
