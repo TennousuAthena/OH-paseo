@@ -164,16 +164,22 @@ export class CheckoutDiffManager {
   private async computeCheckoutDiffSnapshot(
     cwd: string,
     compare: CheckoutDiffCompareInput,
-    options?: { diffCwd?: string },
+    options?: { diffCwd?: string; force?: boolean; reason?: string },
   ): Promise<CheckoutDiffSnapshotPayload> {
     const diffCwd = options?.diffCwd ?? cwd;
     try {
-      const diffResult = await this.workspaceGitService.getCheckoutDiff(diffCwd, {
-        mode: compare.mode,
-        baseRef: compare.baseRef,
-        ignoreWhitespace: compare.ignoreWhitespace,
-        includeStructured: true,
-      });
+      const diffResult = await this.workspaceGitService.getCheckoutDiff(
+        diffCwd,
+        {
+          mode: compare.mode,
+          baseRef: compare.baseRef,
+          ignoreWhitespace: compare.ignoreWhitespace,
+          includeStructured: true,
+        },
+        options?.force
+          ? { force: true, reason: options.reason ?? "checkout-diff-refresh" }
+          : undefined,
+      );
       const files = [...(diffResult.structured ?? [])];
       files.sort((a, b) => {
         if (a.path === b.path) return 0;
@@ -204,6 +210,8 @@ export class CheckoutDiffManager {
         target.refreshQueued = false;
         const snapshot = await this.computeCheckoutDiffSnapshot(target.cwd, target.compare, {
           diffCwd: target.diffCwd,
+          force: true,
+          reason: "working-tree-watch",
         });
         target.latestPayload = snapshot;
         const fingerprint = JSON.stringify(snapshot);

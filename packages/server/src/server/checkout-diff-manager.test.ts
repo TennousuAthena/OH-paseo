@@ -115,6 +115,7 @@ describe("CheckoutDiffManager", () => {
     expect(workspaceGitService.getCheckoutDiff).toHaveBeenCalledWith(
       "/tmp/repo",
       expect.objectContaining({ mode: "uncommitted", includeStructured: true }),
+      undefined,
     );
   });
 
@@ -157,6 +158,49 @@ describe("CheckoutDiffManager", () => {
     });
   });
 
+  test("watch-triggered refresh forces a cache bypass on getCheckoutDiff", async () => {
+    const getCheckoutDiff = vi
+      .fn()
+      .mockResolvedValueOnce({
+        diff: "",
+        structured: [{ path: "a.ts", additions: 1, deletions: 0, status: "modified" }],
+      })
+      .mockResolvedValueOnce({
+        diff: "",
+        structured: [{ path: "b.ts", additions: 2, deletions: 0, status: "modified" }],
+      });
+
+    const { manager, getOnChange } = createManager({
+      getCheckoutDiffImplementation: getCheckoutDiff,
+    });
+
+    await manager.subscribe(
+      {
+        cwd: "/tmp/repo/packages/server",
+        compare: { mode: "uncommitted" },
+      },
+      vi.fn(),
+    );
+
+    expect(getCheckoutDiff).toHaveBeenNthCalledWith(
+      1,
+      "/tmp/repo",
+      expect.objectContaining({ mode: "uncommitted" }),
+      undefined,
+    );
+
+    const onChange = getOnChange();
+    onChange?.();
+    await vi.advanceTimersByTimeAsync(150);
+
+    expect(getCheckoutDiff).toHaveBeenCalledTimes(2);
+    const watchFiredCall = getCheckoutDiff.mock.calls[1];
+    expect(watchFiredCall[2]).toEqual({
+      force: true,
+      reason: expect.stringContaining("working-tree"),
+    });
+  });
+
   test("falls back to cwd when the working tree watch returns no repo root", async () => {
     const { manager, workspaceGitService } = createManager({ repoRoot: null });
 
@@ -171,6 +215,7 @@ describe("CheckoutDiffManager", () => {
     expect(workspaceGitService.getCheckoutDiff).toHaveBeenCalledWith(
       "/tmp/plain",
       expect.objectContaining({ mode: "uncommitted", includeStructured: true }),
+      undefined,
     );
   });
 });
