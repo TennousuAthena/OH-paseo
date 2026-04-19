@@ -38,12 +38,25 @@ export type WorkspaceGitRuntimeSnapshot = {
   github: {
     featuresEnabled: boolean;
     pullRequest: {
+      number?: number;
+      repoOwner?: string;
+      repoName?: string;
       url: string;
       title: string;
       state: string;
       baseRefName: string;
       headRefName: string;
       isMerged: boolean;
+      isDraft?: boolean;
+      checks?: Array<{
+        name: string;
+        status: "success" | "failure" | "pending" | "skipped" | "cancelled";
+        url: string | null;
+        workflow?: string;
+        duration?: string;
+      }>;
+      checksStatus?: "none" | "pending" | "success" | "failure";
+      reviewDecision?: "approved" | "changes_requested" | "pending" | null;
     } | null;
     error: { message: string } | null;
     refreshedAt: string | null;

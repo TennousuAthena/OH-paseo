@@ -19,22 +19,16 @@ interface GitActionsSplitButtonProps {
   hideLabels?: boolean;
 }
 
-export function GitActionsSplitButton({
-  gitActions,
-  hideLabels,
-}: GitActionsSplitButtonProps) {
+export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSplitButtonProps) {
   const { theme } = useUnistyles();
   const toast = useToast();
   const archiveShortcutKeys = useShortcutKeys("archive-worktree");
 
-  const getActionDisplayLabel = useCallback(
-    (action: GitAction): string => {
-      if (action.status === "pending") return action.pendingLabel;
-      if (action.status === "success") return action.successLabel;
-      return action.label;
-    },
-    [],
-  );
+  const getActionDisplayLabel = useCallback((action: GitAction): string => {
+    if (action.status === "pending") return action.pendingLabel;
+    if (action.status === "success") return action.successLabel;
+    return action.label;
+  }, []);
 
   const handleActionSelect = useCallback(
     (action: GitAction) => {

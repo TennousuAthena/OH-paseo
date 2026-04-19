@@ -191,7 +191,11 @@ import { notifyChatMentions } from "./chat/chat-mentions.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { execCommand } from "../utils/spawn.js";
-import { createGitHubService, type GitHubService } from "../services/github-service.js";
+import {
+  createGitHubService,
+  type GitHubService,
+  type PullRequestTimelineItem,
+} from "../services/github-service.js";
 import {
   createPaseoWorktree,
   type CreatePaseoWorktreeInput,
@@ -529,6 +533,17 @@ export type SessionLifecycleIntent =
       requestId: string;
       reason?: string;
     };
+
+type CheckoutPrStatusPayload = Extract<
+  SessionOutboundMessage,
+  { type: "checkout_pr_status_response" }
+>["payload"];
+type CheckoutPrStatusPayloadStatus = NonNullable<CheckoutPrStatusPayload["status"]>;
+type PullRequestTimelinePayload = Extract<
+  SessionOutboundMessage,
+  { type: "pull_request_timeline_response" }
+>["payload"];
+type PullRequestTimelinePayloadItem = PullRequestTimelinePayload["items"][number];
 
 type VoiceFeatureUnavailableContext = {
   reasonCode: SpeechReadinessSnapshot["voiceFeature"]["reasonCode"];
@@ -1652,6 +1667,10 @@ export class Session {
 
           case "checkout_pr_status_request":
             await this.handleCheckoutPrStatusRequest(msg);
+            break;
+
+          case "pull_request_timeline_request":
+            await this.handlePullRequestTimelineRequest(msg);
             break;
 
           case "github_search_request":
@@ -4753,7 +4772,7 @@ export class Session {
         type: "checkout_pr_status_response",
         payload: {
           cwd,
-          status: snapshot.github.pullRequest,
+          status: normalizeCheckoutPrStatusPayload(snapshot.github.pullRequest),
           githubFeaturesEnabled: snapshot.github.featuresEnabled,
           error: snapshot.github.error
             ? {
@@ -4773,6 +4792,88 @@ export class Session {
           githubFeaturesEnabled: true,
           error: toCheckoutError(error),
           requestId,
+        },
+      });
+    }
+  }
+
+  private async handlePullRequestTimelineRequest(
+    msg: Extract<SessionInboundMessage, { type: "pull_request_timeline_request" }>,
+  ): Promise<void> {
+    const { cwd, prNumber, repoOwner, repoName, requestId } = msg;
+
+    if (!isValidPullRequestTimelineIdentity({ prNumber, repoOwner, repoName })) {
+      this.emit({
+        type: "pull_request_timeline_response",
+        payload: {
+          cwd,
+          prNumber,
+          items: [],
+          truncated: false,
+          error: {
+            kind: "unknown",
+            message: "Pull request timeline request has invalid PR identity",
+          },
+          requestId,
+          githubFeaturesEnabled: true,
+        },
+      });
+      return;
+    }
+
+    const githubFeaturesEnabled = await this.github.isAuthenticated({ cwd });
+    if (!githubFeaturesEnabled) {
+      this.emit({
+        type: "pull_request_timeline_response",
+        payload: {
+          cwd,
+          prNumber,
+          items: [],
+          truncated: false,
+          error: {
+            kind: "unknown",
+            message: "GitHub CLI is unavailable or not authenticated",
+          },
+          requestId,
+          githubFeaturesEnabled: false,
+        },
+      });
+      return;
+    }
+
+    try {
+      const timeline = await this.github.getPullRequestTimeline({
+        cwd,
+        prNumber,
+        repoOwner,
+        repoName,
+      });
+      this.emit({
+        type: "pull_request_timeline_response",
+        payload: {
+          cwd,
+          prNumber: timeline.prNumber,
+          items: timeline.items.map(toPullRequestTimelinePayloadItem),
+          truncated: timeline.truncated,
+          error: timeline.error,
+          requestId,
+          githubFeaturesEnabled: true,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "pull_request_timeline_response",
+        payload: {
+          cwd,
+          prNumber,
+          items: [],
+          truncated: false,
+          error: {
+            kind: "unknown",
+            message: error instanceof Error ? error.message : String(error),
+          },
+          requestId,
+          githubFeaturesEnabled: true,
         },
       });
     }
@@ -8747,4 +8848,49 @@ export class Session {
       this.detachTerminalStream(terminalId, { emitExit: false });
     }
   }
+}
+
+export function normalizeCheckoutPrStatusPayload(
+  status: WorkspaceGitRuntimeSnapshot["github"]["pullRequest"],
+): CheckoutPrStatusPayloadStatus | null {
+  if (!status) {
+    return null;
+  }
+  return {
+    number: status.number,
+    url: status.url,
+    title: status.title,
+    state: status.state,
+    repoOwner: status.repoOwner,
+    repoName: status.repoName,
+    baseRefName: status.baseRefName,
+    headRefName: status.headRefName,
+    isMerged: status.isMerged,
+    isDraft: status.isDraft ?? false,
+    checks: status.checks ?? [],
+    checksStatus: status.checksStatus,
+    reviewDecision: status.reviewDecision,
+  };
+}
+
+function isValidPullRequestTimelineIdentity(options: {
+  prNumber: number;
+  repoOwner: string;
+  repoName: string;
+}): boolean {
+  if (!Number.isInteger(options.prNumber) || options.prNumber <= 0) {
+    return false;
+  }
+  return isValidGitHubRepoSegment(options.repoOwner) && isValidGitHubRepoSegment(options.repoName);
+}
+
+function isValidGitHubRepoSegment(value: string): boolean {
+  return /^[A-Za-z0-9._-]+$/.test(value);
+}
+
+function toPullRequestTimelinePayloadItem(
+  item: PullRequestTimelineItem,
+): PullRequestTimelinePayloadItem {
+  const { authorUrl: _authorUrl, ...payload } = item;
+  return payload;
 }

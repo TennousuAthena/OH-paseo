@@ -12,6 +12,9 @@ import Animated, { useAnimatedStyle, useSharedValue, runOnJS } from "react-nativ
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { X } from "lucide-react-native";
+import { GitHubIcon } from "@/components/icons/github-icon";
+import { PrPane } from "./pr-pane";
+import { usePrPaneData } from "@/hooks/use-pr-pane-data";
 import {
   usePanelStore,
   MIN_EXPLORER_SIDEBAR_WIDTH,
@@ -353,7 +356,19 @@ function SidebarContent({
 }: SidebarContentProps) {
   const { theme } = useUnistyles();
   const padding = useWindowControlsPadding("explorerSidebar");
-  const resolvedTab: ExplorerTab = !isGit && activeTab === "changes" ? "files" : activeTab;
+  const canQueryPullRequest = isGit && Boolean(workspaceRoot);
+  const prPane = usePrPaneData({
+    serverId,
+    cwd: workspaceRoot,
+    enabled: canQueryPullRequest,
+    timelineEnabled: activeTab === "pr" && canQueryPullRequest,
+  });
+  const hasPullRequest = prPane.prNumber !== null;
+  const requestedTab: ExplorerTab =
+    !isGit && (activeTab === "changes" || activeTab === "pr") ? "files" : activeTab;
+  const resolvedTab: ExplorerTab =
+    requestedTab === "pr" && !hasPullRequest ? "changes" : requestedTab;
+  const prTabLabel = prPane.prNumber === null ? "" : `#${prPane.prNumber}`;
 
   return (
     <View style={styles.sidebarContent} pointerEvents="auto">
@@ -381,6 +396,23 @@ function SidebarContent({
               Files
             </Text>
           </Pressable>
+          {isGit && hasPullRequest && (
+            <Pressable
+              testID="explorer-tab-pr"
+              style={[styles.tab, resolvedTab === "pr" && styles.tabActive]}
+              onPress={() => onTabPress("pr")}
+            >
+              <GitHubIcon
+                size={13}
+                color={
+                  resolvedTab === "pr" ? theme.colors.foreground : theme.colors.foregroundMuted
+                }
+              />
+              <Text style={[styles.tabText, resolvedTab === "pr" && styles.tabTextActive]}>
+                {prTabLabel}
+              </Text>
+            </Pressable>
+          )}
         </View>
         <View style={styles.headerRightSection}>
           {isMobile && (
@@ -409,6 +441,7 @@ function SidebarContent({
             onOpenFile={onOpenFile}
           />
         )}
+        {resolvedTab === "pr" && prPane.data && <PrPane data={prPane.data} />}
       </View>
     </View>
   );

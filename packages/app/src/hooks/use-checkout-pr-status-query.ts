@@ -5,7 +5,7 @@ import type { CheckoutPrStatusResponse } from "@server/shared/messages";
 const CHECKOUT_PR_STATUS_STALE_TIME = 20_000;
 const WORKSPACE_PR_HINT_REFETCH_INTERVAL = 60_000;
 
-function checkoutPrStatusQueryKey(serverId: string, cwd: string) {
+export function checkoutPrStatusQueryKey(serverId: string, cwd: string) {
   return ["checkoutPrStatus", serverId, cwd] as const;
 }
 

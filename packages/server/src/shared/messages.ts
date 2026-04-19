@@ -1133,6 +1133,15 @@ export const CheckoutPrStatusRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const PullRequestTimelineRequestSchema = z.object({
+  type: z.literal("pull_request_timeline_request"),
+  cwd: z.string(),
+  prNumber: z.number(),
+  repoOwner: z.string(),
+  repoName: z.string(),
+  requestId: z.string(),
+});
+
 export const ValidateBranchRequestSchema = z.object({
   type: z.literal("validate_branch_request"),
   cwd: z.string(),
@@ -1554,6 +1563,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutPushRequestSchema,
   CheckoutPrCreateRequestSchema,
   CheckoutPrStatusRequestSchema,
+  PullRequestTimelineRequestSchema,
   CheckoutSwitchBranchRequestSchema,
   StashSaveRequestSchema,
   StashPopRequestSchema,
@@ -2505,24 +2515,31 @@ export const CheckoutPrCreateResponseSchema = z.object({
   }),
 });
 
-const CheckoutPrStatusSchema = z.object({
+export const CheckoutPrStatusSchema = z.object({
+  number: z.number().optional(),
   url: z.string(),
   title: z.string(),
   state: z.string(),
   baseRefName: z.string(),
   headRefName: z.string(),
   isMerged: z.boolean(),
+  isDraft: z.boolean().optional().default(false),
   checks: z
     .array(
       z.object({
         name: z.string(),
         status: z.string(),
         url: z.string().nullable(),
+        workflow: z.string().optional(),
+        duration: z.string().optional(),
       }),
     )
-    .optional(),
+    .optional()
+    .default([]),
   checksStatus: z.string().optional(),
   reviewDecision: z.string().nullable().optional(),
+  repoOwner: z.string().optional(),
+  repoName: z.string().optional(),
 });
 
 export const CheckoutPrStatusResponseSchema = z.object({
@@ -2534,6 +2551,87 @@ export const CheckoutPrStatusResponseSchema = z.object({
     error: CheckoutErrorSchema.nullable(),
     requestId: z.string(),
   }),
+});
+
+const PullRequestTimelineKnownErrorSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("not_found"),
+    message: z.string().optional().default(""),
+  }),
+  z.object({
+    kind: z.literal("forbidden"),
+    message: z.string().optional().default(""),
+  }),
+  z.object({
+    kind: z.literal("unknown"),
+    message: z.string().optional().default(""),
+  }),
+]);
+
+const PullRequestTimelineErrorSchema = z.preprocess((value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { kind: "unknown", message: "" };
+  }
+  const error = value as Record<string, unknown>;
+  if (error.kind === "not_found" || error.kind === "forbidden" || error.kind === "unknown") {
+    return error;
+  }
+  return { ...error, kind: "unknown" };
+}, PullRequestTimelineKnownErrorSchema);
+
+const PullRequestTimelineReviewItemSchema = z.object({
+  id: z.string().optional().default(""),
+  kind: z.literal("review"),
+  author: z.string().optional().default("unknown"),
+  body: z.string().optional().default(""),
+  createdAt: z.number().optional().default(0),
+  url: z.string().optional().default(""),
+  reviewState: z
+    .enum(["approved", "changes_requested", "commented"])
+    .optional()
+    .default("commented"),
+});
+
+const PullRequestTimelineCommentItemSchema = z.object({
+  id: z.string().optional().default(""),
+  kind: z.literal("comment"),
+  author: z.string().optional().default("unknown"),
+  body: z.string().optional().default(""),
+  createdAt: z.number().optional().default(0),
+  url: z.string().optional().default(""),
+});
+
+export const PullRequestTimelineItemSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+    const item = value as Record<string, unknown>;
+    if (item.kind === "review" || item.kind === "comment") {
+      return item;
+    }
+    return { ...item, kind: "comment" };
+  },
+  z.discriminatedUnion("kind", [
+    PullRequestTimelineReviewItemSchema,
+    PullRequestTimelineCommentItemSchema,
+  ]),
+);
+
+export const PullRequestTimelineResponseSchema = z.object({
+  type: z.literal("pull_request_timeline_response"),
+  payload: z
+    .object({
+      cwd: z.string().optional().default(""),
+      prNumber: z.number().nullable().optional().default(null),
+      items: z.array(PullRequestTimelineItemSchema).optional().default([]),
+      truncated: z.boolean().optional().default(false),
+      error: PullRequestTimelineErrorSchema.nullable().optional().default(null),
+      requestId: z.string().optional().default(""),
+      githubFeaturesEnabled: z.boolean().optional().default(true),
+    })
+    .optional()
+    .default({}),
 });
 
 export const CheckoutSwitchBranchResponseSchema = z.object({
@@ -3000,6 +3098,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutPushResponseSchema,
   CheckoutPrCreateResponseSchema,
   CheckoutPrStatusResponseSchema,
+  PullRequestTimelineResponseSchema,
   CheckoutSwitchBranchResponseSchema,
   StashSaveResponseSchema,
   StashPopResponseSchema,
@@ -3234,6 +3333,9 @@ export type CheckoutPrCreateRequest = z.infer<typeof CheckoutPrCreateRequestSche
 export type CheckoutPrCreateResponse = z.infer<typeof CheckoutPrCreateResponseSchema>;
 export type CheckoutPrStatusRequest = z.infer<typeof CheckoutPrStatusRequestSchema>;
 export type CheckoutPrStatusResponse = z.infer<typeof CheckoutPrStatusResponseSchema>;
+export type PullRequestTimelineRequest = z.infer<typeof PullRequestTimelineRequestSchema>;
+export type PullRequestTimelineItem = z.infer<typeof PullRequestTimelineItemSchema>;
+export type PullRequestTimelineResponse = z.infer<typeof PullRequestTimelineResponseSchema>;
 export type CheckoutSwitchBranchRequest = z.infer<typeof CheckoutSwitchBranchRequestSchema>;
 export type CheckoutSwitchBranchResponse = z.infer<typeof CheckoutSwitchBranchResponseSchema>;
 export type StashSaveRequest = z.infer<typeof StashSaveRequestSchema>;

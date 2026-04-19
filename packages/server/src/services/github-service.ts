@@ -38,6 +38,7 @@ const GitHubPullRequestSummarySchema = z.object({
 const PullRequestCheckRunNodeSchema = z.object({
   __typename: z.literal("CheckRun"),
   name: z.string(),
+  workflowName: z.string().nullable().optional(),
   conclusion: z.string().nullable().optional(),
   status: z.string().nullable().optional(),
   detailsUrl: z.string().nullable().optional(),
@@ -79,16 +80,150 @@ const PullRequestReviewDecisionSchema = z
   .nullable()
   .catch(null);
 
+const HeadRepositoryOwnerSchema = z
+  .object({
+    login: z.string().optional(),
+  })
+  .nullable()
+  .optional();
+
 const CurrentPullRequestStatusSchema = z.object({
+  number: z.number().optional(),
   url: z.string().catch(""),
   title: z.string().catch(""),
   state: z.string().catch(""),
+  isDraft: z.boolean().optional().catch(false),
   baseRefName: z.string().catch(""),
   headRefName: z.string().catch(""),
   mergedAt: z.string().nullable().optional(),
   statusCheckRollup: z.unknown().optional(),
   reviewDecision: z.unknown().optional(),
+  headRepositoryOwner: HeadRepositoryOwnerSchema,
 });
+
+const TimelineAuthorSchema = z
+  .object({
+    login: z.string().optional(),
+    url: z.string().nullable().optional(),
+  })
+  .nullable()
+  .optional();
+
+const PullRequestTimelineReviewNodeSchema = z.object({
+  id: z.string().catch(""),
+  state: z.string().catch(""),
+  body: z.string().nullable().catch(null),
+  url: z.string().catch(""),
+  submittedAt: z.string().nullable().catch(null),
+  author: TimelineAuthorSchema,
+});
+
+const PullRequestTimelineCommentNodeSchema = z.object({
+  id: z.string().catch(""),
+  body: z.string().nullable().catch(null),
+  url: z.string().catch(""),
+  createdAt: z.string().nullable().catch(null),
+  author: TimelineAuthorSchema,
+});
+
+const PullRequestTimelinePageInfoSchema = z.object({
+  hasNextPage: z.boolean().catch(false),
+});
+
+const PullRequestTimelineGraphqlSchema = z.object({
+  data: z
+    .object({
+      repository: z
+        .object({
+          pullRequest: z
+            .object({
+              number: z.number().optional(),
+              reviews: z
+                .object({
+                  nodes: z.array(PullRequestTimelineReviewNodeSchema).catch([]),
+                  pageInfo: PullRequestTimelinePageInfoSchema.catch({ hasNextPage: false }),
+                })
+                .catch({ nodes: [], pageInfo: { hasNextPage: false } }),
+              comments: z
+                .object({
+                  nodes: z.array(PullRequestTimelineCommentNodeSchema).catch([]),
+                  pageInfo: PullRequestTimelinePageInfoSchema.catch({ hasNextPage: false }),
+                })
+                .catch({ nodes: [], pageInfo: { hasNextPage: false } }),
+            })
+            .nullable()
+            .optional(),
+        })
+        .nullable()
+        .optional(),
+    })
+    .optional(),
+});
+
+const GitHubRepoViewSchema = z.object({
+  owner: z
+    .object({
+      login: z.string().optional(),
+    })
+    .nullable()
+    .optional(),
+  name: z.string().optional(),
+  parent: z
+    .object({
+      owner: z
+        .object({
+          login: z.string().optional(),
+        })
+        .nullable()
+        .optional(),
+      name: z.string().optional(),
+    })
+    .nullable()
+    .optional(),
+});
+
+const CURRENT_PR_STATUS_FIELDS =
+  "number,url,title,state,isDraft,baseRefName,headRefName,mergedAt,statusCheckRollup,reviewDecision,headRepositoryOwner";
+
+const PULL_REQUEST_TIMELINE_QUERY = `
+query PullRequestTimeline($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      number
+      reviews(first: 100) {
+        nodes {
+          id
+          state
+          body
+          url
+          submittedAt
+          author {
+            login
+            url
+          }
+        }
+        pageInfo {
+          hasNextPage
+        }
+      }
+      comments(first: 100) {
+        nodes {
+          id
+          body
+          url
+          createdAt
+          author {
+            login
+            url
+          }
+        }
+        pageInfo {
+          hasNextPage
+        }
+      }
+    }
+  }
+}`;
 
 interface CacheEntry {
   value: unknown;
@@ -144,21 +279,63 @@ export interface PullRequestCheck {
   name: string;
   status: PullRequestCheckStatus;
   url: string | null;
+  workflow?: string;
+  duration?: string;
 }
 
 export type PullRequestChecksStatus = "none" | "pending" | "success" | "failure";
 export type PullRequestReviewDecision = "approved" | "changes_requested" | "pending" | null;
 
 export interface GitHubCurrentPullRequestStatus {
+  number?: number;
+  repoOwner?: string;
+  repoName?: string;
   url: string;
   title: string;
   state: string;
   baseRefName: string;
   headRefName: string;
   isMerged: boolean;
+  isDraft?: boolean;
   checks: PullRequestCheck[];
   checksStatus: PullRequestChecksStatus;
   reviewDecision: PullRequestReviewDecision;
+}
+
+export type PullRequestTimelineReviewState = "approved" | "changes_requested" | "commented";
+
+interface PullRequestTimelineItemBase {
+  id: string;
+  author: string;
+  authorUrl: string | null;
+  body: string;
+  createdAt: number;
+  url: string;
+}
+
+export type PullRequestTimelineItem =
+  | (PullRequestTimelineItemBase & {
+      kind: "review";
+      reviewState: PullRequestTimelineReviewState;
+    })
+  | (PullRequestTimelineItemBase & {
+      kind: "comment";
+    });
+
+export type GitHubPullRequestTimelineErrorKind = "not_found" | "forbidden" | "unknown";
+
+export interface GitHubPullRequestTimelineError {
+  kind: GitHubPullRequestTimelineErrorKind;
+  message: string;
+}
+
+export interface GitHubPullRequestTimeline {
+  prNumber: number;
+  repoOwner: string;
+  repoName: string;
+  items: PullRequestTimelineItem[];
+  truncated: boolean;
+  error: GitHubPullRequestTimelineError | null;
 }
 
 export interface GitHubPullRequestCreateResult {
@@ -183,6 +360,13 @@ export interface GetGitHubPullRequestOptions {
   number: number;
 }
 
+export interface GetGitHubPullRequestTimelineOptions {
+  cwd: string;
+  prNumber: number;
+  repoOwner: string;
+  repoName: string;
+}
+
 export interface CreateGitHubPullRequestOptions {
   cwd: string;
   repo: string;
@@ -201,6 +385,9 @@ export interface GitHubService {
     cwd: string;
     headRef: string;
   }): Promise<GitHubCurrentPullRequestStatus | null>;
+  getPullRequestTimeline(
+    options: GetGitHubPullRequestTimelineOptions,
+  ): Promise<GitHubPullRequestTimeline>;
   createPullRequest(
     options: CreateGitHubPullRequestOptions,
   ): Promise<GitHubPullRequestCreateResult>;
@@ -261,6 +448,17 @@ interface CommandFailureLike {
 
 type PullRequestCheckRunNode = z.infer<typeof PullRequestCheckRunNodeSchema>;
 type PullRequestStatusContextNode = z.infer<typeof PullRequestStatusContextNodeSchema>;
+type CurrentPullRequestStatusItem = z.infer<typeof CurrentPullRequestStatusSchema>;
+
+interface InFlightCacheEntry {
+  cwd: string;
+  promise: Promise<unknown>;
+}
+
+interface ResolvedPullRequestCandidate {
+  status: GitHubCurrentPullRequestStatus;
+  headRepositoryOwner?: string;
+}
 
 export function createGitHubService(options: CreateGitHubServiceOptions = {}): GitHubService {
   const ttlMs = options.ttlMs ?? DEFAULT_GITHUB_CACHE_TTL_MS;
@@ -270,7 +468,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     now: options.now ?? Date.now,
   };
   const cache = new Map<string, CacheEntry>();
-  const inFlight = new Map<string, Promise<unknown>>();
+  const inFlight = new Map<string, InFlightCacheEntry>();
 
   async function cached<T>(params: {
     cwd: string;
@@ -291,23 +489,27 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
 
     const existing = inFlight.get(key);
     if (existing) {
-      return existing as Promise<T>;
+      return existing.promise as Promise<T>;
     }
 
     const request = params
       .load()
       .then((value) => {
-        cache.set(key, {
-          value,
-          cwd: params.cwd,
-          expiresAt: deps.now() + ttlMs,
-        });
+        if (inFlight.get(key)?.promise === request) {
+          cache.set(key, {
+            value,
+            cwd: params.cwd,
+            expiresAt: deps.now() + ttlMs,
+          });
+        }
         return value;
       })
       .finally(() => {
-        inFlight.delete(key);
+        if (inFlight.get(key)?.promise === request) {
+          inFlight.delete(key);
+        }
       });
-    inFlight.set(key, request);
+    inFlight.set(key, { cwd: params.cwd, promise: request });
     return request;
   }
 
@@ -408,22 +610,51 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         method: "getCurrentPullRequestStatus",
         args: { headRef: options.headRef },
         load: async () => {
+          return resolveCurrentPullRequestView({
+            cwd: options.cwd,
+            headRef: options.headRef,
+            run,
+          });
+        },
+      });
+    },
+
+    getPullRequestTimeline(options) {
+      return cached({
+        cwd: options.cwd,
+        method: "getPullRequestTimeline",
+        args: { prNumber: options.prNumber },
+        load: async () => {
           try {
             const stdout = await run(
               [
-                "pr",
-                "view",
-                "--json",
-                "url,title,state,baseRefName,headRefName,mergedAt,statusCheckRollup,reviewDecision",
+                "api",
+                "graphql",
+                "-f",
+                `query=${PULL_REQUEST_TIMELINE_QUERY}`,
+                "-F",
+                `owner=${options.repoOwner}`,
+                "-F",
+                `name=${options.repoName}`,
+                "-F",
+                `number=${options.prNumber}`,
               ],
               { cwd: options.cwd },
             );
-            return parseCurrentPullRequestStatus(stdout, options.headRef);
+            return parsePullRequestTimeline(stdout, {
+              prNumber: options.prNumber,
+              repoOwner: options.repoOwner,
+              repoName: options.repoName,
+            });
           } catch (error) {
-            if (isNoPullRequestFoundError(error)) {
-              return null;
-            }
-            throw error;
+            return {
+              prNumber: options.prNumber,
+              repoOwner: options.repoOwner,
+              repoName: options.repoName,
+              items: [],
+              truncated: false,
+              error: mapPullRequestTimelineError(error),
+            };
           }
         },
       });
@@ -476,9 +707,16 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     },
 
     invalidate(options) {
+      // Local checkout mutations that can alter the current PR identity or PR status
+      // must call this with the affected cwd before broadcasting fresh git state.
       for (const [key, entry] of cache.entries()) {
         if (entry.cwd === options.cwd) {
           cache.delete(key);
+        }
+      }
+      for (const [key, entry] of inFlight.entries()) {
+        if (entry.cwd === options.cwd) {
+          inFlight.delete(key);
         }
       }
     },
@@ -541,14 +779,15 @@ function normalizeGitHubCommandError(
     return new GitHubCliMissingError();
   }
   const stderr = bufferOrStringToString(failure.stderr);
-  if (isAuthFailureText(stderr) || isAuthFailureText(failure.message ?? "")) {
+  const message = failure.message ?? "";
+  if (isAuthFailureText(stderr) || isAuthFailureText(message)) {
     return new GitHubAuthenticationError({ stderr });
   }
   return new GitHubCommandError({
     args: context.args,
     cwd: context.cwd,
     exitCode: typeof failure.code === "number" ? failure.code : null,
-    stderr,
+    stderr: stderr || message,
   });
 }
 
@@ -602,7 +841,178 @@ function isNoPullRequestFoundError(error: unknown): boolean {
     return false;
   }
   const text = error.stderr.toLowerCase();
-  return text.includes("no pull requests found") || text.includes("could not resolve");
+  return text.includes("no pull requests found");
+}
+
+async function resolveCurrentPullRequestView(options: {
+  cwd: string;
+  headRef: string;
+  run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
+}): Promise<GitHubCurrentPullRequestStatus | null> {
+  const viewCandidate = await tryCurrentPullRequestView(options);
+  if (viewCandidate && isCandidateForHeadRef(viewCandidate, options.headRef)) {
+    return viewCandidate.status;
+  }
+
+  const repo = await getGitHubRepoView(options);
+  const forkOwner = repo?.owner?.login;
+  const parentOwner = repo?.parent?.owner?.login;
+  const parentName = repo?.parent?.name;
+  if (!forkOwner || !parentOwner || !parentName) {
+    return null;
+  }
+
+  const parentCandidates = await listCurrentPullRequestCandidates({
+    cwd: options.cwd,
+    headRef: `${forkOwner}:${options.headRef}`,
+    run: options.run,
+    repo: `${parentOwner}/${parentName}`,
+  });
+  const parentMatch = pickPullRequestCandidate({
+    candidates: parentCandidates,
+    headRef: options.headRef,
+    headRepositoryOwner: forkOwner,
+  });
+  return parentMatch?.status ?? null;
+}
+
+async function tryCurrentPullRequestView(options: {
+  cwd: string;
+  headRef: string;
+  run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
+}): Promise<ResolvedPullRequestCandidate | null> {
+  try {
+    const stdout = await options.run(["pr", "view", "--json", CURRENT_PR_STATUS_FIELDS], {
+      cwd: options.cwd,
+    });
+    return parseCurrentPullRequestCandidate(stdout, options.headRef);
+  } catch (error) {
+    if (isNoPullRequestFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function listCurrentPullRequestCandidates(options: {
+  cwd: string;
+  headRef: string;
+  run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
+  repo?: string;
+}): Promise<ResolvedPullRequestCandidate[]> {
+  const args = ["pr", "list"];
+  if (options.repo) {
+    args.push("--repo", options.repo);
+  }
+  args.push(
+    "--state",
+    "all",
+    "--head",
+    options.headRef,
+    "--json",
+    CURRENT_PR_STATUS_FIELDS,
+    "--limit",
+    "10",
+  );
+  try {
+    const stdout = await options.run(args, { cwd: options.cwd });
+    return parseCurrentPullRequestCandidateList(stdout, options.headRef);
+  } catch (error) {
+    if (isNoPullRequestFoundError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function getGitHubRepoView(options: {
+  cwd: string;
+  run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
+}): Promise<z.infer<typeof GitHubRepoViewSchema> | null> {
+  try {
+    const stdout = await options.run(["repo", "view", "--json", "owner,name,parent"], {
+      cwd: options.cwd,
+    });
+    return GitHubRepoViewSchema.parse(JSON.parse(stdout || "{}"));
+  } catch {
+    return null;
+  }
+}
+
+function parseCurrentPullRequestCandidate(
+  stdout: string,
+  fallbackHeadRefName: string,
+): ResolvedPullRequestCandidate | null {
+  const item = CurrentPullRequestStatusSchema.parse(JSON.parse(stdout || "{}"));
+  return toCurrentPullRequestCandidate(item, fallbackHeadRefName);
+}
+
+function parseCurrentPullRequestCandidateList(
+  stdout: string,
+  fallbackHeadRefName: string,
+): ResolvedPullRequestCandidate[] {
+  const items = z.array(CurrentPullRequestStatusSchema).parse(JSON.parse(stdout || "[]"));
+  return items
+    .map((item) => toCurrentPullRequestCandidate(item, fallbackHeadRefName))
+    .filter((candidate): candidate is ResolvedPullRequestCandidate => candidate !== null);
+}
+
+function toCurrentPullRequestCandidate(
+  item: CurrentPullRequestStatusItem,
+  fallbackHeadRefName: string,
+): ResolvedPullRequestCandidate | null {
+  const status = toCurrentPullRequestStatus(item, fallbackHeadRefName);
+  if (!status) {
+    return null;
+  }
+  const headRepositoryOwner = item.headRepositoryOwner?.login;
+  return {
+    status,
+    ...(headRepositoryOwner ? { headRepositoryOwner } : {}),
+  };
+}
+
+function isCandidateForHeadRef(candidate: ResolvedPullRequestCandidate, headRef: string): boolean {
+  return candidate.status.headRefName === headRef && hasResolvedRepoIdentity(candidate.status);
+}
+
+function hasResolvedRepoIdentity(status: GitHubCurrentPullRequestStatus): boolean {
+  return Boolean(status.repoOwner && status.repoName);
+}
+
+function pickPullRequestCandidate(options: {
+  candidates: ResolvedPullRequestCandidate[];
+  headRef: string;
+  headRepositoryOwner?: string;
+}): ResolvedPullRequestCandidate | null {
+  const matching = options.candidates.filter((candidate) => {
+    if (!isCandidateForHeadRef(candidate, options.headRef)) {
+      return false;
+    }
+    if (!options.headRepositoryOwner) {
+      return true;
+    }
+    return candidate.headRepositoryOwner === options.headRepositoryOwner;
+  });
+  matching.sort(comparePullRequestCandidatePreference);
+  return matching[0] ?? null;
+}
+
+function comparePullRequestCandidatePreference(
+  left: ResolvedPullRequestCandidate,
+  right: ResolvedPullRequestCandidate,
+): number {
+  return getPullRequestStateRank(left.status) - getPullRequestStateRank(right.status);
+}
+
+function getPullRequestStateRank(status: GitHubCurrentPullRequestStatus): number {
+  if (status.state === "open" || status.isDraft) {
+    return 0;
+  }
+  if (status.state === "merged") {
+    return 1;
+  }
+  return 2;
 }
 
 function parsePullRequestSummaries(stdout: string): GitHubPullRequestSummary[] {
@@ -626,6 +1036,7 @@ function toPullRequestSummary(
     baseRefName: item.baseRefName,
     headRefName: item.headRefName,
     labels: item.labels.map((label) => label.name ?? "").filter((name) => name.length > 0),
+    updatedAt: item.updatedAt,
   };
 }
 
@@ -638,33 +1049,183 @@ function parseIssueSummaries(stdout: string): GitHubIssueSummary[] {
     state: item.state,
     body: item.body,
     labels: item.labels.map((label) => label.name ?? "").filter((name) => name.length > 0),
+    updatedAt: item.updatedAt,
   }));
 }
 
-function parseCurrentPullRequestStatus(
+function parsePullRequestTimeline(
   stdout: string,
+  identity: { prNumber: number; repoOwner: string; repoName: string },
+): GitHubPullRequestTimeline {
+  const parsed = PullRequestTimelineGraphqlSchema.parse(JSON.parse(stdout || "{}"));
+  const pullRequest = parsed.data?.repository?.pullRequest;
+  const items = pullRequest
+    ? [
+        ...pullRequest.reviews.nodes.flatMap(toPullRequestTimelineReviewItem),
+        ...pullRequest.comments.nodes.map(toPullRequestTimelineCommentItem),
+      ].sort(compareTimelineItems)
+    : [];
+  return {
+    prNumber: pullRequest?.number ?? identity.prNumber,
+    repoOwner: identity.repoOwner,
+    repoName: identity.repoName,
+    items,
+    // S3 deliberately caps timeline fetches at the first 100 reviews and first 100 comments.
+    truncated: Boolean(
+      pullRequest?.reviews.pageInfo.hasNextPage || pullRequest?.comments.pageInfo.hasNextPage,
+    ),
+    error: pullRequest ? null : { kind: "not_found", message: "Pull request not found" },
+  };
+}
+
+function toPullRequestTimelineReviewItem(
+  review: z.infer<typeof PullRequestTimelineReviewNodeSchema>,
+): PullRequestTimelineItem[] {
+  const reviewState = mapTimelineReviewState(review.state, review.body ?? "");
+  if (!reviewState) {
+    return [];
+  }
+  return [
+    {
+      kind: "review",
+      id: review.id,
+      author: review.author?.login ?? "unknown",
+      authorUrl: review.author?.url ?? null,
+      body: review.body ?? "",
+      createdAt: parseOptionalTime(review.submittedAt ?? null),
+      url: review.url,
+      reviewState,
+    },
+  ];
+}
+
+function toPullRequestTimelineCommentItem(
+  comment: z.infer<typeof PullRequestTimelineCommentNodeSchema>,
+): PullRequestTimelineItem {
+  return {
+    kind: "comment",
+    id: comment.id,
+    author: comment.author?.login ?? "unknown",
+    authorUrl: comment.author?.url ?? null,
+    body: comment.body ?? "",
+    createdAt: parseOptionalTime(comment.createdAt ?? null),
+    url: comment.url,
+  };
+}
+
+function mapTimelineReviewState(
+  state: string,
+  body: string,
+): PullRequestTimelineReviewState | null {
+  switch (state) {
+    case "APPROVED":
+      return "approved";
+    case "CHANGES_REQUESTED":
+      return "changes_requested";
+    case "COMMENTED":
+      return "commented";
+    case "DISMISSED":
+    case "PENDING":
+      return body.trim().length > 0 ? "commented" : null;
+    default:
+      return body.trim().length > 0 ? "commented" : null;
+  }
+}
+
+function compareTimelineItems(
+  left: PullRequestTimelineItem,
+  right: PullRequestTimelineItem,
+): number {
+  if (left.createdAt !== right.createdAt) {
+    return left.createdAt - right.createdAt;
+  }
+  return left.id.localeCompare(right.id);
+}
+
+function mapPullRequestTimelineError(error: unknown): GitHubPullRequestTimelineError {
+  if (error instanceof GitHubCommandError) {
+    return {
+      kind: classifyPullRequestTimelineError(error.stderr),
+      message: error.stderr || error.message,
+    };
+  }
+  if (error instanceof GitHubAuthenticationError) {
+    return {
+      kind: "forbidden",
+      message: error.stderr || error.message,
+    };
+  }
+  return {
+    kind: "unknown",
+    message: error instanceof Error ? error.message : String(error),
+  };
+}
+
+function classifyPullRequestTimelineError(stderr: string): GitHubPullRequestTimelineErrorKind {
+  const normalized = stderr.toLowerCase();
+  if (
+    normalized.includes("could not resolve to a pullrequest") ||
+    normalized.includes("pull request not found") ||
+    normalized.includes("pullrequest not found")
+  ) {
+    return "not_found";
+  }
+  if (
+    normalized.includes("forbidden") ||
+    normalized.includes("resource not accessible") ||
+    normalized.includes("permission") ||
+    normalized.includes("access denied") ||
+    normalized.includes("requires authentication") ||
+    normalized.includes("http 403")
+  ) {
+    return "forbidden";
+  }
+  return "unknown";
+}
+
+function toCurrentPullRequestStatus(
+  item: CurrentPullRequestStatusItem,
   fallbackHeadRefName: string,
 ): GitHubCurrentPullRequestStatus | null {
-  const item = CurrentPullRequestStatusSchema.parse(JSON.parse(stdout || "{}"));
   if (!item.url || !item.title) {
     return null;
   }
+  const repoIdentity = parseGitHubPullRequestRepo(item.url);
   const mergedAt =
     typeof item.mergedAt === "string" && item.mergedAt.trim().length > 0 ? item.mergedAt : null;
   const state =
     mergedAt !== null ? "merged" : item.state.trim().length > 0 ? item.state.toLowerCase() : "";
   const checks = parseStatusCheckRollup(item.statusCheckRollup);
   return {
+    ...(typeof item.number === "number" ? { number: item.number } : {}),
+    ...(repoIdentity ? { repoOwner: repoIdentity.owner, repoName: repoIdentity.name } : {}),
     url: item.url,
     title: item.title,
     state,
     baseRefName: item.baseRefName,
     headRefName: item.headRefName || fallbackHeadRefName,
     isMerged: mergedAt !== null,
+    isDraft: item.isDraft ?? false,
     checks,
     checksStatus: computeChecksStatus(checks),
     reviewDecision: mapReviewDecision(item.reviewDecision),
   };
+}
+
+function parseGitHubPullRequestRepo(url: string): { owner: string; name: string } | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== "github.com") {
+      return null;
+    }
+    const [owner, name, kind] = parsed.pathname.split("/").filter(Boolean);
+    if (!owner || !name || kind !== "pull") {
+      return null;
+    }
+    return { owner, name };
+  } catch {
+    return null;
+  }
 }
 
 export function parseStatusCheckRollup(value: unknown): PullRequestCheck[] {
@@ -704,6 +1265,10 @@ function buildPullRequestCheck(
       name: context.name,
       status: mapCheckRunStatus(context.status, context.conclusion),
       url: typeof context.detailsUrl === "string" ? context.detailsUrl : null,
+      ...(typeof context.workflowName === "string" && context.workflowName.trim().length > 0
+        ? { workflow: context.workflowName }
+        : {}),
+      ...formatCheckRunDuration(context),
       recency: getCheckRunRecency(context),
     };
   }
@@ -760,6 +1325,33 @@ function getCheckRunRecency(context: PullRequestCheckRunNode): number {
     return workflowRunId;
   }
   return parseOptionalTime(context.completedAt ?? context.startedAt ?? null);
+}
+
+function formatCheckRunDuration(context: PullRequestCheckRunNode): { duration?: string } {
+  const startedAt = parseOptionalTime(context.startedAt ?? null);
+  const completedAt = parseOptionalTime(context.completedAt ?? null);
+  if (startedAt <= 0 || completedAt <= 0 || completedAt < startedAt) {
+    return {};
+  }
+  const durationSeconds = Math.floor((completedAt - startedAt) / 1_000);
+  return { duration: formatDurationSeconds(durationSeconds) };
+}
+
+function formatDurationSeconds(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts: string[] = [];
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+  if (minutes > 0) {
+    parts.push(`${minutes}m`);
+  }
+  if (seconds > 0 || parts.length === 0) {
+    parts.push(`${seconds}s`);
+  }
+  return parts.join(" ");
 }
 
 function getStatusContextRecency(context: PullRequestStatusContextNode): number {

@@ -12,7 +12,6 @@ import {
   resolveGitHubRepo,
   type GitHubService,
 } from "../services/github-service.js";
-export { parseStatusCheckRollup } from "../services/github-service.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import { runGitCommand } from "./run-git-command.js";
 import { isPaseoOwnedWorktreeCwd } from "./worktree.js";
@@ -1819,12 +1818,16 @@ export interface CreatePullRequestOptions {
 }
 
 export interface PullRequestStatus {
+  number?: number;
+  repoOwner?: string;
+  repoName?: string;
   url: string;
   title: string;
   state: string;
   baseRefName: string;
   headRefName: string;
   isMerged: boolean;
+  isDraft?: boolean;
   checks?: PullRequestCheck[];
   checksStatus?: ChecksStatus;
   reviewDecision?: ReviewDecision;
@@ -1839,6 +1842,8 @@ export type PullRequestCheck = {
   name: string;
   status: "success" | "failure" | "pending" | "skipped" | "cancelled";
   url: string | null;
+  workflow?: string;
+  duration?: string;
 };
 
 export type ChecksStatus = "none" | "pending" | "success" | "failure";

@@ -30,6 +30,7 @@ import type {
   CheckoutPushResponse,
   CheckoutPrCreateResponse,
   CheckoutPrStatusResponse,
+  PullRequestTimelineResponse,
   CheckoutSwitchBranchResponse,
   StashSaveResponse,
   StashPopResponse,
@@ -242,6 +243,7 @@ type CheckoutPullPayload = CheckoutPullResponse["payload"];
 type CheckoutPushPayload = CheckoutPushResponse["payload"];
 type CheckoutPrCreatePayload = CheckoutPrCreateResponse["payload"];
 type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
+type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
 type CheckoutSwitchBranchPayload = CheckoutSwitchBranchResponse["payload"];
 type StashSavePayload = StashSaveResponse["payload"];
 type StashPopPayload = StashPopResponse["payload"];
@@ -2481,6 +2483,24 @@ export class DaemonClient {
         cwd,
       },
       responseType: "checkout_pr_status_response",
+      timeout: 60000,
+    });
+  }
+
+  async pullRequestTimeline(
+    input: { cwd: string; prNumber: number; repoOwner: string; repoName: string },
+    requestId?: string,
+  ): Promise<PullRequestTimelinePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "pull_request_timeline_request",
+        cwd: input.cwd,
+        prNumber: input.prNumber,
+        repoOwner: input.repoOwner,
+        repoName: input.repoName,
+      },
+      responseType: "pull_request_timeline_response",
       timeout: 60000,
     });
   }

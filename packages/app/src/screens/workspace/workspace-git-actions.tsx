@@ -18,11 +18,7 @@ interface WorkspaceGitActionsProps {
   hideLabels?: boolean;
 }
 
-export function WorkspaceGitActions({
-  serverId,
-  cwd,
-  hideLabels,
-}: WorkspaceGitActionsProps) {
+export function WorkspaceGitActions({ serverId, cwd, hideLabels }: WorkspaceGitActionsProps) {
   const { theme } = useUnistyles();
 
   const icons = useMemo(
