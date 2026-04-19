@@ -109,6 +109,62 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
   return { server, agentManager };
 }
 
+function createOpenSocket() {
+  return {
+    readyState: 1,
+    send: vi.fn(),
+    close: vi.fn(),
+    on: vi.fn(),
+    once: vi.fn(),
+  };
+}
+
+function createSessionWithActivity(
+  activity: {
+    deviceType: "web" | "mobile";
+    focusedAgentId: string | null;
+    lastActivityAt: Date;
+    appVisible: boolean;
+    appVisibilityChangedAt?: Date;
+  } | null,
+) {
+  return {
+    getClientActivity: vi.fn(() => activity),
+  };
+}
+
+function connectClient(
+  server: VoiceAssistantWebSocketServer,
+  activity: {
+    deviceType: "web" | "mobile";
+    focusedAgentId: string | null;
+    lastActivityAt: Date;
+    appVisible: boolean;
+    appVisibilityChangedAt?: Date;
+  } | null,
+) {
+  const ws = createOpenSocket();
+  (server as any).sessions.set(ws, {
+    session: createSessionWithActivity(activity),
+    clientId: "client-test",
+    appVersion: null,
+    connectionLogger: createLogger(),
+    sockets: new Set([ws]),
+    externalDisconnectCleanupTimeout: null,
+  });
+  return ws;
+}
+
+function readAttentionRequiredMessage(ws: ReturnType<typeof createOpenSocket>) {
+  const rawMessage = ws.send.mock.calls[0]?.[0];
+  expect(typeof rawMessage).toBe("string");
+  const message = JSON.parse(rawMessage as string);
+  expect(message.type).toBe("session");
+  expect(message.message.type).toBe("agent_stream");
+  expect(message.message.payload.event.type).toBe("attention_required");
+  return message.message.payload.event;
+}
+
 describe("VoiceAssistantWebSocketServer notification payloads", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -165,5 +221,60 @@ describe("VoiceAssistantWebSocketServer notification payloads", () => {
 
     expect(pushMocks.sendPush).toHaveBeenCalledTimes(1);
     expect(getLastAssistantMessage).toHaveBeenCalledWith("agent-2");
+  });
+
+  it("routes a hidden stale focused browser tab's notification to the present Electron web client", async () => {
+    const { server } = createServer();
+    const nowMs = Date.now();
+    const electronWs = connectClient(server, {
+      deviceType: "web",
+      appVisible: false,
+      focusedAgentId: "agent-Y",
+      lastActivityAt: new Date(nowMs - 5_000),
+    });
+    const firefoxWs = connectClient(server, {
+      deviceType: "web",
+      appVisible: false,
+      focusedAgentId: "agent-X",
+      lastActivityAt: new Date(nowMs - 300_000),
+    });
+
+    await (server as any).broadcastAgentAttention({
+      agentId: "agent-X",
+      provider: "claude",
+      reason: "finished",
+    });
+
+    expect(readAttentionRequiredMessage(electronWs).shouldNotify).toBe(true);
+    expect(readAttentionRequiredMessage(firefoxWs).shouldNotify).toBe(false);
+    expect(pushMocks.sendPush).not.toHaveBeenCalled();
+  });
+
+  it("pushes non-error attention when the only connected client has never sent a heartbeat", async () => {
+    const { server } = createServer();
+    const ws = connectClient(server, null);
+
+    await (server as any).broadcastAgentAttention({
+      agentId: "agent-no-heartbeat",
+      provider: "claude",
+      reason: "finished",
+    });
+
+    expect(readAttentionRequiredMessage(ws).shouldNotify).toBe(false);
+    expect(pushMocks.sendPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not push error attention when the only connected client has never sent a heartbeat", async () => {
+    const { server } = createServer();
+    const ws = connectClient(server, null);
+
+    await (server as any).broadcastAgentAttention({
+      agentId: "agent-no-heartbeat",
+      provider: "claude",
+      reason: "error",
+    });
+
+    expect(readAttentionRequiredMessage(ws).shouldNotify).toBe(false);
+    expect(pushMocks.sendPush).not.toHaveBeenCalled();
   });
 });
