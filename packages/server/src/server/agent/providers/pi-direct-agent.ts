@@ -22,14 +22,7 @@ import {
   type WriteToolInput,
 } from "@mariozechner/pi-coding-agent";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type {
-  Api,
-  ImageContent,
-  Model,
-  TextContent,
-  ThinkingContent,
-  ToolCall,
-} from "@mariozechner/pi-ai";
+import type { Api, ImageContent, Model, TextContent } from "@mariozechner/pi-ai";
 import { z } from "zod";
 
 import type {
@@ -733,16 +726,6 @@ function getUserMessageText(content: string | (TextContent | ImageContent)[]): s
   return textParts.join("\n\n");
 }
 
-function getAssistantContentText(content: TextContent | ThinkingContent | ToolCall): string | null {
-  if (content.type === "text") {
-    return content.text || null;
-  }
-  if (content.type === "thinking") {
-    return content.thinking || null;
-  }
-  return null;
-}
-
 function parsePersistenceMetadata(metadata: AgentMetadata | undefined): PiPersistenceMetadata {
   const parsed = PiPersistenceMetadataSchema.safeParse(metadata);
   if (parsed.success) {
@@ -1112,6 +1095,9 @@ export class PiDirectAgentSession implements AgentSession {
   }
 
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
+    const pendingToolCalls = new Map<string, PiTrackedToolCall>();
+    let userIndex = 0;
+
     for (const message of this.session.messages) {
       if (message.role === "user") {
         const text = getUserMessageText(message.content);
@@ -1119,38 +1105,120 @@ export class PiDirectAgentSession implements AgentSession {
           yield {
             type: "timeline",
             provider: PI_PROVIDER,
-            item: { type: "user_message", text },
+            item: {
+              type: "user_message",
+              text,
+              messageId: `pi-user-${userIndex}`,
+            },
+          };
+        }
+        userIndex += 1;
+        continue;
+      }
+
+      if (message.role === "assistant") {
+        for (const content of message.content) {
+          if (content.type === "text") {
+            if (content.text) {
+              yield {
+                type: "timeline",
+                provider: PI_PROVIDER,
+                item: { type: "assistant_message", text: content.text },
+              };
+            }
+            continue;
+          }
+
+          if (content.type === "thinking") {
+            if (content.thinking) {
+              yield {
+                type: "timeline",
+                provider: PI_PROVIDER,
+                item: { type: "reasoning", text: content.thinking },
+              };
+            }
+            continue;
+          }
+
+          if (content.type === "toolCall") {
+            const tracked = parseToolArgs(content.name, content.arguments);
+            pendingToolCalls.set(content.id, tracked);
+            yield {
+              type: "timeline",
+              provider: PI_PROVIDER,
+              item: {
+                type: "tool_call",
+                callId: content.id,
+                name: tracked.toolName,
+                status: "running",
+                detail: mapToolDetail(tracked, null),
+                error: null,
+              },
+            };
+          }
+        }
+        continue;
+      }
+
+      if (message.role === "toolResult") {
+        const tracked =
+          pendingToolCalls.get(message.toolCallId) ?? parseToolArgs(message.toolName, null);
+        pendingToolCalls.delete(message.toolCallId);
+        const result = parseToolResult({ content: message.content });
+        const detail = mapToolDetail(tracked, result);
+
+        if (message.isError) {
+          const errorText = extractTextFromToolResult(result) ?? "Tool call failed";
+          yield {
+            type: "timeline",
+            provider: PI_PROVIDER,
+            item: {
+              type: "tool_call",
+              callId: message.toolCallId,
+              name: tracked.toolName,
+              status: "failed",
+              detail,
+              error: errorText,
+            },
+          };
+        } else {
+          yield {
+            type: "timeline",
+            provider: PI_PROVIDER,
+            item: {
+              type: "tool_call",
+              callId: message.toolCallId,
+              name: tracked.toolName,
+              status: "completed",
+              detail,
+              error: null,
+            },
           };
         }
         continue;
       }
 
-      if (message.role !== "assistant") {
-        continue;
-      }
-
-      for (const content of message.content) {
-        const text = getAssistantContentText(content);
-        if (!text) {
-          continue;
-        }
-
-        if (content.type === "text") {
-          yield {
-            type: "timeline",
-            provider: PI_PROVIDER,
-            item: { type: "assistant_message", text },
-          };
-          continue;
-        }
-
-        if (content.type === "thinking") {
-          yield {
-            type: "timeline",
-            provider: PI_PROVIDER,
-            item: { type: "reasoning", text },
-          };
-        }
+      if (message.role === "bashExecution") {
+        const callId = `pi-bash-${message.timestamp}`;
+        const exitCode = message.exitCode ?? null;
+        const detail: ToolCallDetail = {
+          type: "shell",
+          command: message.command,
+          output: message.output,
+          exitCode,
+        };
+        yield {
+          type: "timeline",
+          provider: PI_PROVIDER,
+          item: {
+            type: "tool_call",
+            callId,
+            name: "bash",
+            status: message.cancelled ? "canceled" : "completed",
+            detail,
+            error: null,
+          },
+        };
       }
     }
   }

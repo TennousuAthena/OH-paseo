@@ -5,7 +5,11 @@ import { randomUUID } from "node:crypto";
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
 import pino from "pino";
 
-import type { AgentPersistenceHandle, AgentTimelineItem } from "../agent/agent-sdk-types.js";
+import type {
+  AgentPersistenceHandle,
+  AgentStreamEvent,
+  AgentTimelineItem,
+} from "../agent/agent-sdk-types.js";
 import { PiDirectAgentClient } from "../agent/providers/pi-direct-agent.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
@@ -356,6 +360,87 @@ describe(
             );
           });
         } finally {
+          rmSync(cwd, { recursive: true, force: true });
+        }
+      },
+      PI_TEST_TIMEOUT_MS,
+    );
+
+    test(
+      "streamHistory replays user/assistant/tool_call timeline after resume",
+      async () => {
+        const cwd = tmpCwd("pi-history-prime-");
+        const marker = "HISTORY_PRIME_MARKER_4242";
+
+        const piClient = createPiClient();
+        const session = await piClient.createSession({
+          provider: "pi",
+          cwd,
+          model: PI_REAL_TEST_MODEL,
+        });
+
+        let handle: AgentPersistenceHandle | null = null;
+
+        try {
+          const result = await session.run(
+            `Use the bash tool to run this exact bash command: echo ${marker}`,
+          );
+
+          const hadShellToolCall = result.timeline.some(
+            (item) =>
+              item.type === "tool_call" &&
+              item.status === "completed" &&
+              item.detail.type === "shell" &&
+              item.detail.command.includes(`echo ${marker}`),
+          );
+          expect(hadShellToolCall).toBe(true);
+
+          handle = session.describePersistence();
+          expect(handle).toBeTruthy();
+        } finally {
+          await session.close();
+        }
+
+        const resumed = await piClient.resumeSession(handle as AgentPersistenceHandle);
+
+        try {
+          const events: AgentStreamEvent[] = [];
+          for await (const event of resumed.streamHistory()) {
+            events.push(event);
+          }
+
+          const items = events
+            .filter(
+              (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
+                event.type === "timeline",
+            )
+            .map((event) => event.item);
+
+          const userItems = items.filter(
+            (item): item is Extract<AgentTimelineItem, { type: "user_message" }> =>
+              item.type === "user_message",
+          );
+          expect(userItems.length).toBeGreaterThan(0);
+          expect(userItems.some((item) => item.text.includes(marker))).toBe(true);
+          expect(userItems.every((item) => typeof item.messageId === "string")).toBe(true);
+
+          const assistantItems = items.filter(
+            (item): item is Extract<AgentTimelineItem, { type: "assistant_message" }> =>
+              item.type === "assistant_message",
+          );
+          expect(assistantItems.length).toBeGreaterThan(0);
+
+          const toolCallItem = findCompletedToolCall(
+            items,
+            (item) =>
+              item.detail.type === "shell" && item.detail.command.includes(`echo ${marker}`),
+          );
+          expect(toolCallItem).toBeDefined();
+          if (toolCallItem?.detail.type === "shell") {
+            expect(toolCallItem.detail.output).toContain(marker);
+          }
+        } finally {
+          await resumed.close();
           rmSync(cwd, { recursive: true, force: true });
         }
       },
