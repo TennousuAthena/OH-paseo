@@ -332,6 +332,19 @@ describe("buildProviderRegistry", () => {
     expect(Object.keys(registry)).toHaveLength(AGENT_PROVIDER_DEFINITIONS.length);
   });
 
+  test("includes mock provider only for development builds", () => {
+    expect(buildProviderRegistry(logger).mock).toBeUndefined();
+    expect(buildProviderRegistry(logger, { isDev: false }).mock).toBeUndefined();
+
+    const registry = buildProviderRegistry(logger, { isDev: true });
+
+    expect(registry.mock).toMatchObject({
+      id: "mock",
+      label: "Mock Load Test",
+      defaultModeId: "load-test",
+    });
+  });
+
   test("built-in override applies command", () => {
     buildProviderRegistry(logger, {
       providerOverrides: {

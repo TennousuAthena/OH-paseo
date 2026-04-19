@@ -319,6 +319,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly voiceCallerContexts = new Map<string, VoiceCallerContext>();
   private readonly agentProviderRuntimeSettings: AgentProviderRuntimeSettingsMap | undefined;
   private readonly providerOverrides: Record<string, ProviderOverride> | undefined;
+  private readonly isDev: boolean;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | null;
   private readonly onBranchChanged:
@@ -374,6 +375,7 @@ export class VoiceAssistantWebSocketServer {
     },
     agentProviderRuntimeSettings?: AgentProviderRuntimeSettingsMap,
     providerOverrides?: Record<string, ProviderOverride>,
+    isDev?: boolean,
     daemonVersion?: string,
     onLifecycleIntent?: (intent: SessionLifecycleIntent) => void,
     projectRegistry?: ProjectRegistry,
@@ -432,11 +434,13 @@ export class VoiceAssistantWebSocketServer {
     this.dictation = dictation ?? null;
     this.agentProviderRuntimeSettings = agentProviderRuntimeSettings;
     this.providerOverrides = providerOverrides;
+    this.isDev = isDev === true;
     const providerSnapshotLogger = this.logger.child({ module: "provider-snapshot-manager" });
     this.providerSnapshotManager = new ProviderSnapshotManager(
       buildProviderRegistry(providerSnapshotLogger, {
         runtimeSettings: this.agentProviderRuntimeSettings,
         providerOverrides: this.providerOverrides,
+        isDev: this.isDev,
       }),
       providerSnapshotLogger,
     );
@@ -793,6 +797,7 @@ export class VoiceAssistantWebSocketServer {
           : undefined,
       agentProviderRuntimeSettings: this.agentProviderRuntimeSettings,
       providerOverrides: this.providerOverrides,
+      isDev: this.isDev,
     });
 
     connection = {

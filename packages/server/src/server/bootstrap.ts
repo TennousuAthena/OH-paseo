@@ -180,6 +180,7 @@ export type PaseoDaemonConfig = {
   mcpInjectIntoAgents?: boolean;
   staticDir: string;
   mcpDebug: boolean;
+  isDev?: boolean;
   agentClients: Partial<Record<AgentProvider, AgentClient>>;
   agentStoragePath: string;
   relayEnabled?: boolean;
@@ -425,6 +426,7 @@ export async function createPaseoDaemon(
           runtimeSettings: config.agentProviderSettings,
           providerOverrides: config.providerOverrides,
           workspaceGitService,
+          isDev: config.isDev === true,
         }),
         ...config.agentClients,
       },
@@ -435,6 +437,7 @@ export async function createPaseoDaemon(
       runtimeSettings: config.agentProviderSettings,
       providerOverrides: config.providerOverrides,
       workspaceGitService,
+      isDev: config.isDev === true,
     });
 
     const detachAgentStoragePersistence = attachAgentStoragePersistence(
@@ -707,6 +710,7 @@ export async function createPaseoDaemon(
               },
               config.agentProviderSettings,
               config.providerOverrides,
+              config.isDev === true,
               daemonVersion,
               (intent) => {
                 try {

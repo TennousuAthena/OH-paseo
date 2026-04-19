@@ -27,9 +27,11 @@ import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
 import { GenericACPAgentClient } from "./providers/generic-acp-agent.js";
 import { OpenCodeAgentClient, OpenCodeServerManager } from "./providers/opencode-agent.js";
 import { PiDirectAgentClient } from "./providers/pi-direct-agent.js";
+import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
 import {
   AGENT_PROVIDER_DEFINITIONS,
   BUILTIN_PROVIDER_IDS,
+  DEV_AGENT_PROVIDER_DEFINITIONS,
   getAgentProviderDefinition,
   type AgentProviderDefinition,
 } from "./provider-manifest.js";
@@ -48,6 +50,7 @@ export type BuildProviderRegistryOptions = {
   runtimeSettings?: AgentProviderRuntimeSettingsMap;
   providerOverrides?: Record<string, ProviderOverride>;
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
+  isDev?: boolean;
 };
 
 type ProviderClientFactory = (
@@ -85,6 +88,7 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       logger,
       runtimeSettings,
     }),
+  mock: (logger) => new MockLoadTestAgentClient(logger),
 };
 
 function getProviderClientFactory(provider: string): ProviderClientFactory {
@@ -349,10 +353,15 @@ function buildResolvedBuiltinProviders(
   providerOverrides: Record<string, ProviderOverride>,
   runtimeSettings: AgentProviderRuntimeSettingsMap | undefined,
   options: Pick<BuildProviderRegistryOptions, "workspaceGitService">,
+  isDev: boolean,
 ): Map<string, ResolvedProvider> {
   const resolvedProviders = new Map<string, ResolvedProvider>();
 
-  for (const definition of AGENT_PROVIDER_DEFINITIONS) {
+  const definitions = isDev
+    ? [...AGENT_PROVIDER_DEFINITIONS, ...DEV_AGENT_PROVIDER_DEFINITIONS]
+    : AGENT_PROVIDER_DEFINITIONS;
+
+  for (const definition of definitions) {
     const override = providerOverrides[definition.id];
     const factory = getProviderClientFactory(definition.id);
     const mergedRuntimeSettings = mergeRuntimeSettings(
@@ -380,7 +389,7 @@ function addDerivedProviders(
   providerOverrides: Record<string, ProviderOverride>,
 ): void {
   for (const [providerId, override] of Object.entries(providerOverrides)) {
-    if (BUILTIN_PROVIDER_IDS.includes(providerId)) {
+    if (resolvedProviders.has(providerId) || BUILTIN_PROVIDER_IDS.includes(providerId)) {
       continue;
     }
 
@@ -448,9 +457,14 @@ export function buildProviderRegistry(
 ): Record<AgentProvider, ProviderDefinition> {
   const runtimeSettings = options?.runtimeSettings;
   const providerOverrides = options?.providerOverrides ?? {};
-  const resolvedProviders = buildResolvedBuiltinProviders(providerOverrides, runtimeSettings, {
-    workspaceGitService: options?.workspaceGitService,
-  });
+  const resolvedProviders = buildResolvedBuiltinProviders(
+    providerOverrides,
+    runtimeSettings,
+    {
+      workspaceGitService: options?.workspaceGitService,
+    },
+    options?.isDev === true,
+  );
   addDerivedProviders(resolvedProviders, providerOverrides);
 
   return Object.fromEntries(

@@ -526,6 +526,7 @@ export type SessionOptions = {
   };
   agentProviderRuntimeSettings?: AgentProviderRuntimeSettingsMap;
   providerOverrides?: Record<string, ProviderOverride>;
+  isDev?: boolean;
 };
 
 export type SessionLifecycleIntent =
@@ -720,6 +721,7 @@ export class Session {
   private readonly getSpeechReadiness?: () => SpeechReadinessSnapshot;
   private readonly agentProviderRuntimeSettings: AgentProviderRuntimeSettingsMap | undefined;
   private readonly providerOverrides: Record<string, ProviderOverride> | undefined;
+  private readonly isDev: boolean;
   private voiceModeAgentId: string | null = null;
   private voiceModeBaseConfig: VoiceModeBaseConfig | null = null;
 
@@ -761,6 +763,7 @@ export class Session {
       dictation,
       agentProviderRuntimeSettings,
       providerOverrides,
+      isDev,
     } = options;
     this.clientId = clientId;
     this.appVersion = appVersion ?? null;
@@ -829,11 +832,13 @@ export class Session {
     this.getSpeechReadiness = dictation?.getSpeechReadiness;
     this.agentProviderRuntimeSettings = agentProviderRuntimeSettings;
     this.providerOverrides = providerOverrides;
+    this.isDev = isDev === true;
     this.abortController = new AbortController();
     this.providerRegistry = buildProviderRegistry(this.sessionLogger, {
       runtimeSettings: this.agentProviderRuntimeSettings,
       providerOverrides: this.providerOverrides,
       workspaceGitService: this.workspaceGitService,
+      isDev: this.isDev,
     });
 
     // Initialize per-session managers
