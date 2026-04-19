@@ -128,6 +128,11 @@ interface GitRef {
   committerDate: number;
 }
 
+export interface BranchSuggestion {
+  name: string;
+  committerDate: number;
+}
+
 async function listGitRefs(cwd: string, refPrefix: string): Promise<GitRef[]> {
   const { stdout } = await runGitCommand(
     [
@@ -181,7 +186,7 @@ function sortBranchSuggestions(
 export async function listBranchSuggestions(
   cwd: string,
   options?: { query?: string; limit?: number },
-): Promise<string[]> {
+): Promise<BranchSuggestion[]> {
   await requireGitRepo(cwd);
 
   const requestedLimit = options?.limit ?? 50;
@@ -227,7 +232,10 @@ export async function listBranchSuggestions(
   }
 
   const ordered = sortBranchSuggestions(filteredNames, branchMeta, query);
-  return ordered.slice(0, limit);
+  return ordered.slice(0, limit).map((name) => ({
+    name,
+    committerDate: branchMeta.get(name)?.committerDate ?? 0,
+  }));
 }
 
 async function listCheckoutFileChanges(
@@ -1936,6 +1944,7 @@ export interface GitHubSearchResult {
     labels: string[];
     baseRefName?: string | null;
     headRefName?: string | null;
+    updatedAt?: string;
   }>;
   githubFeaturesEnabled: boolean;
 }
@@ -1997,6 +2006,7 @@ export async function searchGitHubIssuesAndPrs(
           labels: item.labels,
           baseRefName: null,
           headRefName: null,
+          updatedAt: item.updatedAt,
         });
       }
     }
@@ -2013,6 +2023,7 @@ export async function searchGitHubIssuesAndPrs(
           labels: item.labels,
           baseRefName: item.baseRefName,
           headRefName: item.headRefName,
+          updatedAt: item.updatedAt,
         });
       }
     }

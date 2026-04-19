@@ -765,12 +765,21 @@ const x = 1;
     execSync("git fetch origin", { cwd: repoDir });
 
     const branches = await listBranchSuggestions(repoDir, { limit: 50 });
-    expect(branches).toContain("main");
-    expect(branches).toContain("local-only");
-    expect(branches).toContain("remote-only");
-    expect(branches.filter((name) => name === "main")).toHaveLength(1);
-    expect(branches).not.toContain("HEAD");
-    expect(branches.some((name) => name.startsWith("origin/"))).toBe(false);
+    const branchNames = branches.map((branch) => branch.name);
+    expect(branchNames).toContain("main");
+    expect(branchNames).toContain("local-only");
+    expect(branchNames).toContain("remote-only");
+    expect(branchNames.filter((name) => name === "main")).toHaveLength(1);
+    expect(branchNames).not.toContain("HEAD");
+    expect(branchNames.some((name) => name.startsWith("origin/"))).toBe(false);
+    expect(branches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "main",
+          committerDate: expect.any(Number),
+        }),
+      ]),
+    );
   });
 
   it("filters branch suggestions by query and enforces result limit", async () => {
@@ -786,7 +795,8 @@ const x = 1;
       limit: 1,
     });
     expect(branches).toHaveLength(1);
-    expect(branches[0]?.toLowerCase()).toContain("feature/");
+    expect(branches[0]?.name.toLowerCase()).toContain("feature/");
+    expect(branches[0]?.committerDate).toEqual(expect.any(Number));
   });
 
   it("disables GitHub features when gh is unavailable", async () => {
@@ -816,6 +826,7 @@ const x = 1;
           state: "OPEN",
           body: "issue body",
           labels: ["bug"],
+          updatedAt: "2026-04-18T12:00:00Z",
         },
       ];
     };
@@ -832,6 +843,7 @@ const x = 1;
           baseRefName: "main",
           headRefName: "feature",
           labels: ["enhancement"],
+          updatedAt: "2026-04-18T13:00:00Z",
         },
       ];
     };
@@ -853,6 +865,7 @@ const x = 1;
           labels: ["bug"],
           baseRefName: null,
           headRefName: null,
+          updatedAt: "2026-04-18T12:00:00Z",
         },
         {
           kind: "pr",
@@ -864,6 +877,7 @@ const x = 1;
           labels: ["enhancement"],
           baseRefName: "main",
           headRefName: "feature",
+          updatedAt: "2026-04-18T13:00:00Z",
         },
       ],
     });
@@ -890,6 +904,7 @@ const x = 1;
           baseRefName: "main",
           headRefName: "feature",
           labels: ["enhancement"],
+          updatedAt: "2026-04-18T13:00:00Z",
         },
       ];
     };
@@ -913,6 +928,7 @@ const x = 1;
           labels: ["enhancement"],
           baseRefName: "main",
           headRefName: "feature",
+          updatedAt: "2026-04-18T13:00:00Z",
         },
       ],
     });

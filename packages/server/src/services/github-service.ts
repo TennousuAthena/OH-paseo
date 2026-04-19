@@ -20,6 +20,7 @@ const GitHubIssueSummarySchema = z.object({
   state: z.string().catch(""),
   body: z.string().nullable().catch(null),
   labels: z.array(LabelSchema).catch([]),
+  updatedAt: z.string().catch(""),
 });
 
 const GitHubPullRequestSummarySchema = z.object({
@@ -31,6 +32,7 @@ const GitHubPullRequestSummarySchema = z.object({
   baseRefName: z.string().catch(""),
   headRefName: z.string().catch(""),
   labels: z.array(LabelSchema).catch([]),
+  updatedAt: z.string().catch(""),
 });
 
 const PullRequestCheckRunNodeSchema = z.object({
@@ -123,6 +125,7 @@ export interface GitHubPullRequestSummary {
   baseRefName: string;
   headRefName: string;
   labels: string[];
+  updatedAt: string;
 }
 
 export interface GitHubIssueSummary {
@@ -132,6 +135,7 @@ export interface GitHubIssueSummary {
   state: string;
   body: string | null;
   labels: string[];
+  updatedAt: string;
 }
 
 export type PullRequestCheckStatus = "pending" | "success" | "failure" | "cancelled" | "skipped";
@@ -337,7 +341,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
               "--search",
               options.query ?? "",
               "--json",
-              "number,title,url,state,body,labels,baseRefName,headRefName",
+              "number,title,url,state,body,labels,baseRefName,headRefName,updatedAt",
               "--limit",
               String(options.limit ?? 20),
             ],
@@ -361,7 +365,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
               "--search",
               options.query ?? "",
               "--json",
-              "number,title,url,state,body,labels",
+              "number,title,url,state,body,labels,updatedAt",
               "--limit",
               String(options.limit ?? 20),
             ],
@@ -384,7 +388,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
               "view",
               String(options.number),
               "--json",
-              "number,title,url,state,body,labels,baseRefName,headRefName",
+              "number,title,url,state,body,labels,baseRefName,headRefName,updatedAt",
             ],
             { cwd: options.cwd },
           );

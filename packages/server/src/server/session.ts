@@ -4088,11 +4088,12 @@ export class Session {
 
     try {
       const resolvedCwd = expandTilde(cwd);
-      const branches = await listBranchSuggestions(resolvedCwd, { query, limit });
+      const branchDetails = await listBranchSuggestions(resolvedCwd, { query, limit });
       this.emit({
         type: "branch_suggestions_response",
         payload: {
-          branches,
+          branches: branchDetails.map((branch) => branch.name),
+          branchDetails,
           error: null,
           requestId,
         },
@@ -4102,6 +4103,7 @@ export class Session {
         type: "branch_suggestions_response",
         payload: {
           branches: [],
+          branchDetails: [],
           error: error instanceof Error ? error.message : String(error),
           requestId,
         },

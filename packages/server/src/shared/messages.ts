@@ -1189,6 +1189,7 @@ export const GitHubSearchItemSchema = z.object({
   labels: z.array(z.string()),
   baseRefName: z.string().nullable().optional(),
   headRefName: z.string().nullable().optional(),
+  updatedAt: z.string().optional(),
 });
 
 export const GitHubSearchKindSchema = z.enum(["github-issue", "github-pr"]);
@@ -2598,6 +2599,14 @@ export const BranchSuggestionsResponseSchema = z.object({
   type: z.literal("branch_suggestions_response"),
   payload: z.object({
     branches: z.array(z.string()),
+    branchDetails: z
+      .array(
+        z.object({
+          name: z.string(),
+          committerDate: z.number(),
+        }),
+      )
+      .optional(),
     error: z.string().nullable(),
     requestId: z.string(),
   }),
