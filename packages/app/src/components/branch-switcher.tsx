@@ -45,10 +45,10 @@ export function BranchSwitcher({
   });
 
   const titleContent = (
-    <>
+    <View style={styles.titleRow}>
       {isGitCheckout ? <GitBranch size={14} color={theme.colors.foregroundMuted} /> : null}
       <ScreenTitle testID="workspace-header-title">{title}</ScreenTitle>
-    </>
+    </View>
   );
 
   if (!currentBranchName) {
@@ -105,6 +105,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
+    minWidth: 0,
     marginLeft: {
       xs: -theme.spacing[2],
       md: 0,
@@ -116,9 +117,15 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
     flexShrink: 1,
-    minWidth: 0,
   },
   branchSwitcherTriggerHovered: {
     backgroundColor: theme.colors.surface1,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    minWidth: 0,
+    overflow: "hidden",
   },
 }));
