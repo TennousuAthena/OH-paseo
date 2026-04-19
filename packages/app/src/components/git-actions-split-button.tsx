@@ -16,18 +16,25 @@ import type { GitAction, GitActions } from "@/components/git-actions-policy";
 
 interface GitActionsSplitButtonProps {
   gitActions: GitActions;
+  hideLabels?: boolean;
 }
 
-export function GitActionsSplitButton({ gitActions }: GitActionsSplitButtonProps) {
+export function GitActionsSplitButton({
+  gitActions,
+  hideLabels,
+}: GitActionsSplitButtonProps) {
   const { theme } = useUnistyles();
   const toast = useToast();
   const archiveShortcutKeys = useShortcutKeys("archive-worktree");
 
-  const getActionDisplayLabel = useCallback((action: GitAction): string => {
-    if (action.status === "pending") return action.pendingLabel;
-    if (action.status === "success") return action.successLabel;
-    return action.label;
-  }, []);
+  const getActionDisplayLabel = useCallback(
+    (action: GitAction): string => {
+      if (action.status === "pending") return action.pendingLabel;
+      if (action.status === "success") return action.successLabel;
+      return action.label;
+    },
+    [],
+  );
 
   const handleActionSelect = useCallback(
     (action: GitAction) => {
@@ -68,9 +75,11 @@ export function GitActionsSplitButton({ gitActions }: GitActionsSplitButtonProps
             ) : (
               <View style={styles.splitButtonContent}>
                 {gitActions.primary.icon}
-                <Text style={styles.splitButtonText}>
-                  {getActionDisplayLabel(gitActions.primary)}
-                </Text>
+                {!hideLabels && (
+                  <Text style={styles.splitButtonText}>
+                    {getActionDisplayLabel(gitActions.primary)}
+                  </Text>
+                )}
               </View>
             )}
           </Pressable>

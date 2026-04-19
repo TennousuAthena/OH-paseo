@@ -41,12 +41,14 @@ interface WorkspaceScriptsButtonProps {
   serverId: string;
   workspaceId: string;
   scripts: WorkspaceDescriptor["scripts"];
+  hideLabels?: boolean;
 }
 
 export function WorkspaceScriptsButton({
   serverId,
   workspaceId,
   scripts,
+  hideLabels,
 }: WorkspaceScriptsButtonProps): ReactElement | null {
   const { theme } = useUnistyles();
   const toast = useToast();
@@ -98,7 +100,7 @@ export function WorkspaceScriptsButton({
                 }
                 fill="transparent"
               />
-              <Text style={styles.splitButtonText}>Scripts</Text>
+              {!hideLabels && <Text style={styles.splitButtonText}>Scripts</Text>}
               <ChevronDown size={14} color={theme.colors.foregroundMuted} />
             </View>
           </DropdownMenuTrigger>
@@ -265,6 +267,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   splitButtonPrimary: {
     paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
+    justifyContent: "center",
+  },
+  splitButtonPrimaryIconOnly: {
+    paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     justifyContent: "center",
   },

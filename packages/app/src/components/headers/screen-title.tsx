@@ -25,6 +25,7 @@ export function ScreenTitle({ children, numberOfLines = 1, testID, style }: Scre
 const styles = StyleSheet.create((theme) => ({
   text: {
     flexShrink: 1,
+    minWidth: 0,
     fontSize: theme.fontSize.base,
     fontWeight: {
       xs: "400",

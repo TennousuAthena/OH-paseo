@@ -117,6 +117,7 @@ import { findAdjacentPane } from "@/utils/split-navigation";
 import { isAbsolutePath } from "@/utils/path";
 import { useIsCompactFormFactor, supportsDesktopPaneSplits } from "@/constants/layout";
 import { isWeb, isNative } from "@/constants/platform";
+import { useContainerWidth } from "@/hooks/use-container-width";
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
 const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
@@ -939,6 +940,8 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   );
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const { closingTabIds, closeTab } = useCloseTabs();
+  const { onLayout: onHeaderLayout, width: headerWidth } = useContainerWidth();
+  const showCompactButtonLabels = headerWidth < 700;
   const closeWorkspaceTabWithCleanup = useCallback(
     function closeWorkspaceTabWithCleanup(input: {
       tabId: string;
@@ -2044,6 +2047,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
         <View style={styles.centerColumn}>
           {(!isFocusModeEnabled || isMobile) && (
             <ScreenHeader
+              onRowLayout={onHeaderLayout}
               left={
                 <>
                   <SidebarMenuToggle />
@@ -2151,12 +2155,14 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                       serverId={normalizedServerId}
                       workspaceId={normalizedWorkspaceId}
                       scripts={workspaceDescriptor.scripts}
+                      hideLabels={showCompactButtonLabels}
                     />
                   ) : null}
                   {!isMobile ? (
                     <WorkspaceOpenInEditorButton
                       serverId={normalizedServerId}
                       cwd={normalizedWorkspaceId}
+                      hideLabels={showCompactButtonLabels}
                     />
                   ) : null}
                   {!isMobile && isGitCheckout ? (
@@ -2164,6 +2170,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                       <WorkspaceGitActions
                         serverId={normalizedServerId}
                         cwd={normalizedWorkspaceId}
+                        hideLabels={showCompactButtonLabels}
                       />
                       <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
                         <TooltipTrigger asChild>
@@ -2413,9 +2420,11 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+    overflow: "hidden",
   },
   headerTitleTextGroup: {
     minWidth: 0,
+    overflow: "hidden",
     flexShrink: 1,
     flexGrow: {
       xs: 1,
@@ -2442,6 +2451,8 @@ const styles = StyleSheet.create((theme) => ({
       md: theme.fontSize.base,
     },
     flexShrink: 1,
+    minWidth: 0,
+    maxWidth: "60%",
   },
   headerTitleSkeleton: {
     width: 190,
