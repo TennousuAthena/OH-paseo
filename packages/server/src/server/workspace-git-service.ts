@@ -784,7 +784,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     const missingRepoCoverage = repoRoot === null || !hasRecursiveRepoCoverage;
     if (target.watchers.length === 0 || missingRepoCoverage) {
       target.fallbackRefreshInterval = setInterval(() => {
-        this.scheduleWorkspaceRefresh(cwd);
+        this.scheduleWorkspaceRefresh(cwd, {
+          force: true,
+          reason: "working-tree-watch-fallback",
+        });
         for (const listener of target.listeners) {
           listener();
         }
@@ -894,7 +897,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     void this.runRepoFetch(repoTarget);
   }
 
-  private scheduleWorkspaceRefresh(targetOrCwd: WorkspaceGitTarget | string): void {
+  private scheduleWorkspaceRefresh(
+    targetOrCwd: WorkspaceGitTarget | string,
+    options?: { force?: boolean; reason?: string },
+  ): void {
     const target =
       typeof targetOrCwd === "string"
         ? this.workspaceTargets.get(normalizeWorkspaceId(targetOrCwd))
@@ -910,9 +916,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target.debounceTimer = setTimeout(() => {
       target.debounceTimer = null;
       void this.refreshWorkspaceTarget(target, {
-        force: false,
+        force: options?.force === true,
         includeGitHub: false,
-        reason: "watch",
+        reason: options?.reason ?? "watch",
         notify: true,
       });
     }, WORKSPACE_GIT_WATCH_DEBOUNCE_MS);
@@ -990,7 +996,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       if (process.platform === "linux" && target.repoWatchPath) {
         void this.refreshLinuxRepoTreeWatchers(target);
       }
-      this.scheduleWorkspaceRefresh(cwd);
+      this.scheduleWorkspaceRefresh(cwd, {
+        force: true,
+        reason: "working-tree-watch",
+      });
       for (const listener of target.listeners) {
         listener();
       }
@@ -1264,7 +1273,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   ): Promise<WorkspaceGitRuntimeSnapshot> {
     const now = this.deps.now();
     target.lastShellOutAtMs = now.getTime();
-    if (request.force) {
+    const forceGitHub = request.force && request.includeGitHub;
+    if (forceGitHub) {
       this.deps.github.invalidate({ cwd: target.cwd });
     }
     const snapshot = await loadWorkspaceGitRuntimeSnapshot(
@@ -1272,7 +1282,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       { paseoHome: this.paseoHome },
       now,
       this.deps,
-      { force: request.force, reason: request.reason },
+      { force: request.force, forceGitHub, reason: request.reason },
     );
     target.latestSnapshotLoadedAtMs = now.getTime();
     return snapshot;
@@ -1430,7 +1440,7 @@ async function loadWorkspaceGitRuntimeSnapshot(
     WorkspaceGitServiceDependencies,
     "getCheckoutStatus" | "getCheckoutShortstat" | "getPullRequestStatus" | "github"
   >,
-  options?: { force?: boolean; reason?: string },
+  options?: { force?: boolean; forceGitHub?: boolean; reason?: string },
 ): Promise<WorkspaceGitRuntimeSnapshot> {
   const checkoutStatus = await deps.getCheckoutStatus(cwd, context);
   if (!checkoutStatus.isGit) {
@@ -1444,7 +1454,7 @@ async function loadWorkspaceGitRuntimeSnapshot(
       remoteUrl: checkoutStatus.remoteUrl,
       now,
       deps,
-      force: options?.force,
+      force: options?.forceGitHub,
       reason: options?.reason,
     }),
   ]);

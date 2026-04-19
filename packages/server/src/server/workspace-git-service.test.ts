@@ -731,9 +731,54 @@ describe("WorkspaceGitServiceImpl", () => {
     watchCallbacks[0]?.();
 
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(refreshSpy).toHaveBeenCalledWith("/tmp/repo");
+    expect(refreshSpy).toHaveBeenCalledWith("/tmp/repo", {
+      force: true,
+      reason: "working-tree-watch",
+    });
 
     subscription.unsubscribe();
+    service.dispose();
+  });
+
+  test("working tree changes force a fresh diff stat for workspace subscribers", async () => {
+    const watchCallbacks: Array<{ path: string; callback: () => void }> = [];
+    const watch = vi.fn(
+      (watchPath: string, _options: { recursive: boolean }, callback: () => void) => {
+        watchCallbacks.push({ path: watchPath, callback });
+        return createWatcher() as any;
+      },
+    );
+    const getCheckoutShortstat = vi
+      .fn()
+      .mockResolvedValueOnce({ additions: 1, deletions: 0 })
+      .mockResolvedValueOnce({ additions: 8, deletions: 3 });
+    const service = createService({ getCheckoutShortstat, watch });
+    const workspaceListener = vi.fn();
+
+    const workspaceSubscription = await service.subscribe({ cwd: "/tmp/repo" }, workspaceListener);
+    const diffSubscription = await service.requestWorkingTreeWatch("/tmp/repo", vi.fn());
+
+    expect(workspaceSubscription.initial.git.diffStat).toEqual({ additions: 1, deletions: 0 });
+    const repoRootWatch = watchCallbacks.find((entry) => entry.path === "/tmp/repo");
+    expect(repoRootWatch).toBeDefined();
+
+    repoRootWatch?.callback();
+    await vi.advanceTimersByTimeAsync(500);
+    await flushPromises();
+
+    expect(getCheckoutShortstat).toHaveBeenLastCalledWith(
+      "/tmp/repo",
+      { paseoHome: "/tmp/paseo-test" },
+      { force: true },
+    );
+    expect(workspaceListener).toHaveBeenCalledWith(
+      createSnapshot("/tmp/repo", {
+        git: { diffStat: { additions: 8, deletions: 3 } },
+      }),
+    );
+
+    diffSubscription.unsubscribe();
+    workspaceSubscription.unsubscribe();
     service.dispose();
   });
 });
