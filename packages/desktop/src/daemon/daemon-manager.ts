@@ -1,7 +1,7 @@
 import { type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { app, ipcMain } from "electron";
+import { app, ipcMain, powerMonitor } from "electron";
 import log from "electron-log/main";
 import { resolvePaseoHome, spawnProcess } from "@getpaseo/server";
 import {
@@ -444,6 +444,10 @@ function resolveCurrentUpdateVersion(): string {
   return resolveDesktopAppVersion();
 }
 
+function getSystemIdleTimeMs(): number {
+  return powerMonitor.getSystemIdleTime() * 1000;
+}
+
 // ---------------------------------------------------------------------------
 // IPC registration
 // ---------------------------------------------------------------------------
@@ -456,6 +460,7 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
     restart_desktop_daemon: () => restartDaemon(),
     desktop_daemon_logs: () => getDaemonLogs(),
     desktop_daemon_pairing: () => getDaemonPairing(),
+    desktop_get_system_idle_time: () => getSystemIdleTimeMs(),
     cli_daemon_status: () => getCliDaemonStatus(),
     write_attachment_base64: (args) => writeAttachmentBase64(args ?? {}),
     copy_attachment_file: (args) => copyAttachmentFileToManagedStorage(args ?? {}),
