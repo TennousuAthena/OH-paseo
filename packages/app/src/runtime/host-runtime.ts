@@ -1,5 +1,6 @@
 import { useSyncExternalStore, useCallback, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import equal from "fast-deep-equal/es6";
 import {
   DaemonClient,
   type ConnectionState,
@@ -66,6 +67,16 @@ export type HostRuntimeSnapshot = {
   probeByConnectionId: Map<string, ConnectionProbeState>;
   clientGeneration: number;
 };
+
+type HostRuntimeSnapshotPatch = Partial<Omit<HostRuntimeSnapshot, "serverId" | "clientGeneration">>;
+
+function setSnapshotPatchField<Key extends keyof HostRuntimeSnapshotPatch>(
+  patch: HostRuntimeSnapshotPatch,
+  key: Key,
+  value: HostRuntimeSnapshot[Key],
+): void {
+  patch[key] = value;
+}
 
 export function isHostRuntimeConnected(snapshot: HostRuntimeSnapshot | null): boolean {
   return snapshot?.connectionStatus === "online";
@@ -831,15 +842,25 @@ export class HostRuntimeController {
     });
   }
 
-  private updateSnapshot(
-    patch: Partial<Omit<HostRuntimeSnapshot, "serverId" | "clientGeneration">>,
-  ): void {
-    const next: HostRuntimeSnapshot = {
+  private updateSnapshot(patch: HostRuntimeSnapshotPatch): void {
+    const preservedPatch: HostRuntimeSnapshotPatch = { ...patch };
+    let hasChanged = this.host.serverId !== this.snapshot.serverId;
+    for (const key of Object.keys(patch) as Array<keyof HostRuntimeSnapshotPatch>) {
+      const incomingValue = patch[key];
+      if (equal(this.snapshot[key], incomingValue)) {
+        setSnapshotPatchField(preservedPatch, key, this.snapshot[key]);
+        continue;
+      }
+      hasChanged = true;
+    }
+    if (!hasChanged) {
+      return;
+    }
+    this.snapshot = {
       ...this.snapshot,
-      ...patch,
+      ...preservedPatch,
       serverId: this.host.serverId,
     };
-    this.snapshot = next;
     for (const listener of this.listeners) {
       listener();
     }
@@ -1021,7 +1042,7 @@ export class HostRuntimeController {
         state,
         lastError: client.lastError,
       });
-      const patch: Partial<Omit<HostRuntimeSnapshot, "serverId" | "clientGeneration">> = {
+      const patch: HostRuntimeSnapshotPatch = {
         ...toSnapshotConnectionPatch(this.connectionMachineState),
       };
 
