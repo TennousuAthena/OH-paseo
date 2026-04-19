@@ -1,3 +1,7 @@
+import { execSync } from "child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import pino from "pino";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -136,6 +140,46 @@ describe("session checkout merge handling", () => {
         requestId: "request-1",
       },
     });
+  });
+});
+
+describe("session branch validation", () => {
+  test("does not validate tags as branches", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "paseo-session-branch-validation-"));
+    const repoDir = join(tempDir, "repo");
+
+    try {
+      execSync(`git init -b main ${repoDir}`);
+      execSync("git config user.email 'test@test.com'", { cwd: repoDir });
+      execSync("git config user.name 'Test'", { cwd: repoDir });
+      writeFileSync(join(repoDir, "README.md"), "hello\n");
+      execSync("git add README.md", { cwd: repoDir });
+      execSync("git -c commit.gpgsign=false commit -m init", { cwd: repoDir });
+      execSync("git tag v1", { cwd: repoDir });
+
+      const messages: unknown[] = [];
+      const session = createSessionForTest({ messages });
+
+      await session.handleMessage({
+        type: "validate_branch_request",
+        cwd: repoDir,
+        branchName: "v1",
+        requestId: "request-validate-tag",
+      });
+
+      expect(messages).toContainEqual({
+        type: "validate_branch_response",
+        payload: {
+          exists: false,
+          resolvedRef: null,
+          isRemote: false,
+          error: null,
+          requestId: "request-validate-tag",
+        },
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 

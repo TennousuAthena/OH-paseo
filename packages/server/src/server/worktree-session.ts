@@ -27,6 +27,7 @@ import type { ScriptRouteStore } from "./script-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { GitHubService } from "../services/github-service.js";
 import { getCheckoutStatus, resolveRepositoryDefaultBranch } from "../utils/checkout-git.js";
+import type { CheckoutExistingBranchResult } from "../utils/checkout-git.js";
 import { expandTilde } from "../utils/path.js";
 import {
   deletePaseoWorktree,
@@ -75,7 +76,7 @@ type BuildAgentSessionConfigDependencies = {
       resolveRepositoryDefaultBranch?: (repoRoot: string) => Promise<string>;
     },
   ) => Promise<CreatePaseoWorktreeResult>;
-  checkoutExistingBranch: (cwd: string, branch: string) => Promise<void>;
+  checkoutExistingBranch: (cwd: string, branch: string) => Promise<CheckoutExistingBranchResult>;
   createBranchFromBase: (params: {
     cwd: string;
     baseBranch: string;

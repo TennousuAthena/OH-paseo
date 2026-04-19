@@ -2640,6 +2640,7 @@ export const CheckoutSwitchBranchResponseSchema = z.object({
     cwd: z.string(),
     success: z.boolean(),
     branch: z.string(),
+    source: z.enum(["local", "remote"]).optional(),
     error: CheckoutErrorSchema.nullable(),
     requestId: z.string(),
   }),
@@ -2702,6 +2703,8 @@ export const BranchSuggestionsResponseSchema = z.object({
         z.object({
           name: z.string(),
           committerDate: z.number(),
+          hasLocal: z.boolean().optional(),
+          hasRemote: z.boolean().optional(),
         }),
       )
       .optional(),

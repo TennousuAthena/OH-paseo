@@ -167,6 +167,9 @@ import {
   getCachedCheckoutShortstat,
   getCheckoutStatus,
   listBranchSuggestions,
+  checkoutResolvedBranch,
+  resolveBranchCheckout,
+  type CheckoutExistingBranchResult,
   commitChanges,
   mergeToBase,
   mergeFromBase,
@@ -3504,24 +3507,20 @@ export class Session {
     }
   }
 
-  private async checkoutExistingBranch(cwd: string, branch: string): Promise<void> {
+  private async checkoutExistingBranch(
+    cwd: string,
+    branch: string,
+  ): Promise<CheckoutExistingBranchResult> {
     this.assertSafeGitRef(branch, "branch");
-    try {
-      await execCommand("git", ["rev-parse", "--verify", branch], { cwd });
-    } catch (error) {
+    const resolution = await resolveBranchCheckout(cwd, branch);
+    if (resolution.kind === "not-found") {
       throw new Error(`Branch not found: ${branch}`);
     }
-
-    const { stdout } = await execAsync("git rev-parse --abbrev-ref HEAD", {
-      cwd,
-    });
-    const current = stdout.trim();
-    if (current === branch) {
-      return;
-    }
-
     await this.ensureCleanWorkingTree(cwd);
-    await execCommand("git", ["checkout", branch], { cwd });
+    return checkoutResolvedBranch({
+      cwd,
+      resolution,
+    });
   }
 
   private async createBranchFromBase(params: {
@@ -3557,7 +3556,7 @@ export class Session {
         cwd,
       });
       return true;
-    } catch (error: any) {
+    } catch {
       return false;
     }
   }
@@ -4034,59 +4033,49 @@ export class Session {
       const resolvedCwd = expandTilde(cwd);
       this.assertSafeGitRef(branchName, "branch");
 
-      // Try local branch first
-      try {
-        await execCommand("git", ["rev-parse", "--verify", branchName], {
-          cwd: resolvedCwd,
-          env: READ_ONLY_GIT_ENV,
-        });
-        this.emit({
-          type: "validate_branch_response",
-          payload: {
-            exists: true,
-            resolvedRef: branchName,
-            isRemote: false,
-            error: null,
-            requestId,
-          },
-        });
-        return;
-      } catch {
-        // Local branch doesn't exist, try remote
+      const resolution = await resolveBranchCheckout(resolvedCwd, branchName);
+      switch (resolution.kind) {
+        case "local":
+          this.emit({
+            type: "validate_branch_response",
+            payload: {
+              exists: true,
+              resolvedRef: resolution.name,
+              isRemote: false,
+              error: null,
+              requestId,
+            },
+          });
+          return;
+        case "remote-only":
+          this.emit({
+            type: "validate_branch_response",
+            payload: {
+              exists: true,
+              resolvedRef: resolution.remoteRef,
+              isRemote: true,
+              error: null,
+              requestId,
+            },
+          });
+          return;
+        case "not-found":
+          this.emit({
+            type: "validate_branch_response",
+            payload: {
+              exists: false,
+              resolvedRef: null,
+              isRemote: false,
+              error: null,
+              requestId,
+            },
+          });
+          return;
+        default: {
+          const exhaustiveCheck: never = resolution;
+          throw new Error(`Unhandled branch resolution: ${exhaustiveCheck}`);
+        }
       }
-
-      // Try remote branch (origin/{branchName})
-      try {
-        await execCommand("git", ["rev-parse", "--verify", `origin/${branchName}`], {
-          cwd: resolvedCwd,
-          env: READ_ONLY_GIT_ENV,
-        });
-        this.emit({
-          type: "validate_branch_response",
-          payload: {
-            exists: true,
-            resolvedRef: `origin/${branchName}`,
-            isRemote: true,
-            error: null,
-            requestId,
-          },
-        });
-        return;
-      } catch {
-        // Remote branch doesn't exist either
-      }
-
-      // Branch not found anywhere
-      this.emit({
-        type: "validate_branch_response",
-        payload: {
-          exists: false,
-          resolvedRef: null,
-          isRemote: false,
-          error: null,
-          requestId,
-        },
-      });
     } catch (error) {
       this.emit({
         type: "validate_branch_response",
@@ -4360,7 +4349,7 @@ export class Session {
     const { cwd, branch, requestId } = msg;
 
     try {
-      await this.checkoutExistingBranch(cwd, branch);
+      const checkoutResult = await this.checkoutExistingBranch(cwd, branch);
       this.github.invalidate({ cwd });
       this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
 
@@ -4374,6 +4363,7 @@ export class Session {
           cwd,
           success: true,
           branch,
+          source: checkoutResult.source,
           error: null,
           requestId,
         },

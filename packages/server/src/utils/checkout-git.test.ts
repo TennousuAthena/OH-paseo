@@ -14,6 +14,7 @@ import {
   getCheckoutShortstat,
   getPullRequestStatus,
   getCheckoutStatus,
+  checkoutResolvedBranch,
   listBranchSuggestions,
   mergeToBase,
   mergeFromBase,
@@ -22,6 +23,7 @@ import {
   NotGitRepoError,
   pullCurrentBranch,
   pushCurrentBranch,
+  resolveBranchCheckout,
   resolveRepositoryDefaultBranch,
   parseWorktreeList,
   isPaseoWorktreePath,
@@ -342,6 +344,96 @@ const x = 1;
 
     const shortstat = await getCheckoutShortstat(repoDir);
     expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+  });
+
+  it("does not count origin base commits as feature changes when local main is stale", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    const otherClone = join(tempDir, "other-clone");
+    execSync(`git init --bare -b main ${remoteDir}`);
+    execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+    execSync("git push -u origin main", { cwd: repoDir });
+
+    execSync(`git clone ${remoteDir} ${otherClone}`);
+    execSync("git config user.email 'test@test.com'", { cwd: otherClone });
+    execSync("git config user.name 'Test'", { cwd: otherClone });
+    writeFileSync(join(otherClone, "already-on-origin.txt"), "origin\n");
+    execSync("git add already-on-origin.txt", { cwd: otherClone });
+    execSync("git -c commit.gpgsign=false commit -m 'origin base commit'", { cwd: otherClone });
+    execSync("git push", { cwd: otherClone });
+
+    writeFileSync(join(repoDir, "local-only-base.txt"), "local\n");
+    execSync("git add local-only-base.txt", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'local base drift'", { cwd: repoDir });
+    execSync("git fetch origin", { cwd: repoDir });
+    execSync("git checkout -b feature origin/main", { cwd: repoDir });
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+    expect(shortstat).toBeNull();
+
+    const diff = await getCheckoutDiff(repoDir, {
+      mode: "base",
+      baseRef: "main",
+      includeStructured: true,
+    });
+    expect(diff.diff).toBe("");
+    expect(diff.structured).toEqual([]);
+  });
+
+  it("falls back to the local base branch when origin is absent", async () => {
+    execSync("git checkout -b feature", { cwd: repoDir });
+    writeFileSync(join(repoDir, "local-feature.txt"), "feature\n");
+    execSync("git add local-feature.txt", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'local feature'", { cwd: repoDir });
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+
+    const diff = await getCheckoutDiff(repoDir, { mode: "base", baseRef: "main" });
+    expect(diff.diff).toContain("local-feature.txt");
+  });
+
+  it("keeps an explicit origin base ref instead of stripping it to a stale local branch", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    const otherClone = join(tempDir, "other-clone");
+    execSync(`git init --bare -b main ${remoteDir}`);
+    execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+    execSync("git push -u origin main", { cwd: repoDir });
+
+    execSync(`git clone ${remoteDir} ${otherClone}`);
+    execSync("git config user.email 'test@test.com'", { cwd: otherClone });
+    execSync("git config user.name 'Test'", { cwd: otherClone });
+    writeFileSync(join(otherClone, "origin-base.txt"), "origin\n");
+    execSync("git add origin-base.txt", { cwd: otherClone });
+    execSync("git -c commit.gpgsign=false commit -m 'origin base'", { cwd: otherClone });
+    execSync("git push", { cwd: otherClone });
+
+    writeFileSync(join(repoDir, "local-drift.txt"), "local\n");
+    execSync("git add local-drift.txt", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'local drift'", { cwd: repoDir });
+    execSync("git fetch origin", { cwd: repoDir });
+    execSync("git checkout -b feature origin/main", { cwd: repoDir });
+
+    const diff = await getCheckoutDiff(repoDir, { mode: "base", baseRef: "origin/main" });
+    expect(diff.diff).toBe("");
+  });
+
+  it("shows feature commits when the local and origin base branches are up to date", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    execSync(`git init --bare -b main ${remoteDir}`);
+    execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+    execSync("git push -u origin main", { cwd: repoDir });
+    execSync("git fetch origin", { cwd: repoDir });
+
+    execSync("git checkout -b feature", { cwd: repoDir });
+    writeFileSync(join(repoDir, "feature.txt"), "feature\n");
+    execSync("git add feature.txt", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'feature commit'", { cwd: repoDir });
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+
+    const diff = await getCheckoutDiff(repoDir, { mode: "base", baseRef: "main" });
+    expect(diff.diff).toContain("feature.txt");
   });
 
   it("warms shortstat cache in the background without blocking listing callers", async () => {
@@ -790,31 +882,38 @@ const x = 1;
     execSync(`git --git-dir ${remoteDir} show-ref --verify refs/heads/feature`);
   });
 
-  it("lists merged local and remote branch suggestions without duplicates", async () => {
+  it("lists merged local and remote branch suggestions with provenance", async () => {
     const remoteDir = join(tempDir, "remote.git");
     execSync(`git init --bare -b main ${remoteDir}`);
     execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
     execSync("git push -u origin main", { cwd: repoDir });
 
-    execSync("git checkout -b local-only", { cwd: repoDir });
+    execSync("git checkout -b feature/local-only", { cwd: repoDir });
+    execSync("git checkout main", { cwd: repoDir });
+    execSync("git checkout -b feature/shared", { cwd: repoDir });
+    writeFileSync(join(repoDir, "shared.txt"), "shared\n");
+    execSync("git add shared.txt", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'shared branch'", { cwd: repoDir });
+    execSync("git push -u origin feature/shared", { cwd: repoDir });
     execSync("git checkout main", { cwd: repoDir });
 
     const otherClone = join(tempDir, "other-clone");
     execSync(`git clone ${remoteDir} ${otherClone}`);
     execSync("git config user.email 'test@test.com'", { cwd: otherClone });
     execSync("git config user.name 'Test'", { cwd: otherClone });
-    execSync("git checkout -b remote-only", { cwd: otherClone });
+    execSync("git checkout -b feature/remote-only", { cwd: otherClone });
     writeFileSync(join(otherClone, "remote-only.txt"), "remote-only\n");
     execSync("git add remote-only.txt", { cwd: otherClone });
     execSync("git -c commit.gpgsign=false commit -m 'remote only branch'", { cwd: otherClone });
-    execSync("git push -u origin remote-only", { cwd: otherClone });
+    execSync("git push -u origin feature/remote-only", { cwd: otherClone });
     execSync("git fetch origin", { cwd: repoDir });
 
     const branches = await listBranchSuggestions(repoDir, { limit: 50 });
     const branchNames = branches.map((branch) => branch.name);
     expect(branchNames).toContain("main");
-    expect(branchNames).toContain("local-only");
-    expect(branchNames).toContain("remote-only");
+    expect(branchNames).toContain("feature/local-only");
+    expect(branchNames).toContain("feature/remote-only");
+    expect(branchNames).toContain("feature/shared");
     expect(branchNames.filter((name) => name === "main")).toHaveLength(1);
     expect(branchNames).not.toContain("HEAD");
     expect(branchNames.some((name) => name.startsWith("origin/"))).toBe(false);
@@ -826,6 +925,175 @@ const x = 1;
         }),
       ]),
     );
+    expect(branches.find((branch) => branch.name === "feature/local-only")).toMatchObject({
+      hasLocal: true,
+      hasRemote: false,
+    });
+    expect(branches.find((branch) => branch.name === "feature/remote-only")).toMatchObject({
+      hasLocal: false,
+      hasRemote: true,
+    });
+    expect(branches.find((branch) => branch.name === "feature/shared")).toMatchObject({
+      hasLocal: true,
+      hasRemote: true,
+    });
+  });
+
+  it("resolves branch checkout targets with local precedence and origin normalization", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    execSync(`git init --bare -b main ${remoteDir}`);
+    execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+    execSync("git push -u origin main", { cwd: repoDir });
+
+    execSync("git checkout -b feature/local", { cwd: repoDir });
+    execSync("git checkout main", { cwd: repoDir });
+    execSync("git checkout -b feature/shared", { cwd: repoDir });
+    writeFileSync(join(repoDir, "shared.txt"), "shared\n");
+    execSync("git add shared.txt", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'shared branch'", { cwd: repoDir });
+    execSync("git push -u origin feature/shared", { cwd: repoDir });
+    execSync("git checkout main", { cwd: repoDir });
+
+    const otherClone = join(tempDir, "other-clone");
+    execSync(`git clone ${remoteDir} ${otherClone}`);
+    execSync("git config user.email 'test@test.com'", { cwd: otherClone });
+    execSync("git config user.name 'Test'", { cwd: otherClone });
+    execSync("git checkout -b feature/remote-only", { cwd: otherClone });
+    writeFileSync(join(otherClone, "remote-only.txt"), "remote-only\n");
+    execSync("git add remote-only.txt", { cwd: otherClone });
+    execSync("git -c commit.gpgsign=false commit -m 'remote only branch'", { cwd: otherClone });
+    execSync("git push -u origin feature/remote-only", { cwd: otherClone });
+    execSync("git fetch origin", { cwd: repoDir });
+
+    await expect(resolveBranchCheckout(repoDir, "feature/local")).resolves.toEqual({
+      kind: "local",
+      name: "feature/local",
+    });
+    await expect(resolveBranchCheckout(repoDir, "feature/remote-only")).resolves.toEqual({
+      kind: "remote-only",
+      name: "feature/remote-only",
+      remoteRef: "origin/feature/remote-only",
+    });
+    await expect(resolveBranchCheckout(repoDir, "origin/feature/remote-only")).resolves.toEqual({
+      kind: "remote-only",
+      name: "feature/remote-only",
+      remoteRef: "origin/feature/remote-only",
+    });
+    await expect(resolveBranchCheckout(repoDir, "feature/shared")).resolves.toEqual({
+      kind: "local",
+      name: "feature/shared",
+    });
+    await expect(resolveBranchCheckout(repoDir, "feature/unknown")).resolves.toEqual({
+      kind: "not-found",
+    });
+  });
+
+  it("does not resolve tags as branch checkout targets", async () => {
+    execSync("git checkout -b feature/a", { cwd: repoDir });
+    execSync("git checkout main", { cwd: repoDir });
+    execSync("git tag v1", { cwd: repoDir });
+
+    await expect(resolveBranchCheckout(repoDir, "v1")).resolves.toEqual({
+      kind: "not-found",
+    });
+  });
+
+  it("checks out a remote-only branch as a local tracking branch", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    execSync(`git init --bare -b main ${remoteDir}`);
+    execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+    execSync("git push -u origin main", { cwd: repoDir });
+
+    const otherClone = join(tempDir, "other-clone");
+    execSync(`git clone ${remoteDir} ${otherClone}`);
+    execSync("git config user.email 'test@test.com'", { cwd: otherClone });
+    execSync("git config user.name 'Test'", { cwd: otherClone });
+    execSync("git checkout -b feature/remote-only", { cwd: otherClone });
+    writeFileSync(join(otherClone, "remote-only.txt"), "remote-only\n");
+    execSync("git add remote-only.txt", { cwd: otherClone });
+    execSync("git -c commit.gpgsign=false commit -m 'remote only branch'", { cwd: otherClone });
+    execSync("git push -u origin feature/remote-only", { cwd: otherClone });
+    execSync("git fetch origin", { cwd: repoDir });
+
+    const resolution = await resolveBranchCheckout(repoDir, "feature/remote-only");
+    await expect(checkoutResolvedBranch({ cwd: repoDir, resolution })).resolves.toEqual({
+      source: "remote",
+    });
+
+    expect(execSync("git symbolic-ref --short HEAD", { cwd: repoDir }).toString().trim()).toBe(
+      "feature/remote-only",
+    );
+    execSync("git symbolic-ref -q HEAD", { cwd: repoDir });
+    expect(
+      execSync("git rev-parse --abbrev-ref --symbolic-full-name @{u}", { cwd: repoDir })
+        .toString()
+        .trim(),
+    ).toBe("origin/feature/remote-only");
+  });
+
+  it("normalizes explicit origin input when checking out a remote-only branch", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    execSync(`git init --bare -b main ${remoteDir}`);
+    execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+    execSync("git push -u origin main", { cwd: repoDir });
+
+    const otherClone = join(tempDir, "other-clone");
+    execSync(`git clone ${remoteDir} ${otherClone}`);
+    execSync("git config user.email 'test@test.com'", { cwd: otherClone });
+    execSync("git config user.name 'Test'", { cwd: otherClone });
+    execSync("git checkout -b feature/remote-only", { cwd: otherClone });
+    writeFileSync(join(otherClone, "remote-only.txt"), "remote-only\n");
+    execSync("git add remote-only.txt", { cwd: otherClone });
+    execSync("git -c commit.gpgsign=false commit -m 'remote only branch'", { cwd: otherClone });
+    execSync("git push -u origin feature/remote-only", { cwd: otherClone });
+    execSync("git fetch origin", { cwd: repoDir });
+
+    const resolution = await resolveBranchCheckout(repoDir, "origin/feature/remote-only");
+    await expect(checkoutResolvedBranch({ cwd: repoDir, resolution })).resolves.toEqual({
+      source: "remote",
+    });
+
+    expect(execSync("git symbolic-ref --short HEAD", { cwd: repoDir }).toString().trim()).toBe(
+      "feature/remote-only",
+    );
+    execSync("git symbolic-ref -q HEAD", { cwd: repoDir });
+    expect(
+      execSync("git rev-parse --abbrev-ref --symbolic-full-name @{u}", { cwd: repoDir })
+        .toString()
+        .trim(),
+    ).toBe("origin/feature/remote-only");
+  });
+
+  it("checks out the local branch when local and remote branches share a name", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    execSync(`git init --bare -b main ${remoteDir}`);
+    execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+    execSync("git push -u origin main", { cwd: repoDir });
+    execSync("git checkout -b feature/shared", { cwd: repoDir });
+    writeFileSync(join(repoDir, "shared.txt"), "shared\n");
+    execSync("git add shared.txt", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'shared branch'", { cwd: repoDir });
+    execSync("git push -u origin feature/shared", { cwd: repoDir });
+    execSync("git checkout main", { cwd: repoDir });
+
+    const resolution = await resolveBranchCheckout(repoDir, "feature/shared");
+    await expect(checkoutResolvedBranch({ cwd: repoDir, resolution })).resolves.toEqual({
+      source: "local",
+    });
+
+    expect(execSync("git symbolic-ref --short HEAD", { cwd: repoDir }).toString().trim()).toBe(
+      "feature/shared",
+    );
+  });
+
+  it("throws the existing branch-not-found message for unknown checkout targets", async () => {
+    await expect(
+      checkoutResolvedBranch({
+        cwd: repoDir,
+        resolution: { kind: "not-found" },
+        requestedBranch: "missing-branch",
+      }),
+    ).rejects.toThrow(/^Branch not found: missing-branch$/);
   });
 
   it("filters branch suggestions by query and enforces result limit", async () => {

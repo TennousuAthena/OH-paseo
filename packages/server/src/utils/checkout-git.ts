@@ -130,6 +130,8 @@ interface GitRef {
 export interface BranchSuggestion {
   name: string;
   committerDate: number;
+  hasLocal: boolean;
+  hasRemote: boolean;
 }
 
 async function listGitRefs(cwd: string, refPrefix: string): Promise<GitRef[]> {
@@ -154,9 +156,15 @@ async function listGitRefs(cwd: string, refPrefix: string): Promise<GitRef[]> {
     .filter((ref): ref is GitRef => ref !== null);
 }
 
+interface BranchSuggestionMeta {
+  committerDate: number;
+  hasLocal: boolean;
+  hasRemote: boolean;
+}
+
 function sortBranchSuggestions(
   branchNames: string[],
-  branchMeta: Map<string, { isLocal: boolean; committerDate: number }>,
+  branchMeta: Map<string, BranchSuggestionMeta>,
   query: string,
 ): string[] {
   const normalizedQuery = query.trim().toLowerCase();
@@ -197,14 +205,15 @@ export async function listBranchSuggestions(
     listGitRefs(cwd, "refs/remotes/origin"),
   ]);
 
-  const branchMeta = new Map<string, { isLocal: boolean; committerDate: number }>();
+  const branchMeta = new Map<string, BranchSuggestionMeta>();
 
   for (const ref of localRefs) {
     const normalized = normalizeBranchSuggestionName(ref.name);
     if (!normalized) continue;
     const existing = branchMeta.get(normalized);
     branchMeta.set(normalized, {
-      isLocal: true,
+      hasLocal: true,
+      hasRemote: existing?.hasRemote ?? false,
       committerDate: Math.max(ref.committerDate, existing?.committerDate ?? 0),
     });
   }
@@ -214,10 +223,15 @@ export async function listBranchSuggestions(
     if (!normalized) continue;
     const existing = branchMeta.get(normalized);
     if (!existing) {
-      branchMeta.set(normalized, { isLocal: false, committerDate: ref.committerDate });
+      branchMeta.set(normalized, {
+        hasLocal: false,
+        hasRemote: true,
+        committerDate: ref.committerDate,
+      });
     } else {
       branchMeta.set(normalized, {
         ...existing,
+        hasRemote: true,
         committerDate: Math.max(ref.committerDate, existing.committerDate),
       });
     }
@@ -231,10 +245,110 @@ export async function listBranchSuggestions(
   }
 
   const ordered = sortBranchSuggestions(filteredNames, branchMeta, query);
-  return ordered.slice(0, limit).map((name) => ({
-    name,
-    committerDate: branchMeta.get(name)?.committerDate ?? 0,
-  }));
+  return ordered.slice(0, limit).map((name) => {
+    const meta = branchMeta.get(name);
+    return {
+      name,
+      committerDate: meta?.committerDate ?? 0,
+      hasLocal: meta?.hasLocal ?? false,
+      hasRemote: meta?.hasRemote ?? false,
+    };
+  });
+}
+
+export interface LocalBranchCheckoutResolution {
+  kind: "local";
+  name: string;
+}
+
+export interface RemoteOnlyBranchCheckoutResolution {
+  kind: "remote-only";
+  name: string;
+  remoteRef: string;
+}
+
+export interface NotFoundBranchCheckoutResolution {
+  kind: "not-found";
+}
+
+export type BranchCheckoutResolution =
+  | LocalBranchCheckoutResolution
+  | RemoteOnlyBranchCheckoutResolution
+  | NotFoundBranchCheckoutResolution;
+
+export async function resolveBranchCheckout(
+  cwd: string,
+  name: string,
+): Promise<BranchCheckoutResolution> {
+  await requireGitRepo(cwd);
+
+  const normalized = normalizeBranchSuggestionName(name);
+  if (!normalized) {
+    return { kind: "not-found" };
+  }
+
+  const localRef = `refs/heads/${normalized}`;
+  const localResult = await runGitCommand(["rev-parse", "--verify", "--quiet", localRef], {
+    cwd,
+    env: READ_ONLY_GIT_ENV,
+    acceptExitCodes: [0, 1],
+  });
+  const hasLocal = localResult.exitCode === 0;
+  if (hasLocal) {
+    return { kind: "local", name: normalized };
+  }
+
+  const remoteRef = `origin/${normalized}`;
+  const remoteRefPath = `refs/remotes/${remoteRef}`;
+  const remoteResult = await runGitCommand(["rev-parse", "--verify", "--quiet", remoteRefPath], {
+    cwd,
+    env: READ_ONLY_GIT_ENV,
+    acceptExitCodes: [0, 1],
+  });
+  const hasRemote = remoteResult.exitCode === 0;
+  if (hasRemote) {
+    return { kind: "remote-only", name: normalized, remoteRef };
+  }
+
+  return { kind: "not-found" };
+}
+
+export type BranchCheckoutSource = "local" | "remote";
+
+export interface CheckoutExistingBranchResult {
+  source: BranchCheckoutSource;
+}
+
+export interface CheckoutResolvedBranchInput {
+  cwd: string;
+  resolution: BranchCheckoutResolution;
+  requestedBranch?: string;
+}
+
+export async function checkoutResolvedBranch(
+  input: CheckoutResolvedBranchInput,
+): Promise<CheckoutExistingBranchResult> {
+  const { cwd, resolution } = input;
+
+  switch (resolution.kind) {
+    case "local": {
+      const { stdout } = await runGitCommand(["rev-parse", "--abbrev-ref", "HEAD"], { cwd });
+      const current = stdout.trim();
+      if (current === resolution.name) {
+        return { source: "local" };
+      }
+
+      await runGitCommand(["checkout", resolution.name], { cwd });
+      return { source: "local" };
+    }
+    case "remote-only":
+      await runGitCommand(["checkout", "-b", resolution.name, "--track", resolution.remoteRef], {
+        cwd,
+      });
+      return { source: "remote" };
+    case "not-found":
+      throw new Error(`Branch not found: ${input.requestedBranch ?? "unknown"}`);
+  }
 }
 
 async function listCheckoutFileChanges(
@@ -847,25 +961,59 @@ async function resolveBaseRef(repoRoot: string): Promise<string | null> {
 }
 
 function normalizeLocalBranchRefName(input: string): string {
-  return input.startsWith("origin/") ? input.slice("origin/".length) : input;
+  if (input.startsWith("refs/remotes/origin/")) {
+    return input.slice("refs/remotes/origin/".length);
+  }
+  if (input.startsWith("refs/heads/")) {
+    return input.slice("refs/heads/".length);
+  }
+  if (input.startsWith("origin/")) {
+    return input.slice("origin/".length);
+  }
+  return input;
+}
+
+interface ComparisonBaseRefName {
+  localName: string;
+  originRef: string;
+}
+
+function normalizeComparisonBaseRefName(input: string): ComparisonBaseRefName {
+  const localName = normalizeLocalBranchRefName(input);
+  return { localName, originRef: `origin/${localName}` };
 }
 
 async function doesGitRefExist(cwd: string, fullRef: string): Promise<boolean> {
-  try {
-    await runGitCommand(["show-ref", "--verify", "--quiet", fullRef], {
-      cwd,
-      env: READ_ONLY_GIT_ENV,
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  const result = await runGitCommand(["show-ref", "--verify", "--quiet", fullRef], {
+    cwd,
+    env: READ_ONLY_GIT_ENV,
+    acceptExitCodes: [0, 1],
+  });
+  return result.exitCode === 0;
 }
 
-async function resolveBestComparisonBaseRef(
-  cwd: string,
-  normalizedBaseRef: string,
-): Promise<string> {
+async function resolveBestComparisonBaseRef(cwd: string, baseRef: string): Promise<string> {
+  const normalized = normalizeComparisonBaseRefName(baseRef);
+  const [hasLocal, hasOrigin] = await Promise.all([
+    doesGitRefExist(cwd, `refs/heads/${normalized.localName}`),
+    doesGitRefExist(cwd, `refs/remotes/origin/${normalized.localName}`),
+  ]);
+
+  if (hasOrigin) {
+    return normalized.originRef;
+  }
+  if (hasLocal) {
+    return normalized.localName;
+  }
+
+  const refName =
+    baseRef.startsWith("origin/") || baseRef.startsWith("refs/remotes/origin/")
+      ? normalized.originRef
+      : normalized.localName;
+  throw new Error(`Base branch not found locally or on origin: ${refName}`);
+}
+
+async function resolveMostAheadBaseRef(cwd: string, normalizedBaseRef: string): Promise<string> {
   const [hasLocal, hasOrigin] = await Promise.all([
     doesGitRefExist(cwd, `refs/heads/${normalizedBaseRef}`),
     doesGitRefExist(cwd, `refs/remotes/origin/${normalizedBaseRef}`),
@@ -881,20 +1029,18 @@ async function resolveBestComparisonBaseRef(
     throw new Error(`Base branch not found locally or on origin: ${normalizedBaseRef}`);
   }
 
-  // Both exist: choose the ref with more unique commits compared to the other.
-  try {
-    const { stdout } = await runGitCommand(
-      ["rev-list", "--left-right", "--count", `${normalizedBaseRef}...origin/${normalizedBaseRef}`],
-      { cwd, env: READ_ONLY_GIT_ENV },
-    );
-    const [localOnlyRaw, originOnlyRaw] = stdout.trim().split(/\s+/);
-    const localOnly = Number.parseInt(localOnlyRaw ?? "0", 10);
-    const originOnly = Number.parseInt(originOnlyRaw ?? "0", 10);
-    if (!Number.isNaN(localOnly) && !Number.isNaN(originOnly) && originOnly > localOnly) {
-      return `origin/${normalizedBaseRef}`;
-    }
-  } catch {
-    // ignore and fall back to local
+  const { stdout } = await runGitCommand(
+    ["rev-list", "--left-right", "--count", `${normalizedBaseRef}...origin/${normalizedBaseRef}`],
+    { cwd, env: READ_ONLY_GIT_ENV },
+  );
+  const [localOnlyRaw, originOnlyRaw] = stdout.trim().split(/\s+/);
+  const localOnly = Number.parseInt(localOnlyRaw ?? "0", 10);
+  const originOnly = Number.parseInt(originOnlyRaw ?? "0", 10);
+  if (Number.isNaN(localOnly) || Number.isNaN(originOnly)) {
+    return normalizedBaseRef;
+  }
+  if (originOnly > localOnly) {
+    return `origin/${normalizedBaseRef}`;
   }
 
   return normalizedBaseRef;
@@ -909,7 +1055,7 @@ async function getAheadBehind(
   if (!normalizedBaseRef || !currentBranch || normalizedBaseRef === currentBranch) {
     return null;
   }
-  const comparisonBaseRef = await resolveBestComparisonBaseRef(cwd, normalizedBaseRef);
+  const comparisonBaseRef = await resolveBestComparisonBaseRef(cwd, baseRef);
   const { stdout } = await runGitCommand(
     ["rev-list", "--left-right", "--count", `${comparisonBaseRef}...${currentBranch}`],
     { cwd, env: READ_ONLY_GIT_ENV },
@@ -1189,10 +1335,7 @@ async function getCheckoutShortstatUncached(
 
   if (currentBranch && localBaseRef && currentBranch !== localBaseRef) {
     // Feature branch: diff against the merge-base with the base branch
-    const comparisonBaseRef = await resolveBestComparisonBaseRef(
-      cwd,
-      normalizeLocalBranchRefName(localBaseRef),
-    );
+    const comparisonBaseRef = await resolveBestComparisonBaseRef(cwd, localBaseRef);
 
     try {
       const { stdout } = await runGitCommand(["merge-base", "HEAD", comparisonBaseRef], {
@@ -1329,8 +1472,7 @@ export async function getCheckoutDiff(
       throw new Error(`Base ref mismatch: expected ${baseRef}, got ${compare.baseRef}`);
     }
 
-    const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
-    const bestBaseRef = await resolveBestComparisonBaseRef(cwd, normalizedBaseRef);
+    const bestBaseRef = await resolveBestComparisonBaseRef(cwd, baseRef);
     refForDiff = (await tryResolveMergeBase(cwd, bestBaseRef)) ?? bestBaseRef;
   }
 
@@ -1715,7 +1857,7 @@ export async function mergeFromBase(
   }
 
   const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
-  const bestBaseRef = await resolveBestComparisonBaseRef(cwd, normalizedBaseRef);
+  const bestBaseRef = await resolveMostAheadBaseRef(cwd, normalizedBaseRef);
   if (bestBaseRef === currentBranch) {
     return;
   }

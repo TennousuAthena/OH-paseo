@@ -1108,7 +1108,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
   test("buildAgentSessionConfig invalidates GitHub cache after branch setup mutations", async () => {
     const invalidate = vi.fn();
     const createBranchFromBase = vi.fn(async () => {});
-    const checkoutExistingBranch = vi.fn(async () => {});
+    const checkoutExistingBranch = vi.fn(async () => ({ source: "local" as const }));
     const createPaseoWorktree = vi.fn(async () => {
       throw new Error("should not create worktree");
     });
