@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Keyboard, ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import invariant from "tiny-invariant";
 import { Composer } from "@/components/composer";
 import { FileDropZone } from "@/components/file-drop-zone";
@@ -48,6 +49,7 @@ export function WorkspaceDraftAgentTab({
   onCreated,
   onOpenWorkspaceFile,
 }: WorkspaceDraftAgentTabProps) {
+  const insets = useSafeAreaInsets();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const workspaceAuthority = useWorkspaceExecutionAuthority(serverId, workspaceId);
@@ -282,7 +284,7 @@ export function WorkspaceDraftAgentTab({
           )}
         </View>
 
-        <View style={styles.inputAreaWrapper}>
+        <View style={[styles.inputAreaWrapper, { paddingBottom: insets.bottom }]}>
           <Composer
             agentId={tabId}
             serverId={serverId}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { createNameId } from "mnemonic-id";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, GitBranch, GitPullRequest } from "lucide-react-native";
@@ -12,12 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { ScreenHeader } from "@/components/headers/screen-header";
-import {
-  HEADER_INNER_HEIGHT,
-  HEADER_INNER_HEIGHT_MOBILE,
-  HEADER_TOP_PADDING_MOBILE,
-  MAX_CONTENT_WIDTH,
-} from "@/constants/layout";
+import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
@@ -107,6 +103,8 @@ export function NewWorkspaceScreen({
   displayName: displayNameProp,
 }: NewWorkspaceScreenProps) {
   const { theme } = useUnistyles();
+  const insets = useSafeAreaInsets();
+  const isCompact = useIsCompactFormFactor();
   const toast = useToast();
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const setAgents = useSessionStore((state) => state.setAgents);
@@ -453,7 +451,13 @@ export function NewWorkspaceScreen({
         leftStyle={styles.headerLeft}
         borderless
       />
-      <View style={styles.content}>
+      <View
+        style={[
+          styles.content,
+          isCompact ? styles.contentCompact : styles.contentCentered,
+          isCompact ? { paddingBottom: insets.bottom } : null,
+        ]}
+      >
         <TitlebarDragRegion />
         <View style={styles.centered}>
           <Composer
@@ -567,12 +571,14 @@ const styles = StyleSheet.create((theme) => ({
   content: {
     position: "relative",
     flex: 1,
-    justifyContent: "center",
     alignItems: "center",
-    paddingBottom: {
-      xs: HEADER_INNER_HEIGHT_MOBILE + HEADER_TOP_PADDING_MOBILE + theme.spacing[6],
-      md: HEADER_INNER_HEIGHT + theme.spacing[6],
-    },
+  },
+  contentCentered: {
+    justifyContent: "center",
+    paddingBottom: HEADER_INNER_HEIGHT + theme.spacing[6],
+  },
+  contentCompact: {
+    justifyContent: "flex-end",
   },
   centered: {
     width: "100%",

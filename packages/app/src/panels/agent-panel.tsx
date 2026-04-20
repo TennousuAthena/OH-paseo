@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import invariant from "tiny-invariant";
@@ -1165,6 +1166,7 @@ function ActiveAgentComposer({
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const agentInputDraft = useAgentInputDraft({
     draftKey: buildDraftStoreKey({
       serverId,
@@ -1174,24 +1176,26 @@ function ActiveAgentComposer({
   });
 
   return (
-    <Composer
-      agentId={agentId}
-      serverId={serverId}
-      isPaneFocused={isPaneFocused}
-      value={agentInputDraft.text}
-      onChangeText={agentInputDraft.setText}
-      attachments={agentInputDraft.attachments}
-      onChangeAttachments={agentInputDraft.setAttachments}
-      cwd={agentInputDraft.cwd}
-      clearDraft={agentInputDraft.clear}
-      autoFocus={isPaneFocused}
-      isSubmitLoading={isSubmitLoading}
-      onAttentionInputFocus={onAttentionInputFocus}
-      onAttentionPromptSend={onAttentionPromptSend}
-      onAddImages={onAddImages}
-      onComposerHeightChange={onComposerHeightChange}
-      onMessageSent={onMessageSent}
-    />
+    <View style={[styles.inputAreaWrapper, { paddingBottom: insets.bottom }]}>
+      <Composer
+        agentId={agentId}
+        serverId={serverId}
+        isPaneFocused={isPaneFocused}
+        value={agentInputDraft.text}
+        onChangeText={agentInputDraft.setText}
+        attachments={agentInputDraft.attachments}
+        onChangeAttachments={agentInputDraft.setAttachments}
+        cwd={agentInputDraft.cwd}
+        clearDraft={agentInputDraft.clear}
+        autoFocus={isPaneFocused}
+        isSubmitLoading={isSubmitLoading}
+        onAttentionInputFocus={onAttentionInputFocus}
+        onAttentionPromptSend={onAttentionPromptSend}
+        onAddImages={onAddImages}
+        onComposerHeightChange={onComposerHeightChange}
+        onMessageSent={onMessageSent}
+      />
+    </View>
   );
 }
 
@@ -1270,6 +1274,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   content: {
     flex: 1,
+  },
+  inputAreaWrapper: {
+    width: "100%",
+    backgroundColor: theme.colors.surface0,
   },
   historySyncOverlay: {
     position: "absolute",

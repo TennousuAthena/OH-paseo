@@ -1221,7 +1221,7 @@ function DraftAgentScreenContent({
               </ScrollView>
             )}
           </Animated.View>
-          <View style={styles.inputAreaWrapper}>
+          <View style={[styles.inputAreaWrapper, { paddingBottom: insets.bottom }]}>
             <Composer
               agentId={draftAgentIdRef.current}
               serverId={selectedServerId ?? ""}

@@ -14,7 +14,6 @@ import {
   Paperclip,
 } from "lucide-react-native";
 import Animated from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { FOOTER_HEIGHT, MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { generateMessageId, type StreamItem } from "@/types/stream";
@@ -169,7 +168,6 @@ export function Composer({
   markScrollInvestigationRender(`Composer:${serverId}:${agentId}`);
   const { theme } = useUnistyles();
   const buttonIconSize = isWeb ? theme.iconSize.md : theme.iconSize.lg;
-  const insets = useSafeAreaInsets();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId);
@@ -882,9 +880,7 @@ export function Composer({
   );
 
   return (
-    <Animated.View
-      style={[styles.container, { paddingBottom: insets.bottom }, keyboardAnimatedStyle]}
-    >
+    <Animated.View style={[styles.container, keyboardAnimatedStyle]}>
       <AttachmentLightbox metadata={lightboxMetadata} onClose={() => setLightboxMetadata(null)} />
       {/* Input area */}
       <View style={[styles.inputAreaContainer, isComposerLocked && styles.inputAreaLocked]}>
