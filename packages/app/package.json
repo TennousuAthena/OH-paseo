@@ -4,7 +4,7 @@
   "version": "0.1.60-rc.2",
   "private": true,
   "scripts": {
-    "start": "expo start",
+    "start": "APP_VARIANT=development expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "build:workspace-deps": "npm run build --workspace=@getpaseo/highlight && npm run build --workspace=@getpaseo/expo-two-way-audio",
     "eas-build-post-install": "npm run build:workspace-deps",
