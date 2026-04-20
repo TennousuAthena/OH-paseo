@@ -18,38 +18,46 @@ export const AgentProviderEnum = z.string();
 
 export const AgentStatusEnum = z.enum(["initializing", "idle", "running", "error", "closed"]);
 
-export const ProviderModeSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  description: z.string().optional(),
-  icon: z.string().optional(),
-  colorTier: z.string().optional(),
-});
+export const ProviderModeSchema = z
+  .object({
+    id: z.string(),
+    label: z.string().nullish(),
+    description: z.string().nullish(),
+    icon: z.string().nullish(),
+    colorTier: z.string().nullish(),
+  })
+  .passthrough();
 
-export const ProviderSummarySchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  modes: z.array(ProviderModeSchema),
-});
+export const ProviderSummarySchema = z
+  .object({
+    id: z.string(),
+    label: z.string().nullish(),
+    modes: z.array(ProviderModeSchema).nullish(),
+  })
+  .passthrough();
 
-export const AgentSelectOptionSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  description: z.string().optional(),
-  isDefault: z.boolean().optional(),
-  metadata: z.record(z.unknown()).optional(),
-});
+export const AgentSelectOptionSchema = z
+  .object({
+    id: z.string(),
+    label: z.string().nullish(),
+    description: z.string().nullish(),
+    isDefault: z.boolean().nullish(),
+    metadata: z.record(z.unknown()).nullish(),
+  })
+  .passthrough();
 
-export const AgentModelSchema = z.object({
-  provider: z.string(),
-  id: z.string(),
-  label: z.string(),
-  description: z.string().optional(),
-  isDefault: z.boolean().optional(),
-  metadata: z.record(z.unknown()).optional(),
-  thinkingOptions: z.array(AgentSelectOptionSchema).optional(),
-  defaultThinkingOptionId: z.string().optional(),
-});
+export const AgentModelSchema = z
+  .object({
+    provider: z.string(),
+    id: z.string(),
+    label: z.string().nullish(),
+    description: z.string().nullish(),
+    isDefault: z.boolean().nullish(),
+    metadata: z.record(z.unknown()).nullish(),
+    thinkingOptions: z.array(AgentSelectOptionSchema).nullish(),
+    defaultThinkingOptionId: z.string().nullish(),
+  })
+  .passthrough();
 
 // 30 seconds - surface friendly message before SDK tool timeout (~60s)
 export const AGENT_WAIT_TIMEOUT_MS = 30000;
