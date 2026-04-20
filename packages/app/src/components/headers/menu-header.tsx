@@ -48,7 +48,8 @@ export function SidebarMenuToggle({
   const isMobile = useIsCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
-  const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
+  const toggleMobileAgentList = usePanelStore((state) => state.toggleMobileAgentList);
+  const toggleDesktopAgentList = usePanelStore((state) => state.toggleDesktopAgentList);
   const toggleShortcutKeys = getShortcutOs() === "mac" ? ["mod", "B"] : ["mod", "."];
 
   const isOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
@@ -57,7 +58,7 @@ export function SidebarMenuToggle({
 
   return (
     <HeaderToggleButton
-      onPress={toggleAgentList}
+      onPress={isMobile ? toggleMobileAgentList : toggleDesktopAgentList}
       tooltipLabel="Toggle sidebar"
       tooltipKeys={toggleShortcutKeys}
       tooltipSide={tooltipSide}

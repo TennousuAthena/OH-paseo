@@ -118,7 +118,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   const isCompactLayout = useIsCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
-  const closeToAgent = usePanelStore((state) => state.closeToAgent);
+  const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
   const pathname = usePathname();
   const daemons = useHosts();
   const activeServerIdFromPath = useMemo(() => parseServerIdFromPathname(pathname), [pathname]);
@@ -208,18 +208,18 @@ export const LeftSidebar = memo(function LeftSidebar({
   const openProjectPicker = useOpenProjectPicker(activeServerId);
 
   const handleOpenProjectMobile = useCallback(() => {
-    closeToAgent();
+    showMobileAgent();
     void openProjectPicker();
-  }, [closeToAgent, openProjectPicker]);
+  }, [showMobileAgent, openProjectPicker]);
 
   const handleOpenProjectDesktop = useCallback(() => {
     void openProjectPicker();
   }, [openProjectPicker]);
 
   const handleSettingsMobile = useCallback(() => {
-    closeToAgent();
+    showMobileAgent();
     router.push(buildSettingsRoute());
-  }, [closeToAgent]);
+  }, [showMobileAgent]);
 
   const handleSettingsDesktop = useCallback(() => {
     router.push(buildSettingsRoute());
@@ -272,7 +272,7 @@ export const LeftSidebar = memo(function LeftSidebar({
         insetsTop={insets.top}
         insetsBottom={insets.bottom}
         isOpen={isOpen}
-        closeToAgent={closeToAgent}
+        closeToAgent={showMobileAgent}
         handleOpenProject={handleOpenProjectMobile}
         handleSettings={handleSettingsMobile}
         handleViewMoreNavigate={handleViewMoreNavigate}

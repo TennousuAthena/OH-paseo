@@ -36,7 +36,11 @@ import {
   useHostRuntimeIsConnected,
 } from "@/runtime/host-runtime";
 import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
-import { usePanelStore, type ExplorerCheckoutContext } from "@/stores/panel-store";
+import { usePanelStore } from "@/stores/panel-store";
+import {
+  setActiveExplorerCheckout,
+  type ExplorerCheckoutContext,
+} from "@/stores/explorer-checkout-context";
 import { MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { WelcomeScreen } from "@/components/welcome-screen";
 import type { Agent } from "@/contexts/session-context";
@@ -237,10 +241,12 @@ function DraftAgentScreenContent({
   const isMobile = useIsCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
-  const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
-  const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
-  const closeFileExplorer = usePanelStore((state) => state.closeFileExplorer);
-  const setActiveExplorerCheckout = usePanelStore((state) => state.setActiveExplorerCheckout);
+  const showMobileFileExplorer = usePanelStore((state) => state.showMobileFileExplorer);
+  const toggleMobileFileExplorer = usePanelStore((state) => state.toggleMobileFileExplorer);
+  const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
+  const openDesktopFileExplorer = usePanelStore((state) => state.openDesktopFileExplorer);
+  const toggleDesktopFileExplorer = usePanelStore((state) => state.toggleDesktopFileExplorer);
+  const closeDesktopFileExplorer = usePanelStore((state) => state.closeDesktopFileExplorer);
   const activateExplorerTabForCheckout = usePanelStore(
     (state) => state.activateExplorerTabForCheckout,
   );
@@ -646,18 +652,39 @@ function DraftAgentScreenContent({
       return;
     }
     activateExplorerTabForCheckout(draftExplorerCheckout);
-    openFileExplorer();
-  }, [activateExplorerTabForCheckout, draftExplorerCheckout, openFileExplorer]);
+    if (isMobile) {
+      showMobileFileExplorer();
+      return;
+    }
+    openDesktopFileExplorer();
+  }, [
+    activateExplorerTabForCheckout,
+    draftExplorerCheckout,
+    isMobile,
+    openDesktopFileExplorer,
+    showMobileFileExplorer,
+  ]);
   const handleToggleExplorer = useCallback(() => {
     if (!canOpenExplorer) {
       return;
     }
     if (isExplorerOpen) {
-      toggleFileExplorer();
+      if (isMobile) {
+        toggleMobileFileExplorer();
+        return;
+      }
+      toggleDesktopFileExplorer();
       return;
     }
     openExplorerForDraftCheckout();
-  }, [canOpenExplorer, isExplorerOpen, openExplorerForDraftCheckout, toggleFileExplorer]);
+  }, [
+    canOpenExplorer,
+    isExplorerOpen,
+    isMobile,
+    openExplorerForDraftCheckout,
+    toggleDesktopFileExplorer,
+    toggleMobileFileExplorer,
+  ]);
   const explorerOpenGesture = useExplorerOpenGesture({
     enabled: isMobile && mobileView === "agent" && canOpenExplorer,
     onOpen: openExplorerForDraftCheckout,
@@ -956,8 +983,19 @@ function DraftAgentScreenContent({
     if (!isFocused || canOpenExplorer || !isExplorerOpen) {
       return;
     }
-    closeFileExplorer();
-  }, [canOpenExplorer, closeFileExplorer, isExplorerOpen, isFocused]);
+    if (isMobile) {
+      showMobileAgent();
+      return;
+    }
+    closeDesktopFileExplorer();
+  }, [
+    canOpenExplorer,
+    closeDesktopFileExplorer,
+    isExplorerOpen,
+    isFocused,
+    isMobile,
+    showMobileAgent,
+  ]);
   useEffect(() => {
     return () => {
       setActiveExplorerCheckout(null);

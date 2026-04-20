@@ -54,7 +54,8 @@ export function ExplorerSidebar({
   const isMobile = useIsCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
-  const closeToAgent = usePanelStore((state) => state.closeToAgent);
+  const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
+  const closeDesktopFileExplorer = usePanelStore((state) => state.closeDesktopFileExplorer);
   const explorerTab = usePanelStore((state) => state.explorerTab);
   const explorerWidth = usePanelStore((state) => state.explorerWidth);
   const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
@@ -107,15 +108,26 @@ export function ExplorerSidebar({
         mobileView,
         desktopFileExplorerOpen,
       });
-      closeToAgent();
+      if (isMobile) {
+        showMobileAgent();
+        return;
+      }
+      closeDesktopFileExplorer();
     },
-    [closeToAgent, desktopFileExplorerOpen, isOpen, mobileView],
+    [
+      closeDesktopFileExplorer,
+      desktopFileExplorerOpen,
+      isMobile,
+      isOpen,
+      mobileView,
+      showMobileAgent,
+    ],
   );
 
   const handleCloseFromGesture = useCallback(() => {
     gestureAnimatingRef.current = true;
-    closeToAgent();
-  }, [closeToAgent, gestureAnimatingRef]);
+    showMobileAgent();
+  }, [gestureAnimatingRef, showMobileAgent]);
 
   const enableSidebarCloseGesture = isMobile && isOpen;
 

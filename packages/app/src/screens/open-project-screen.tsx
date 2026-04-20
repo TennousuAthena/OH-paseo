@@ -20,7 +20,7 @@ import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 
 export function OpenProjectScreen({ serverId }: { serverId: string }) {
-  const openAgentList = usePanelStore((s) => s.openAgentList);
+  const openDesktopAgentList = usePanelStore((s) => s.openDesktopAgentList);
   const openProjectPicker = useOpenProjectPicker(serverId);
   const hasHydrated = useSessionStore((s) => s.sessions[serverId]?.hasHydratedWorkspaces ?? false);
   const hasProjects = useHasWorkspaces(serverId);
@@ -31,9 +31,9 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
 
   useEffect(() => {
     if (!isCompactLayout) {
-      openAgentList();
+      openDesktopAgentList();
     }
-  }, [isCompactLayout, openAgentList]);
+  }, [isCompactLayout, openDesktopAgentList]);
 
   return (
     <View style={styles.container}>

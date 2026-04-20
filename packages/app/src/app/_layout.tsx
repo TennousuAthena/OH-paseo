@@ -388,9 +388,11 @@ function AppContainer({
   const { theme } = useUnistyles();
   const daemons = useHosts();
   const { settings, updateSettings } = useAppSettings();
-  const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
-  const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
-  const toggleBothSidebars = usePanelStore((state) => state.toggleBothSidebars);
+  const toggleMobileAgentList = usePanelStore((state) => state.toggleMobileAgentList);
+  const toggleMobileFileExplorer = usePanelStore((state) => state.toggleMobileFileExplorer);
+  const toggleDesktopAgentList = usePanelStore((state) => state.toggleDesktopAgentList);
+  const toggleDesktopFileExplorer = usePanelStore((state) => state.toggleDesktopFileExplorer);
+  const toggleDesktopSidebars = usePanelStore((state) => state.toggleDesktopSidebars);
   const toggleFocusMode = usePanelStore((state) => state.toggleFocusMode);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
   const agentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
@@ -405,6 +407,8 @@ function AppContainer({
   const isCompactLayout = useIsCompactFormFactor();
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
   const pathname = usePathname();
+  const toggleAgentList = isCompactLayout ? toggleMobileAgentList : toggleDesktopAgentList;
+  const toggleFileExplorer = isCompactLayout ? toggleMobileFileExplorer : toggleDesktopFileExplorer;
   // TODO: stop matching pathname here as a branch. `chromeEnabled` should not
   // conflate workspace/project-specific chrome (sidebar, mobile gesture) with
   // global concerns like keyboard shortcuts. Split those out so settings (and
@@ -445,7 +449,7 @@ function AppContainer({
     isMobile: isCompactLayout,
     toggleAgentList,
     toggleFileExplorer,
-    toggleBothSidebars,
+    toggleBothSidebars: toggleDesktopSidebars,
     toggleFocusMode,
     cycleTheme,
   });
@@ -490,7 +494,7 @@ function MobileGestureWrapper({
   chromeEnabled: boolean;
 }) {
   const mobileView = usePanelStore((state) => state.mobileView);
-  const openAgentList = usePanelStore((state) => state.openAgentList);
+  const showMobileAgentList = usePanelStore((state) => state.showMobileAgentList);
   const horizontalScroll = useHorizontalScrollOptional();
   const {
     translateX,
@@ -507,8 +511,8 @@ function MobileGestureWrapper({
 
   const handleGestureOpen = useCallback(() => {
     gestureAnimatingRef.current = true;
-    openAgentList();
-  }, [openAgentList, gestureAnimatingRef]);
+    showMobileAgentList();
+  }, [showMobileAgentList, gestureAnimatingRef]);
 
   const openGesture = useMemo(
     () =>

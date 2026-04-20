@@ -48,7 +48,11 @@ import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-bu
 import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
 import { useToast } from "@/contexts/toast-context";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
-import { usePanelStore, type ExplorerCheckoutContext } from "@/stores/panel-store";
+import { usePanelStore } from "@/stores/panel-store";
+import {
+  setActiveExplorerCheckout,
+  type ExplorerCheckoutContext,
+} from "@/stores/explorer-checkout-context";
 import { useSessionStore } from "@/stores/session-store";
 import {
   buildWorkspaceTabPersistenceKey,
@@ -843,13 +847,14 @@ function WorkspaceScreenContent({
 
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
-  const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
-  const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
+  const showMobileFileExplorer = usePanelStore((state) => state.showMobileFileExplorer);
+  const toggleMobileFileExplorer = usePanelStore((state) => state.toggleMobileFileExplorer);
+  const openDesktopFileExplorer = usePanelStore((state) => state.openDesktopFileExplorer);
+  const toggleDesktopFileExplorer = usePanelStore((state) => state.toggleDesktopFileExplorer);
   const activateExplorerTabForCheckout = usePanelStore(
     (state) => state.activateExplorerTabForCheckout,
   );
-  const closeToAgent = usePanelStore((state) => state.closeToAgent);
-  const setActiveExplorerCheckout = usePanelStore((state) => state.setActiveExplorerCheckout);
+  const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
 
   const isExplorerOpen = isMobile ? mobileView === "file-explorer" : desktopFileExplorerOpen;
 
@@ -876,16 +881,36 @@ function WorkspaceScreenContent({
       return;
     }
     activateExplorerTabForCheckout(activeExplorerCheckout);
-    openFileExplorer();
-  }, [activateExplorerTabForCheckout, activeExplorerCheckout, openFileExplorer]);
+    if (isMobile) {
+      showMobileFileExplorer();
+      return;
+    }
+    openDesktopFileExplorer();
+  }, [
+    activateExplorerTabForCheckout,
+    activeExplorerCheckout,
+    isMobile,
+    openDesktopFileExplorer,
+    showMobileFileExplorer,
+  ]);
 
   const handleToggleExplorer = useCallback(() => {
     if (isExplorerOpen) {
-      toggleFileExplorer();
+      if (isMobile) {
+        toggleMobileFileExplorer();
+        return;
+      }
+      toggleDesktopFileExplorer();
       return;
     }
     openExplorerForWorkspace();
-  }, [isExplorerOpen, openExplorerForWorkspace, toggleFileExplorer]);
+  }, [
+    isExplorerOpen,
+    isMobile,
+    openExplorerForWorkspace,
+    toggleDesktopFileExplorer,
+    toggleMobileFileExplorer,
+  ]);
 
   const explorerOpenGesture = useExplorerOpenGesture({
     enabled: isMobile && mobileView === "agent",
@@ -899,14 +924,14 @@ function WorkspaceScreenContent({
 
     const handler = BackHandler.addEventListener("hardwareBackPress", () => {
       if (isExplorerOpen) {
-        closeToAgent();
+        showMobileAgent();
         return true;
       }
       return false;
     });
 
     return () => handler.remove();
-  }, [closeToAgent, isExplorerOpen, isRouteFocused]);
+  }, [isExplorerOpen, isRouteFocused, showMobileAgent]);
 
   const persistenceKey = useMemo(
     () =>
@@ -1190,7 +1215,7 @@ function WorkspaceScreenContent({
   const handleOpenFileFromExplorer = useCallback(
     function handleOpenFileFromExplorer(filePath: string) {
       if (isMobile) {
-        closeToAgent();
+        showMobileAgent();
       }
       if (!persistenceKey) {
         return;
@@ -1200,7 +1225,7 @@ function WorkspaceScreenContent({
         navigateToTabId(tabId);
       }
     },
-    [closeToAgent, isMobile, navigateToTabId, openWorkspaceTabFocused, persistenceKey],
+    [isMobile, navigateToTabId, openWorkspaceTabFocused, persistenceKey, showMobileAgent],
   );
 
   const handleOpenFileFromChat = useCallback(

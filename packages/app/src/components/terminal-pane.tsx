@@ -89,8 +89,8 @@ export function TerminalPane({ serverId, cwd, terminalId, isPaneFocused }: Termi
   const xtermTheme = useMemo(() => toXtermTheme(theme.colors.terminal), [theme]);
   const isMobile = useIsCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
-  const openAgentList = usePanelStore((state) => state.openAgentList);
-  const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
+  const showMobileAgentList = usePanelStore((state) => state.showMobileAgentList);
+  const showMobileFileExplorer = usePanelStore((state) => state.showMobileFileExplorer);
   const swipeGesturesEnabled = isMobile && mobileView === "agent";
   const { shift: keyboardShift, style: keyboardPaddingStyle } = useKeyboardShiftStyle({
     mode: "padding",
@@ -573,13 +573,13 @@ export function TerminalPane({ serverId, cwd, terminalId, isPaneFocused }: Termi
                 if (!swipeGesturesEnabled) {
                   return;
                 }
-                openAgentList();
+                showMobileAgentList();
               }}
               onSwipeLeft={() => {
                 if (!swipeGesturesEnabled) {
                   return;
                 }
-                openFileExplorer();
+                showMobileFileExplorer();
               }}
               onInput={handleTerminalData}
               onResize={handleTerminalResize}
