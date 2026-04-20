@@ -66,7 +66,9 @@ jobs:
               --repo "${{ github.repository }}" \
               --title "Paseo $RELEASE_TAG" \
               --generate-notes \
-              $prerelease_flag
+              $prerelease_flag || {
+                echo "Release creation raced with another workflow; continuing."
+              }
           fi
 
   publish-macos:
