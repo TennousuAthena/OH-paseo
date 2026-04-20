@@ -103,8 +103,8 @@ export async function expectWorkspaceHeader(
   page: Page,
   input: { title: string; subtitle: string },
 ): Promise<void> {
-  const titleLocator = page.getByTestId("workspace-header-title");
-  const subtitleLocator = page.getByTestId("workspace-header-subtitle");
+  const titleLocator = page.getByTestId("workspace-header-title").filter({ visible: true });
+  const subtitleLocator = page.getByTestId("workspace-header-subtitle").filter({ visible: true });
 
   await expect(titleLocator.first()).toHaveText(input.title, {
     timeout: 30_000,

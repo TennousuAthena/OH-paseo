@@ -83,7 +83,10 @@ import {
   parseWorkspaceOpenIntent,
   decodeWorkspaceIdFromPathSegment,
 } from "@/utils/host-routes";
-import { syncNavigationActiveWorkspace } from "@/stores/navigation-active-workspace-store";
+import {
+  addBrowserActiveWorkspaceLocationListener,
+  syncNavigationActiveWorkspace,
+} from "@/stores/navigation-active-workspace-store";
 import { isWeb, isNative } from "@/constants/platform";
 
 polyfillCrypto();
@@ -843,6 +846,7 @@ function NavigationActiveWorkspaceObserver() {
 
   useEffect(() => {
     syncNavigationActiveWorkspace(navigationRef);
+    const unsubscribeBrowserLocation = addBrowserActiveWorkspaceLocationListener();
     const unsubscribeState = navigationRef.addListener("state", () => {
       syncNavigationActiveWorkspace(navigationRef);
     });
@@ -850,6 +854,7 @@ function NavigationActiveWorkspaceObserver() {
       syncNavigationActiveWorkspace(navigationRef);
     });
     return () => {
+      unsubscribeBrowserLocation();
       unsubscribeState();
       unsubscribeReady();
     };

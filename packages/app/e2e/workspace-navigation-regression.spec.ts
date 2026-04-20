@@ -96,6 +96,14 @@ test.describe("Workspace navigation regression", () => {
         `workspace-tab-agent_${firstAgent.id}`,
       ]);
 
+      const firstDeckEntry = page.getByTestId(
+        `workspace-deck-entry-${serverId}:${firstWorkspace.workspaceId}`,
+      );
+      const secondDeckEntry = page.getByTestId(
+        `workspace-deck-entry-${serverId}:${secondWorkspace.workspaceId}`,
+      );
+      await expect(firstDeckEntry).toBeVisible({ timeout: 30_000 });
+
       await switchWorkspaceViaSidebar({
         page,
         serverId,
@@ -126,27 +134,45 @@ test.describe("Workspace navigation regression", () => {
       await expect(getVisibleWorkspaceAgentTabIds(page)).resolves.toEqual([
         `workspace-tab-agent_${secondAgent.id}`,
       ]);
+      await expect(firstDeckEntry).toBeAttached();
+      await expect(firstDeckEntry).toBeHidden();
+      await expect(secondDeckEntry).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator('[data-testid^="workspace-deck-entry-"]')).toHaveCount(2);
+
+      await switchWorkspaceViaSidebar({
+        page,
+        serverId,
+        targetWorkspacePath: firstWorkspace.workspaceId,
+      });
+      await waitForWorkspaceTabsVisible(page);
+      await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId), {
+        timeout: 30_000,
+      });
+      await expect(firstDeckEntry).toBeVisible({ timeout: 30_000 });
+      await expect(secondDeckEntry).toBeAttached();
+      await expect(secondDeckEntry).toBeHidden();
+      await expect(page.locator('[data-testid^="workspace-deck-entry-"]')).toHaveCount(2);
 
       await page.reload();
       await waitForSidebarHydration(page);
       await waitForWorkspaceTabsVisible(page);
-      await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, secondWorkspace.workspaceId), {
+      await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId), {
         timeout: 30_000,
       });
       await expectSidebarWorkspaceSelected({
         page,
         serverId,
-        workspaceId: secondWorkspace.workspaceId,
+        workspaceId: firstWorkspace.workspaceId,
       });
       await expectWorkspaceHeader(page, {
-        title: secondWorkspace.workspaceName,
-        subtitle: secondWorkspace.projectDisplayName,
+        title: firstWorkspace.workspaceName,
+        subtitle: firstWorkspace.projectDisplayName,
       });
-      await expectWorkspaceTabVisible(page, secondAgent.id);
-      await expectWorkspaceTabHidden(page, firstAgent.id);
-      await expectOnlyWorkspaceAgentTabsVisible(page, [secondAgent.id]);
+      await expectWorkspaceTabVisible(page, firstAgent.id);
+      await expectWorkspaceTabHidden(page, secondAgent.id);
+      await expectOnlyWorkspaceAgentTabsVisible(page, [firstAgent.id]);
       await expect(getVisibleWorkspaceAgentTabIds(page)).resolves.toEqual([
-        `workspace-tab-agent_${secondAgent.id}`,
+        `workspace-tab-agent_${firstAgent.id}`,
       ]);
     } finally {
       for (const agentId of agentIds) {

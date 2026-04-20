@@ -23,16 +23,18 @@ export async function gotoWorkspace(page: Page, cwd: string): Promise<void> {
 
 /** Wait for the workspace tab bar to be visible. */
 export async function waitForTabBar(page: Page): Promise<void> {
-  await expect(page.getByTestId("workspace-tabs-row").first()).toBeVisible({
+  await expect(
+    page.getByTestId("workspace-tabs-row").filter({ visible: true }).first(),
+  ).toBeVisible({
     timeout: 30_000,
   });
 }
 
 /** Return all tab test IDs currently in the tab bar. */
 export async function getTabTestIds(page: Page): Promise<string[]> {
-  const tabs = page.locator(
-    '[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])',
-  );
+  const tabs = page
+    .locator('[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])')
+    .filter({ visible: true });
   const count = await tabs.count();
   const ids: string[] = [];
   for (let i = 0; i < count; i++) {
@@ -55,6 +57,7 @@ export async function getActiveTabTestId(page: Page): Promise<string | null> {
     .locator(
       '[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])[aria-selected="true"]',
     )
+    .filter({ visible: true })
     .first();
   if (await activeTab.isVisible().catch(() => false)) {
     return activeTab.getAttribute("data-testid");
@@ -67,14 +70,14 @@ export async function getActiveTabTestId(page: Page): Promise<string | null> {
 
 /** Click the new agent tab button in the tab bar. Creates a draft/chat tab directly. */
 export async function clickNewTabButton(page: Page): Promise<void> {
-  const button = page.getByTestId("workspace-new-agent-tab");
+  const button = page.getByTestId("workspace-new-agent-tab").filter({ visible: true }).first();
   await expect(button).toBeVisible({ timeout: 10_000 });
   await button.click();
 }
 
 /** Click the new terminal button in the workspace tab bar. Creates a terminal tab directly. */
 export async function clickNewTerminalButton(page: Page): Promise<void> {
-  const button = page.getByTestId("workspace-new-terminal");
+  const button = page.getByTestId("workspace-new-terminal").filter({ visible: true }).first();
   await expect(button).toBeVisible({ timeout: 10_000 });
   await button.click();
 }
@@ -94,26 +97,30 @@ export async function waitForLauncherPanel(page: Page): Promise<void> {
 
 /** Assert the new agent tab button is visible in the tab bar. */
 export async function assertNewChatTileVisible(page: Page): Promise<void> {
-  await expect(page.getByTestId("workspace-new-agent-tab").first()).toBeVisible();
+  await expect(
+    page.getByTestId("workspace-new-agent-tab").filter({ visible: true }).first(),
+  ).toBeVisible();
 }
 
 /** Assert the new terminal button is visible in the tab bar. */
 export async function assertTerminalTileVisible(page: Page): Promise<void> {
-  await expect(page.getByTestId("workspace-new-terminal").first()).toBeVisible();
+  await expect(
+    page.getByTestId("workspace-new-terminal").filter({ visible: true }).first(),
+  ).toBeVisible();
 }
 
 // ─── Tab creation actions ─────────────────────────────────────────────────
 
 /** Click the new agent tab button to create a draft/chat tab. */
 export async function clickNewChat(page: Page): Promise<void> {
-  const button = page.getByTestId("workspace-new-agent-tab");
+  const button = page.getByTestId("workspace-new-agent-tab").filter({ visible: true }).first();
   await expect(button).toBeVisible({ timeout: 10_000 });
   await button.click();
 }
 
 /** Click the new terminal button to create a terminal tab. */
 export async function clickTerminal(page: Page): Promise<void> {
-  const button = page.getByTestId("workspace-new-terminal");
+  const button = page.getByTestId("workspace-new-terminal").filter({ visible: true }).first();
   await expect(button).toBeVisible({ timeout: 10_000 });
   await button.click();
 }
@@ -131,13 +138,14 @@ export async function waitForTabWithTitle(
     page
       .locator('[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])')
       .filter({ hasText: matcher })
+      .filter({ visible: true })
       .first(),
   ).toBeVisible({ timeout });
 }
 
 /** Assert the new agent tab button is visible in the tab bar. */
 export async function assertSingleNewTabButton(page: Page): Promise<void> {
-  const buttons = page.getByTestId("workspace-new-agent-tab");
+  const buttons = page.getByTestId("workspace-new-agent-tab").filter({ visible: true });
   const count = await buttons.count();
   expect(count).toBeGreaterThanOrEqual(1);
 }

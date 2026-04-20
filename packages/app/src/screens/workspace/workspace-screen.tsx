@@ -133,6 +133,7 @@ const EMPTY_SET = new Set<string>();
 type WorkspaceScreenProps = {
   serverId: string;
   workspaceId: string;
+  isRouteFocused?: boolean;
 };
 
 type WorkspaceScreenContentProps = WorkspaceScreenProps & {
@@ -571,15 +572,16 @@ function useStableTabDescriptorMap(tabDescriptors: WorkspaceTabDescriptor[]) {
   return tabDescriptorMap;
 }
 
-export function WorkspaceScreen({ serverId, workspaceId }: WorkspaceScreenProps) {
-  const isFocused = useIsFocused();
+export function WorkspaceScreen({ serverId, workspaceId, isRouteFocused }: WorkspaceScreenProps) {
+  const navigationFocused = useIsFocused();
+  const effectiveRouteFocused = isRouteFocused ?? navigationFocused;
 
   return (
     <ExplorerSidebarAnimationProvider>
       <WorkspaceScreenContent
         serverId={serverId}
         workspaceId={workspaceId}
-        isRouteFocused={isFocused}
+        isRouteFocused={effectiveRouteFocused}
       />
     </ExplorerSidebarAnimationProvider>
   );

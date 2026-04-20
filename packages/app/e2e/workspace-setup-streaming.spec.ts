@@ -94,7 +94,7 @@ test.describe("Workspace setup streaming", () => {
       await navigateToWorkspaceViaSidebar(page, workspace.id);
 
       await waitForWorkspaceTabsVisible(page);
-      await page.getByTestId("workspace-new-agent-tab").first().click();
+      await page.getByTestId("workspace-new-agent-tab").filter({ visible: true }).first().click();
       await expect(page.getByRole("textbox", { name: "Message agent..." }).first()).toBeVisible({
         timeout: 30_000,
       });

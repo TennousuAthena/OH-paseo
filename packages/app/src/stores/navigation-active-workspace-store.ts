@@ -1,12 +1,19 @@
 import { useSyncExternalStore } from "react";
 import {
+  buildHostWorkspaceRoute,
   decodeWorkspaceIdFromPathSegment,
   parseHostWorkspaceRouteFromPathname,
 } from "@/utils/host-routes";
+import { isWeb } from "@/constants/platform";
 
-interface ActiveWorkspaceSelection {
+export interface ActiveWorkspaceSelection {
   serverId: string;
   workspaceId: string;
+}
+
+interface ActivateWorkspaceSelectionOptions {
+  updateBrowserHistory?: boolean;
+  historyMode?: "push" | "replace";
 }
 
 type NavigationRouteLike = {
@@ -43,6 +50,36 @@ function emitIfChanged(next: ActiveWorkspaceSelection | null) {
   for (const listener of listeners) {
     listener();
   }
+}
+
+function getBrowserLocationWorkspace(): ActiveWorkspaceSelection | null {
+  if (!isWeb || typeof window === "undefined") {
+    return null;
+  }
+  return parseHostWorkspaceRouteFromPathname(window.location.pathname);
+}
+
+function writeBrowserWorkspaceUrl(
+  next: ActiveWorkspaceSelection,
+  options: ActivateWorkspaceSelectionOptions,
+) {
+  if (!options.updateBrowserHistory || !isWeb || typeof window === "undefined") {
+    return;
+  }
+
+  const nextPath = buildHostWorkspaceRoute(next.serverId, next.workspaceId);
+  const currentUrl = new URL(window.location.href);
+  if (currentUrl.pathname === nextPath && !currentUrl.search && !currentUrl.hash) {
+    return;
+  }
+
+  const nextUrl = new URL(nextPath, window.location.origin);
+  const mode = options.historyMode ?? "push";
+  if (mode === "replace") {
+    window.history.replaceState(null, "", nextUrl.toString());
+    return;
+  }
+  window.history.pushState(null, "", nextUrl.toString());
 }
 
 function extractActiveWorkspaceFromRoute(
@@ -89,6 +126,36 @@ export function syncNavigationActiveWorkspace(navigationRef: NavigationObserverR
       navigationRef.current?.getCurrentRoute() as NavigationRouteLike | undefined,
     ),
   );
+}
+
+export function activateNavigationWorkspaceSelection(
+  next: ActiveWorkspaceSelection,
+  options: ActivateWorkspaceSelectionOptions = {},
+) {
+  emitIfChanged(next);
+  writeBrowserWorkspaceUrl(next, options);
+}
+
+export function getNavigationActiveWorkspaceSelection(): ActiveWorkspaceSelection | null {
+  return getSnapshot();
+}
+
+export function syncBrowserActiveWorkspaceFromLocation() {
+  emitIfChanged(getBrowserLocationWorkspace());
+}
+
+export function addBrowserActiveWorkspaceLocationListener(): () => void {
+  if (!isWeb || typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handlePopState = () => {
+    syncBrowserActiveWorkspaceFromLocation();
+  };
+  window.addEventListener("popstate", handlePopState);
+  return () => {
+    window.removeEventListener("popstate", handlePopState);
+  };
 }
 
 export function useNavigationActiveWorkspaceSelection(): ActiveWorkspaceSelection | null {
