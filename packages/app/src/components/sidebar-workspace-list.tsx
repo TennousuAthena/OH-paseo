@@ -28,7 +28,6 @@ import * as Clipboard from "expo-clipboard";
 import { DiffStat } from "@/components/diff-stat";
 import {
   Archive,
-  ArrowUpRight,
   CircleAlert,
   ChevronDown,
   ChevronRight,
@@ -216,6 +215,7 @@ export function PrBadge({ hint }: { hint: PrHint }) {
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
   const activeColor = isHovered ? theme.colors.foreground : theme.colors.foregroundMuted;
+  const iconColor = getWorkspacePrIconColor(theme, hint.state);
 
   const handlePressIn = useCallback((event: GestureResponderEvent) => {
     event.stopPropagation();
@@ -240,11 +240,14 @@ export function PrBadge({ hint }: { hint: PrHint }) {
       onHoverOut={() => setIsHovered(false)}
       style={({ pressed }) => [prBadgeStyles.badge, pressed && prBadgeStyles.badgePressed]}
     >
-      <GitPullRequest size={12} color={activeColor} />
+      {isHovered ? (
+        <ExternalLink size={12} color={activeColor} />
+      ) : (
+        <GitPullRequest size={12} color={iconColor} />
+      )}
       <Text style={[prBadgeStyles.text, { color: activeColor }]} numberOfLines={1}>
         #{hint.number}
       </Text>
-      <ArrowUpRight size={10} color={activeColor} style={{ opacity: isHovered ? 1 : 0 }} />
     </Pressable>
   );
 }
@@ -1138,8 +1141,8 @@ function WorkspaceRowInner({
           </View>
           {prHint ? (
             <View style={styles.workspacePrBadgeRow}>
-              <ChecksBadge checks={prHint.checks} />
               <PrBadge hint={prHint} />
+              <ChecksBadge checks={prHint.checks} />
             </View>
           ) : null}
         </Pressable>
