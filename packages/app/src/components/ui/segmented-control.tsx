@@ -143,10 +143,10 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
   },
   labelSm: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   labelMd: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   labelSelected: {
     color: theme.colors.foreground,

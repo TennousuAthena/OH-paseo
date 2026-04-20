@@ -324,7 +324,7 @@ function DesktopAppUpdateRow() {
 
     void confirmDialog({
       title: "Install desktop update",
-      message: "This updates Paseo on this computer.",
+      message: "This updates Paseo on this computer",
       confirmLabel: "Install update",
       cancelLabel: "Cancel",
     })
@@ -350,7 +350,7 @@ function DesktopAppUpdateRow() {
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>Release channel</Text>
           <Text style={settingsStyles.rowHint}>
-            Switch to Beta to get updates sooner and help shape them.
+            Switch to Beta to get updates sooner and help shape them
           </Text>
         </View>
         <SegmentedControl

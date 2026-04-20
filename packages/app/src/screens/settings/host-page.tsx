@@ -114,7 +114,7 @@ export function HostPage({ serverId, onHostRemoved }: HostPageProps) {
     return (
       <View testID={`settings-host-page-${serverId}`}>
         <View style={[settingsStyles.card, styles.emptyCard]}>
-          <Text style={styles.emptyText}>Host not found.</Text>
+          <Text style={styles.emptyText}>Host not found</Text>
         </View>
       </View>
     );
@@ -591,7 +591,7 @@ function PairDeviceRow() {
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>Pair a device</Text>
           <Text style={settingsStyles.rowHint}>
-            Scan a QR code or copy a link to connect your phone to this host.
+            Scan a QR code or copy a link to connect your phone to this host
           </Text>
         </View>
         <ChevronRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
@@ -619,7 +619,7 @@ function RemoveHostSection({ host, onRemoved }: { host: HostProfile; onRemoved?:
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>Remove host</Text>
             <Text style={settingsStyles.rowHint}>
-              Removes this host and its saved connections from this device.
+              Removes this host and its saved connections from this device
             </Text>
           </View>
           <Button

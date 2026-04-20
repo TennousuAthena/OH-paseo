@@ -179,7 +179,7 @@ export function KeyboardShortcutsSection() {
     return (
       <SettingsSection title="Shortcuts">
         <View style={[settingsStyles.card, styles.mobileCard]}>
-          <Text style={styles.mobileText}>Keyboard shortcuts are only available on desktop.</Text>
+          <Text style={styles.mobileText}>Keyboard shortcuts are only available on desktop</Text>
         </View>
       </SettingsSection>
     );
