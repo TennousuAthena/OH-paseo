@@ -234,7 +234,7 @@ const MIN_VERSION_FLEXIBLE_EDITOR_IDS = "0.1.50";
 
 function isAppVersionAtLeast(appVersion: string | null, minVersion: string): boolean {
   if (!appVersion) return false;
-  // Strip RC/prerelease suffix: "0.1.45-rc.4" → "0.1.45"
+  // Strip prerelease suffix: "0.1.45-beta.4" -> "0.1.45"
   const base = appVersion.replace(/-.*$/, "");
   const parts = base.split(".").map(Number);
   const minParts = minVersion.split(".").map(Number);

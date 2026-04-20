@@ -9,7 +9,7 @@ function withTempChangelog(fn) {
   const previousCwd = process.cwd();
   const tempDir = mkdtempSync(path.join(tmpdir(), "paseo-release-notes-test-"));
   process.chdir(tempDir);
-  writeFileSync("CHANGELOG.md", "## 0.1.60 - 2026-04-20\n\n- Stable notes.\n");
+  writeFileSync("CHANGELOG.md", "## 0.1.60-beta.1 - 2026-04-20\n\n- Beta notes.\n");
 
   try {
     fn();
@@ -26,7 +26,7 @@ test("updates an existing release body through the release id API", () => {
     const execFileSync = (command, args, options) => {
       calls.push({ args, command, options });
 
-      if (args[0] === "api" && args[1] === "repos/getpaseo/paseo/releases/tags/v0.1.60-rc.3") {
+      if (args[0] === "api" && args[1] === "repos/getpaseo/paseo/releases/tags/v0.1.60-beta.1") {
         return JSON.stringify({ id: 311163621 });
       }
 
@@ -34,14 +34,14 @@ test("updates an existing release body through the release id API", () => {
         const notesArg = args.find((arg) => arg.startsWith("body=@"));
         assert.ok(notesArg, "PATCH should send the notes body from a file");
         const notesPath = notesArg.slice("body=@".length);
-        assert.match(notesPath, /v0\.1\.60-rc\.3-notes\.md$/);
+        assert.match(notesPath, /v0\.1\.60-beta\.1-notes\.md$/);
         return "";
       }
 
       throw new Error(`Unexpected gh call: ${command} ${args.join(" ")}`);
     };
 
-    syncReleaseNotes(["--repo", "getpaseo/paseo", "--tag", "v0.1.60-rc.3"], {
+    syncReleaseNotes(["--repo", "getpaseo/paseo", "--tag", "v0.1.60-beta.1"], {
       execFileSync,
     });
 

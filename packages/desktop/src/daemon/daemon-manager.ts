@@ -11,7 +11,11 @@ import {
   readManagedFileBase64,
   writeAttachmentBase64,
 } from "../features/attachments.js";
-import { checkForAppUpdate, downloadAndInstallUpdate } from "../features/auto-updater.js";
+import {
+  checkForAppUpdate,
+  downloadAndInstallUpdate,
+  type AppReleaseChannel,
+} from "../features/auto-updater.js";
 import {
   installCli,
   getCliInstallStatus,
@@ -64,6 +68,10 @@ type DesktopPairingOffer = {
 };
 
 type DesktopCommandHandler = (args?: Record<string, unknown>) => Promise<unknown> | unknown;
+
+function parseReleaseChannel(args: Record<string, unknown> | undefined): AppReleaseChannel {
+  return args?.releaseChannel === "beta" ? "beta" : "stable";
+}
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -483,15 +491,18 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
           : "";
       if (sessionId) closeLocalTransportSession(sessionId);
     },
-    check_app_update: async () => {
+    check_app_update: async (args) => {
       const currentVersion = await resolveCurrentUpdateVersion();
-      return checkForAppUpdate(currentVersion);
+      return checkForAppUpdate({ currentVersion, releaseChannel: parseReleaseChannel(args) });
     },
-    install_app_update: async () => {
+    install_app_update: async (args) => {
       const currentVersion = await resolveCurrentUpdateVersion();
-      return downloadAndInstallUpdate(currentVersion, async () => {
-        await stopDaemon();
-      });
+      return downloadAndInstallUpdate(
+        { currentVersion, releaseChannel: parseReleaseChannel(args) },
+        async () => {
+          await stopDaemon();
+        },
+      );
     },
     get_local_daemon_version: () => getLocalDaemonVersion(),
     install_cli: () => installCli(),

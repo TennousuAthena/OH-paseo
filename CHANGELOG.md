@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.60-beta.1 - 2026-04-20
+
+### Added
+- Beta release channel for desktop updates, with a Settings toggle for receiving beta builds before they are promoted to stable.
+
 ## 0.1.59 - 2026-04-16
 
 ### Added

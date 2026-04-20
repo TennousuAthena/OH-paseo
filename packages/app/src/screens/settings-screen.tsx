@@ -281,6 +281,7 @@ function AboutSection({ appVersionText, isDesktopApp }: AboutSectionProps) {
 }
 
 function DesktopAppUpdateRow() {
+  const { settings, updateSettings } = useAppSettings();
   const {
     isDesktopApp,
     statusText,
@@ -308,6 +309,13 @@ function DesktopAppUpdateRow() {
     }
     void checkForUpdates();
   }, [checkForUpdates, isDesktopApp]);
+
+  const handleReleaseChannelChange = useCallback(
+    (releaseChannel: AppSettings["releaseChannel"]) => {
+      void updateSettings({ releaseChannel });
+    },
+    [updateSettings],
+  );
 
   const handleInstallUpdate = useCallback(() => {
     if (!isDesktopApp) {
@@ -337,40 +345,59 @@ function DesktopAppUpdateRow() {
   }
 
   return (
-    <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>App updates</Text>
-        <Text style={settingsStyles.rowHint}>{statusText}</Text>
-        {availableUpdate?.latestVersion ? (
+    <>
+      <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>Release channel</Text>
           <Text style={settingsStyles.rowHint}>
-            Ready to install: {formatVersionWithPrefix(availableUpdate.latestVersion)}
+            Switch to Beta to get updates sooner and help shape them.
           </Text>
-        ) : null}
-        {errorMessage ? <Text style={styles.aboutErrorText}>{errorMessage}</Text> : null}
-      </View>
-      <View style={styles.aboutUpdateActions}>
-        <Button
-          variant="outline"
+        </View>
+        <SegmentedControl
           size="sm"
-          onPress={handleCheckForUpdates}
-          disabled={isChecking || isInstalling}
-        >
-          {isChecking ? "Checking..." : "Check"}
-        </Button>
-        <Button
-          variant="default"
-          size="sm"
-          onPress={handleInstallUpdate}
-          disabled={isChecking || isInstalling || !availableUpdate}
-        >
-          {isInstalling
-            ? "Installing..."
-            : availableUpdate?.latestVersion
-              ? `Update to ${formatVersionWithPrefix(availableUpdate.latestVersion)}`
-              : "Update"}
-        </Button>
+          value={settings.releaseChannel}
+          onValueChange={handleReleaseChannelChange}
+          options={[
+            { value: "stable", label: "Stable" },
+            { value: "beta", label: "Beta" },
+          ]}
+        />
       </View>
-    </View>
+      <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>App updates</Text>
+          <Text style={settingsStyles.rowHint}>{statusText}</Text>
+          {availableUpdate?.latestVersion ? (
+            <Text style={settingsStyles.rowHint}>
+              Ready to install: {formatVersionWithPrefix(availableUpdate.latestVersion)}
+            </Text>
+          ) : null}
+          {errorMessage ? <Text style={styles.aboutErrorText}>{errorMessage}</Text> : null}
+        </View>
+        <View style={styles.aboutUpdateActions}>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={handleCheckForUpdates}
+            disabled={isChecking || isInstalling}
+          >
+            {isChecking ? "Checking..." : "Check"}
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onPress={handleInstallUpdate}
+            disabled={isChecking || isInstalling || !availableUpdate}
+          >
+            {isInstalling
+              ? "Installing..."
+              : availableUpdate?.latestVersion
+                ? `Update to ${formatVersionWithPrefix(availableUpdate.latestVersion)}`
+                : "Update"}
+          </Button>
+        </View>
+      </View>
+    </>
   );
 }
 
@@ -858,9 +885,10 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
           layout="desktop"
         />
         <View style={desktopStyles.contentPane}>
-          {detailHeader ? (
-            <ScreenHeader
-              left={
+          <ScreenHeader
+            borderless={!detailHeader}
+            left={
+              detailHeader ? (
                 <>
                   <HeaderIconBadge>
                     <detailHeader.Icon
@@ -873,10 +901,10 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
                   </ScreenTitle>
                   {detailHeader.titleAccessory}
                 </>
-              }
-              leftStyle={desktopStyles.detailLeft}
-            />
-          ) : null}
+              ) : null
+            }
+            leftStyle={desktopStyles.detailLeft}
+          />
           <ScrollView
             style={styles.scrollView}
             contentContainerStyle={{ paddingBottom: insets.bottom }}

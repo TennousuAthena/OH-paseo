@@ -1089,7 +1089,7 @@ describe("slugify", () => {
   });
 
   it("keeps very long names within the hostname label length limit", () => {
-    const result = slugify("Release Candidate ".repeat(12));
+    const result = slugify("Beta Build ".repeat(12));
 
     expect(result.length).toBeLessThanOrEqual(63);
     expectValidHostnameLabel(result);
@@ -1107,7 +1107,7 @@ describe("slugify", () => {
       "feature/cool stuff",
       "  Café Launch  ",
       "__bar__",
-      "Release Candidate ".repeat(12),
+      "Beta Build ".repeat(12),
       "release***candidate",
     ];
 

@@ -139,24 +139,6 @@ function updateReleaseNotes({ releaseId, repo, notesPath }, execFileSync = nodeE
   );
 }
 
-function buildPrereleaseNotes({ releaseTag, version }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const lines = [
-    `## ${version} - ${today}`,
-    "",
-    "Release candidate build for testing from `main`.",
-    "",
-    `- Tag: \`${releaseTag}\``,
-  ];
-
-  if (process.env.GITHUB_SHA) {
-    lines.push(`- Commit: \`${process.env.GITHUB_SHA}\``);
-  }
-
-  lines.push("- This prerelease does not replace the website's latest stable download.");
-  return `${lines.join("\n")}\n`;
-}
-
 export function syncReleaseNotes(argv = process.argv.slice(2), deps = {}) {
   const execFileSync = deps.execFileSync ?? nodeExecFileSync;
   const args = parseArgs(argv);
@@ -169,13 +151,6 @@ export function syncReleaseNotes(argv = process.argv.slice(2), deps = {}) {
   const targetEntry = entries.find((entry) => entry.tag === targetTag);
 
   let notes = targetEntry?.notes ?? null;
-
-  if (!notes && releaseInfo.isPrerelease) {
-    notes = buildPrereleaseNotes({
-      releaseTag: releaseInfo.releaseTag,
-      version: releaseInfo.version,
-    });
-  }
 
   if (!notes) {
     console.log(`No matching changelog section found for ${targetTag}. Skipping.`);
