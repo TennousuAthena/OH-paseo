@@ -32,7 +32,6 @@ export function useKeyboardShortcuts({
   enabled,
   isMobile,
   toggleAgentList,
-  toggleFileExplorer,
   toggleBothSidebars,
   toggleFocusMode,
   cycleTheme,
@@ -40,7 +39,6 @@ export function useKeyboardShortcuts({
   enabled: boolean;
   isMobile: boolean;
   toggleAgentList: () => void;
-  toggleFileExplorer?: () => void;
   toggleBothSidebars?: () => void;
   toggleFocusMode?: () => void;
   cycleTheme?: () => void;
@@ -84,7 +82,7 @@ export function useKeyboardShortcuts({
         return false;
       }
 
-      navigateToWorkspace(target.serverId, target.workspaceId);
+      navigateToWorkspace(target.serverId, target.workspaceId, { currentPathname: pathname });
       return true;
     };
     const navigateRelativeWorkspace = (delta: 1 | -1): boolean => {
@@ -100,7 +98,9 @@ export function useKeyboardShortcuts({
         if (!fallback) {
           return false;
         }
-        navigateToWorkspace(fallback.serverId, fallback.workspaceId);
+        navigateToWorkspace(fallback.serverId, fallback.workspaceId, {
+          currentPathname: pathname,
+        });
         return true;
       }
 
@@ -115,7 +115,7 @@ export function useKeyboardShortcuts({
       if (!target) {
         return false;
       }
-      navigateToWorkspace(target.serverId, target.workspaceId);
+      navigateToWorkspace(target.serverId, target.workspaceId, { currentPathname: pathname });
       return true;
     };
 
@@ -257,10 +257,10 @@ export function useKeyboardShortcuts({
           }
           return true;
         case "sidebar.toggle.right":
-          if (toggleFileExplorer) {
-            toggleFileExplorer();
-          }
-          return true;
+          return keyboardActionDispatcher.dispatch({
+            id: "sidebar.toggle.right",
+            scope: "sidebar",
+          });
         case "view.toggle.focus":
           if (toggleFocusMode) {
             toggleFocusMode();
@@ -425,7 +425,6 @@ export function useKeyboardShortcuts({
     pathname,
     resetModifiers,
     toggleAgentList,
-    toggleFileExplorer,
     toggleFocusMode,
   ]);
 }

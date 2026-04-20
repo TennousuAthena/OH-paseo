@@ -17,6 +17,7 @@ import { PrPane } from "./pr-pane";
 import { usePrPaneData } from "@/hooks/use-pr-pane-data";
 import {
   usePanelStore,
+  selectIsFileExplorerOpen,
   MIN_EXPLORER_SIDEBAR_WIDTH,
   MAX_EXPLORER_SIDEBAR_WIDTH,
   type ExplorerTab,
@@ -52,8 +53,7 @@ export function ExplorerSidebar({
   const isScreenFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const isMobile = useIsCompactFormFactor();
-  const mobileView = usePanelStore((state) => state.mobileView);
-  const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
+  const isOpen = usePanelStore((state) => selectIsFileExplorerOpen(state, { isCompact: isMobile }));
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
   const closeDesktopFileExplorer = usePanelStore((state) => state.closeDesktopFileExplorer);
   const explorerTab = usePanelStore((state) => state.explorerTab);
@@ -82,9 +82,6 @@ export function ExplorerSidebar({
     }
   }, [explorerWidth, isMobile, setExplorerWidth, viewportWidth]);
 
-  // Derive isOpen from the unified panel state
-  const isOpen = isMobile ? mobileView === "file-explorer" : desktopFileExplorerOpen;
-
   const {
     translateX,
     backdropOpacity,
@@ -105,8 +102,6 @@ export function ExplorerSidebar({
       logExplorerSidebar("handleClose", {
         reason,
         isOpen,
-        mobileView,
-        desktopFileExplorerOpen,
       });
       if (isMobile) {
         showMobileAgent();
@@ -114,14 +109,7 @@ export function ExplorerSidebar({
       }
       closeDesktopFileExplorer();
     },
-    [
-      closeDesktopFileExplorer,
-      desktopFileExplorerOpen,
-      isMobile,
-      isOpen,
-      mobileView,
-      showMobileAgent,
-    ],
+    [closeDesktopFileExplorer, isMobile, isOpen, showMobileAgent],
   );
 
   const handleCloseFromGesture = useCallback(() => {

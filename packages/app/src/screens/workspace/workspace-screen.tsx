@@ -48,11 +48,8 @@ import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-bu
 import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
 import { useToast } from "@/contexts/toast-context";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
-import { usePanelStore } from "@/stores/panel-store";
-import {
-  setActiveExplorerCheckout,
-  type ExplorerCheckoutContext,
-} from "@/stores/explorer-checkout-context";
+import { selectIsFileExplorerOpen, usePanelStore } from "@/stores/panel-store";
+import { type ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
 import { useSessionStore } from "@/stores/session-store";
 import {
   buildWorkspaceTabPersistenceKey,
@@ -513,11 +510,11 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
 interface MobileMountedTabSlotProps {
   tabDescriptor: WorkspaceTabDescriptor;
   isVisible: boolean;
+  isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
   paneId: string | null;
   buildPaneContentModel: (input: {
     paneId: string | null;
-    isPaneFocused: boolean;
     tab: WorkspaceTabDescriptor;
   }) => WorkspacePaneContentModel;
 }
@@ -525,6 +522,7 @@ interface MobileMountedTabSlotProps {
 const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
   tabDescriptor,
   isVisible,
+  isWorkspaceFocused,
   isPaneFocused,
   paneId,
   buildPaneContentModel,
@@ -533,15 +531,18 @@ const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
     () =>
       buildPaneContentModel({
         paneId,
-        isPaneFocused,
         tab: tabDescriptor,
       }),
-    [buildPaneContentModel, isPaneFocused, paneId, tabDescriptor],
+    [buildPaneContentModel, paneId, tabDescriptor],
   );
 
   return (
     <View style={{ display: isVisible ? "flex" : "none", flex: 1 }}>
-      <WorkspacePaneContent content={content} />
+      <WorkspacePaneContent
+        content={content}
+        isWorkspaceFocused={isWorkspaceFocused}
+        isPaneFocused={isPaneFocused}
+      />
     </View>
   );
 });
@@ -847,18 +848,18 @@ function WorkspaceScreenContent({
       ? trimNonEmpty(checkoutQuery.data.currentBranch)
       : null;
 
-  const mobileView = usePanelStore((state) => state.mobileView);
-  const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
-  const showMobileFileExplorer = usePanelStore((state) => state.showMobileFileExplorer);
-  const toggleMobileFileExplorer = usePanelStore((state) => state.toggleMobileFileExplorer);
-  const openDesktopFileExplorer = usePanelStore((state) => state.openDesktopFileExplorer);
-  const toggleDesktopFileExplorer = usePanelStore((state) => state.toggleDesktopFileExplorer);
-  const activateExplorerTabForCheckout = usePanelStore(
-    (state) => state.activateExplorerTabForCheckout,
+  const isExplorerOpen = usePanelStore((state) =>
+    selectIsFileExplorerOpen(state, { isCompact: isMobile }),
+  );
+  const canOpenExplorerFromAgentView = usePanelStore(
+    (state) =>
+      state.mobileView === "agent" && !selectIsFileExplorerOpen(state, { isCompact: true }),
+  );
+  const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
+  const toggleFileExplorerForCheckout = usePanelStore(
+    (state) => state.toggleFileExplorerForCheckout,
   );
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
-
-  const isExplorerOpen = isMobile ? mobileView === "file-explorer" : desktopFileExplorerOpen;
 
   const activeExplorerCheckout = useMemo<ExplorerCheckoutContext | null>(() => {
     if (!normalizedServerId || !workspaceDirectory) {
@@ -871,51 +872,28 @@ function WorkspaceScreenContent({
     };
   }, [isGitCheckout, normalizedServerId, workspaceDirectory]);
 
-  useEffect(() => {
-    if (!isRouteFocused) {
-      return;
-    }
-    setActiveExplorerCheckout(activeExplorerCheckout);
-  }, [activeExplorerCheckout, isRouteFocused, setActiveExplorerCheckout]);
-
   const openExplorerForWorkspace = useCallback(() => {
     if (!activeExplorerCheckout) {
       return;
     }
-    activateExplorerTabForCheckout(activeExplorerCheckout);
-    if (isMobile) {
-      showMobileFileExplorer();
-      return;
-    }
-    openDesktopFileExplorer();
-  }, [
-    activateExplorerTabForCheckout,
-    activeExplorerCheckout,
-    isMobile,
-    openDesktopFileExplorer,
-    showMobileFileExplorer,
-  ]);
+    openFileExplorerForCheckout({
+      isCompact: isMobile,
+      checkout: activeExplorerCheckout,
+    });
+  }, [activeExplorerCheckout, isMobile, openFileExplorerForCheckout]);
 
   const handleToggleExplorer = useCallback(() => {
-    if (isExplorerOpen) {
-      if (isMobile) {
-        toggleMobileFileExplorer();
-        return;
-      }
-      toggleDesktopFileExplorer();
+    if (!activeExplorerCheckout) {
       return;
     }
-    openExplorerForWorkspace();
-  }, [
-    isExplorerOpen,
-    isMobile,
-    openExplorerForWorkspace,
-    toggleDesktopFileExplorer,
-    toggleMobileFileExplorer,
-  ]);
+    toggleFileExplorerForCheckout({
+      isCompact: isMobile,
+      checkout: activeExplorerCheckout,
+    });
+  }, [activeExplorerCheckout, isMobile, toggleFileExplorerForCheckout]);
 
   const explorerOpenGesture = useExplorerOpenGesture({
-    enabled: isMobile && mobileView === "agent",
+    enabled: isMobile && canOpenExplorerFromAgentView,
     onOpen: openExplorerForWorkspace,
   });
 
@@ -1717,6 +1695,17 @@ function WorkspaceScreenContent({
     ],
   );
 
+  const handleWorkspaceSidebarAction = useCallback(
+    (action: KeyboardActionDefinition): boolean => {
+      if (action.id !== "sidebar.toggle.right") {
+        return false;
+      }
+      handleToggleExplorer();
+      return true;
+    },
+    [handleToggleExplorer],
+  );
+
   const handleWorkspacePaneAction = useCallback(
     (action: KeyboardActionDefinition): boolean => {
       if (!persistenceKey || !workspaceLayout) {
@@ -1852,6 +1841,15 @@ function WorkspaceScreenContent({
     handle: handleWorkspacePaneAction,
   });
 
+  useKeyboardActionHandler({
+    handlerId: `workspace-sidebar-actions:${normalizedServerId}:${normalizedWorkspaceId}`,
+    actions: ["sidebar.toggle.right"] as const,
+    enabled: Boolean(isRouteFocused && normalizedServerId && normalizedWorkspaceId),
+    priority: 100,
+    isActive: () => true,
+    handle: handleWorkspaceSidebarAction,
+  });
+
   const activeTabDescriptor = activeTab?.descriptor ?? null;
   const canRenderDesktopPaneSplits = supportsDesktopPaneSplits();
   const shouldRenderDesktopPaneFallback = !isMobile && !canRenderDesktopPaneSplits;
@@ -1865,14 +1863,12 @@ function WorkspaceScreenContent({
     (input: {
       tab: WorkspaceTabDescriptor;
       paneId?: string | null;
-      isPaneFocused: boolean;
       focusPaneBeforeOpen?: boolean;
     }) =>
       buildWorkspacePaneContentModel({
         tab: input.tab,
         normalizedServerId,
         normalizedWorkspaceId,
-        isPaneFocused: isRouteFocused && input.isPaneFocused,
         onOpenTab: (target) => {
           if (!persistenceKey) {
             return;
@@ -1908,7 +1904,6 @@ function WorkspaceScreenContent({
     [
       handleCloseTabById,
       handleOpenFileFromChat,
-      isRouteFocused,
       focusWorkspacePane,
       navigateToTabId,
       normalizedServerId,
@@ -1935,12 +1930,10 @@ function WorkspaceScreenContent({
     function buildMobilePaneContentModel(input: {
       paneId: string | null;
       tab: WorkspaceTabDescriptor;
-      isPaneFocused: boolean;
     }) {
       return buildPaneContentModel({
         tab: input.tab,
         paneId: input.paneId,
-        isPaneFocused: input.isPaneFocused,
         focusPaneBeforeOpen: false,
       });
     },
@@ -1983,7 +1976,8 @@ function WorkspaceScreenContent({
           key={tabId}
           tabDescriptor={tabDescriptor}
           isVisible={isRouteFocused && tabId === activeTabDescriptor.tabId}
-          isPaneFocused={isRouteFocused && tabId === activeTabDescriptor.tabId}
+          isWorkspaceFocused={isRouteFocused}
+          isPaneFocused={tabId === activeTabDescriptor.tabId}
           paneId={focusedPaneId}
           buildPaneContentModel={buildMobilePaneContentModel}
         />
@@ -1992,15 +1986,10 @@ function WorkspaceScreenContent({
   );
 
   const buildDesktopPaneContentModel = useCallback(
-    function buildDesktopPaneContentModel(input: {
-      paneId: string;
-      tab: WorkspaceTabDescriptor;
-      isPaneFocused: boolean;
-    }) {
+    function buildDesktopPaneContentModel(input: { paneId: string; tab: WorkspaceTabDescriptor }) {
       return buildPaneContentModel({
         tab: input.tab,
         paneId: input.paneId,
-        isPaneFocused: input.isPaneFocused,
         focusPaneBeforeOpen: true,
       });
     },
@@ -2404,6 +2393,7 @@ function WorkspaceScreenContent({
                     workspaceKey={persistenceKey}
                     normalizedServerId={normalizedServerId}
                     normalizedWorkspaceId={normalizedWorkspaceId}
+                    isWorkspaceFocused={isRouteFocused}
                     uiTabs={uiTabs}
                     hoveredCloseTabKey={hoveredCloseTabKey}
                     setHoveredTabKey={setHoveredTabKey}

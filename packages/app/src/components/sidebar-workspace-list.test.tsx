@@ -28,6 +28,12 @@ import type { HostProfile } from "@/types/host-connection";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
+import {
+  activateNavigationWorkspaceSelection,
+  syncNavigationActiveWorkspace,
+  useIsNavigationProjectActive,
+  useIsNavigationWorkspaceSelected,
+} from "@/stores/navigation-active-workspace-store";
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
@@ -43,6 +49,8 @@ type RenderCounts = {
   frame: number;
   headers: Record<string, number>;
   rows: Record<string, number>;
+  projectSelection: Record<string, number>;
+  rowSelection: Record<string, number>;
 };
 
 const runningScript: WorkspaceScriptPayload = {
@@ -166,6 +174,8 @@ function resetCounts(counts: RenderCounts): void {
   counts.frame = 0;
   counts.headers = {};
   counts.rows = {};
+  counts.projectSelection = {};
+  counts.rowSelection = {};
 }
 
 function incrementRecord(record: Record<string, number>, key: string): void {
@@ -201,6 +211,37 @@ function WorkspaceRowProbe({
   return null;
 }
 
+function ProjectActiveProbe({
+  serverId,
+  project,
+  counts,
+}: {
+  serverId: string;
+  project: SidebarProjectEntry;
+  counts: RenderCounts;
+}): null {
+  useIsNavigationProjectActive({
+    serverId,
+    workspaceIds: project.workspaces.map((workspace) => workspace.workspaceId),
+  });
+  incrementRecord(counts.projectSelection, project.projectKey);
+  return null;
+}
+
+function WorkspaceSelectionProbe({
+  serverId,
+  workspaceId,
+  counts,
+}: {
+  serverId: string;
+  workspaceId: string;
+  counts: RenderCounts;
+}): null {
+  useIsNavigationWorkspaceSelected({ serverId, workspaceId });
+  incrementRecord(counts.rowSelection, workspaceId);
+  return null;
+}
+
 function SidebarFrameProbe({ counts }: { counts: RenderCounts }): ReactElement {
   counts.frame += 1;
   const { projects } = useSidebarWorkspacesList({ serverId: SERVER_ID });
@@ -210,13 +251,20 @@ function SidebarFrameProbe({ counts }: { counts: RenderCounts }): ReactElement {
       {projects.map((project) => (
         <div key={project.projectKey}>
           <ProjectHeaderProbe project={project} counts={counts} />
+          <ProjectActiveProbe serverId={SERVER_ID} project={project} counts={counts} />
           {project.workspaces.map((workspace) => (
-            <WorkspaceRowProbe
-              key={workspace.workspaceKey}
-              serverId={workspace.serverId}
-              workspaceId={workspace.workspaceId}
-              counts={counts}
-            />
+            <React.Fragment key={workspace.workspaceKey}>
+              <WorkspaceRowProbe
+                serverId={workspace.serverId}
+                workspaceId={workspace.workspaceId}
+                counts={counts}
+              />
+              <WorkspaceSelectionProbe
+                serverId={workspace.serverId}
+                workspaceId={workspace.workspaceId}
+                counts={counts}
+              />
+            </React.Fragment>
           ))}
         </div>
       ))}
@@ -278,6 +326,7 @@ describe("sidebar workspace render isolation", () => {
     container?.remove();
     container = null;
     act(() => {
+      syncNavigationActiveWorkspace({ current: null });
       getHostRuntimeStore().syncHosts([]);
       useSessionStore.getState().clearSession(SERVER_ID);
       useSidebarOrderStore.setState({
@@ -288,7 +337,13 @@ describe("sidebar workspace render isolation", () => {
   });
 
   it("re-renders only the changed workspace row for a status update", async () => {
-    const counts: RenderCounts = { frame: 0, headers: {}, rows: {} };
+    const counts: RenderCounts = {
+      frame: 0,
+      headers: {},
+      rows: {},
+      projectSelection: {},
+      rowSelection: {},
+    };
     ({ root, container } = await renderProbe(counts));
 
     act(() => {
@@ -306,7 +361,13 @@ describe("sidebar workspace render isolation", () => {
   });
 
   it("does not re-render the sidebar for a host-runtime probe tick with no content change", async () => {
-    const counts: RenderCounts = { frame: 0, headers: {}, rows: {} };
+    const counts: RenderCounts = {
+      frame: 0,
+      headers: {},
+      rows: {},
+      projectSelection: {},
+      rowSelection: {},
+    };
     ({ root, container } = await renderProbe(counts));
 
     act(() => {
@@ -316,11 +377,23 @@ describe("sidebar workspace render isolation", () => {
       });
     });
 
-    expect(counts).toEqual({ frame: 0, headers: {}, rows: {} });
+    expect(counts).toEqual({
+      frame: 0,
+      headers: {},
+      rows: {},
+      projectSelection: {},
+      rowSelection: {},
+    });
   });
 
   it("does not re-render for a deep-equal scripts patch", async () => {
-    const counts: RenderCounts = { frame: 0, headers: {}, rows: {} };
+    const counts: RenderCounts = {
+      frame: 0,
+      headers: {},
+      rows: {},
+      projectSelection: {},
+      rowSelection: {},
+    };
     ({ root, container } = await renderProbe(counts));
 
     act(() => {
@@ -332,6 +405,49 @@ describe("sidebar workspace render isolation", () => {
       );
     });
 
-    expect(counts).toEqual({ frame: 0, headers: {}, rows: {} });
+    expect(counts).toEqual({
+      frame: 0,
+      headers: {},
+      rows: {},
+      projectSelection: {},
+      rowSelection: {},
+    });
+  });
+
+  it("isolates active selection updates to affected row and project boolean probes", async () => {
+    const counts: RenderCounts = {
+      frame: 0,
+      headers: {},
+      rows: {},
+      projectSelection: {},
+      rowSelection: {},
+    };
+
+    act(() => {
+      activateNavigationWorkspaceSelection({
+        serverId: SERVER_ID,
+        workspaceId: "a-one",
+      });
+    });
+    ({ root, container } = await renderProbe(counts));
+
+    act(() => {
+      activateNavigationWorkspaceSelection({
+        serverId: SERVER_ID,
+        workspaceId: "b-two",
+      });
+    });
+
+    expect(counts.frame).toBe(0);
+    expect(counts.headers).toEqual({});
+    expect(counts.rows).toEqual({});
+    expect(counts.projectSelection).toEqual({
+      "project-a": 1,
+      "project-b": 1,
+    });
+    expect(counts.rowSelection).toEqual({
+      "a-one": 1,
+      "b-two": 1,
+    });
   });
 });

@@ -1,12 +1,13 @@
+import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Terminal } from "lucide-react-native";
 import { Text, View } from "react-native";
-import { useIsFocused } from "@react-navigation/native";
 import invariant from "tiny-invariant";
 import type { ListTerminalsResponse } from "@server/shared/messages";
 import { TerminalPane } from "@/components/terminal-pane";
-import { usePaneContext } from "@/panels/pane-context";
+import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceExecutionAuthority } from "@/stores/session-store-hooks";
 
@@ -57,15 +58,28 @@ function useTerminalPanelDescriptor(
 }
 
 function TerminalPanel() {
-  const isFocused = useIsFocused();
-  const { serverId, workspaceId, target, isPaneFocused } = usePaneContext();
+  const { serverId, workspaceId, target } = usePaneContext();
+  const { isWorkspaceFocused, isPaneFocused } = usePaneFocus();
   const workspaceAuthority = useWorkspaceExecutionAuthority(serverId, workspaceId)!;
   const workspaceDirectory = workspaceAuthority.ok
     ? workspaceAuthority.authority.workspaceDirectory
     : null;
+  const isGitCheckout = workspaceAuthority.ok
+    ? workspaceAuthority.authority.workspace.projectKind === "git"
+    : false;
+  const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
+  const handleOpenFileExplorer = useCallback(() => {
+    if (!workspaceDirectory) {
+      return;
+    }
+    openFileExplorerForCheckout({
+      isCompact: true,
+      checkout: { serverId, cwd: workspaceDirectory, isGit: isGitCheckout },
+    });
+  }, [isGitCheckout, openFileExplorerForCheckout, serverId, workspaceDirectory]);
   invariant(target.kind === "terminal", "TerminalPanel requires terminal target");
 
-  if (!isFocused) {
+  if (!isWorkspaceFocused) {
     return <View style={{ flex: 1 }} />;
   }
 
@@ -86,7 +100,9 @@ function TerminalPanel() {
       serverId={serverId}
       cwd={workspaceDirectory}
       terminalId={target.terminalId}
+      isWorkspaceFocused={isWorkspaceFocused}
       isPaneFocused={isPaneFocused}
+      onOpenFileExplorer={handleOpenFileExplorer}
     />
   );
 }

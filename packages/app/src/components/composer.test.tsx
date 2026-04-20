@@ -20,6 +20,7 @@ const {
   deleteAttachmentsMock,
   encodeImagesMock,
   openExternalUrlMock,
+  markScrollInvestigationRenderMock,
   mockSessionState,
   setAgentStreamTailMock,
   setAgentStreamHeadMock,
@@ -135,6 +136,7 @@ const {
   );
   mockSessionState.setAgentStreamTail = setAgentStreamTailMock;
   mockSessionState.setAgentStreamHead = setAgentStreamHeadMock;
+  const markScrollInvestigationRenderMock = vi.fn();
 
   return {
     theme,
@@ -147,6 +149,7 @@ const {
     deleteAttachmentsMock: vi.fn(async () => {}),
     encodeImagesMock: vi.fn(async (images: AttachmentMetadata[]) => images),
     openExternalUrlMock: vi.fn(async () => {}),
+    markScrollInvestigationRenderMock,
     mockSessionState,
     setAgentStreamTailMock,
     setAgentStreamHeadMock,
@@ -313,7 +316,7 @@ vi.mock("@/contexts/toast-context", () => ({
 }));
 
 vi.mock("@/utils/scroll-jank-investigation", () => ({
-  markScrollInvestigationRender: vi.fn(),
+  markScrollInvestigationRender: markScrollInvestigationRenderMock,
   markScrollInvestigationEvent: vi.fn(),
 }));
 
@@ -547,6 +550,7 @@ beforeEach(() => {
   deleteAttachmentsMock.mockClear();
   encodeImagesMock.mockClear();
   openExternalUrlMock.mockClear();
+  markScrollInvestigationRenderMock.mockClear();
   setAgentStreamTailMock.mockClear();
   setAgentStreamHeadMock.mockClear();
   setQueuedMessagesMock.mockClear();
@@ -661,6 +665,12 @@ function queryByTestId(testID: string): HTMLElement | null {
 
 function queryAllAttachmentMenuItems(): NodeListOf<HTMLElement> {
   return document.querySelectorAll('[data-testid^="message-input-attachment-menu-item-"]');
+}
+
+function countMessageInputRenders(): number {
+  return markScrollInvestigationRenderMock.mock.calls.filter(
+    ([componentId]) => componentId === "MessageInput:server:agent",
+  ).length;
 }
 
 describe("Composer attachments", () => {
@@ -845,6 +855,27 @@ describe("Composer attachments", () => {
     expect(queryByTestId("attachment-lightbox-image")).not.toBeNull();
     expect(openExternalUrlMock).not.toHaveBeenCalled();
     expect(latestAttachments).toEqual([{ kind: "image", metadata: image }]);
+  });
+
+  it("does not re-render MessageInput when opening the attachment lightbox", () => {
+    const image = imageAttachment("img-lightbox-render");
+    renderComposer({ initialAttachments: [{ kind: "image", metadata: image }] });
+    const renderCountBeforeLightbox = countMessageInputRenders();
+
+    click(queryByTestId("composer-image-attachment-pill")!);
+
+    expect(queryByTestId("attachment-lightbox-image")).not.toBeNull();
+    expect(countMessageInputRenders()).toBe(renderCountBeforeLightbox);
+  });
+
+  it("still re-renders MessageInput when submit loading semantics change", () => {
+    renderComposer({ initialText: "pending submit", isSubmitLoading: false });
+    const renderCountBeforeLoading = countMessageInputRenders();
+
+    renderComposer({ initialText: "pending submit", isSubmitLoading: true });
+
+    expect(countMessageInputRenders()).toBe(renderCountBeforeLoading + 1);
+    expect(document.querySelector('[aria-label="Send message"]')).toHaveProperty("disabled", true);
   });
 
   it("locks the preserved draft while submit loading", () => {

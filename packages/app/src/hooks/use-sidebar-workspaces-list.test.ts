@@ -1,4 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+/**
+ * @vitest-environment jsdom
+ */
+import { act } from "@testing-library/react";
+import type { DaemonClient } from "@server/client/daemon-client";
+import { createRoot, type Root } from "react-dom/client";
+import React from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
   (globalThis as unknown as { __DEV__: boolean }).__DEV__ = false;
@@ -8,8 +15,12 @@ import {
   appendMissingOrderKeys,
   applyStoredOrdering,
   buildSidebarProjectsFromStructure,
+  useSidebarWorkspacesList,
 } from "./use-sidebar-workspaces-list";
 import type { WorkspaceStructureProject } from "@/stores/session-store-hooks";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
+import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 
 interface OrderedItem {
   key: string;
@@ -33,6 +44,45 @@ function project(input: {
     iconWorkingDir: input.iconWorkingDir ?? input.projectKey,
     workspaceKeys: input.workspaceKeys,
   };
+}
+
+function workspaceDescriptor(id: string): WorkspaceDescriptor {
+  return {
+    id,
+    projectId: "project-1",
+    projectDisplayName: "Project 1",
+    projectRootPath: "/repo/main",
+    workspaceDirectory: `/repo/main/${id}`,
+    projectKind: "git",
+    workspaceKind: "worktree",
+    name: id,
+    status: "done",
+    diffStat: null,
+    scripts: [],
+  };
+}
+
+function DisabledHookProbe({ serverId }: { serverId: string }): null {
+  const result = useSidebarWorkspacesList({ serverId, enabled: false });
+
+  expect(result.projects).toEqual([]);
+  expect(result.isLoading).toBe(false);
+  expect(result.isInitialLoad).toBe(false);
+  expect(result.isRevalidating).toBe(false);
+
+  return null;
+}
+
+function DisabledRenderCountProbe({
+  onRender,
+  serverId,
+}: {
+  onRender: () => void;
+  serverId: string;
+}): null {
+  useSidebarWorkspacesList({ serverId, enabled: false });
+  onRender();
+  return null;
 }
 
 describe("applyStoredOrdering", () => {
@@ -137,5 +187,75 @@ describe("buildSidebarProjectsFromStructure", () => {
       "feature",
       "main",
     ]);
+  });
+});
+
+describe("useSidebarWorkspacesList", () => {
+  let root: Root | null = null;
+  let container: HTMLElement | null = null;
+
+  afterEach(() => {
+    if (root) {
+      act(() => {
+        root?.unmount();
+      });
+    }
+    root = null;
+    container?.remove();
+    container = null;
+    act(() => {
+      getHostRuntimeStore().syncHosts([]);
+      useSessionStore.getState().clearSession("srv-disabled");
+      useSidebarOrderStore.setState({
+        projectOrderByServerId: {},
+        workspaceOrderByServerAndProject: {},
+      });
+    });
+  });
+
+  it("honors enabled false without appending persisted order keys", async () => {
+    act(() => {
+      useSessionStore.getState().initializeSession("srv-disabled", null as unknown as DaemonClient);
+      useSessionStore
+        .getState()
+        .setWorkspaces("srv-disabled", new Map([["ws-main", workspaceDescriptor("ws-main")]]));
+      useSessionStore.getState().setHasHydratedWorkspaces("srv-disabled", true);
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(React.createElement(DisabledHookProbe, { serverId: "srv-disabled" }));
+    });
+
+    expect(useSidebarOrderStore.getState().projectOrderByServerId).toEqual({});
+    expect(useSidebarOrderStore.getState().workspaceOrderByServerAndProject).toEqual({});
+  });
+
+  it("does not subscribe to order updates while disabled", async () => {
+    const onRender = vi.fn();
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        React.createElement(DisabledRenderCountProbe, {
+          serverId: "srv-disabled",
+          onRender,
+        }),
+      );
+    });
+
+    expect(onRender).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      useSidebarOrderStore.getState().setProjectOrder("srv-disabled", ["project-a"]);
+    });
+
+    expect(onRender).toHaveBeenCalledTimes(1);
   });
 });

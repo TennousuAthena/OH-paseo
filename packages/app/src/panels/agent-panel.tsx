@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { useShallow } from "zustand/shallow";
+import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import invariant from "tiny-invariant";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/components/agent-stream-view";
@@ -23,7 +23,7 @@ import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { usePaneContext } from "@/panels/pane-context";
+import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import {
   useHostRuntimeClient,
@@ -111,7 +111,8 @@ function useAgentPanelDescriptor(
 }
 
 function AgentPanel() {
-  const { serverId, target, isPaneFocused, openFileInWorkspace } = usePaneContext();
+  const { serverId, target, openFileInWorkspace } = usePaneContext();
+  const { isPaneFocused } = usePaneFocus();
   invariant(target.kind === "agent", "AgentPanel requires agent target");
 
   function openWorkspaceFile(input: { filePath: string }) {
@@ -137,6 +138,12 @@ export const agentPanelRegistration: PanelRegistration<"agent"> = {
 };
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
+const EMPTY_PENDING_PERMISSIONS = new Map<string, PendingPermission>();
+const EMPTY_PENDING_PERMISSION_LIST: PendingPermission[] = [];
+
+type RouteBottomAnchorRequest = ReturnType<typeof deriveRouteBottomAnchorRequest>;
+type PendingCreateByDraftId = ReturnType<typeof useCreateFlowStore.getState>["pendingByDraftId"];
+type PendingCreateAttempt = PendingCreateByDraftId[string];
 
 function logWebStickyBottom(_event: string, _details: Record<string, unknown>): void {}
 
@@ -149,6 +156,27 @@ function toErrorMessage(error: unknown): string {
 
 function isNotFoundErrorMessage(message: string): boolean {
   return /agent not found|not found/i.test(message);
+}
+
+function findPendingCreateForPanel(input: {
+  pendingByDraftId: PendingCreateByDraftId;
+  serverId: string;
+  agentId?: string;
+}): PendingCreateAttempt | null {
+  if (!input.agentId) {
+    return null;
+  }
+  const values = Object.values(input.pendingByDraftId);
+  for (const entry of values) {
+    if (
+      entry.lifecycle === "active" &&
+      entry.serverId === input.serverId &&
+      entry.agentId === input.agentId
+    ) {
+      return entry;
+    }
+  }
+  return null;
 }
 
 type AgentLookupState =
@@ -455,26 +483,13 @@ function ChatAgentContent({
       };
     }),
   );
-  const agentInputDraft = useAgentInputDraft({
-    draftKey: buildDraftStoreKey({
-      serverId,
-      agentId: agentId ?? "__pending__",
-    }),
-    initialCwd: agentState.cwd ?? "",
-  });
   const projectPlacement = useStoreWithEqualityFn(
     useSessionStore,
     (state) =>
       agentId ? (state.sessions[serverId]?.agents?.get(agentId)?.projectPlacement ?? null) : null,
     (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b),
   );
-  const streamItemsRaw = useSessionStore((state) =>
-    agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
-  );
-  const streamItems = streamItemsRaw ?? EMPTY_STREAM_ITEMS;
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
-  const markPendingCreateLifecycle = useCreateFlowStore((state) => state.markLifecycle);
-  const clearPendingCreate = useCreateFlowStore((state) => state.clear);
   const isInitializingFromMap = useSessionStore((state) =>
     agentId ? (state.sessions[serverId]?.initializingAgents?.get(agentId) ?? false) : false,
   );
@@ -489,11 +504,7 @@ function ChatAgentContent({
   const agentHistorySyncGeneration = useSessionStore((state) =>
     agentId ? (state.sessions[serverId]?.agentHistorySyncGeneration?.get(agentId) ?? -1) : -1,
   );
-  const allPendingPermissions = useSessionStore(
-    (state) => state.sessions[serverId]?.pendingPermissions,
-  );
   const setAgents = useSessionStore((state) => state.setAgents);
-  const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
   const setPendingPermissions = useSessionStore((state) => state.setPendingPermissions);
   const hasSession = useSessionStore((state) => Boolean(state.sessions[serverId]));
   const { ensureAgentIsInitialized } = useAgentInitialization({
@@ -504,37 +515,12 @@ function ChatAgentContent({
     kind: "idle",
   });
 
-  const pendingCreate = useMemo(() => {
-    if (!agentId) {
-      return null;
-    }
-    const values = Object.values(pendingByDraftId);
-    for (const entry of values) {
-      if (
-        entry.lifecycle === "active" &&
-        entry.serverId === serverId &&
-        entry.agentId === agentId
-      ) {
-        return entry;
-      }
-    }
-    return null;
-  }, [agentId, pendingByDraftId, serverId]);
+  const pendingCreate = useMemo(
+    () => findPendingCreateForPanel({ pendingByDraftId, serverId, agentId }),
+    [agentId, pendingByDraftId, serverId],
+  );
   const isPendingCreateForPanel = Boolean(pendingCreate);
   const hasHydratedHistoryBefore = hasAppliedAuthoritativeHistory;
-
-  const pendingPermissions = useMemo(() => {
-    if (!allPendingPermissions || !agentId) {
-      return new Map<string, PendingPermission>();
-    }
-    const filtered = new Map<string, PendingPermission>();
-    for (const [key, permission] of allPendingPermissions) {
-      if (permission.agentId === agentId) {
-        filtered.set(key, permission);
-      }
-    }
-    return filtered;
-  }, [agentId, allPendingPermissions]);
 
   const attentionController = useAgentAttentionClear({
     agentId,
@@ -640,38 +626,7 @@ function ChatAgentContent({
     return agentHistorySyncGeneration < historySyncGeneration;
   }, [agentHistorySyncGeneration, agentId, historySyncGeneration]);
 
-  const optimisticStreamItems = useMemo<StreamItem[]>(() => {
-    if (!isPendingCreateForPanel || !pendingCreate) {
-      return EMPTY_STREAM_ITEMS;
-    }
-    return [
-      {
-        kind: "user_message",
-        id: pendingCreate.clientMessageId,
-        text: pendingCreate.text,
-        timestamp: new Date(pendingCreate.timestamp),
-        ...(pendingCreate.images && pendingCreate.images.length > 0
-          ? { images: pendingCreate.images }
-          : {}),
-      },
-    ];
-  }, [isPendingCreateForPanel, pendingCreate]);
-
-  const mergedStreamItems = useMemo<StreamItem[]>(() => {
-    if (optimisticStreamItems.length === 0) {
-      return streamItems;
-    }
-    const optimistic = optimisticStreamItems[0];
-    if (!optimistic) {
-      return streamItems;
-    }
-    const alreadyHasOptimistic = streamItems.some(
-      (item) => item.kind === "user_message" && item.id === optimistic.id,
-    );
-    return alreadyHasOptimistic ? streamItems : [...optimisticStreamItems, ...streamItems];
-  }, [optimisticStreamItems, streamItems]);
-
-  const shouldUseOptimisticStream = isPendingCreateForPanel && optimisticStreamItems.length > 0;
+  const shouldUseOptimisticStream = isPendingCreateForPanel;
   const authoritativeStatus = agentState.status;
   const isAuthoritativeBootstrapping =
     authoritativeStatus === "initializing" || authoritativeStatus === "idle";
@@ -745,52 +700,29 @@ function ChatAgentContent({
     [effectiveAgent?.id],
   );
 
-  useEffect(() => {
-    if (!isPendingCreateForPanel || !pendingCreate) {
+  const handleComposerHeightChange = useCallback(
+    (height: number) => {
+      if (!agentId) {
+        return;
+      }
+      logWebStickyBottom("screen_composer_height_change", {
+        agentId,
+        height,
+      });
+      streamViewRef.current?.prepareForViewportChange();
+    },
+    [agentId],
+  );
+
+  const handleMessageSent = useCallback(() => {
+    if (!agentId) {
       return;
     }
-    const hasUserMessage = streamItems.some(
-      (item) => item.kind === "user_message" && item.id === pendingCreate.clientMessageId,
-    );
-    if (hasUserMessage && canFinalizePendingCreate) {
-      if (agentId && pendingCreate.images && pendingCreate.images.length > 0) {
-        setAgentStreamTail(serverId, (previous) => {
-          const current = previous.get(agentId);
-          if (!current) {
-            return previous;
-          }
-
-          const merged = mergePendingCreateImages({
-            streamItems: current,
-            clientMessageId: pendingCreate.clientMessageId,
-            images: pendingCreate.images,
-          });
-          if (merged === current) {
-            return previous;
-          }
-
-          const next = new Map(previous);
-          next.set(agentId, merged);
-          return next;
-        });
-      }
-      markPendingCreateLifecycle({
-        draftId: pendingCreate.draftId,
-        lifecycle: "sent",
-      });
-      clearPendingCreate({ draftId: pendingCreate.draftId });
-    }
-  }, [
-    agentId,
-    canFinalizePendingCreate,
-    clearPendingCreate,
-    isPendingCreateForPanel,
-    markPendingCreateLifecycle,
-    pendingCreate,
-    serverId,
-    setAgentStreamTail,
-    streamItems,
-  ]);
+    logWebStickyBottom("screen_message_sent_scroll_to_bottom", {
+      agentId,
+    });
+    streamViewRef.current?.scrollToBottom("message-sent");
+  }, [agentId]);
 
   useEffect(() => {
     if (!agentId) {
@@ -947,53 +879,35 @@ function ChatAgentContent({
         <View style={styles.container}>
           <View style={styles.contentContainer}>
             <ReanimatedAnimated.View style={[styles.content, animatedKeyboardStyle]}>
-              <AgentStreamView
-                ref={streamViewRef}
-                agentId={effectiveAgent.id}
+              <AgentStreamSection
+                streamViewRef={streamViewRef}
                 serverId={serverId}
+                agentId={agentId}
                 agent={effectiveAgent}
-                streamItems={shouldUseOptimisticStream ? mergedStreamItems : streamItems}
-                pendingPermissions={pendingPermissions}
+                pendingCreate={pendingCreate}
+                shouldUseOptimisticStream={shouldUseOptimisticStream}
+                canFinalizePendingCreate={canFinalizePendingCreate}
                 routeBottomAnchorRequest={routeBottomAnchorRequest}
-                isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
+                hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
                 onOpenWorkspaceFile={onOpenWorkspaceFile}
               />
             </ReanimatedAnimated.View>
           </View>
 
-          {agentId && !isArchivingCurrentAgent && !agentState.archivedAt ? (
-            <Composer
-              agentId={agentId}
-              serverId={serverId}
-              isPaneFocused={isPaneFocused}
-              value={agentInputDraft.text}
-              onChangeText={agentInputDraft.setText}
-              attachments={agentInputDraft.attachments}
-              onChangeAttachments={agentInputDraft.setAttachments}
-              cwd={agentInputDraft.cwd}
-              clearDraft={agentInputDraft.clear}
-              autoFocus={isPaneFocused}
-              isSubmitLoading={showPendingCreateSubmitLoading}
-              onAttentionInputFocus={attentionController.clearOnInputFocus}
-              onAttentionPromptSend={attentionController.clearOnPromptSend}
-              onAddImages={handleAddImagesCallback}
-              onComposerHeightChange={(height) => {
-                logWebStickyBottom("screen_composer_height_change", {
-                  agentId,
-                  height,
-                });
-                streamViewRef.current?.prepareForViewportChange();
-              }}
-              onMessageSent={() => {
-                logWebStickyBottom("screen_message_sent_scroll_to_bottom", {
-                  agentId,
-                });
-                streamViewRef.current?.scrollToBottom("message-sent");
-              }}
-            />
-          ) : agentId && agentState.archivedAt ? (
-            <ArchivedAgentCallout serverId={serverId} agentId={agentId} />
-          ) : null}
+          <AgentComposerSection
+            agentId={agentId}
+            serverId={serverId}
+            isPaneFocused={isPaneFocused}
+            isArchivingCurrentAgent={isArchivingCurrentAgent}
+            archivedAt={agentState.archivedAt}
+            initialCwd={agentState.cwd ?? ""}
+            isSubmitLoading={showPendingCreateSubmitLoading}
+            onAttentionInputFocus={attentionController.clearOnInputFocus}
+            onAttentionPromptSend={attentionController.clearOnPromptSend}
+            onAddImages={handleAddImagesCallback}
+            onComposerHeightChange={handleComposerHeightChange}
+            onMessageSent={handleMessageSent}
+          />
 
           {viewState.tag === "ready" &&
           viewState.sync.status === "catching_up" &&
@@ -1019,6 +933,265 @@ function ChatAgentContent({
         </View>
       ) : null}
     </View>
+  );
+}
+
+function AgentStreamSection({
+  streamViewRef,
+  serverId,
+  agentId,
+  agent,
+  pendingCreate,
+  shouldUseOptimisticStream,
+  canFinalizePendingCreate,
+  routeBottomAnchorRequest,
+  hasAppliedAuthoritativeHistory,
+  onOpenWorkspaceFile,
+}: {
+  streamViewRef: React.RefObject<AgentStreamViewHandle | null>;
+  serverId: string;
+  agentId?: string;
+  agent: AgentScreenAgent;
+  pendingCreate: PendingCreateAttempt | null;
+  shouldUseOptimisticStream: boolean;
+  canFinalizePendingCreate: boolean;
+  routeBottomAnchorRequest: RouteBottomAnchorRequest;
+  hasAppliedAuthoritativeHistory: boolean;
+  onOpenWorkspaceFile?: (input: { filePath: string }) => void;
+}) {
+  const streamItemsRaw = useSessionStore((state) =>
+    agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
+  );
+  const streamItems = streamItemsRaw ?? EMPTY_STREAM_ITEMS;
+  const pendingPermissionList = useStoreWithEqualityFn(
+    useSessionStore,
+    (state) => {
+      if (!agentId) {
+        return EMPTY_PENDING_PERMISSION_LIST;
+      }
+      const allPendingPermissions = state.sessions[serverId]?.pendingPermissions;
+      if (!allPendingPermissions) {
+        return EMPTY_PENDING_PERMISSION_LIST;
+      }
+      const filtered: PendingPermission[] = [];
+      for (const permission of allPendingPermissions.values()) {
+        if (permission.agentId === agentId) {
+          filtered.push(permission);
+        }
+      }
+      return filtered.length > 0 ? filtered : EMPTY_PENDING_PERMISSION_LIST;
+    },
+    shallow,
+  );
+  const pendingPermissions = useMemo(() => {
+    if (pendingPermissionList.length === 0) {
+      return EMPTY_PENDING_PERMISSIONS;
+    }
+    return new Map(pendingPermissionList.map((permission) => [permission.key, permission]));
+  }, [pendingPermissionList]);
+  const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
+  const markPendingCreateLifecycle = useCreateFlowStore((state) => state.markLifecycle);
+  const clearPendingCreate = useCreateFlowStore((state) => state.clear);
+
+  const optimisticStreamItems = useMemo<StreamItem[]>(() => {
+    if (!shouldUseOptimisticStream || !pendingCreate) {
+      return EMPTY_STREAM_ITEMS;
+    }
+    return [
+      {
+        kind: "user_message",
+        id: pendingCreate.clientMessageId,
+        text: pendingCreate.text,
+        timestamp: new Date(pendingCreate.timestamp),
+        ...(pendingCreate.images && pendingCreate.images.length > 0
+          ? { images: pendingCreate.images }
+          : {}),
+      },
+    ];
+  }, [pendingCreate, shouldUseOptimisticStream]);
+
+  const mergedStreamItems = useMemo<StreamItem[]>(() => {
+    if (optimisticStreamItems.length === 0) {
+      return streamItems;
+    }
+    const optimistic = optimisticStreamItems[0];
+    if (!optimistic) {
+      return streamItems;
+    }
+    const alreadyHasOptimistic = streamItems.some(
+      (item) => item.kind === "user_message" && item.id === optimistic.id,
+    );
+    return alreadyHasOptimistic ? streamItems : [...optimisticStreamItems, ...streamItems];
+  }, [optimisticStreamItems, streamItems]);
+
+  useEffect(() => {
+    if (!shouldUseOptimisticStream || !pendingCreate) {
+      return;
+    }
+    const hasUserMessage = streamItems.some(
+      (item) => item.kind === "user_message" && item.id === pendingCreate.clientMessageId,
+    );
+    if (!hasUserMessage || !canFinalizePendingCreate) {
+      return;
+    }
+
+    const pendingImages = pendingCreate.images;
+    if (agentId && pendingImages && pendingImages.length > 0) {
+      setAgentStreamTail(serverId, (previous) => {
+        const current = previous.get(agentId);
+        if (!current) {
+          return previous;
+        }
+
+        const merged = mergePendingCreateImages({
+          streamItems: current,
+          clientMessageId: pendingCreate.clientMessageId,
+          images: pendingImages,
+        });
+        if (merged === current) {
+          return previous;
+        }
+
+        const next = new Map(previous);
+        next.set(agentId, merged);
+        return next;
+      });
+    }
+    markPendingCreateLifecycle({
+      draftId: pendingCreate.draftId,
+      lifecycle: "sent",
+    });
+    clearPendingCreate({ draftId: pendingCreate.draftId });
+  }, [
+    agentId,
+    canFinalizePendingCreate,
+    clearPendingCreate,
+    markPendingCreateLifecycle,
+    pendingCreate,
+    serverId,
+    setAgentStreamTail,
+    shouldUseOptimisticStream,
+    streamItems,
+  ]);
+
+  return (
+    <AgentStreamView
+      ref={streamViewRef}
+      agentId={agent.id}
+      serverId={serverId}
+      agent={agent}
+      streamItems={shouldUseOptimisticStream ? mergedStreamItems : streamItems}
+      pendingPermissions={pendingPermissions}
+      routeBottomAnchorRequest={routeBottomAnchorRequest}
+      isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
+      onOpenWorkspaceFile={onOpenWorkspaceFile}
+    />
+  );
+}
+
+function AgentComposerSection({
+  agentId,
+  serverId,
+  isPaneFocused,
+  isArchivingCurrentAgent,
+  archivedAt,
+  initialCwd,
+  isSubmitLoading,
+  onAttentionInputFocus,
+  onAttentionPromptSend,
+  onAddImages,
+  onComposerHeightChange,
+  onMessageSent,
+}: {
+  agentId?: string;
+  serverId: string;
+  isPaneFocused: boolean;
+  isArchivingCurrentAgent: boolean;
+  archivedAt: Date | null;
+  initialCwd: string;
+  isSubmitLoading: boolean;
+  onAttentionInputFocus: () => void;
+  onAttentionPromptSend: () => void;
+  onAddImages: (addImages: (images: ImageAttachment[]) => void) => void;
+  onComposerHeightChange: (height: number) => void;
+  onMessageSent: () => void;
+}) {
+  if (!agentId) {
+    return null;
+  }
+  if (archivedAt) {
+    return <ArchivedAgentCallout serverId={serverId} agentId={agentId} />;
+  }
+  if (isArchivingCurrentAgent) {
+    return null;
+  }
+
+  return (
+    <ActiveAgentComposer
+      agentId={agentId}
+      serverId={serverId}
+      isPaneFocused={isPaneFocused}
+      initialCwd={initialCwd}
+      isSubmitLoading={isSubmitLoading}
+      onAttentionInputFocus={onAttentionInputFocus}
+      onAttentionPromptSend={onAttentionPromptSend}
+      onAddImages={onAddImages}
+      onComposerHeightChange={onComposerHeightChange}
+      onMessageSent={onMessageSent}
+    />
+  );
+}
+
+function ActiveAgentComposer({
+  agentId,
+  serverId,
+  isPaneFocused,
+  initialCwd,
+  isSubmitLoading,
+  onAttentionInputFocus,
+  onAttentionPromptSend,
+  onAddImages,
+  onComposerHeightChange,
+  onMessageSent,
+}: {
+  agentId: string;
+  serverId: string;
+  isPaneFocused: boolean;
+  initialCwd: string;
+  isSubmitLoading: boolean;
+  onAttentionInputFocus: () => void;
+  onAttentionPromptSend: () => void;
+  onAddImages: (addImages: (images: ImageAttachment[]) => void) => void;
+  onComposerHeightChange: (height: number) => void;
+  onMessageSent: () => void;
+}) {
+  const agentInputDraft = useAgentInputDraft({
+    draftKey: buildDraftStoreKey({
+      serverId,
+      agentId,
+    }),
+    initialCwd,
+  });
+
+  return (
+    <Composer
+      agentId={agentId}
+      serverId={serverId}
+      isPaneFocused={isPaneFocused}
+      value={agentInputDraft.text}
+      onChangeText={agentInputDraft.setText}
+      attachments={agentInputDraft.attachments}
+      onChangeAttachments={agentInputDraft.setAttachments}
+      cwd={agentInputDraft.cwd}
+      clearDraft={agentInputDraft.clear}
+      autoFocus={isPaneFocused}
+      isSubmitLoading={isSubmitLoading}
+      onAttentionInputFocus={onAttentionInputFocus}
+      onAttentionPromptSend={onAttentionPromptSend}
+      onAddImages={onAddImages}
+      onComposerHeightChange={onComposerHeightChange}
+      onMessageSent={onMessageSent}
+    />
   );
 }
 

@@ -1,4 +1,5 @@
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStoreWithSelector } from "use-sync-external-store/shim/with-selector";
 import {
   buildHostWorkspaceRoute,
   decodeWorkspaceIdFromPathSegment,
@@ -16,15 +17,24 @@ interface ActivateWorkspaceSelectionOptions {
   historyMode?: "push" | "replace";
 }
 
-type NavigationRouteLike = {
-  name?: unknown;
-  params?: unknown;
-  path?: unknown;
+type NavigationRouteParams = {
+  serverId?: string | string[];
+  workspaceId?: string | string[];
 };
+
+type NavigationRouteLike = {
+  params?: NavigationRouteParams | null;
+  path?: string | null;
+};
+
+type NavigationWorkspaceRouteState =
+  | { kind: "workspace"; selection: ActiveWorkspaceSelection }
+  | { kind: "nonWorkspace" }
+  | { kind: "unknown" };
 
 interface NavigationObserverRef {
   current: {
-    getCurrentRoute(): unknown;
+    getCurrentRoute(): NavigationRouteLike | null | undefined;
   } | null;
 }
 
@@ -83,7 +93,7 @@ function writeBrowserWorkspaceUrl(
 }
 
 function extractActiveWorkspaceFromRoute(
-  route: NavigationRouteLike | undefined,
+  route: NavigationRouteLike | null | undefined,
 ): ActiveWorkspaceSelection | null {
   if (!route) {
     return null;
@@ -96,17 +106,12 @@ function extractActiveWorkspaceFromRoute(
     }
   }
 
-  const params =
-    route.params && typeof route.params === "object"
-      ? (route.params as {
-          serverId?: string | string[];
-          workspaceId?: string | string[];
-        })
-      : null;
-  const serverValue = Array.isArray(params?.serverId) ? params?.serverId[0] : params?.serverId;
-  const workspaceValue = Array.isArray(params?.workspaceId)
-    ? params?.workspaceId[0]
-    : params?.workspaceId;
+  const serverValue = Array.isArray(route.params?.serverId)
+    ? route.params.serverId[0]
+    : route.params?.serverId;
+  const workspaceValue = Array.isArray(route.params?.workspaceId)
+    ? route.params.workspaceId[0]
+    : route.params?.workspaceId;
   const serverId = typeof serverValue === "string" ? serverValue.trim() : "";
   const workspaceId =
     typeof workspaceValue === "string"
@@ -120,20 +125,55 @@ function extractActiveWorkspaceFromRoute(
   return { serverId, workspaceId };
 }
 
+function classifyNavigationWorkspaceRoute(
+  route: NavigationRouteLike | null | undefined,
+): NavigationWorkspaceRouteState {
+  if (!route) {
+    return { kind: "unknown" };
+  }
+
+  if (typeof route.path === "string") {
+    const selection = parseHostWorkspaceRouteFromPathname(route.path);
+    if (selection) {
+      return { kind: "workspace", selection };
+    }
+    return { kind: "nonWorkspace" };
+  }
+
+  const selection = extractActiveWorkspaceFromRoute(route);
+  if (selection) {
+    return { kind: "workspace", selection };
+  }
+
+  return { kind: "unknown" };
+}
+
+function getActiveWorkspaceForNavigationSync(
+  route: NavigationRouteLike | null | undefined,
+): ActiveWorkspaceSelection | null {
+  const routeState = classifyNavigationWorkspaceRoute(route);
+  if (routeState.kind === "workspace") {
+    const browserWorkspace = getBrowserLocationWorkspace();
+    return browserWorkspace ?? routeState.selection;
+  }
+
+  if (routeState.kind === "nonWorkspace") {
+    return null;
+  }
+
+  return getBrowserLocationWorkspace();
+}
+
 export function syncNavigationActiveWorkspace(navigationRef: NavigationObserverRef) {
-  emitIfChanged(
-    extractActiveWorkspaceFromRoute(
-      navigationRef.current?.getCurrentRoute() as NavigationRouteLike | undefined,
-    ),
-  );
+  emitIfChanged(getActiveWorkspaceForNavigationSync(navigationRef.current?.getCurrentRoute()));
 }
 
 export function activateNavigationWorkspaceSelection(
   next: ActiveWorkspaceSelection,
   options: ActivateWorkspaceSelectionOptions = {},
 ) {
-  emitIfChanged(next);
   writeBrowserWorkspaceUrl(next, options);
+  emitIfChanged(next);
 }
 
 export function getNavigationActiveWorkspaceSelection(): ActiveWorkspaceSelection | null {
@@ -160,4 +200,46 @@ export function addBrowserActiveWorkspaceLocationListener(): () => void {
 
 export function useNavigationActiveWorkspaceSelection(): ActiveWorkspaceSelection | null {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+export function useIsNavigationWorkspaceSelected(input: {
+  serverId: string | null;
+  workspaceId: string | null;
+  enabled?: boolean;
+}): boolean {
+  const enabled = input.enabled !== false;
+  return useSyncExternalStoreWithSelector(
+    subscribe,
+    getSnapshot,
+    getSnapshot,
+    (selection) =>
+      enabled &&
+      Boolean(input.serverId) &&
+      Boolean(input.workspaceId) &&
+      selection?.serverId === input.serverId &&
+      selection.workspaceId === input.workspaceId,
+    Object.is,
+  );
+}
+
+export function useIsNavigationProjectActive(input: {
+  serverId: string | null;
+  workspaceIds: readonly string[];
+  enabled?: boolean;
+}): boolean {
+  const enabled = input.enabled !== false;
+  const workspaceIdsKey = input.workspaceIds.join("\0");
+  const workspaceIdSet = useMemo(() => new Set(input.workspaceIds), [workspaceIdsKey]);
+
+  return useSyncExternalStoreWithSelector(
+    subscribe,
+    getSnapshot,
+    getSnapshot,
+    (selection) =>
+      enabled &&
+      Boolean(input.serverId) &&
+      selection?.serverId === input.serverId &&
+      workspaceIdSet.has(selection.workspaceId),
+    Object.is,
+  );
 }

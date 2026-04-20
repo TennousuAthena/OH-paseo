@@ -1,5 +1,5 @@
 import { View, Pressable, Text, ActivityIndicator, Image } from "react-native";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShallow } from "zustand/shallow";
@@ -134,6 +134,7 @@ interface ComposerProps {
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
 const DESKTOP_MESSAGE_PLACEHOLDER = "Message the agent, tag @files, or use /commands and /skills";
 const MOBILE_MESSAGE_PLACEHOLDER = "Message, @files, /commands";
+const StableMessageInput = memo(MessageInput);
 
 export function Composer({
   agentId,
@@ -172,6 +173,8 @@ export function Composer({
   const isConnected = useHostRuntimeIsConnected(serverId);
   const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId);
   const toast = useToast();
+  const toastErrorRef = useRef(toast.error);
+  toastErrorRef.current = toast.error;
   const voice = useVoiceOptional();
   const voiceToggleKeys = useShortcutKeys("voice-toggle");
   const dictationCancelKeys = useShortcutKeys("dictation-cancel");
@@ -238,6 +241,8 @@ export function Composer({
       messageInputRef.current?.focus();
     },
   });
+  const autocompleteOnKeyPressRef = useRef(autocomplete.onKeyPress);
+  autocompleteOnKeyPressRef.current = autocomplete.onKeyPress;
 
   // Clear send error when user edits the input
   useEffect(() => {
@@ -375,67 +380,82 @@ export function Composer({
     [agentId, serverId, setQueuedMessages],
   );
 
-  function queueMessage(message: string, attachments: ComposerAttachment[]) {
-    const trimmedMessage = message.trim();
-    if (!trimmedMessage && attachments.length === 0) return;
+  const queueMessage = useCallback(
+    (message: string, attachments: ComposerAttachment[]) => {
+      const trimmedMessage = message.trim();
+      if (!trimmedMessage && attachments.length === 0) return;
 
-    const newItem = {
-      id: generateMessageId(),
-      text: trimmedMessage,
-      attachments,
-    };
+      const newItem = {
+        id: generateMessageId(),
+        text: trimmedMessage,
+        attachments,
+      };
 
-    setQueuedMessages(serverId, (prev: Map<string, QueuedMessage[]>) => {
-      const next = new Map(prev);
-      next.set(agentId, [...(prev.get(agentId) ?? []), newItem]);
-      return next;
-    });
+      setQueuedMessages(serverId, (prev: Map<string, QueuedMessage[]>) => {
+        const next = new Map(prev);
+        next.set(agentId, [...(prev.get(agentId) ?? []), newItem]);
+        return next;
+      });
 
-    setUserInput("");
-    setSelectedAttachments([]);
-  }
+      setUserInput("");
+      setSelectedAttachments([]);
+    },
+    [agentId, serverId, setQueuedMessages, setSelectedAttachments, setUserInput],
+  );
 
-  async function sendMessageWithContent(
-    message: string,
-    attachments: ComposerAttachment[],
-    forceSend?: boolean,
-  ) {
-    await submitAgentInput({
-      message,
-      attachments,
-      hasExternalContent,
+  const sendMessageWithContent = useCallback(
+    async (message: string, attachments: ComposerAttachment[], forceSend?: boolean) => {
+      await submitAgentInput({
+        message,
+        attachments,
+        hasExternalContent,
+        allowEmptySubmit,
+        forceSend,
+        submitBehavior,
+        isAgentRunning,
+        // Parent-managed submits are still valid submit paths even when the
+        // transport is disconnected, because the parent decides the failure mode.
+        canSubmit: Boolean(sendAgentMessageRef.current || onSubmitMessageRef.current),
+        queueMessage: ({ message, attachments }) => {
+          queueMessage(message, attachments);
+        },
+        submitMessage: async ({ message, attachments }) => {
+          await submitMessage(message, attachments);
+        },
+        clearDraft,
+        setUserInput,
+        setAttachments: (nextAttachments) => {
+          setSelectedAttachments(nextAttachments);
+        },
+        setSendError,
+        setIsProcessing,
+        onSubmitError: (error) => {
+          console.error("[AgentInput] Failed to send message:", error);
+        },
+      });
+    },
+    [
       allowEmptySubmit,
-      forceSend,
-      submitBehavior,
-      isAgentRunning: agentState.status === "running",
-      // Parent-managed submits are still valid submit paths even when the
-      // transport is disconnected, because the parent decides the failure mode.
-      canSubmit: Boolean(sendAgentMessageRef.current || onSubmitMessageRef.current),
-      queueMessage: ({ message, attachments }) => {
-        queueMessage(message, attachments);
-      },
-      submitMessage: async ({ message, attachments }) => {
-        await submitMessage(message, attachments);
-      },
       clearDraft,
+      hasExternalContent,
+      isAgentRunning,
+      queueMessage,
+      setSelectedAttachments,
       setUserInput,
-      setAttachments: (nextAttachments) => {
-        setSelectedAttachments(nextAttachments);
-      },
-      setSendError,
-      setIsProcessing,
-      onSubmitError: (error) => {
-        console.error("[AgentInput] Failed to send message:", error);
-      },
-    });
-  }
+      submitBehavior,
+      submitMessage,
+    ],
+  );
 
-  function handleSubmit(payload: MessagePayload) {
-    if (blurOnSubmit) {
-      messageInputRef.current?.blur();
-    }
-    void sendMessageWithContent(payload.text, payload.attachments, payload.forceSend);
-  }
+  const handleSubmit = useCallback(
+    (payload: MessagePayload) => {
+      if (blurOnSubmit) {
+        messageInputRef.current?.blur();
+      }
+      void sendMessageWithContent(payload.text, payload.attachments, payload.forceSend);
+    },
+    [blurOnSubmit, sendMessageWithContent],
+  );
 
   const handlePickImage = useCallback(async () => {
     const result = await pickImages();
@@ -486,6 +506,18 @@ export function Composer({
       setIsCancellingAgent(false);
     }
   }, [isAgentRunning, isConnected]);
+
+  const handleCancelAgent = useCallback(() => {
+    if (!isAgentRunning || isCancellingAgent) {
+      return;
+    }
+    if (!isConnected || !client) {
+      return;
+    }
+    setIsCancellingAgent(true);
+    void client.cancelAgent(agentIdRef.current);
+    messageInputRef.current?.focus();
+  }, [client, isAgentRunning, isCancellingAgent, isConnected]);
 
   const handleKeyboardAction = useCallback(
     (action: KeyboardActionDefinition): boolean => {
@@ -553,18 +585,6 @@ export function Composer({
     mode: "translate",
   });
 
-  function handleCancelAgent() {
-    if (!isAgentRunning || isCancellingAgent) {
-      return;
-    }
-    if (!isConnected || !client) {
-      return;
-    }
-    setIsCancellingAgent(true);
-    void client.cancelAgent(agentIdRef.current);
-    messageInputRef.current?.focus();
-  }
-
   const isVoiceModeForAgent = voice?.isVoiceModeForAgent(serverId, agentId) ?? false;
 
   const handleToggleRealtimeVoice = useCallback(() => {
@@ -582,10 +602,10 @@ export function Composer({
       const message =
         error instanceof Error ? error.message : typeof error === "string" ? error : null;
       if (message && message.trim().length > 0) {
-        toast.error(message);
+        toastErrorRef.current(message);
       }
     });
-  }, [agentId, hasAgent, isConnected, serverId, toast, voice]);
+  }, [agentId, hasAgent, isConnected, serverId, voice]);
 
   function handleEditQueuedMessage(id: string) {
     const item = queuedMessages.find((q) => q.id === id);
@@ -612,9 +632,12 @@ export function Composer({
     }
   }
 
-  const handleQueue = useCallback((payload: MessagePayload) => {
-    queueMessage(payload.text, payload.attachments);
-  }, []);
+  const handleQueue = useCallback(
+    (payload: MessagePayload) => {
+      queueMessage(payload.text, payload.attachments);
+    },
+    [queueMessage],
+  );
 
   const hasSendableContent = userInput.trim().length > 0 || selectedAttachments.length > 0;
 
@@ -633,91 +656,109 @@ export function Composer({
         return true;
       }
 
-      return autocomplete.onKeyPress(event);
+      return autocompleteOnKeyPressRef.current(event);
     },
+    [hasSendableContent, isAgentRunning, isCancellingAgent, isConnected, handleCancelAgent],
+  );
+
+  const cancelButton = useMemo(
+    () =>
+      isAgentRunning && !hasSendableContent && !isProcessing ? (
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger
+            onPress={handleCancelAgent}
+            disabled={!isConnected || isCancellingAgent}
+            accessibilityLabel={isCancellingAgent ? "Canceling agent" : "Stop agent"}
+            accessibilityRole="button"
+            style={[
+              styles.cancelButton as any,
+              (!isConnected || isCancellingAgent ? styles.buttonDisabled : undefined) as any,
+            ]}
+          >
+            {isCancellingAgent ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Square size={buttonIconSize} color="white" fill="white" />
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <View style={styles.tooltipRow}>
+              <Text style={styles.tooltipText}>Interrupt</Text>
+              {dictationCancelKeys ? (
+                <Shortcut chord={dictationCancelKeys} style={styles.tooltipShortcut} />
+              ) : null}
+            </View>
+          </TooltipContent>
+        </Tooltip>
+      ) : null,
     [
-      autocomplete,
+      buttonIconSize,
+      dictationCancelKeys,
+      handleCancelAgent,
       hasSendableContent,
       isAgentRunning,
       isCancellingAgent,
       isConnected,
-      handleCancelAgent,
+      isProcessing,
     ],
   );
 
-  const cancelButton =
-    isAgentRunning && !hasSendableContent && !isProcessing ? (
-      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-        <TooltipTrigger
-          onPress={handleCancelAgent}
-          disabled={!isConnected || isCancellingAgent}
-          accessibilityLabel={isCancellingAgent ? "Canceling agent" : "Stop agent"}
-          accessibilityRole="button"
-          style={[
-            styles.cancelButton as any,
-            (!isConnected || isCancellingAgent ? styles.buttonDisabled : undefined) as any,
-          ]}
-        >
-          {isCancellingAgent ? (
-            <ActivityIndicator size="small" color="white" />
-          ) : (
-            <Square size={buttonIconSize} color="white" fill="white" />
-          )}
-        </TooltipTrigger>
-        <TooltipContent side="top" align="center" offset={8}>
-          <View style={styles.tooltipRow}>
-            <Text style={styles.tooltipText}>Interrupt</Text>
-            {dictationCancelKeys ? (
-              <Shortcut chord={dictationCancelKeys} style={styles.tooltipShortcut} />
-            ) : null}
-          </View>
-        </TooltipContent>
-      </Tooltip>
-    ) : null;
-
   const showVoiceModeButton = !isVoiceModeForAgent && hasAgent;
-  const rightContent =
-    showVoiceModeButton || cancelButton ? (
-      <View style={styles.rightControls}>
-        {showVoiceModeButton ? (
-          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-            <TooltipTrigger
-              onPress={handleToggleRealtimeVoice}
-              disabled={!isConnected || voice?.isVoiceSwitching}
-              accessibilityLabel="Enable Voice mode"
-              accessibilityRole="button"
-              style={({ hovered }) => [
-                styles.realtimeVoiceButton as any,
-                (hovered ? styles.iconButtonHovered : undefined) as any,
-                (!isConnected || voice?.isVoiceSwitching
-                  ? styles.buttonDisabled
-                  : undefined) as any,
-              ]}
-            >
-              {({ hovered }) =>
-                voice?.isVoiceSwitching ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <AudioLines
-                    size={buttonIconSize}
-                    color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                  />
-                )
-              }
-            </TooltipTrigger>
-            <TooltipContent side="top" align="center" offset={8}>
-              <View style={styles.tooltipRow}>
-                <Text style={styles.tooltipText}>Voice mode</Text>
-                {voiceToggleKeys ? (
-                  <Shortcut chord={voiceToggleKeys} style={styles.tooltipShortcut} />
-                ) : null}
-              </View>
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-        {cancelButton}
-      </View>
-    ) : null;
+  const rightContent = useMemo(
+    () =>
+      showVoiceModeButton || cancelButton ? (
+        <View style={styles.rightControls}>
+          {showVoiceModeButton ? (
+            <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+              <TooltipTrigger
+                onPress={handleToggleRealtimeVoice}
+                disabled={!isConnected || voice?.isVoiceSwitching}
+                accessibilityLabel="Enable Voice mode"
+                accessibilityRole="button"
+                style={({ hovered }) => [
+                  styles.realtimeVoiceButton as any,
+                  (hovered ? styles.iconButtonHovered : undefined) as any,
+                  (!isConnected || voice?.isVoiceSwitching
+                    ? styles.buttonDisabled
+                    : undefined) as any,
+                ]}
+              >
+                {({ hovered }) =>
+                  voice?.isVoiceSwitching ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <AudioLines
+                      size={buttonIconSize}
+                      color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                    />
+                  )
+                }
+              </TooltipTrigger>
+              <TooltipContent side="top" align="center" offset={8}>
+                <View style={styles.tooltipRow}>
+                  <Text style={styles.tooltipText}>Voice mode</Text>
+                  {voiceToggleKeys ? (
+                    <Shortcut chord={voiceToggleKeys} style={styles.tooltipShortcut} />
+                  ) : null}
+                </View>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+          {cancelButton}
+        </View>
+      ) : null,
+    [
+      buttonIconSize,
+      cancelButton,
+      handleToggleRealtimeVoice,
+      isConnected,
+      showVoiceModeButton,
+      theme.colors.foreground,
+      theme.colors.foregroundMuted,
+      voice,
+      voiceToggleKeys,
+    ],
+  );
 
   const hasContextWindowMeter =
     typeof agentState.contextWindowMaxTokens === "number" &&
@@ -725,15 +766,18 @@ export function Composer({
   const contextWindowMaxTokens = hasContextWindowMeter ? agentState.contextWindowMaxTokens : null;
   const contextWindowUsedTokens = hasContextWindowMeter ? agentState.contextWindowUsedTokens : null;
 
-  const beforeVoiceContent = (
-    <View style={styles.contextWindowMeterSlot}>
-      {contextWindowMaxTokens !== null && contextWindowUsedTokens !== null ? (
-        <ContextWindowMeter
-          maxTokens={contextWindowMaxTokens}
-          usedTokens={contextWindowUsedTokens}
-        />
-      ) : null}
-    </View>
+  const beforeVoiceContent = useMemo(
+    () => (
+      <View style={styles.contextWindowMeterSlot}>
+        {contextWindowMaxTokens !== null && contextWindowUsedTokens !== null ? (
+          <ContextWindowMeter
+            maxTokens={contextWindowMaxTokens}
+            usedTokens={contextWindowUsedTokens}
+          />
+        ) : null}
+      </View>
+    ),
+    [contextWindowMaxTokens, contextWindowUsedTokens],
   );
 
   const githubSearchQueryTrimmed = githubSearchQuery.trim();
@@ -808,12 +852,33 @@ export function Composer({
     [setSelectedAttachments, setGithubSearchQuery, setIsGithubPickerOpen],
   );
 
-  const leftContent =
-    resolveStatusControlMode(statusControls) === "draft" && statusControls ? (
-      <DraftAgentStatusBar {...statusControls} />
-    ) : (
-      <AgentStatusBar agentId={agentId} serverId={serverId} onDropdownClose={focusInput} />
-    );
+  const leftContent = useMemo(
+    () =>
+      resolveStatusControlMode(statusControls) === "draft" && statusControls ? (
+        <DraftAgentStatusBar {...statusControls} />
+      ) : (
+        <AgentStatusBar agentId={agentId} serverId={serverId} onDropdownClose={focusInput} />
+      ),
+    [agentId, focusInput, serverId, statusControls],
+  );
+
+  const handleAttachButtonRef = useCallback((node: View | null) => {
+    attachButtonRef.current = node;
+  }, []);
+
+  const handleSelectionChange = useCallback((selection: { start: number; end: number }) => {
+    setCursorIndex(selection.start);
+  }, []);
+
+  const handleFocusChange = useCallback(
+    (focused: boolean) => {
+      setIsMessageInputFocused(focused);
+      if (focused) {
+        onAttentionInputFocus?.();
+      }
+    },
+    [onAttentionInputFocus],
+  );
 
   return (
     <Animated.View
@@ -924,7 +989,7 @@ export function Composer({
             ) : null}
 
             {/* MessageInput handles everything: text, dictation, attachments, all buttons */}
-            <MessageInput
+            <StableMessageInput
               ref={messageInputRef}
               value={userInput}
               onChangeText={setUserInput}
@@ -938,9 +1003,7 @@ export function Composer({
               attachments={selectedAttachments}
               cwd={cwd}
               attachmentMenuItems={attachmentMenuItems}
-              onAttachButtonRef={(node) => {
-                attachButtonRef.current = node;
-              }}
+              onAttachButtonRef={handleAttachButtonRef}
               onAddImages={addImages}
               client={client}
               isReadyForDictation={isDictationReady}
@@ -959,15 +1022,8 @@ export function Composer({
               onQueue={handleQueue}
               onSubmitLoadingPress={isAgentRunning ? handleCancelAgent : undefined}
               onKeyPress={handleCommandKeyPress}
-              onSelectionChange={(selection) => {
-                setCursorIndex(selection.start);
-              }}
-              onFocusChange={(focused) => {
-                setIsMessageInputFocused(focused);
-                if (focused) {
-                  onAttentionInputFocus?.();
-                }
-              }}
+              onSelectionChange={handleSelectionChange}
+              onFocusChange={handleFocusChange}
               onHeightChange={onComposerHeightChange}
               inputWrapperStyle={inputWrapperStyle}
             />

@@ -11,7 +11,7 @@ import { useWindowDimensions } from "react-native";
 import { useSharedValue, withTiming, Easing, type SharedValue } from "react-native-reanimated";
 import { type GestureType } from "react-native-gesture-handler";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { usePanelStore } from "@/stores/panel-store";
+import { selectIsFileExplorerOpen, usePanelStore } from "@/stores/panel-store";
 import {
   getRightSidebarAnimationTargets,
   shouldSyncSidebarAnimation,
@@ -38,11 +38,9 @@ const ExplorerSidebarAnimationContext = createContext<ExplorerSidebarAnimationCo
 export function ExplorerSidebarAnimationProvider({ children }: { children: ReactNode }) {
   const { width: windowWidth } = useWindowDimensions();
   const isCompactLayout = useIsCompactFormFactor();
-  const mobileView = usePanelStore((state) => state.mobileView);
-  const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
-
-  // Derive isOpen from the unified panel state
-  const isOpen = isCompactLayout ? mobileView === "file-explorer" : desktopFileExplorerOpen;
+  const isOpen = usePanelStore((state) =>
+    selectIsFileExplorerOpen(state, { isCompact: isCompactLayout }),
+  );
 
   // Right sidebar: closed = +windowWidth (off-screen right), open = 0
   const initialTargets = getRightSidebarAnimationTargets({ isOpen, windowWidth });

@@ -191,11 +191,10 @@ export function useSidebarWorkspacesList(options?: {
     const value = options?.serverId;
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
   }, [options?.serverId]);
+  const isActive = Boolean(serverId) && options?.enabled !== false;
   const persistedProjectOrder = useSidebarOrderStore((state) =>
-    serverId ? (state.projectOrderByServerId[serverId] ?? EMPTY_ORDER) : EMPTY_ORDER,
+    isActive && serverId ? (state.projectOrderByServerId[serverId] ?? EMPTY_ORDER) : EMPTY_ORDER,
   );
-
-  const isActive = Boolean(serverId);
   const hasHydratedWorkspaces = useSessionStore((state) =>
     isActive && serverId ? (state.sessions[serverId]?.hasHydratedWorkspaces ?? false) : false,
   );

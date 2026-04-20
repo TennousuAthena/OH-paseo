@@ -76,6 +76,7 @@ interface SplitContainerProps {
   workspaceKey: string;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
+  isWorkspaceFocused: boolean;
   uiTabs: WorkspaceTab[];
   hoveredCloseTabKey: string | null;
   setHoveredTabKey: Dispatch<SetStateAction<string | null>>;
@@ -93,7 +94,6 @@ interface SplitContainerProps {
   onCreateTerminalTab: (input: { paneId?: string }) => void;
   buildPaneContentModel: (input: {
     paneId: string;
-    isPaneFocused: boolean;
     tab: WorkspaceTabDescriptor;
   }) => WorkspacePaneContentModel;
   onFocusPane: (paneId: string) => void;
@@ -158,11 +158,11 @@ interface SplitPaneViewProps
 interface MountedTabSlotProps {
   tabDescriptor: WorkspaceTabDescriptor;
   isVisible: boolean;
+  isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
   paneId: string;
   buildPaneContentModel: (input: {
     paneId: string;
-    isPaneFocused: boolean;
     tab: WorkspaceTabDescriptor;
   }) => WorkspacePaneContentModel;
 }
@@ -170,6 +170,7 @@ interface MountedTabSlotProps {
 const MountedTabSlot = memo(function MountedTabSlot({
   tabDescriptor,
   isVisible,
+  isWorkspaceFocused,
   isPaneFocused,
   paneId,
   buildPaneContentModel,
@@ -178,15 +179,18 @@ const MountedTabSlot = memo(function MountedTabSlot({
     () =>
       buildPaneContentModel({
         paneId,
-        isPaneFocused,
         tab: tabDescriptor,
       }),
-    [buildPaneContentModel, isPaneFocused, paneId, tabDescriptor],
+    [buildPaneContentModel, paneId, tabDescriptor],
   );
 
   return (
     <View style={{ display: isVisible ? "flex" : "none", flex: 1 }}>
-      <WorkspacePaneContent content={content} />
+      <WorkspacePaneContent
+        content={content}
+        isWorkspaceFocused={isWorkspaceFocused}
+        isPaneFocused={isPaneFocused}
+      />
     </View>
   );
 });
@@ -241,6 +245,7 @@ export function SplitContainer({
   workspaceKey,
   normalizedServerId,
   normalizedWorkspaceId,
+  isWorkspaceFocused,
   uiTabs,
   hoveredCloseTabKey,
   setHoveredTabKey,
@@ -511,6 +516,7 @@ export function SplitContainer({
         focusedPaneId={layout.focusedPaneId}
         normalizedServerId={normalizedServerId}
         normalizedWorkspaceId={normalizedWorkspaceId}
+        isWorkspaceFocused={isWorkspaceFocused}
         hoveredCloseTabKey={hoveredCloseTabKey}
         setHoveredTabKey={setHoveredTabKey}
         setHoveredCloseTabKey={setHoveredCloseTabKey}
@@ -633,6 +639,7 @@ function SplitNodeView({
   focusedPaneId,
   normalizedServerId,
   normalizedWorkspaceId,
+  isWorkspaceFocused,
   hoveredCloseTabKey,
   setHoveredTabKey,
   setHoveredCloseTabKey,
@@ -668,6 +675,7 @@ function SplitNodeView({
         isFocused={node.pane.id === focusedPaneId}
         normalizedServerId={normalizedServerId}
         normalizedWorkspaceId={normalizedWorkspaceId}
+        isWorkspaceFocused={isWorkspaceFocused}
         hoveredCloseTabKey={hoveredCloseTabKey}
         setHoveredTabKey={setHoveredTabKey}
         setHoveredCloseTabKey={setHoveredCloseTabKey}
@@ -718,6 +726,7 @@ function SplitNodeView({
               focusedPaneId={focusedPaneId}
               normalizedServerId={normalizedServerId}
               normalizedWorkspaceId={normalizedWorkspaceId}
+              isWorkspaceFocused={isWorkspaceFocused}
               hoveredCloseTabKey={hoveredCloseTabKey}
               setHoveredTabKey={setHoveredTabKey}
               setHoveredCloseTabKey={setHoveredCloseTabKey}
@@ -767,6 +776,7 @@ function SplitPaneView({
   isFocused,
   normalizedServerId,
   normalizedWorkspaceId,
+  isWorkspaceFocused,
   hoveredCloseTabKey,
   setHoveredTabKey,
   setHoveredCloseTabKey,
@@ -916,6 +926,7 @@ function SplitPaneView({
                   key={tabId}
                   tabDescriptor={tabDescriptor}
                   isVisible={tabId === activeTabDescriptor?.tabId}
+                  isWorkspaceFocused={isWorkspaceFocused}
                   isPaneFocused={isFocused && tabId === activeTabDescriptor?.tabId}
                   paneId={pane.id}
                   buildPaneContentModel={buildPaneContentModel}

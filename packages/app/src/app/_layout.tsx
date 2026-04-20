@@ -65,7 +65,9 @@ import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog"
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-action";
+import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { queryClient } from "@/query/query-client";
+import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
 import {
   WEB_NOTIFICATION_CLICK_EVENT,
   type WebNotificationClickDetail,
@@ -392,10 +394,10 @@ function AppContainer({
   const daemons = useHosts();
   const { settings, updateSettings } = useAppSettings();
   const toggleMobileAgentList = usePanelStore((state) => state.toggleMobileAgentList);
-  const toggleMobileFileExplorer = usePanelStore((state) => state.toggleMobileFileExplorer);
   const toggleDesktopAgentList = usePanelStore((state) => state.toggleDesktopAgentList);
-  const toggleDesktopFileExplorer = usePanelStore((state) => state.toggleDesktopFileExplorer);
-  const toggleDesktopSidebars = usePanelStore((state) => state.toggleDesktopSidebars);
+  const openDesktopAgentList = usePanelStore((state) => state.openDesktopAgentList);
+  const closeDesktopAgentList = usePanelStore((state) => state.closeDesktopAgentList);
+  const closeDesktopFileExplorer = usePanelStore((state) => state.closeDesktopFileExplorer);
   const toggleFocusMode = usePanelStore((state) => state.toggleFocusMode);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
   const agentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
@@ -411,7 +413,21 @@ function AppContainer({
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
   const pathname = usePathname();
   const toggleAgentList = isCompactLayout ? toggleMobileAgentList : toggleDesktopAgentList;
-  const toggleFileExplorer = isCompactLayout ? toggleMobileFileExplorer : toggleDesktopFileExplorer;
+  const toggleDesktopSidebars = useCallback(() => {
+    const { desktop } = usePanelStore.getState();
+    toggleDesktopSidebarsWithCheckoutIntent({
+      isAgentListOpen: desktop.agentListOpen,
+      isFileExplorerOpen: desktop.fileExplorerOpen,
+      openAgentList: openDesktopAgentList,
+      closeAgentList: closeDesktopAgentList,
+      closeFileExplorer: closeDesktopFileExplorer,
+      toggleFocusedFileExplorer: () =>
+        keyboardActionDispatcher.dispatch({
+          id: "sidebar.toggle.right",
+          scope: "sidebar",
+        }),
+    });
+  }, [closeDesktopAgentList, closeDesktopFileExplorer, openDesktopAgentList]);
   // TODO: stop matching pathname here as a branch. `chromeEnabled` should not
   // conflate workspace/project-specific chrome (sidebar, mobile gesture) with
   // global concerns like keyboard shortcuts. Split those out so settings (and
@@ -451,7 +467,6 @@ function AppContainer({
     enabled: keyboardShortcutsEnabled,
     isMobile: isCompactLayout,
     toggleAgentList,
-    toggleFileExplorer,
     toggleBothSidebars: toggleDesktopSidebars,
     toggleFocusMode,
     cycleTheme,
