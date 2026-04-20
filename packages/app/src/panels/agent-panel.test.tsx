@@ -7,7 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DaemonClient } from "@server/client/daemon-client";
-import { PaneFocusProvider, PaneProvider } from "@/panels/pane-context";
+import { PaneFocusProvider, PaneProvider, type PaneFocusContextValue } from "@/panels/pane-context";
 import { agentPanelRegistration } from "@/panels/agent-panel";
 import { useDraftStore } from "@/stores/draft-store";
 import { useSessionStore, type Agent } from "@/stores/session-store";
@@ -39,6 +39,7 @@ const {
   composerRenderCount,
   composerUnmountCount,
   latestComposerCwd,
+  latestComposerIsPaneFocused,
   streamRenderCount,
   latestStreamPermissionKeys,
   latestStreamText,
@@ -66,6 +67,7 @@ const {
     composerRenderCount: vi.fn(),
     composerUnmountCount: vi.fn(),
     latestComposerCwd: { current: null as string | null },
+    latestComposerIsPaneFocused: { current: null as boolean | null },
     streamRenderCount: vi.fn(),
     latestStreamPermissionKeys: { current: [] as string[] },
     latestStreamText: { current: null as string | null },
@@ -166,7 +168,7 @@ vi.mock("@/hooks/use-archive-agent", () => ({
 }));
 
 vi.mock("@/components/composer", () => ({
-  Composer: ({ cwd }: { cwd: string }) => {
+  Composer: ({ cwd, isPaneFocused }: { cwd: string; isPaneFocused: boolean }) => {
     React.useEffect(
       () => () => {
         composerUnmountCount();
@@ -175,6 +177,7 @@ vi.mock("@/components/composer", () => ({
     );
     composerRenderCount();
     latestComposerCwd.current = cwd;
+    latestComposerIsPaneFocused.current = isPaneFocused;
     return <div data-testid="composer">{cwd}</div>;
   },
 }));
@@ -244,7 +247,14 @@ function seedReadyAgent(agent: Agent = makeAgent()) {
   store.setAgentAuthoritativeHistoryApplied("server", "agent", true);
 }
 
-async function renderAgentPanel(root: Root) {
+async function renderAgentPanel(
+  root: Root,
+  focus: PaneFocusContextValue = {
+    isWorkspaceFocused: true,
+    isPaneFocused: false,
+    isInteractive: false,
+  },
+) {
   const AgentPanel = agentPanelRegistration.component;
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -267,9 +277,7 @@ async function renderAgentPanel(root: Root) {
             openFileInWorkspace: vi.fn(),
           }}
         >
-          <PaneFocusProvider
-            value={{ isWorkspaceFocused: true, isPaneFocused: false, isInteractive: false }}
-          >
+          <PaneFocusProvider value={focus}>
             <AgentPanel />
           </PaneFocusProvider>
         </PaneProvider>
@@ -355,6 +363,7 @@ describe("AgentPanel render isolation", () => {
     composerRenderCount.mockClear();
     composerUnmountCount.mockClear();
     latestComposerCwd.current = null;
+    latestComposerIsPaneFocused.current = null;
     streamRenderCount.mockClear();
     latestStreamPermissionKeys.current = [];
     latestStreamText.current = null;
@@ -377,6 +386,21 @@ describe("AgentPanel render isolation", () => {
     expect(latestStreamText.current).toBe("stream-only update");
     expect(streamRenderCount).toHaveBeenCalledTimes(streamBaseline + 1);
     expect(composerRenderCount).toHaveBeenCalledTimes(composerBaseline);
+  });
+
+  it("does not advertise the composer as focused when its workspace is hidden", async () => {
+    seedReadyAgent();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await renderAgentPanel(root, {
+      isWorkspaceFocused: false,
+      isPaneFocused: true,
+      isInteractive: false,
+    });
+
+    expect(latestComposerIsPaneFocused.current).toBe(false);
   });
 
   it("still invokes Composer for current-agent cwd changes and unmounts it for archives", async () => {

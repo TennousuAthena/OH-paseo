@@ -113,7 +113,7 @@ function useAgentPanelDescriptor(
 
 function AgentPanel() {
   const { serverId, target, openFileInWorkspace } = usePaneContext();
-  const { isPaneFocused } = usePaneFocus();
+  const { isInteractive } = usePaneFocus();
   invariant(target.kind === "agent", "AgentPanel requires agent target");
 
   function openWorkspaceFile(input: { filePath: string }) {
@@ -126,7 +126,7 @@ function AgentPanel() {
     <AgentPanelContent
       serverId={serverId}
       agentId={target.agentId}
-      isPaneFocused={isPaneFocused}
+      isPaneFocused={isInteractive}
       onOpenWorkspaceFile={handleOpenWorkspaceFile}
     />
   );
