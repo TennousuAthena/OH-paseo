@@ -248,7 +248,12 @@ test.describe("New workspace flow", () => {
         subtitle: openedProject.projectDisplayName,
       });
 
-      const agentTabs = page.locator('[data-testid^="workspace-tab-agent_"]');
+      const activeWorkspaceDeckEntry = page
+        .getByTestId(`workspace-deck-entry-${serverId}:${createdWorkspace.workspaceId}`)
+        .filter({ visible: true });
+      await expect(activeWorkspaceDeckEntry).toBeVisible({ timeout: 30_000 });
+
+      const agentTabs = activeWorkspaceDeckEntry.locator('[data-testid^="workspace-tab-agent_"]');
       await expect(agentTabs).toHaveCount(1, { timeout: 30_000 });
 
       // Workspace setup may auto-open a setup tab that steals focus,
