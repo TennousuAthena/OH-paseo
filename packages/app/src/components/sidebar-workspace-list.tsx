@@ -830,12 +830,7 @@ function ProjectHeaderRow({
 
   const rowChildren = (
     <>
-      <View
-        {...(dragHandleProps?.attributes as any)}
-        {...(dragHandleProps?.listeners as any)}
-        ref={dragHandleProps?.setActivatorNodeRef as any}
-        style={styles.projectRowLeft}
-      >
+      <View style={styles.projectRowLeft}>
         <ProjectLeadingVisual
           displayName={displayName}
           iconDataUri={iconDataUri}
@@ -912,7 +907,13 @@ function ProjectHeaderRow({
 
   if (menuController) {
     return (
-      <View onPointerEnter={() => setIsHovered(true)} onPointerLeave={() => setIsHovered(false)}>
+      <View
+        {...(dragHandleProps?.attributes as any)}
+        {...(dragHandleProps?.listeners as any)}
+        ref={dragHandleProps?.setActivatorNodeRef as any}
+        onPointerEnter={() => setIsHovered(true)}
+        onPointerLeave={() => setIsHovered(false)}
+      >
         <ContextMenuTrigger
           enabledOnMobile={false}
           style={({ pressed }) => [
@@ -935,7 +936,13 @@ function ProjectHeaderRow({
   }
 
   return (
-    <View onPointerEnter={() => setIsHovered(true)} onPointerLeave={() => setIsHovered(false)}>
+    <View
+      {...(dragHandleProps?.attributes as any)}
+      {...(dragHandleProps?.listeners as any)}
+      ref={dragHandleProps?.setActivatorNodeRef as any}
+      onPointerEnter={() => setIsHovered(true)}
+      onPointerLeave={() => setIsHovered(false)}
+    >
       <Pressable
         style={({ pressed }) => [
           styles.projectRow,
@@ -1010,6 +1017,9 @@ function WorkspaceRowInner({
   return (
     <WorkspaceHoverCard workspace={workspace} prHint={prHint} isDragging={isDragging}>
       <View
+        {...(dragHandleProps?.attributes as any)}
+        {...(dragHandleProps?.listeners as any)}
+        ref={dragHandleProps?.setActivatorNodeRef as any}
         style={styles.workspaceRowContainer}
         onPointerEnter={() => setIsHovered(true)}
         onPointerLeave={() => setIsHovered(false)}
@@ -1033,12 +1043,7 @@ function WorkspaceRowInner({
           testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
         >
           <View style={styles.workspaceRowMain}>
-            <View
-              {...(dragHandleProps?.attributes as any)}
-              {...(dragHandleProps?.listeners as any)}
-              ref={dragHandleProps?.setActivatorNodeRef as any}
-              style={styles.workspaceRowLeft}
-            >
+            <View style={styles.workspaceRowLeft}>
               <WorkspaceStatusIndicator
                 bucket={workspace.statusBucket}
                 workspaceKind={workspace.workspaceKind}
@@ -2266,6 +2271,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[2],
+    userSelect: "none",
   },
   projectRowHovered: {
     backgroundColor: theme.colors.surfaceSidebarHover,
@@ -2409,6 +2415,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "stretch",
     justifyContent: "center",
     gap: theme.spacing[1],
+    userSelect: "none",
   },
   workspaceRowMain: {
     flexDirection: "row",
