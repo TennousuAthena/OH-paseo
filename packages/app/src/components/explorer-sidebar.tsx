@@ -292,6 +292,7 @@ export function ExplorerSidebar({
               workspaceRoot={workspaceRoot}
               isGit={isGit}
               isMobile={isMobile}
+              isOpen={isOpen}
               onOpenFile={onOpenFile}
             />
           </Animated.View>
@@ -324,6 +325,7 @@ export function ExplorerSidebar({
           workspaceRoot={workspaceRoot}
           isGit={isGit}
           isMobile={false}
+          isOpen={isOpen}
           onOpenFile={onOpenFile}
         />
       </View>
@@ -340,6 +342,7 @@ interface SidebarContentProps {
   workspaceRoot: string;
   isGit: boolean;
   isMobile: boolean;
+  isOpen: boolean;
   onOpenFile?: (filePath: string) => void;
 }
 
@@ -352,6 +355,7 @@ function SidebarContent({
   workspaceRoot,
   isGit,
   isMobile,
+  isOpen,
   onOpenFile,
 }: SidebarContentProps) {
   const { theme } = useUnistyles();
@@ -360,8 +364,8 @@ function SidebarContent({
   const prPane = usePrPaneData({
     serverId,
     cwd: workspaceRoot,
-    enabled: canQueryPullRequest,
-    timelineEnabled: activeTab === "pr" && canQueryPullRequest,
+    enabled: canQueryPullRequest && isOpen,
+    timelineEnabled: activeTab === "pr" && canQueryPullRequest && isOpen,
   });
   const hasPullRequest = prPane.prNumber !== null;
   const requestedTab: ExplorerTab =
