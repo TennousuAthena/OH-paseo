@@ -30,13 +30,19 @@ interface UseProvidersSnapshotResult {
   refetchIfStale: () => void;
 }
 
+interface UseProvidersSnapshotOptions {
+  enabled?: boolean;
+}
+
 export function useProvidersSnapshot(
   serverId: string | null,
   cwd?: string | null,
+  options: UseProvidersSnapshotOptions = {},
 ): UseProvidersSnapshotResult {
   const queryClient = useQueryClient();
   const client = useHostRuntimeClient(serverId ?? "");
   const isConnected = useHostRuntimeIsConnected(serverId ?? "");
+  const enabled = options.enabled ?? true;
   const normalizedCwd = cwd?.trim() || undefined;
   const normalizedCwdKey = normalizeProvidersSnapshotCwdKey(normalizedCwd);
   const supportsSnapshot = useSessionStore(
@@ -50,7 +56,7 @@ export function useProvidersSnapshot(
 
   const snapshotQuery = useQuery({
     queryKey,
-    enabled: Boolean(supportsSnapshot && serverId && client && isConnected),
+    enabled: Boolean(enabled && supportsSnapshot && serverId && client && isConnected),
     staleTime: 60_000,
     queryFn: async () => {
       if (!client) {
@@ -71,7 +77,7 @@ export function useProvidersSnapshot(
   const { mutateAsync: refreshSnapshot, isPending: isRefreshing } = refreshMutation;
 
   useEffect(() => {
-    if (!supportsSnapshot || !client || !isConnected || !serverId) {
+    if (!enabled || !supportsSnapshot || !client || !isConnected || !serverId) {
       return;
     }
 
@@ -89,7 +95,16 @@ export function useProvidersSnapshot(
         requestId: "providers_snapshot_update",
       });
     });
-  }, [client, isConnected, normalizedCwdKey, queryClient, queryKey, serverId, supportsSnapshot]);
+  }, [
+    client,
+    enabled,
+    isConnected,
+    normalizedCwdKey,
+    queryClient,
+    queryKey,
+    serverId,
+    supportsSnapshot,
+  ]);
 
   const refresh = useCallback(
     async (providers?: AgentProvider[]) => {

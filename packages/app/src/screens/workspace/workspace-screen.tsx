@@ -131,6 +131,10 @@ type WorkspaceScreenProps = {
   workspaceId: string;
 };
 
+type WorkspaceScreenContentProps = WorkspaceScreenProps & {
+  isRouteFocused: boolean;
+};
+
 function trimNonEmpty(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
     return null;
@@ -566,13 +570,13 @@ function useStableTabDescriptorMap(tabDescriptors: WorkspaceTabDescriptor[]) {
 export function WorkspaceScreen({ serverId, workspaceId }: WorkspaceScreenProps) {
   const isFocused = useIsFocused();
 
-  if (!isFocused) {
-    return <View style={{ flex: 1 }} />;
-  }
-
   return (
     <ExplorerSidebarAnimationProvider>
-      <WorkspaceScreenContent serverId={serverId} workspaceId={workspaceId} />
+      <WorkspaceScreenContent
+        serverId={serverId}
+        workspaceId={workspaceId}
+        isRouteFocused={isFocused}
+      />
     </ExplorerSidebarAnimationProvider>
   );
 }
@@ -604,7 +608,11 @@ function useCloseTabs(): UseCloseTabsResult {
   return { closingTabIds, closeTab };
 }
 
-function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps) {
+function WorkspaceScreenContent({
+  serverId,
+  workspaceId,
+  isRouteFocused,
+}: WorkspaceScreenContentProps) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const mainBackgroundColor = theme.colors.surfaceWorkspace;
@@ -646,11 +654,15 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
 
   // Warm the server-side provider snapshot for this workspace cwd so the model
   // picker is ready when opened. Consumers share the same query cache key.
-  useProvidersSnapshot(normalizedServerId, workspaceDirectory);
+  useProvidersSnapshot(normalizedServerId, workspaceDirectory, {
+    enabled: isRouteFocused,
+  });
   const [pendingTerminalCreateInput, setPendingTerminalCreateInput] = useState<{
     paneId?: string;
   } | null>(null);
-  const canCreateTerminalNow = Boolean(client && isConnected && workspaceDirectory);
+  const canCreateTerminalNow = Boolean(
+    isRouteFocused && client && isConnected && workspaceDirectory,
+  );
 
   const workspaceAgentVisibility = useStoreWithEqualityFn(
     useSessionStore,
@@ -669,7 +681,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   type ListTerminalsPayload = ListTerminalsResponse["payload"];
   const terminalsQuery = useQuery({
     queryKey: terminalsQueryKey,
-    enabled: Boolean(client && isConnected) && Boolean(workspaceDirectory),
+    enabled: Boolean(isRouteFocused && client && isConnected && workspaceDirectory),
     queryFn: async () => {
       if (!client || !workspaceDirectory) {
         throw new Error("Host is not connected");
@@ -736,7 +748,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const { archiveAgent } = useArchiveAgent();
 
   useEffect(() => {
-    if (!client || !isConnected || !workspaceDirectory) {
+    if (!isRouteFocused || !client || !isConnected || !workspaceDirectory) {
       return;
     }
 
@@ -758,9 +770,11 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       unsubscribeChanged();
       client.unsubscribeTerminals({ cwd: workspaceDirectory });
     };
-  }, [client, isConnected, queryClient, terminalsQueryKey, workspaceDirectory]);
+  }, [client, isConnected, isRouteFocused, queryClient, terminalsQueryKey, workspaceDirectory]);
 
-  const isCheckoutQueryEnabled = Boolean(client && isConnected) && Boolean(workspaceDirectory);
+  const isCheckoutQueryEnabled = Boolean(
+    isRouteFocused && client && isConnected && workspaceDirectory,
+  );
   const checkoutQuery = useQuery({
     queryKey: checkoutStatusQueryKey(
       normalizedServerId,
@@ -851,8 +865,11 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   }, [isGitCheckout, normalizedServerId, workspaceDirectory]);
 
   useEffect(() => {
+    if (!isRouteFocused) {
+      return;
+    }
     setActiveExplorerCheckout(activeExplorerCheckout);
-  }, [activeExplorerCheckout, setActiveExplorerCheckout]);
+  }, [activeExplorerCheckout, isRouteFocused, setActiveExplorerCheckout]);
 
   const openExplorerForWorkspace = useCallback(() => {
     if (!activeExplorerCheckout) {
@@ -876,7 +893,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   });
 
   useEffect(() => {
-    if (isWeb || !isExplorerOpen) {
+    if (!isRouteFocused || isWeb || !isExplorerOpen) {
       return;
     }
 
@@ -889,7 +906,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     });
 
     return () => handler.remove();
-  }, [closeToAgent, isExplorerOpen]);
+  }, [closeToAgent, isExplorerOpen, isRouteFocused]);
 
   const persistenceKey = useMemo(
     () =>
@@ -979,14 +996,20 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   }, [focusedPaneTabState.activeTab]);
 
   useEffect(() => {
+    if (!isRouteFocused) {
+      return;
+    }
     setFocusedAgentId(normalizedServerId, focusedPaneAgentId);
-  }, [focusedPaneAgentId, normalizedServerId, setFocusedAgentId]);
+  }, [focusedPaneAgentId, isRouteFocused, normalizedServerId, setFocusedAgentId]);
 
   useEffect(() => {
+    if (!isRouteFocused) {
+      return;
+    }
     return () => {
       setFocusedAgentId(normalizedServerId, null);
     };
-  }, [normalizedServerId, setFocusedAgentId]);
+  }, [isRouteFocused, normalizedServerId, setFocusedAgentId]);
 
   const ensureWorkspaceTab = useCallback(
     function ensureWorkspaceTab(target: WorkspaceTabTarget): string | null {
@@ -1018,6 +1041,9 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   );
 
   useEffect(() => {
+    if (!isRouteFocused) {
+      return;
+    }
     if (!normalizedServerId || !normalizedWorkspaceId || !persistenceKey) {
       return;
     }
@@ -1040,6 +1066,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     });
   }, [
     hasHydratedAgents,
+    isRouteFocused,
     pendingByDraftId,
     persistenceKey,
     reconcileWorkspaceTabs,
@@ -1077,6 +1104,9 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const emptyWorkspaceSeedRef = useRef<string | null>(null);
   const autoOpenedSetupTabWorkspaceRef = useRef<string | null>(null);
   useEffect(() => {
+    if (!isRouteFocused) {
+      return;
+    }
     if (!persistenceKey) {
       return;
     }
@@ -1099,12 +1129,16 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     normalizedWorkspaceId,
     openWorkspaceDraftTab,
     persistenceKey,
+    isRouteFocused,
     terminals.length,
     tabs.length,
     workspaceAgentVisibility.activeAgentIds.size,
   ]);
 
   useEffect(() => {
+    if (!isRouteFocused) {
+      return;
+    }
     if (!persistenceKey) {
       return;
     }
@@ -1146,6 +1180,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     autoOpenedSetupTabWorkspaceRef.current = persistenceKey;
   }, [
     hasSetupTab,
+    isRouteFocused,
     normalizedWorkspaceId,
     openWorkspaceTabInBackground,
     persistenceKey,
@@ -1763,7 +1798,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       "workspace.tab.navigate-relative",
       "workspace.terminal.new",
     ] as const,
-    enabled: Boolean(normalizedServerId && normalizedWorkspaceId),
+    enabled: Boolean(isRouteFocused && normalizedServerId && normalizedWorkspaceId),
     priority: 100,
     isActive: () => true,
     handle: handleWorkspaceTabAction,
@@ -1784,7 +1819,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       "workspace.pane.move-tab.down",
       "workspace.pane.close",
     ] as const,
-    enabled: Boolean(normalizedServerId && normalizedWorkspaceId),
+    enabled: Boolean(isRouteFocused && normalizedServerId && normalizedWorkspaceId),
     priority: 100,
     isActive: () => true,
     handle: handleWorkspacePaneAction,
@@ -1794,11 +1829,11 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const canRenderDesktopPaneSplits = supportsDesktopPaneSplits();
   const shouldRenderDesktopPaneFallback = !isMobile && !canRenderDesktopPaneSplits;
   useEffect(() => {
-    if (isNative || typeof document === "undefined" || activeTabDescriptor) {
+    if (!isRouteFocused || isNative || typeof document === "undefined" || activeTabDescriptor) {
       return;
     }
     document.title = "Workspace";
-  }, [activeTabDescriptor]);
+  }, [activeTabDescriptor, isRouteFocused]);
   const buildPaneContentModel = useCallback(
     (input: {
       tab: WorkspaceTabDescriptor;
@@ -1810,7 +1845,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
         tab: input.tab,
         normalizedServerId,
         normalizedWorkspaceId,
-        isPaneFocused: input.isPaneFocused,
+        isPaneFocused: isRouteFocused && input.isPaneFocused,
         onOpenTab: (target) => {
           if (!persistenceKey) {
             return;
@@ -1846,6 +1881,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     [
       handleCloseTabById,
       handleOpenFileFromChat,
+      isRouteFocused,
       focusWorkspacePane,
       navigateToTabId,
       normalizedServerId,
@@ -1919,8 +1955,8 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
         <MobileMountedTabSlot
           key={tabId}
           tabDescriptor={tabDescriptor}
-          isVisible={tabId === activeTabDescriptor.tabId}
-          isPaneFocused={tabId === activeTabDescriptor.tabId}
+          isVisible={isRouteFocused && tabId === activeTabDescriptor.tabId}
+          isPaneFocused={isRouteFocused && tabId === activeTabDescriptor.tabId}
           paneId={focusedPaneId}
           buildPaneContentModel={buildMobilePaneContentModel}
         />
@@ -2029,7 +2065,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
 
   return (
     <View style={[styles.container, { backgroundColor: mainBackgroundColor }]}>
-      {isWeb && activeTabDescriptor ? (
+      {isRouteFocused && isWeb && activeTabDescriptor ? (
         <WorkspaceTabPresentationResolver
           tab={activeTabDescriptor}
           serverId={normalizedServerId}
@@ -2303,7 +2339,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
           {shouldRenderDesktopPaneFallback ? (
             <WorkspaceDesktopTabsRow
               paneId={focusedPaneId ?? undefined}
-              isFocused
+              isFocused={isRouteFocused}
               tabs={desktopTabRowItems}
               normalizedServerId={normalizedServerId}
               normalizedWorkspaceId={normalizedWorkspaceId}
@@ -2374,7 +2410,8 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
           </View>
         </View>
 
-        {(!isFocusModeEnabled || isMobile) &&
+        {isRouteFocused &&
+          (!isFocusModeEnabled || isMobile) &&
           (workspaceDirectory ? (
             <ExplorerSidebar
               serverId={normalizedServerId}
