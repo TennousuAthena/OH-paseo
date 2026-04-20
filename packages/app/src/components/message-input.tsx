@@ -480,11 +480,15 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
       toast.error(dictationUnavailableMessage);
       return;
     }
+    if (!canStartDictation()) {
+      isDictatingRef.current = false;
+      return;
+    }
     // Keep hotkey toggling deterministic between the async start call and the
     // state-ref sync effect, so a rapid second toggle routes to confirm.
     isDictatingRef.current = true;
     await startDictation();
-  }, [dictationUnavailableMessage, startDictation, toast]);
+  }, [canStartDictation, dictationUnavailableMessage, startDictation, toast]);
 
   // Animate overlay
   useEffect(() => {

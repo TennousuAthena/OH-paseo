@@ -70,6 +70,7 @@ import { splitComposerAttachmentsForSubmit } from "@/components/composer-attachm
 import { AttachmentPill } from "@/components/attachment-pill";
 import { AttachmentLightbox } from "@/components/attachment-lightbox";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
 
 type QueuedMessage = {
   id: string;
@@ -178,11 +179,11 @@ export function Composer({
   const voice = useVoiceOptional();
   const voiceToggleKeys = useShortcutKeys("voice-toggle");
   const dictationCancelKeys = useShortcutKeys("dictation-cancel");
-  const isDictationReady =
-    isConnected &&
-    (agentDirectoryStatus === "ready" ||
-      agentDirectoryStatus === "revalidating" ||
-      agentDirectoryStatus === "error_after_ready");
+  const isDictationReady = useIsDictationReady({
+    serverId,
+    isConnected,
+    agentDirectoryStatus,
+  });
 
   const { settings: appSettings } = useAppSettings();
 

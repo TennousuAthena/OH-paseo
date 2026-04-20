@@ -25,6 +25,7 @@ const {
   setAgentStreamTailMock,
   setAgentStreamHeadMock,
   setQueuedMessagesMock,
+  agentDirectoryStatusMock,
 } = vi.hoisted(() => {
   const theme = {
     spacing: { 1: 4, 2: 8, 3: 12, 4: 16, 6: 24, 8: 32 },
@@ -103,6 +104,17 @@ const {
       string,
       {
         agents: Map<string, { status: string; lastUsage: null }>;
+        serverInfo: {
+          serverId: string;
+          hostname: string | null;
+          version: string | null;
+          capabilities?: {
+            voice?: {
+              dictation: { enabled: boolean; reason: string };
+              voice: { enabled: boolean; reason: string };
+            };
+          };
+        } | null;
         queuedMessages: Map<string, unknown[]>;
         agentStreamHead: Map<string, unknown[]>;
         agentStreamTail: Map<string, unknown[]>;
@@ -115,6 +127,17 @@ const {
     sessions: {
       server: {
         agents: new Map([["agent", { status: "idle", lastUsage: null }]]),
+        serverInfo: {
+          serverId: "server",
+          hostname: "test",
+          version: "0.0.0",
+          capabilities: {
+            voice: {
+              dictation: { enabled: true, reason: "" },
+              voice: { enabled: true, reason: "" },
+            },
+          },
+        },
         queuedMessages: new Map(),
         agentStreamHead: new Map(),
         agentStreamTail: new Map(),
@@ -137,6 +160,7 @@ const {
   mockSessionState.setAgentStreamTail = setAgentStreamTailMock;
   mockSessionState.setAgentStreamHead = setAgentStreamHeadMock;
   const markScrollInvestigationRenderMock = vi.fn();
+  const agentDirectoryStatusMock = vi.fn(() => "ready");
 
   return {
     theme,
@@ -154,6 +178,7 @@ const {
     setAgentStreamTailMock,
     setAgentStreamHeadMock,
     setQueuedMessagesMock,
+    agentDirectoryStatusMock,
   };
 });
 
@@ -220,7 +245,7 @@ vi.mock("react-native-safe-area-context", () => ({
 vi.mock("@/runtime/host-runtime", () => ({
   useHostRuntimeClient: () => mockClient,
   useHostRuntimeIsConnected: () => true,
-  useHostRuntimeAgentDirectoryStatus: () => "ready",
+  useHostRuntimeAgentDirectoryStatus: () => agentDirectoryStatusMock(),
 }));
 
 vi.mock("@/stores/session-store", () => {
@@ -363,6 +388,20 @@ vi.mock("@/hooks/use-dictation", () => ({
 }));
 
 vi.mock("@/utils/server-info-capabilities", () => ({
+  getVoiceReadinessState: ({
+    serverInfo,
+    mode,
+  }: {
+    serverInfo: {
+      capabilities?: {
+        voice?: {
+          dictation?: { enabled: boolean; reason: string };
+          voice?: { enabled: boolean; reason: string };
+        };
+      };
+    } | null;
+    mode: "dictation" | "voice";
+  }) => serverInfo?.capabilities?.voice?.[mode] ?? null,
   resolveVoiceUnavailableMessage: () => null,
 }));
 
@@ -554,6 +593,19 @@ beforeEach(() => {
   setAgentStreamTailMock.mockClear();
   setAgentStreamHeadMock.mockClear();
   setQueuedMessagesMock.mockClear();
+  agentDirectoryStatusMock.mockReset();
+  agentDirectoryStatusMock.mockReturnValue("ready");
+  mockSessionState.sessions.server.serverInfo = {
+    serverId: "server",
+    hostname: "test",
+    version: "0.0.0",
+    capabilities: {
+      voice: {
+        dictation: { enabled: true, reason: "" },
+        voice: { enabled: true, reason: "" },
+      },
+    },
+  };
   mockSessionState.sessions.server.agentStreamHead = new Map();
   mockSessionState.sessions.server.agentStreamTail = new Map();
   mockSessionState.sessions.server.queuedMessages = new Map();
@@ -876,6 +928,17 @@ describe("Composer attachments", () => {
 
     expect(countMessageInputRenders()).toBe(renderCountBeforeLoading + 1);
     expect(document.querySelector('[aria-label="Send message"]')).toHaveProperty("disabled", true);
+  });
+
+  it("enables dictation from server capabilities before the agent directory finishes loading", () => {
+    agentDirectoryStatusMock.mockReturnValue("initial_loading");
+
+    renderComposer();
+
+    expect(document.querySelector('[aria-label="Start dictation"]')).toHaveProperty(
+      "disabled",
+      false,
+    );
   });
 
   it("locks the preserved draft while submit loading", () => {

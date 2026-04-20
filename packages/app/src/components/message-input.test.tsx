@@ -1,9 +1,15 @@
-import React from "react";
+import React, { createRef } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MessageInput, type AttachmentMenuItem } from "./message-input";
+import { MessageInput, type AttachmentMenuItem, type MessageInputRef } from "./message-input";
+
+const { startDictationMock, cancelDictationMock, confirmDictationMock } = vi.hoisted(() => ({
+  startDictationMock: vi.fn(),
+  cancelDictationMock: vi.fn(),
+  confirmDictationMock: vi.fn(),
+}));
 
 const { theme } = vi.hoisted(() => ({
   theme: {
@@ -85,9 +91,9 @@ vi.mock("@/hooks/use-dictation", () => ({
     duration: 0,
     error: null,
     status: "idle",
-    startDictation: vi.fn(),
-    cancelDictation: vi.fn(),
-    confirmDictation: vi.fn(),
+    startDictation: startDictationMock,
+    cancelDictation: cancelDictationMock,
+    confirmDictation: confirmDictationMock,
     retryFailedDictation: vi.fn(),
     discardFailedDictation: vi.fn(),
   }),
@@ -214,6 +220,9 @@ beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  startDictationMock.mockReset();
+  cancelDictationMock.mockReset();
+  confirmDictationMock.mockReset();
 });
 
 afterEach(() => {
@@ -323,5 +332,59 @@ describe("MessageInput attachments", () => {
 
     expect(document.querySelectorAll('[data-icon="ArrowUp"]')).toHaveLength(0);
     expect(document.querySelectorAll('[data-icon="CornerDownLeft"]')).toHaveLength(1);
+  });
+});
+
+describe("MessageInput dictation shortcuts", () => {
+  it("does not poison the dictation toggle when readiness is temporarily false", () => {
+    const inputRef = createRef<MessageInputRef>();
+
+    act(() => {
+      root?.render(
+        <MessageInput
+          ref={inputRef}
+          value=""
+          onChangeText={vi.fn()}
+          onSubmit={vi.fn()}
+          attachments={[]}
+          cwd="/repo"
+          attachmentMenuItems={[]}
+          client={{ isConnected: true } as never}
+          isAgentRunning={false}
+          isReadyForDictation={false}
+          onQueue={vi.fn()}
+        />,
+      );
+    });
+
+    act(() => {
+      inputRef.current?.runKeyboardAction("dictation-toggle");
+    });
+    expect(startDictationMock).not.toHaveBeenCalled();
+    expect(confirmDictationMock).not.toHaveBeenCalled();
+
+    act(() => {
+      root?.render(
+        <MessageInput
+          ref={inputRef}
+          value=""
+          onChangeText={vi.fn()}
+          onSubmit={vi.fn()}
+          attachments={[]}
+          cwd="/repo"
+          attachmentMenuItems={[]}
+          client={{ isConnected: true } as never}
+          isAgentRunning={false}
+          isReadyForDictation
+          onQueue={vi.fn()}
+        />,
+      );
+    });
+    act(() => {
+      inputRef.current?.runKeyboardAction("dictation-toggle");
+    });
+
+    expect(startDictationMock).toHaveBeenCalledTimes(1);
+    expect(confirmDictationMock).not.toHaveBeenCalled();
   });
 });
