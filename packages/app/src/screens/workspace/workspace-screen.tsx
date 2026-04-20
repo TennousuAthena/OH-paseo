@@ -2091,7 +2091,6 @@ function WorkspaceScreenContent({
                     {isWorkspaceHeaderLoading ? (
                       <View style={styles.headerTitleTextGroup}>
                         <View style={styles.headerTitleSkeleton} />
-                        <View style={styles.headerProjectTitleSkeleton} />
                       </View>
                     ) : (
                       <View style={styles.headerTitleTextGroup}>
@@ -2492,20 +2491,12 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: "60%",
   },
   headerTitleSkeleton: {
-    width: 190,
-    maxWidth: "45%",
+    width: 220,
+    maxWidth: "100%",
     height: 22,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.surface3,
     opacity: 0.25,
-  },
-  headerProjectTitleSkeleton: {
-    width: 300,
-    maxWidth: "45%",
-    height: 22,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface3,
-    opacity: 0.18,
   },
   headerRight: {
     flexDirection: "row",
