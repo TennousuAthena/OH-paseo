@@ -815,14 +815,14 @@ function RootStack() {
         <Stack.Screen name="settings/[section]" />
         <Stack.Screen name="pair-scan" />
       </Stack.Protected>
-      <Stack.Screen
-        name="h/[serverId]/workspace/[workspaceId]"
-        getId={({ params }) => {
-          const serverId = getRouteParamValue(params?.serverId);
-          const workspaceId = getRouteParamValue(params?.workspaceId);
-          return serverId && workspaceId ? `${serverId}:${workspaceId}` : undefined;
-        }}
-      />
+      {/*
+        Do not add getId or dangerouslySingular back to the workspace route.
+        Expo Router maps dangerouslySingular to React Navigation getId, and
+        getId repeatedly breaks Android native-stack/Fabric by reordering an
+        already-mounted workspace screen. Keep workspace identity/retention
+        outside this route-level native-stack API.
+      */}
+      <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
       <Stack.Screen name="h/[serverId]/agent/[agentId]" options={{ gestureEnabled: false }} />
       <Stack.Screen name="h/[serverId]/index" />
       <Stack.Screen name="h/[serverId]/sessions" />
