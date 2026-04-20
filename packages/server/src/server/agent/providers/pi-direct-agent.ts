@@ -100,6 +100,28 @@ interface StartTurnResult {
   turnId: string;
 }
 
+export type PiDirectSessionAdapter = Pick<
+  PiAgentSession,
+  | "abort"
+  | "agent"
+  | "dispose"
+  | "extensionRunner"
+  | "getSessionStats"
+  | "messages"
+  | "model"
+  | "prompt"
+  | "promptTemplates"
+  | "resourceLoader"
+  | "sessionId"
+  | "sessionManager"
+  | "setModel"
+  | "setThinkingLevel"
+  | "subscribe"
+  | "thinkingLevel"
+>;
+
+type PiDirectModelRegistry = Pick<ModelRegistry, "find" | "getAll">;
+
 interface PiToolResultObject {
   output?: string;
   stdout?: string;
@@ -666,7 +688,7 @@ function mapSkillCommand(skill: Skill): AgentSlashCommand {
   };
 }
 
-function buildSlashCommands(session: PiAgentSession): AgentSlashCommand[] {
+function buildSlashCommands(session: PiDirectSessionAdapter): AgentSlashCommand[] {
   const commands: AgentSlashCommand[] = [];
   const extensionCommands = session.extensionRunner?.getRegisteredCommands() ?? [];
 
@@ -749,6 +771,14 @@ function getStreamEventTurnId(event: AgentStreamEvent): string | undefined {
   }
 }
 
+function isPiRequestAbortError(error: unknown): boolean {
+  if (error instanceof Error && error.name === "AbortError") {
+    return true;
+  }
+
+  return /\brequest was aborted\b/i.test(stringifyUnknownError(error));
+}
+
 function resolveThinkingOptionId(
   cachedThinkingOptionId: string | null,
   sessionThinkingLevel: ThinkingLevel,
@@ -773,7 +803,7 @@ function mapThinkingOption(option: (typeof PI_THINKING_OPTIONS)[number]) {
 }
 
 function findModelInRegistry(
-  registry: ModelRegistry,
+  registry: PiDirectModelRegistry,
   parsedReference: PiModelReference,
 ): Model<Api> | undefined {
   if (parsedReference.provider) {
@@ -799,8 +829,8 @@ export class PiDirectAgentSession implements AgentSession {
   private latestUsage: AgentUsage | undefined;
 
   constructor(
-    private readonly session: PiAgentSession,
-    private readonly modelRegistry: ModelRegistry,
+    private readonly session: PiDirectSessionAdapter,
+    private readonly modelRegistry: PiDirectModelRegistry,
     private readonly config: AgentSessionConfig,
   ) {
     this.lastKnownThinkingOptionId =
@@ -1076,6 +1106,15 @@ export class PiDirectAgentSession implements AgentSession {
       .catch((error) => {
         const failedTurnId = this.activeTurnId ?? turnId;
         this.activeTurnId = null;
+        if (isPiRequestAbortError(error)) {
+          this.emit({
+            type: "turn_canceled",
+            provider: PI_PROVIDER,
+            turnId: failedTurnId,
+            reason: stringifyUnknownError(error),
+          });
+          return;
+        }
         this.emit({
           type: "turn_failed",
           provider: PI_PROVIDER,
