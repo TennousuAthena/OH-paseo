@@ -471,7 +471,6 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
         searchPlaceholder="Search tabs"
         open={isOpen}
         onOpenChange={setIsOpen}
-        enableDismissOnClose={false}
         anchorRef={anchorRef}
         renderOption={({ option, selected, active, onPress }) => {
           const tab = tabByKey.get(option.id);

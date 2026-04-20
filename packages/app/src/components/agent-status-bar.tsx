@@ -630,7 +630,6 @@ function ControlledStatusBar({
             title="Preferences"
             visible={prefsOpen}
             onClose={() => setPrefsOpen(false)}
-            stackBehavior="replace"
             testID="agent-preferences-sheet"
           >
             {canSelectModel ? (

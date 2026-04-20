@@ -657,7 +657,6 @@ export function CombinedModelSelector({
         onSelect={() => {}}
         open={isOpen}
         onOpenChange={handleOpenChange}
-        stackBehavior="push"
         anchorRef={anchorRef}
         desktopPlacement="top-start"
         desktopMinWidth={360}

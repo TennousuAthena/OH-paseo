@@ -10,7 +10,6 @@ import {
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { GestureHandlerRootView, Gesture, GestureDetector } from "react-native-gesture-handler";
-import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { PortalProvider } from "@gorhom/portal";
 import { VoiceProvider } from "@/contexts/voice-context";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -898,23 +897,21 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <KeyboardProvider>
             <QueryProvider>
-              <BottomSheetModalProvider>
-                <HostRuntimeBootstrapProvider>
-                  <PushNotificationRouter />
-                  <ToastProvider>
-                    <ProvidersWrapper>
-                      <SidebarAnimationProvider>
-                        <HorizontalScrollProvider>
-                          <OpenProjectListener />
-                          <AppWithSidebar>
-                            <RootStack />
-                          </AppWithSidebar>
-                        </HorizontalScrollProvider>
-                      </SidebarAnimationProvider>
-                    </ProvidersWrapper>
-                  </ToastProvider>
-                </HostRuntimeBootstrapProvider>
-              </BottomSheetModalProvider>
+              <HostRuntimeBootstrapProvider>
+                <PushNotificationRouter />
+                <ToastProvider>
+                  <ProvidersWrapper>
+                    <SidebarAnimationProvider>
+                      <HorizontalScrollProvider>
+                        <OpenProjectListener />
+                        <AppWithSidebar>
+                          <RootStack />
+                        </AppWithSidebar>
+                      </HorizontalScrollProvider>
+                    </SidebarAnimationProvider>
+                  </ProvidersWrapper>
+                </ToastProvider>
+              </HostRuntimeBootstrapProvider>
             </QueryProvider>
           </KeyboardProvider>
         </SafeAreaProvider>

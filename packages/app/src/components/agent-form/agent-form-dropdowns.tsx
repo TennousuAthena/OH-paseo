@@ -4,7 +4,6 @@ import { View, Text, Pressable, TextInput, ActivityIndicator } from "react-nativ
 import type { StyleProp, ViewStyle, TextProps } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
-  BottomSheetModal,
   BottomSheetScrollView,
   BottomSheetBackdrop,
   BottomSheetBackgroundProps,
@@ -30,6 +29,10 @@ import type {
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
 import { getModeVisuals, type AgentModeIcon } from "@server/server/agent/provider-manifest";
 import { Combobox, ComboboxItem, ComboboxEmpty } from "@/components/ui/combobox";
+import {
+  IsolatedBottomSheetModal,
+  useIsolatedBottomSheetVisibility,
+} from "@/components/ui/isolated-bottom-sheet-modal";
 import { baseColors } from "@/styles/theme";
 import { isNative } from "@/constants/platform";
 
@@ -256,30 +259,16 @@ export function DropdownSheet({
   children,
 }: DropdownSheetProps): ReactElement {
   const { theme } = useUnistyles();
-  const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const titleColor = theme.colors.foreground;
   const snapPoints = useMemo(() => ["60%", "90%"], []);
+  const { sheetRef, handleSheetChange } = useIsolatedBottomSheetVisibility({
+    visible,
+    onClose,
+  });
 
   const handleClose = useCallback(() => {
-    bottomSheetRef.current?.dismiss();
     onClose();
   }, [onClose]);
-
-  useEffect(() => {
-    if (visible) {
-      bottomSheetRef.current?.present();
-    } else {
-      bottomSheetRef.current?.dismiss();
-    }
-  }, [visible]);
-
-  const handleSheetChange = useCallback(
-    (index: number) => {
-      if (index === -1) {
-        onClose();
-      }
-    },
-    [onClose],
-  );
 
   const renderBackdrop = useCallback(
     (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
@@ -289,8 +278,8 @@ export function DropdownSheet({
   );
 
   return (
-    <BottomSheetModal
-      ref={bottomSheetRef}
+    <IsolatedBottomSheetModal
+      ref={sheetRef}
       snapPoints={snapPoints}
       index={0}
       enableDynamicSizing={false}
@@ -303,7 +292,9 @@ export function DropdownSheet({
       keyboardBlurBehavior="restore"
     >
       <View style={styles.bottomSheetHeader}>
-        <Text style={[styles.dropdownSheetTitle, { color: theme.colors.foreground }]}>{title}</Text>
+        <Text key={titleColor} style={[styles.dropdownSheetTitle, { color: titleColor }]}>
+          {title}
+        </Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close sheet"
@@ -321,7 +312,7 @@ export function DropdownSheet({
       >
         {children}
       </BottomSheetScrollView>
-    </BottomSheetModal>
+    </IsolatedBottomSheetModal>
   );
 }
 
@@ -1229,7 +1220,6 @@ const styles = StyleSheet.create((theme) => ({
   dropdownSheetTitle: {
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.foreground,
     textAlign: "center",
   },
   dropdownSheetScrollContent: {
