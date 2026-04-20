@@ -99,6 +99,7 @@ import {
   type DaemonTransportFactory,
   type WebSocketFactory,
 } from "./daemon-client-transport.js";
+import { DaemonClientRuntimeMetrics } from "./daemon-client-runtime-metrics.js";
 
 export interface Logger {
   debug(obj: object, msg?: string): void;
@@ -109,10 +110,15 @@ export interface Logger {
 
 const consoleLogger: Logger = {
   debug: () => {},
-  info: (obj, msg) => console.info(msg, obj),
+  info: (obj, msg) => console.log(msg, obj),
   warn: (obj, msg) => console.warn(msg, obj),
   error: (obj, msg) => console.error(msg, obj),
 };
+
+const perfNow: () => number =
+  typeof performance !== "undefined" && typeof performance.now === "function"
+    ? () => performance.now()
+    : () => Date.now();
 
 export type {
   DaemonTransport,
@@ -198,6 +204,8 @@ export type DaemonClientConfig = {
     baseDelayMs?: number;
     maxDelayMs?: number;
   };
+  runtimeMetricsIntervalMs?: number;
+  runtimeMetricsWindowMs?: number;
 };
 
 export type SendMessageOptions = {
@@ -650,6 +658,8 @@ export class DaemonClient {
   private readonly logClientIdHash: string;
   private readonly logGeneration: number | null;
   private lastServerInfoMessage: ServerInfoStatusPayload | null = null;
+  private runtimeMetricsInterval: ReturnType<typeof setInterval> | null = null;
+  private runtimeMetrics: DaemonClientRuntimeMetrics | null = null;
 
   constructor(private config: DaemonClientConfig) {
     this.logger = config.logger ?? consoleLogger;
@@ -673,6 +683,28 @@ export class DaemonClient {
       Number.isFinite(this.config.runtimeGeneration)
         ? this.config.runtimeGeneration
         : null;
+    const runtimeMetricsIntervalMs =
+      typeof config.runtimeMetricsIntervalMs === "number" && config.runtimeMetricsIntervalMs > 0
+        ? config.runtimeMetricsIntervalMs
+        : 0;
+    if (runtimeMetricsIntervalMs > 0) {
+      const runtimeMetricsWindowMs =
+        typeof config.runtimeMetricsWindowMs === "number" && config.runtimeMetricsWindowMs > 0
+          ? Math.max(config.runtimeMetricsWindowMs, runtimeMetricsIntervalMs)
+          : undefined;
+      this.runtimeMetrics = new DaemonClientRuntimeMetrics(
+        this.logger,
+        {
+          connectionPath: this.logConnectionPath,
+          serverId: this.logServerId,
+          getConnectionStatus: () => this.connectionState.status,
+        },
+        runtimeMetricsWindowMs ? { windowMs: runtimeMetricsWindowMs } : undefined,
+      );
+      this.runtimeMetricsInterval = setInterval(() => {
+        this.runtimeMetrics?.flush();
+      }, runtimeMetricsIntervalMs);
+    }
   }
 
   // ============================================================================
@@ -883,6 +915,12 @@ export class DaemonClient {
     this.rejectPendingSendQueue(new Error("Daemon client closed"));
     this.clearTerminalSlots();
     this.lastServerInfoMessage = null;
+    if (this.runtimeMetricsInterval) {
+      clearInterval(this.runtimeMetricsInterval);
+      this.runtimeMetricsInterval = null;
+      this.runtimeMetrics?.flush({ final: true });
+      this.runtimeMetrics = null;
+    }
     this.updateConnectionState(
       { status: "disposed" },
       { event: "DISPOSE", reason: "Client closed", reasonCode: "disposed" },
@@ -3703,7 +3741,17 @@ export class DaemonClient {
     if (rawBytes) {
       const frame = decodeTerminalStreamFrame(rawBytes);
       if (frame) {
+        const binaryStartMs = perfNow();
         this.handleBinaryFrame(frame);
+        this.runtimeMetrics?.recordBinaryFrame(
+          frame.opcode === TerminalStreamOpcode.Output
+            ? "output"
+            : frame.opcode === TerminalStreamOpcode.Snapshot
+              ? "snapshot"
+              : "other",
+          rawBytes.byteLength,
+          perfNow() - binaryStartMs,
+        );
         return;
       }
     }
@@ -3712,6 +3760,8 @@ export class DaemonClient {
       return;
     }
 
+    const bytes = rawBytes?.byteLength ?? payload.length;
+    const startMs = perfNow();
     let parsedJson: unknown;
     try {
       parsedJson = JSON.parse(payload);
@@ -3727,10 +3777,16 @@ export class DaemonClient {
     }
 
     if (parsed.data.type === "pong") {
+      this.runtimeMetrics?.recordMessage("pong", bytes, perfNow() - startMs);
       return;
     }
 
     this.handleSessionMessage(parsed.data.message);
+    const msgType = parsed.data.message.type;
+    this.runtimeMetrics?.recordMessage(msgType, bytes, perfNow() - startMs);
+    if (parsed.data.message.type === "agent_stream") {
+      this.runtimeMetrics?.recordAgentStream(parsed.data.message.payload);
+    }
   }
 
   private handleBinaryFrame(frame: TerminalStreamFrame): void {
