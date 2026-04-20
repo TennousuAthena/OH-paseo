@@ -145,21 +145,6 @@ export function normalizeWorkspaceDescriptor(
   };
 }
 
-export function mergeWorkspaceSnapshotWithExisting(input: {
-  incoming: WorkspaceDescriptor;
-  existing?: WorkspaceDescriptor | null;
-}): WorkspaceDescriptor {
-  const { incoming, existing } = input;
-  if (!existing || existing.id !== incoming.id) {
-    return incoming;
-  }
-
-  return {
-    ...incoming,
-    diffStat: incoming.diffStat ?? existing.diffStat,
-  };
-}
-
 function preserveWorkspaceDescriptorIdentity(
   incoming: WorkspaceDescriptor,
   existing?: WorkspaceDescriptor | null,
@@ -1002,11 +987,7 @@ export const useSessionStore = create<SessionStore>()(
           let changed = false;
           for (const workspace of nextEntries) {
             const existing = next.get(workspace.id);
-            const mergedWorkspace = mergeWorkspaceSnapshotWithExisting({
-              incoming: workspace,
-              existing,
-            });
-            const nextWorkspace = preserveWorkspaceDescriptorIdentity(mergedWorkspace, existing);
+            const nextWorkspace = preserveWorkspaceDescriptorIdentity(workspace, existing);
             if (existing === nextWorkspace) {
               continue;
             }

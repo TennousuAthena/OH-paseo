@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { WorkspaceDescriptorPayload } from "@server/shared/messages";
 import {
-  mergeWorkspaceSnapshotWithExisting,
   normalizeWorkspaceDescriptor,
   useSessionStore,
   type WorkspaceDescriptor,
@@ -274,7 +273,6 @@ export function useSidebarWorkspacesList(options?: {
     }
     void (async () => {
       const next = new Map<string, WorkspaceDescriptor>();
-      const existingWorkspaces = useSessionStore.getState().sessions[serverId]?.workspaces;
       let cursor: string | null = null;
       try {
         while (true) {
@@ -284,13 +282,7 @@ export function useSidebarWorkspacesList(options?: {
           });
           for (const entry of payload.entries) {
             const workspace = toWorkspaceDescriptor(entry);
-            next.set(
-              workspace.id,
-              mergeWorkspaceSnapshotWithExisting({
-                incoming: workspace,
-                existing: existingWorkspaces?.get(workspace.id),
-              }),
-            );
+            next.set(workspace.id, workspace);
           }
           if (!payload.pageInfo.hasMore || !payload.pageInfo.nextCursor) {
             break;

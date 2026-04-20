@@ -4,7 +4,6 @@ import type { DaemonClient } from "@server/client/daemon-client";
 import type { WorkspaceDescriptorPayload } from "@server/shared/messages";
 
 import {
-  mergeWorkspaceSnapshotWithExisting,
   normalizeWorkspaceDescriptor,
   useSessionStore,
   type WorkspaceDescriptor,
@@ -194,6 +193,25 @@ describe("mergeWorkspaces", () => {
     expect(after.workspaces.get("/repo/a")).not.toBe(beforeA);
     expect(after.workspaces.get("/repo/b")).toBe(beforeB);
   });
+
+  it("uses incoming null diff stat as authoritative", () => {
+    const store = useSessionStore.getState();
+    initializeTestSession();
+    const workspace = createWorkspace({
+      id: "/repo/main",
+      diffStat: { additions: 2, deletions: 1 },
+    });
+    store.mergeWorkspaces("test-server", [workspace]);
+    const before = getTestSessionReferences();
+
+    store.mergeWorkspaces("test-server", [{ ...workspace, diffStat: null }]);
+    const after = getTestSessionReferences();
+
+    expect(after.sessions).not.toBe(before.sessions);
+    expect(after.session).not.toBe(before.session);
+    expect(after.workspaces).not.toBe(before.workspaces);
+    expect(after.workspaces.get(workspace.id)?.diffStat).toBeNull();
+  });
 });
 
 describe("setWorkspaces", () => {
@@ -214,25 +232,6 @@ describe("setWorkspaces", () => {
     expect(after.session).toBe(before.session);
     expect(after.workspaces).toBe(before.workspaces);
     expect(after.workspaces.get(workspace.id)).toBe(before.workspaces.get(workspace.id));
-  });
-
-  it("stores replacement descriptors as-is when diff stat is cleared", () => {
-    const store = useSessionStore.getState();
-    initializeTestSession();
-    const workspace = createWorkspace({
-      id: "/repo/main",
-      diffStat: { additions: 2, deletions: 1 },
-    });
-    store.setWorkspaces("test-server", new Map([[workspace.id, workspace]]));
-    const before = getTestSessionReferences();
-
-    store.setWorkspaces("test-server", new Map([[workspace.id, { ...workspace, diffStat: null }]]));
-    const after = getTestSessionReferences();
-
-    expect(after.sessions).not.toBe(before.sessions);
-    expect(after.session).not.toBe(before.session);
-    expect(after.workspaces).not.toBe(before.workspaces);
-    expect(after.workspaces.get(workspace.id)?.diffStat).toBeNull();
   });
 });
 
@@ -275,36 +274,5 @@ describe("patchWorkspaceScripts", () => {
 
     expect(next).toBe(current);
     expect(next.get(workspace.id)).toBe(workspace);
-  });
-});
-
-describe("mergeWorkspaceSnapshotWithExisting", () => {
-  it("preserves the last known diff stat when a snapshot only has baseline null data", () => {
-    const existing = createWorkspace({
-      id: "/tmp/repo",
-      diffStat: { additions: 4, deletions: 2 },
-    });
-    const incoming = createWorkspace({
-      id: "/tmp/repo",
-      diffStat: null,
-    });
-
-    expect(mergeWorkspaceSnapshotWithExisting({ incoming, existing })).toEqual({
-      ...incoming,
-      diffStat: { additions: 4, deletions: 2 },
-    });
-  });
-
-  it("uses the incoming diff stat when the server provides a known value", () => {
-    const existing = createWorkspace({
-      id: "/tmp/repo",
-      diffStat: { additions: 4, deletions: 2 },
-    });
-    const incoming = createWorkspace({
-      id: "/tmp/repo",
-      diffStat: { additions: 0, deletions: 0 },
-    });
-
-    expect(mergeWorkspaceSnapshotWithExisting({ incoming, existing })).toEqual(incoming);
   });
 });
