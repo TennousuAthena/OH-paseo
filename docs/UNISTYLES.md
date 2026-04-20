@@ -89,6 +89,38 @@ const { theme } = useUnistyles();
 
 Use this sparingly. It works because React re-renders the prop, but it gives up the main Unistyles native-update path for that value.
 
+## `withUnistyles` And The `> *` Child-Selector Leak
+
+`withUnistyles` on a component with a theme-dependent `style` prop works by wrapping the component in a `<div style={{display: 'contents'}} className={hash}>` and emitting the style under a `.hash > *` child selector so the styles cascade onto the wrapped component. This is how auto-mapping for `style` and `contentContainerStyle` works on web.
+
+The sharp edge: Unistyles hashes styles by value. If `withUnistyles` receives a style whose value is **identical** to a style used elsewhere in the app on a plain `View`, both usages get the same hash — and both CSS rules (the element rule and the `> *` child rule) are emitted under the same class name. The `> *` rule then leaks onto the direct children of every `View` that shares the hash.
+
+Concrete regression we hit: `welcome-screen.tsx` had `const ThemedScrollView = withUnistyles(ScrollView)` with `style={{ flex: 1, backgroundColor: theme.colors.surface0 }}`. `agent-panel.tsx` had `root` and `container` styles with the exact same value. All three collided on class `unistyles_j2k2iilhfz`, so the browser stylesheet contained:
+
+```css
+.unistyles_j2k2iilhfz { flex: 1 1 0%; background-color: var(--colors-surface0); }
+.unistyles_j2k2iilhfz > * { flex: 1 1 0%; background-color: var(--colors-surface0); }
+```
+
+The child-selector rule forced `flex:1` and `background-color: surface0` onto the Composer's outer `Animated.View` (a direct child of `container`), stretching it to fill remaining space and leaving a large empty gap between the composer UI and the bottom of the screen. It also painted a `surface0` band behind the scroll-to-bottom button. The bug only appeared in the browser — Electron skips `WelcomeScreen` after pairing, so the `> *` rule was never injected there.
+
+Symptoms to watch for:
+
+- A sibling of a themed panel-background `View` stretches unexpectedly on web only.
+- Random direct children of a `{ flex: 1, backgroundColor: surface0 }` `View` pick up an unexpected background.
+- DevTools shows a `.unistyles_xxx > *` rule you did not write.
+
+Quick confirmation in DevTools console:
+
+```js
+[...document.styleSheets].flatMap(s => [...(s.cssRules || [])])
+  .map(r => r.cssText).filter(t => t.includes("unistyles") && t.includes("> *"));
+```
+
+Any match beyond benign `r-pointerEvents-* > *` rules from react-native-web is a leak.
+
+Avoid the bug by preferring the wrapper-`View` pattern from the previous section whenever possible: put `{ flex: 1, backgroundColor: surface0 }` on a plain `View` and give the `ScrollView` a theme-free `style`/`contentContainerStyle`. That keeps `withUnistyles` off the hot path and avoids the hash collision. Only reach for `withUnistyles(ScrollView)` when a wrapper view is genuinely awkward, and when you do, give the wrapped style a distinctive shape (extra key, different layout) so it does not hash-collide with a common panel background used elsewhere.
+
 ## Hidden Sheet Content
 
 `@gorhom/bottom-sheet` can keep `BottomSheetModal` content mounted while the sheet is hidden. That matters during Paseo's startup theme transition: a header node can be created under the initial adaptive theme, stay hidden, then appear later with stale native style values even though surrounding content has re-rendered correctly.

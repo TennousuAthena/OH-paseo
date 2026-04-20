@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Pressable, Text, View, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { QrCode, Link2, ClipboardPaste, ExternalLink, Settings } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HostProfile } from "@/types/host-connection";
@@ -21,8 +21,6 @@ import { PaseoLogo } from "@/components/icons/paseo-logo";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { isWeb, isNative } from "@/constants/platform";
 
-const ThemedScrollView = withUnistyles(ScrollView);
-
 type WelcomeAction = {
   key: "scan-qr" | "direct-connection" | "paste-pairing-link";
   label: string;
@@ -33,13 +31,15 @@ type WelcomeAction = {
 };
 
 const styles = StyleSheet.create((theme) => ({
-  scrollView: {
+  root: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
   },
+  scrollView: {
+    flex: 1,
+  },
   container: {
     flexGrow: 1,
-    backgroundColor: theme.colors.surface0,
     padding: theme.spacing[6],
     paddingBottom: 0,
     alignItems: "center",
@@ -309,97 +309,101 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const showHostList = hosts.length > 0 && !anyOnlineServerId;
 
   return (
-    <ThemedScrollView
-      style={styles.scrollView}
-      contentContainerStyle={[
-        styles.container,
-        { paddingBottom: theme.spacing[6] + insets.bottom },
-      ]}
-      showsVerticalScrollIndicator={false}
-      testID="welcome-screen"
-    >
-      <View style={styles.content}>
-        <PaseoLogo size={96} />
-        <View style={styles.copyBlock}>
-          <Text style={styles.title}>Welcome to Paseo</Text>
-          {showHostList ? (
-            <Text style={styles.subtitle}>Connecting to your hosts…</Text>
-          ) : (
-            <>
-              <Text style={styles.subtitle}>Connect your computer to get started</Text>
-              {isNative ? (
-                <Pressable
-                  style={styles.setupLink}
-                  onPress={() => openExternalUrl("https://paseo.sh")}
-                >
-                  <Text style={styles.setupLinkText}>paseo.sh</Text>
-                  <ExternalLink size={14} color={theme.colors.accent} />
-                </Pressable>
-              ) : null}
-            </>
-          )}
-        </View>
-
-        <View style={styles.actions}>
-          {actions.map((action) => {
-            const Icon = action.icon;
-            return (
-              <Pressable
-                key={action.key}
-                style={[styles.actionButton, action.primary ? styles.actionButtonPrimary : null]}
-                onPress={action.onPress}
-                testID={action.testID}
-              >
-                <Icon
-                  size={18}
-                  color={action.primary ? theme.colors.accentForeground : theme.colors.foreground}
-                />
-                <Text style={[styles.actionText, action.primary ? styles.actionTextPrimary : null]}>
-                  {action.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {showHostList && (
-          <View style={styles.hostList}>
-            {hosts.map((host) => (
-              <HostStatusRow key={host.serverId} serverId={host.serverId} label={host.label} />
-            ))}
+    <View style={styles.root}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.container,
+          { paddingBottom: theme.spacing[6] + insets.bottom },
+        ]}
+        showsVerticalScrollIndicator={false}
+        testID="welcome-screen"
+      >
+        <View style={styles.content}>
+          <PaseoLogo size={96} />
+          <View style={styles.copyBlock}>
+            <Text style={styles.title}>Welcome to Paseo</Text>
+            {showHostList ? (
+              <Text style={styles.subtitle}>Connecting to your hosts…</Text>
+            ) : (
+              <>
+                <Text style={styles.subtitle}>Connect your computer to get started</Text>
+                {isNative ? (
+                  <Pressable
+                    style={styles.setupLink}
+                    onPress={() => openExternalUrl("https://paseo.sh")}
+                  >
+                    <Text style={styles.setupLinkText}>paseo.sh</Text>
+                    <ExternalLink size={14} color={theme.colors.accent} />
+                  </Pressable>
+                ) : null}
+              </>
+            )}
           </View>
-        )}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={Settings}
-          onPress={() => router.push("/settings")}
-          style={styles.settingsButton}
-          testID="welcome-open-settings"
-        >
-          Settings
-        </Button>
-      </View>
-      <Text style={styles.versionLabel}>{appVersionText}</Text>
+          <View style={styles.actions}>
+            {actions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Pressable
+                  key={action.key}
+                  style={[styles.actionButton, action.primary ? styles.actionButtonPrimary : null]}
+                  onPress={action.onPress}
+                  testID={action.testID}
+                >
+                  <Icon
+                    size={18}
+                    color={action.primary ? theme.colors.accentForeground : theme.colors.foreground}
+                  />
+                  <Text
+                    style={[styles.actionText, action.primary ? styles.actionTextPrimary : null]}
+                  >
+                    {action.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-      <AddHostModal
-        visible={isDirectOpen}
-        onClose={() => setIsDirectOpen(false)}
-        onSaved={({ profile, serverId }) => {
-          onHostAdded?.(profile);
-          finishOnboarding(serverId);
-        }}
-      />
+          {showHostList && (
+            <View style={styles.hostList}>
+              {hosts.map((host) => (
+                <HostStatusRow key={host.serverId} serverId={host.serverId} label={host.label} />
+              ))}
+            </View>
+          )}
 
-      <PairLinkModal
-        visible={isPasteLinkOpen}
-        onClose={() => setIsPasteLinkOpen(false)}
-        onSaved={({ profile, serverId }) => {
-          onHostAdded?.(profile);
-          finishOnboarding(serverId);
-        }}
-      />
-    </ThemedScrollView>
+          <Button
+            variant="ghost"
+            size="sm"
+            leftIcon={Settings}
+            onPress={() => router.push("/settings")}
+            style={styles.settingsButton}
+            testID="welcome-open-settings"
+          >
+            Settings
+          </Button>
+        </View>
+        <Text style={styles.versionLabel}>{appVersionText}</Text>
+
+        <AddHostModal
+          visible={isDirectOpen}
+          onClose={() => setIsDirectOpen(false)}
+          onSaved={({ profile, serverId }) => {
+            onHostAdded?.(profile);
+            finishOnboarding(serverId);
+          }}
+        />
+
+        <PairLinkModal
+          visible={isPasteLinkOpen}
+          onClose={() => setIsPasteLinkOpen(false)}
+          onSaved={({ profile, serverId }) => {
+            onHostAdded?.(profile);
+            finishOnboarding(serverId);
+          }}
+        />
+      </ScrollView>
+    </View>
   );
 }
