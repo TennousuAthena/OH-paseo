@@ -1264,34 +1264,24 @@ function WorkspaceScreenContent({
     [focusWorkspacePane, openWorkspaceDraftTab, persistenceKey],
   );
 
-  const handleCreateTerminal = useCallback(
-    (input?: { paneId?: string }) => {
-      if (createTerminalMutation.isPending || pendingTerminalCreateInput) {
-        return;
-      }
+  const handleCreateTerminal = useStableEvent((input?: { paneId?: string }) => {
+    if (createTerminalMutation.isPending || pendingTerminalCreateInput) {
+      return;
+    }
 
-      if (canCreateTerminalNow) {
-        createTerminalMutation.mutate(input);
-        return;
-      }
+    if (canCreateTerminalNow) {
+      createTerminalMutation.mutate(input);
+      return;
+    }
 
-      if (hasHydratedWorkspaces && isMissingWorkspaceExecutionAuthority) {
-        toast.error("Workspace path is not available yet");
-        return;
-      }
+    if (hasHydratedWorkspaces && isMissingWorkspaceExecutionAuthority) {
+      toast.error("Workspace path is not available yet");
+      return;
+    }
 
-      setPendingTerminalCreateInput(input ?? {});
-      toast.show("Preparing workspace, opening terminal when ready...");
-    },
-    [
-      canCreateTerminalNow,
-      createTerminalMutation,
-      hasHydratedWorkspaces,
-      isMissingWorkspaceExecutionAuthority,
-      pendingTerminalCreateInput,
-      toast,
-    ],
-  );
+    setPendingTerminalCreateInput(input ?? {});
+    toast.show("Preparing workspace, opening terminal when ready...");
+  });
 
   const handleSelectSwitcherTab = useCallback(
     (key: string) => {
