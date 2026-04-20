@@ -681,8 +681,6 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
     files,
     payloadError: diffPayloadError,
     isLoading: isDiffLoading,
-    isError: isDiffError,
-    error: diffError,
   } = useCheckoutDiffQuery({
     serverId,
     cwd,
@@ -1071,9 +1069,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
   );
 
   const hasChanges = files.length > 0;
-  const diffErrorMessage =
-    diffPayloadError?.message ??
-    (isDiffError && diffError instanceof Error ? diffError.message : null);
+  const diffErrorMessage = diffPayloadError?.message ?? null;
   const prErrorMessage = githubFeaturesEnabled ? (prPayloadError?.message ?? null) : null;
   const branchLabel =
     gitStatus?.currentBranch && gitStatus.currentBranch !== "HEAD"

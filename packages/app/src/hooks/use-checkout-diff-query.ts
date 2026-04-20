@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useMemo } from "react";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { usePanelStore } from "@/stores/panel-store";
@@ -76,27 +76,10 @@ export function useCheckoutDiffQuery({
     [serverId, cwd, mode, baseRef, compareIgnoreWhitespace],
   );
 
-  const query = useQuery({
+  const query = useQuery<CheckoutDiffQueryPayload>({
     queryKey,
-    queryFn: async () => {
-      if (!client) {
-        throw new Error("Daemon client not available");
-      }
-      const payload = await client.getCheckoutDiff(cwd, {
-        mode: compareMode,
-        baseRef: compareBaseRef,
-        ignoreWhitespace: compareIgnoreWhitespace,
-      });
-      return {
-        ...payload,
-        files: orderCheckoutDiffFiles(payload.files),
-      };
-    },
-    enabled: !!client && isConnected && !!cwd && enabled,
+    queryFn: skipToken,
     staleTime: Infinity,
-    refetchOnMount: false,
-    refetchOnReconnect: false,
-    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
@@ -208,9 +191,9 @@ export function useCheckoutDiffQuery({
   return {
     files: payload?.files ?? [],
     payloadError,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    isError: query.isError || Boolean(payloadError),
-    error: query.error,
+    isLoading: payload === null && enabled && isConnected,
+    isFetching: false,
+    isError: Boolean(payloadError),
+    error: null,
   };
 }
