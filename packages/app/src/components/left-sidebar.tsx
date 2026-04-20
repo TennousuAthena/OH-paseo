@@ -57,10 +57,10 @@ import {
   buildHostSessionsRoute,
   buildSettingsRoute,
   mapPathnameToServer,
-  parseServerIdFromPathname,
 } from "@/utils/host-routes";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { isWeb } from "@/constants/platform";
+import { resolveActiveHost } from "@/utils/active-host";
 
 const MIN_CHAT_WIDTH = 400;
 
@@ -127,19 +127,10 @@ export const LeftSidebar = memo(function LeftSidebar({
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
   const pathname = usePathname();
   const daemons = useHosts();
-  const activeServerIdFromPath = useMemo(() => parseServerIdFromPathname(pathname), [pathname]);
-  const activeDaemon = useMemo(() => {
-    if (daemons.length === 0) {
-      return null;
-    }
-    if (activeServerIdFromPath) {
-      const routeMatch = daemons.find((entry) => entry.serverId === activeServerIdFromPath);
-      if (routeMatch) {
-        return routeMatch;
-      }
-    }
-    return daemons[0] ?? null;
-  }, [activeServerIdFromPath, daemons]);
+  const activeDaemon = useMemo(
+    () => resolveActiveHost({ hosts: daemons, pathname }),
+    [daemons, pathname],
+  );
   const activeServerId = activeDaemon?.serverId ?? null;
   const activeHostLabel = useMemo(() => {
     if (!activeDaemon) return "No host";

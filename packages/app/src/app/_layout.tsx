@@ -63,6 +63,8 @@ import { CommandCenter } from "@/components/command-center";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
+import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
+import { resolveActiveHost } from "@/utils/active-host";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-action";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
@@ -412,6 +414,10 @@ function AppContainer({
   const isCompactLayout = useIsCompactFormFactor();
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
   const pathname = usePathname();
+  const activeServerId = useMemo(
+    () => resolveActiveHost({ hosts: daemons, pathname })?.serverId ?? null,
+    [daemons, pathname],
+  );
   const toggleAgentList = isCompactLayout ? toggleMobileAgentList : toggleDesktopAgentList;
   const toggleDesktopSidebars = useCallback(() => {
     const { desktop } = usePanelStore.getState();
@@ -492,6 +498,10 @@ function AppContainer({
       <UpdateBanner />
       <CommandCenter />
       <ProjectPickerModal />
+      <WorkspaceShortcutTargetsSubscriber
+        enabled={keyboardShortcutsEnabled}
+        serverId={activeServerId}
+      />
       <WorkspaceSetupDialog />
       <KeyboardShortcutsDialog />
     </View>

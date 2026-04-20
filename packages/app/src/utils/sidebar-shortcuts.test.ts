@@ -4,7 +4,7 @@ import type {
   SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 
-import { buildSidebarShortcutModel } from "./sidebar-shortcuts";
+import { buildSidebarShortcutModel, getRelativeSidebarShortcutTarget } from "./sidebar-shortcuts";
 
 function workspace(input: {
   serverId: string;
@@ -75,10 +75,6 @@ describe("buildSidebarShortcutModel", () => {
       collapsedProjectKeys: new Set<string>(["p2"]),
     });
 
-    expect(model.visibleTargets).toEqual([
-      { serverId: "s1", workspaceId: "ws-main" },
-      { serverId: "s1", workspaceId: "ws-feat-a" },
-    ]);
     expect(model.shortcutTargets).toEqual([
       { serverId: "s1", workspaceId: "ws-main" },
       { serverId: "s1", workspaceId: "ws-feat-a" },
@@ -104,8 +100,6 @@ describe("buildSidebarShortcutModel", () => {
       collapsedProjectKeys: new Set<string>(),
     });
 
-    expect(model.visibleTargets).toHaveLength(20);
-    expect(model.visibleTargets[19]).toEqual({ serverId: "s", workspaceId: "ws-20" });
     expect(model.shortcutTargets).toHaveLength(9);
     expect(model.shortcutTargets[0]).toEqual({ serverId: "s", workspaceId: "ws-1" });
     expect(model.shortcutTargets[8]).toEqual({ serverId: "s", workspaceId: "ws-9" });
@@ -128,7 +122,68 @@ describe("buildSidebarShortcutModel", () => {
       collapsedProjectKeys: new Set<string>(["p1"]),
     });
 
-    expect(model.visibleTargets).toEqual([]);
     expect(model.shortcutTargets).toEqual([]);
+  });
+});
+
+describe("getRelativeSidebarShortcutTarget", () => {
+  const targets = [
+    { serverId: "s1", workspaceId: "ws-1" },
+    { serverId: "s1", workspaceId: "ws-2" },
+    { serverId: "s1", workspaceId: "ws-3" },
+  ];
+
+  it("moves backward and forward through the numbered shortcut target list", () => {
+    expect(
+      getRelativeSidebarShortcutTarget({
+        targets,
+        currentTarget: { serverId: "s1", workspaceId: "ws-2" },
+        delta: -1,
+      }),
+    ).toEqual({ serverId: "s1", workspaceId: "ws-1" });
+
+    expect(
+      getRelativeSidebarShortcutTarget({
+        targets,
+        currentTarget: { serverId: "s1", workspaceId: "ws-2" },
+        delta: 1,
+      }),
+    ).toEqual({ serverId: "s1", workspaceId: "ws-3" });
+  });
+
+  it("wraps around the numbered shortcut target list", () => {
+    expect(
+      getRelativeSidebarShortcutTarget({
+        targets,
+        currentTarget: { serverId: "s1", workspaceId: "ws-1" },
+        delta: -1,
+      }),
+    ).toEqual({ serverId: "s1", workspaceId: "ws-3" });
+
+    expect(
+      getRelativeSidebarShortcutTarget({
+        targets,
+        currentTarget: { serverId: "s1", workspaceId: "ws-3" },
+        delta: 1,
+      }),
+    ).toEqual({ serverId: "s1", workspaceId: "ws-1" });
+  });
+
+  it("falls back to the nearest edge when the current route is not in the numbered list", () => {
+    expect(
+      getRelativeSidebarShortcutTarget({
+        targets,
+        currentTarget: { serverId: "s1", workspaceId: "ws-hidden" },
+        delta: 1,
+      }),
+    ).toEqual({ serverId: "s1", workspaceId: "ws-1" });
+
+    expect(
+      getRelativeSidebarShortcutTarget({
+        targets,
+        currentTarget: { serverId: "s1", workspaceId: "ws-hidden" },
+        delta: -1,
+      }),
+    ).toEqual({ serverId: "s1", workspaceId: "ws-3" });
   });
 });
