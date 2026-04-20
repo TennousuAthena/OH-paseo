@@ -4,6 +4,7 @@
 
 ### Added
 - Beta release channel for desktop updates, with a Settings toggle for receiving beta builds before they are promoted to stable.
+- Release candidates are now called beta releases, starting with `0.1.60-beta.1`.
 
 ## 0.1.59 - 2026-04-16
 
