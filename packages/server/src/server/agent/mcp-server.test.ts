@@ -10,10 +10,7 @@ import { createAgentMcpServer } from "./mcp-server.js";
 import type { AgentManager, ManagedAgent } from "./agent-manager.js";
 import type { AgentStorage, StoredAgentRecord } from "./agent-storage.js";
 import type { ProviderDefinition } from "./provider-registry.js";
-import {
-  AgentListItemPayloadSchema,
-  AgentSnapshotPayloadSchema,
-} from "../../shared/messages.js";
+import { AgentListItemPayloadSchema, AgentSnapshotPayloadSchema } from "../../shared/messages.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "../workspace-registry.js";
 import type { CreateScheduleInput, StoredSchedule } from "../schedule/types.js";
 import {

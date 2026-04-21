@@ -1408,7 +1408,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
                 throw new Error("cwd can only differ from the caller agent when target=new-agent");
               }
               if (provider !== undefined) {
-                const resolved = resolveProviderAndModel({
+                const resolved = resolveScheduleProviderAndModel({
                   provider,
                   defaultProvider: callerAgent.provider,
                 });
