@@ -63,6 +63,9 @@ import type { WorkspaceGitService } from "../../workspace-git-service.js";
 
 const DEFAULT_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000;
 const TURN_START_TIMEOUT_MS = 90 * 1000;
+const INTERRUPT_TIMEOUT_MS = 2_000;
+const APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS = 2_000;
+const APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS = 1_000;
 const CODEX_PROVIDER = "codex" as const;
 const CODEX_IMAGE_ATTACHMENT_DIR = "paseo-attachments";
 const CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX =
@@ -664,8 +667,40 @@ class CodexAppServerClient {
     } catch {
       // ignore
     }
-    terminateChildProcessTree(this.child);
-    await this.exitPromise;
+    signalChildProcessTree(this.child, "SIGTERM");
+    if (await this.waitForExit(APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS)) {
+      return;
+    }
+
+    this.logger.warn(
+      { timeoutMs: APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS },
+      "Codex app-server did not exit after SIGTERM; sending SIGKILL",
+    );
+    signalChildProcessTree(this.child, "SIGKILL");
+    if (await this.waitForExit(APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS)) {
+      return;
+    }
+
+    this.logger.warn(
+      { timeoutMs: APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS },
+      "Codex app-server did not report exit after SIGKILL",
+    );
+  }
+
+  private async waitForExit(timeoutMs: number): Promise<boolean> {
+    let timer: NodeJS.Timeout | null = null;
+    try {
+      return await Promise.race([
+        this.exitPromise.then(() => true),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
   }
 
   private async handleLine(line: string): Promise<void> {
@@ -717,14 +752,17 @@ class CodexAppServerClient {
   }
 }
 
-function terminateChildProcessTree(child: ChildProcessWithoutNullStreams): void {
-  if (child.killed) {
+function signalChildProcessTree(
+  child: ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals,
+): void {
+  if (child.exitCode !== null || child.signalCode !== null) {
     return;
   }
 
   if (process.platform !== "win32" && typeof child.pid === "number" && child.pid > 0) {
     try {
-      process.kill(-child.pid, "SIGTERM");
+      process.kill(-child.pid, signal);
       return;
     } catch {
       // Fall back to the direct child when no separate process group exists.
@@ -732,7 +770,7 @@ function terminateChildProcessTree(child: ChildProcessWithoutNullStreams): void 
   }
 
   try {
-    child.kill("SIGTERM");
+    child.kill(signal);
   } catch {
     // ignore
   }
@@ -3274,10 +3312,14 @@ class CodexAppServerAgentSession implements AgentSession {
   async interrupt(): Promise<void> {
     if (!this.client || !this.currentThreadId || !this.currentTurnId) return;
     try {
-      await this.client.request("turn/interrupt", {
-        threadId: this.currentThreadId,
-        turnId: this.currentTurnId,
-      });
+      await this.client.request(
+        "turn/interrupt",
+        {
+          threadId: this.currentThreadId,
+          turnId: this.currentTurnId,
+        },
+        INTERRUPT_TIMEOUT_MS,
+      );
     } catch (error) {
       this.logger.warn({ error }, "Failed to interrupt Codex turn");
     }
@@ -4278,6 +4320,7 @@ export class CodexAppServerAgentClient implements AgentClient {
 
 export const __codexAppServerInternals = {
   buildCodexAppServerEnv,
+  CodexAppServerClient,
   codexModelSupportsFastMode,
   CodexAppServerAgentSession,
   formatCodexQuestionPrompts,
