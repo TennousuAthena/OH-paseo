@@ -139,6 +139,35 @@ test.describe("Workspace navigation regression", () => {
       await expect(secondDeckEntry).toBeVisible({ timeout: 30_000 });
       await expect(page.locator('[data-testid^="workspace-deck-entry-"]')).toHaveCount(2);
 
+      await page.evaluate(
+        ({ agentId, serverId }) => {
+          globalThis.dispatchEvent(
+            new CustomEvent("paseo:web-notification-click", {
+              detail: {
+                data: {
+                  serverId,
+                  agentId,
+                  reason: "finished",
+                },
+              },
+              cancelable: true,
+            }),
+          );
+        },
+        { agentId: secondAgent.id, serverId },
+      );
+      await waitForWorkspaceTabsVisible(page);
+      await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, secondWorkspace.workspaceId), {
+        timeout: 30_000,
+      });
+      await expect(secondDeckEntry).toBeVisible({ timeout: 30_000 });
+      await expectWorkspaceTabVisible(page, secondAgent.id);
+      await expectWorkspaceTabHidden(page, firstAgent.id);
+      await expectOnlyWorkspaceAgentTabsVisible(page, [secondAgent.id]);
+      await expect(firstDeckEntry).toBeAttached();
+      await expect(firstDeckEntry).toBeHidden();
+      await expect(page.locator('[data-testid^="workspace-deck-entry-"]')).toHaveCount(2);
+
       await switchWorkspaceViaSidebar({
         page,
         serverId,

@@ -28,6 +28,7 @@ import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { loadSettingsFromStorage } from "@/hooks/use-settings";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useOpenProject } from "@/hooks/use-open-project";
+import { useStableEvent } from "@/hooks/use-stable-event";
 import { SessionProvider } from "@/contexts/session-context";
 import type { HostProfile } from "@/types/host-connection";
 import {
@@ -77,7 +78,7 @@ import {
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { getDesktopHost } from "@/desktop/host";
 import { updateDesktopWindowControls } from "@/desktop/electron/window";
-import { buildNotificationRoute } from "@/utils/notification-routing";
+import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
 import {
   buildHostRootRoute,
   mapPathnameToServer,
@@ -86,6 +87,10 @@ import {
   parseWorkspaceOpenIntent,
   decodeWorkspaceIdFromPathSegment,
 } from "@/utils/host-routes";
+import { useSessionStore } from "@/stores/session-store";
+import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
+import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
+import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import {
   addBrowserActiveWorkspaceLocationListener,
   syncNavigationActiveWorkspace,
@@ -124,7 +129,36 @@ const HostRuntimeBootstrapContext = createContext<HostRuntimeBootstrapState>({
 
 function PushNotificationRouter() {
   const router = useRouter();
+  const pathname = usePathname();
   const lastHandledIdRef = useRef<string | null>(null);
+  const openNotification = useStableEvent((data: Record<string, unknown> | undefined) => {
+    const target = resolveNotificationTarget(data);
+    const serverId = target.serverId;
+    const agentId = target.agentId;
+    if (serverId && agentId) {
+      const session = useSessionStore.getState().sessions[serverId];
+      const agent = session?.agents.get(agentId);
+      const workspaceId =
+        target.workspaceId ??
+        resolveWorkspaceIdByExecutionDirectory({
+          workspaces: session?.workspaces.values(),
+          workspaceDirectory: agent?.cwd,
+        });
+
+      if (workspaceId) {
+        prepareWorkspaceTab({
+          serverId,
+          workspaceId,
+          target: { kind: "agent", agentId },
+          pin: true,
+        });
+        navigateToWorkspace(serverId, workspaceId, { currentPathname: pathname });
+        return;
+      }
+    }
+
+    router.navigate(buildNotificationRoute(data));
+  });
 
   useEffect(() => {
     if (isWeb) {
@@ -145,7 +179,7 @@ function PushNotificationRouter() {
               (payload as { data?: unknown }).data !== null
                 ? (payload as { data: Record<string, unknown> }).data
                 : undefined;
-            router.push(buildNotificationRoute(data) as any);
+            openNotification(data);
           },
         );
 
@@ -165,7 +199,7 @@ function PushNotificationRouter() {
       const openFromWebClick = (event: Event) => {
         const customEvent = event as CustomEvent<WebNotificationClickDetail>;
         event.preventDefault();
-        router.push(buildNotificationRoute(customEvent.detail?.data) as any);
+        openNotification(customEvent.detail?.data);
       };
 
       target.addEventListener(WEB_NOTIFICATION_CLICK_EVENT, openFromWebClick as EventListener);
@@ -198,7 +232,7 @@ function PushNotificationRouter() {
       const data = response.notification.request.content.data as
         | Record<string, unknown>
         | undefined;
-      router.push(buildNotificationRoute(data) as any);
+      openNotification(data);
     };
 
     const subscription = Notifications.addNotificationResponseReceivedListener(openFromResponse);
@@ -212,7 +246,7 @@ function PushNotificationRouter() {
     return () => {
       subscription.remove();
     };
-  }, [router]);
+  }, [openNotification]);
 
   return null;
 }
