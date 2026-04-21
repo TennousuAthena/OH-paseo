@@ -157,6 +157,18 @@ function resolveThinkingOptionId(args: {
   return effectiveModel?.defaultThinkingOptionId ?? thinkingOptions[0]?.id ?? "";
 }
 
+function mergeSelectedComposerPreferences(args: {
+  preferences: FormPreferences;
+  provider: AgentProvider;
+  updates: Partial<ProviderPreferences>;
+}): FormPreferences {
+  return mergeProviderPreferences({
+    preferences: args.preferences,
+    provider: args.provider,
+    updates: args.updates,
+  });
+}
+
 /**
  * Pure function that resolves form state from multiple data sources.
  * Priority: explicit (URL params) > provider defaults > lightweight app prefs > fallback
@@ -389,12 +401,14 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
 
   // Track if we've done initial resolution (to avoid flickering)
   const hasResolvedRef = useRef(false);
+  const hydrationPreferencesRef = useRef<FormPreferences | null>(null);
 
   // Reset user modifications when form becomes invisible
   useEffect(() => {
     if (!isVisible) {
       setUserModified(INITIAL_USER_MODIFIED);
       hasResolvedRef.current = false;
+      hydrationPreferencesRef.current = null;
     }
   }, [isVisible]);
 
@@ -470,14 +484,18 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       return;
     }
 
-    // Wait for preferences to load before first resolution, unless explicit URL overrides exist.
-    if (isPreferencesLoading && !hasResolvedRef.current && !combinedInitialValues) {
+    if (isPreferencesLoading && !hasResolvedRef.current) {
       return;
     }
 
+    if (!hasResolvedRef.current) {
+      hydrationPreferencesRef.current = preferences;
+    }
+    const hydrationPreferences = hydrationPreferencesRef.current ?? preferences;
+
     const resolved = resolveFormState(
       combinedInitialValues,
-      preferences,
+      hydrationPreferences,
       availableModels,
       userModified,
       formStateRef.current,
@@ -616,15 +634,38 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         thinkingOptionId: nextThinkingOptionId,
       }));
       setUserModified((prev) => ({ ...prev, provider: true, model: true }));
-      void updatePreferences({ provider });
+      void updatePreferences((current) =>
+        mergeSelectedComposerPreferences({
+          preferences: current,
+          provider,
+          updates: {
+            model: nextModelId || undefined,
+          },
+        }),
+      );
     },
     [allProviderModels, selectableProviderDefinitionMap, updatePreferences],
   );
 
-  const setModeFromUser = useCallback((modeId: string) => {
-    setFormState((prev) => ({ ...prev, modeId }));
-    setUserModified((prev) => ({ ...prev, modeId: true }));
-  }, []);
+  const setModeFromUser = useCallback(
+    (modeId: string) => {
+      setFormState((prev) => ({ ...prev, modeId }));
+      setUserModified((prev) => ({ ...prev, modeId: true }));
+      const provider = formStateRef.current.provider;
+      if (provider) {
+        void updatePreferences((current) =>
+          mergeSelectedComposerPreferences({
+            preferences: current,
+            provider,
+            updates: {
+              mode: modeId || undefined,
+            },
+          }),
+        );
+      }
+    },
+    [updatePreferences],
+  );
 
   const setModelFromUser = useCallback(
     (modelId: string) => {
@@ -643,14 +684,44 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         thinkingOptionId: nextThinkingOptionId,
       }));
       setUserModified((prev) => ({ ...prev, model: true }));
+      const provider = formStateRef.current.provider;
+      if (provider) {
+        void updatePreferences((current) =>
+          mergeSelectedComposerPreferences({
+            preferences: current,
+            provider,
+            updates: {
+              model: nextModelId || undefined,
+            },
+          }),
+        );
+      }
     },
-    [availableModels, userModified.thinkingOptionId],
+    [availableModels, updatePreferences, userModified.thinkingOptionId],
   );
 
-  const setThinkingOptionFromUser = useCallback((thinkingOptionId: string) => {
-    setFormState((prev) => ({ ...prev, thinkingOptionId }));
-    setUserModified((prev) => ({ ...prev, thinkingOptionId: true }));
-  }, []);
+  const setThinkingOptionFromUser = useCallback(
+    (thinkingOptionId: string) => {
+      setFormState((prev) => ({ ...prev, thinkingOptionId }));
+      setUserModified((prev) => ({ ...prev, thinkingOptionId: true }));
+      const provider = formStateRef.current.provider;
+      const modelId = formStateRef.current.model;
+      if (provider && modelId) {
+        void updatePreferences((current) =>
+          mergeSelectedComposerPreferences({
+            preferences: current,
+            provider,
+            updates: {
+              thinkingByModel: {
+                [modelId]: thinkingOptionId,
+              },
+            },
+          }),
+        );
+      }
+    },
+    [updatePreferences],
+  );
 
   const setWorkingDir = useCallback((value: string) => {
     setFormState((prev) => ({ ...prev, workingDir: value }));
@@ -793,6 +864,7 @@ export const __private__ = {
   buildProviderDefinitionMap,
   buildProviderDefinitionMapForStatuses,
   combineInitialValues,
+  mergeSelectedComposerPreferences,
   resolveDefaultModel,
   resolveFormState,
   resolveThinkingOptionId,

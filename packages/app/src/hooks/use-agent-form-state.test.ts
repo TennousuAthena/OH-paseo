@@ -146,6 +146,112 @@ describe("useAgentFormState", () => {
     });
   });
 
+  describe("__private__.mergeSelectedComposerPreferences", () => {
+    it("stores the selected model for the selected provider", () => {
+      expect(
+        __private__.mergeSelectedComposerPreferences({
+          preferences: {},
+          provider: "codex",
+          updates: {
+            model: "gpt-5.4",
+          },
+        }),
+      ).toEqual({
+        provider: "codex",
+        providerPreferences: {
+          codex: {
+            model: "gpt-5.4",
+          },
+        },
+      });
+    });
+
+    it("preserves existing provider preferences when the selected model changes", () => {
+      expect(
+        __private__.mergeSelectedComposerPreferences({
+          preferences: {
+            provider: "claude",
+            providerPreferences: {
+              codex: {
+                mode: "full-access",
+                thinkingByModel: {
+                  "gpt-5.4-mini": "medium",
+                },
+                featureValues: {
+                  fast_mode: true,
+                },
+              },
+              claude: {
+                model: "claude-sonnet-4-6",
+              },
+            },
+            favoriteModels: [{ provider: "codex", modelId: "gpt-5.4-mini" }],
+          },
+          provider: "codex",
+          updates: {
+            model: "gpt-5.4",
+          },
+        }),
+      ).toEqual({
+        provider: "codex",
+        providerPreferences: {
+          codex: {
+            model: "gpt-5.4",
+            mode: "full-access",
+            thinkingByModel: {
+              "gpt-5.4-mini": "medium",
+            },
+            featureValues: {
+              fast_mode: true,
+            },
+          },
+          claude: {
+            model: "claude-sonnet-4-6",
+          },
+        },
+        favoriteModels: [{ provider: "codex", modelId: "gpt-5.4-mini" }],
+      });
+    });
+
+    it("stores mode and thinking preferences without dropping the selected model", () => {
+      expect(
+        __private__.mergeSelectedComposerPreferences({
+          preferences: {
+            provider: "codex",
+            providerPreferences: {
+              codex: {
+                model: "gpt-5.4",
+                mode: "auto",
+                thinkingByModel: {
+                  "gpt-5.4-mini": "low",
+                },
+              },
+            },
+          },
+          provider: "codex",
+          updates: {
+            mode: "full-access",
+            thinkingByModel: {
+              "gpt-5.4": "xhigh",
+            },
+          },
+        }),
+      ).toEqual({
+        provider: "codex",
+        providerPreferences: {
+          codex: {
+            model: "gpt-5.4",
+            mode: "full-access",
+            thinkingByModel: {
+              "gpt-5.4-mini": "low",
+              "gpt-5.4": "xhigh",
+            },
+          },
+        },
+      });
+    });
+  });
+
   describe("__private__.resolveFormState", () => {
     const codexModels: AgentModelDefinition[] = [
       {
