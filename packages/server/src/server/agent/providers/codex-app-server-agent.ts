@@ -27,6 +27,7 @@ import type {
   PersistedAgentDescriptor,
 } from "../agent-sdk-types.js";
 import type { Logger } from "pino";
+import { homedir } from "node:os";
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -4137,7 +4138,8 @@ export class CodexAppServerAgentClient implements AgentClient {
     }
   }
 
-  async listModels(_options?: ListModelsOptions): Promise<AgentModelDefinition[]> {
+  async listModels(_options: ListModelsOptions): Promise<AgentModelDefinition[]> {
+    // Codex model/list is global to the app server in this flow; cwd/force are intentionally ignored.
     const child = await this.spawnAppServer();
     const client = new CodexAppServerClient(child, this.logger);
 
@@ -4247,7 +4249,7 @@ export class CodexAppServerAgentClient implements AgentClient {
         entries.push({ label: "Models", value: "Not checked" });
       } else {
         try {
-          const models = await this.listModels();
+          const models = await this.listModels({ cwd: homedir(), force: false });
           entries.push({ label: "Models", value: String(models.length) });
         } catch (error) {
           entries.push({

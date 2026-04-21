@@ -31,6 +31,7 @@ import { runAsyncWorktreeBootstrap } from "../worktree-bootstrap.js";
 import type { ScheduleService } from "../schedule/service.js";
 import { ScheduleSummarySchema, StoredScheduleSchema } from "../schedule/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
+import { resolveSnapshotCwd } from "./provider-snapshot-manager.js";
 import {
   AgentModelSchema,
   AgentProviderEnum,
@@ -1296,11 +1297,27 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       const scheduleTarget =
         target === "self"
           ? (() => {
-              if (!callerAgentId) {
+              const callerAgent = resolveCallerAgent();
+              if (!callerAgentId || !callerAgent) {
                 throw new Error("target=self requires a caller agent");
               }
-              if (provider !== undefined || cwd !== undefined) {
-                throw new Error("provider and cwd can only be used with target=new-agent");
+              const trimmedCwd = cwd?.trim();
+              if (trimmedCwd && expandUserPath(trimmedCwd) !== callerAgent.cwd) {
+                throw new Error("cwd can only differ from the caller agent when target=new-agent");
+              }
+              if (provider !== undefined) {
+                const resolved = resolveProviderAndModel({
+                  provider,
+                  defaultProvider: callerAgent.provider,
+                });
+                if (
+                  resolved.provider !== callerAgent.provider ||
+                  (resolved.model !== undefined && resolved.model !== callerAgent.config.model)
+                ) {
+                  throw new Error(
+                    "provider can only differ from the caller agent when target=new-agent",
+                  );
+                }
               }
               return { type: "agent" as const, agentId: callerAgentId };
             })()
@@ -1498,7 +1515,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         throw new Error(`Provider ${provider} is not configured`);
       }
 
-      const models = await definition.fetchModels();
+      const models = await definition.fetchModels({ cwd: resolveSnapshotCwd(), force: false });
       return {
         content: [],
         structuredContent: ensureValidJson({

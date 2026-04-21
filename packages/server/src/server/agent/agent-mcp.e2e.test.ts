@@ -8,6 +8,7 @@ import { experimental_createMCPClient } from "ai";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import pino from "pino";
 
+import { withTimeout } from "../../utils/promise-timeout.js";
 import { createPaseoDaemon, type PaseoDaemonConfig } from "../bootstrap.js";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
 
@@ -22,26 +23,6 @@ type McpClient = {
   callTool: (input: { name: string; args?: StructuredContent }) => Promise<unknown>;
   close: () => Promise<void>;
 };
-
-async function withTimeout<T>(options: {
-  promise: Promise<T>;
-  timeoutMs: number;
-  label: string;
-}): Promise<T> {
-  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutHandle = setTimeout(() => {
-      reject(new Error(`Timed out after ${options.timeoutMs}ms (${options.label})`));
-    }, options.timeoutMs);
-  });
-  try {
-    return await Promise.race([options.promise, timeout]);
-  } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-  }
-}
 
 async function waitForPathExists(options: {
   targetPath: string;

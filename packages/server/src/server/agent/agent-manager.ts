@@ -2745,7 +2745,7 @@ export class AgentManager {
       const client = this.clients.get(normalized.provider);
       if (client) {
         try {
-          const models = await client.listModels();
+          const models = await client.listModels({ cwd: normalized.cwd, force: false });
           const defaultModel = models.find((model) => model.isDefault) ?? models[0];
           if (defaultModel) {
             normalized.model = defaultModel.id;

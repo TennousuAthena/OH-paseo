@@ -92,7 +92,7 @@ type ControlledAgentStatusBarProps = {
 
 export interface DraftAgentStatusBarProps {
   providerDefinitions: AgentProviderDefinition[];
-  selectedProvider: AgentProvider;
+  selectedProvider: AgentProvider | null;
   onSelectProvider: (provider: AgentProvider) => void;
   modeOptions: AgentMode[];
   selectedMode: string;
@@ -255,7 +255,8 @@ function ControlledStatusBar({
     : undefined;
   const ModeIconComponent = modeVisuals?.icon ? MODE_ICONS[modeVisuals.icon] : null;
   const modeIconColor = getModeIconColor(modeVisuals?.colorTier, theme.colors.palette);
-  const ProviderIcon = getProviderIcon(provider);
+  const hasSelectedProvider = provider.trim().length > 0;
+  const ProviderIcon = hasSelectedProvider ? getProviderIcon(provider) : null;
 
   const hasAnyControl =
     Boolean(providerOptions?.length) ||
@@ -620,7 +621,9 @@ function ControlledStatusBar({
             accessibilityLabel="Agent preferences"
             testID="agent-preferences-button"
           >
-            <ProviderIcon size={theme.iconSize.lg} color={theme.colors.foregroundMuted} />
+            {ProviderIcon ? (
+              <ProviderIcon size={theme.iconSize.lg} color={theme.colors.foregroundMuted} />
+            ) : null}
             <Text style={styles.prefsButtonText} numberOfLines={1}>
               {displayModel}
             </Text>
@@ -662,7 +665,12 @@ function ControlledStatusBar({
                       pointerEvents="none"
                       testID="agent-preferences-model"
                     >
-                      <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                      {ProviderIcon ? (
+                        <ProviderIcon
+                          size={theme.iconSize.md}
+                          color={theme.colors.foregroundMuted}
+                        />
+                      ) : null}
                       <Text style={styles.sheetSelectText}>{selectedModelLabel}</Text>
                       <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                     </View>
@@ -1096,6 +1104,7 @@ export function DraftAgentStatusBar({
   const effectiveSelectedMode = selectedMode || mappedModeOptions[0]?.id || "";
   const effectiveSelectedThinkingOption =
     selectedThinkingOptionId || mappedThinkingOptions[0]?.id || undefined;
+  const hasSelectedProvider = selectedProvider !== null;
 
   if (platformIsWeb) {
     return (
@@ -1103,7 +1112,7 @@ export function DraftAgentStatusBar({
         <CombinedModelSelector
           providerDefinitions={providerDefinitions}
           allProviderModels={allProviderModels}
-          selectedProvider={selectedProvider}
+          selectedProvider={selectedProvider ?? ""}
           selectedModel={selectedModel}
           onSelect={onSelectProviderAndModel}
           favoriteKeys={favoriteKeys}
@@ -1119,20 +1128,22 @@ export function DraftAgentStatusBar({
           onOpen={onModelSelectorOpen}
           onClose={onDropdownClose}
         />
-        <ControlledStatusBar
-          provider={selectedProvider}
-          providerDefinitions={providerDefinitions}
-          modeOptions={mappedModeOptions}
-          selectedModeId={effectiveSelectedMode}
-          onSelectMode={onSelectMode}
-          thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
-          selectedThinkingOptionId={effectiveSelectedThinkingOption}
-          onSelectThinkingOption={onSelectThinkingOption}
-          features={features}
-          onSetFeature={onSetFeature}
-          onDropdownClose={onDropdownClose}
-          disabled={disabled}
-        />
+        {selectedProvider ? (
+          <ControlledStatusBar
+            provider={selectedProvider}
+            providerDefinitions={providerDefinitions}
+            modeOptions={mappedModeOptions}
+            selectedModeId={effectiveSelectedMode}
+            onSelectMode={onSelectMode}
+            thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
+            selectedThinkingOptionId={effectiveSelectedThinkingOption}
+            onSelectThinkingOption={onSelectThinkingOption}
+            features={features}
+            onSetFeature={onSetFeature}
+            onDropdownClose={onDropdownClose}
+            disabled={disabled}
+          />
+        ) : null}
       </View>
     );
   }
@@ -1145,10 +1156,10 @@ export function DraftAgentStatusBar({
   return (
     <>
       <ControlledStatusBar
-        provider={selectedProvider}
+        provider={selectedProvider ?? ""}
         providerDefinitions={providerDefinitions}
         allProviderModels={allProviderModels}
-        modeOptions={mappedModeOptions}
+        modeOptions={hasSelectedProvider ? mappedModeOptions : undefined}
         selectedModeId={effectiveSelectedMode}
         onSelectMode={onSelectMode}
         modelOptions={modelOptions}
