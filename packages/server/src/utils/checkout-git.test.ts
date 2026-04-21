@@ -334,7 +334,7 @@ const x = 1;
     expect(divergedStatus.behindOfOrigin).toBe(1);
   });
 
-  it("reports incoming additions when the base branch is behind its remote", async () => {
+  it("does not report incoming additions when the base branch is behind its remote", async () => {
     const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
     commitFile(cloneDir, "file.txt", "remote one\nremote two\n", "remote update");
     execSync("git push", { cwd: cloneDir });
@@ -342,10 +342,10 @@ const x = 1;
 
     const shortstat = await getCheckoutShortstat(repoDir);
 
-    expect(shortstat).toEqual({ additions: 2, deletions: 1 });
+    expect(shortstat).toBeNull();
   });
 
-  it("reports incoming deletions when the base branch is behind its remote", async () => {
+  it("does not report incoming deletions when the base branch is behind its remote", async () => {
     const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
     commitFile(cloneDir, "file.txt", "", "remote deletion");
     execSync("git push", { cwd: cloneDir });
@@ -353,7 +353,7 @@ const x = 1;
 
     const shortstat = await getCheckoutShortstat(repoDir);
 
-    expect(shortstat).toEqual({ additions: 0, deletions: 1 });
+    expect(shortstat).toBeNull();
   });
 
   it("reports outgoing changes when the base branch is ahead of its remote", async () => {
@@ -390,7 +390,7 @@ const x = 1;
     expect(shortstat).toEqual({ additions: 1, deletions: 0 });
   });
 
-  it("adds working tree changes to incoming shortstat when the base branch is behind", async () => {
+  it("reports only working tree changes when the base branch is behind", async () => {
     commitFile(repoDir, "tracked.txt", "tracked base\n", "add tracked file");
     const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
     commitFile(cloneDir, "incoming.txt", "incoming\n", "remote incoming");
@@ -400,7 +400,7 @@ const x = 1;
 
     const shortstat = await getCheckoutShortstat(repoDir);
 
-    expect(shortstat).toEqual({ additions: 3, deletions: 1 });
+    expect(shortstat).toEqual({ additions: 2, deletions: 1 });
   });
 
   it("keeps feature shortstat scoped to feature changes when the base remote is ahead", async () => {
@@ -417,7 +417,7 @@ const x = 1;
     expect(shortstat).toEqual({ additions: 1, deletions: 0 });
   });
 
-  it("reports incoming base changes when a feature branch has no local work beyond merge-base", async () => {
+  it("does not report incoming base changes when a feature branch has no local work beyond merge-base", async () => {
     const { cloneDir } = setupRemoteTrackingMain(repoDir, tempDir);
     execSync("git checkout -b feature", { cwd: repoDir });
     execSync("git checkout main", { cwd: cloneDir });
@@ -427,7 +427,7 @@ const x = 1;
 
     const shortstat = await getCheckoutShortstat(repoDir);
 
-    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+    expect(shortstat).toBeNull();
   });
 
   it("reports feature shortstat ahead of the comparison merge-base", async () => {

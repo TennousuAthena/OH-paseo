@@ -1358,20 +1358,6 @@ function parseCheckoutShortstat(text: string): CheckoutShortstat | null {
   return { additions, deletions };
 }
 
-function combineCheckoutShortstats(
-  first: CheckoutShortstat | null,
-  second: CheckoutShortstat | null,
-): CheckoutShortstat | null {
-  const additions = (first?.additions ?? 0) + (second?.additions ?? 0);
-  const deletions = (first?.deletions ?? 0) + (second?.deletions ?? 0);
-
-  if (additions === 0 && deletions === 0) {
-    return null;
-  }
-
-  return { additions, deletions };
-}
-
 async function getCheckoutShortstatUncached(
   cwd: string,
   context?: CheckoutContext,
@@ -1414,37 +1400,11 @@ async function getCheckoutShortstatUncached(
       return null;
     }
 
-    const { stdout: aheadBehindOut } = await runGitCommand(
-      ["rev-list", "--left-right", "--count", `HEAD...${comparisonRef}`],
-      { cwd, env: READ_ONLY_GIT_ENV },
-    );
-    const [headOnlyRaw, comparisonOnlyRaw] = aheadBehindOut.trim().split(/\s+/);
-    const headOnly = Number.parseInt(headOnlyRaw ?? "0", 10);
-    const comparisonOnly = Number.parseInt(comparisonOnlyRaw ?? "0", 10);
-    if (Number.isNaN(headOnly) || Number.isNaN(comparisonOnly)) {
-      return null;
-    }
-
-    // Incoming uses a two-ref diff, so add the working tree diff separately.
-    const showIncoming = headOnly === 0 && comparisonOnly > 0;
-    const { stdout } = await runGitCommand(
-      ["diff", "--shortstat", mergeBase, ...(showIncoming ? [comparisonRef] : [])],
-      {
-        cwd,
-        env: READ_ONLY_GIT_ENV,
-      },
-    );
-    const committedShortstat = parseCheckoutShortstat(stdout);
-
-    if (!showIncoming) {
-      return committedShortstat;
-    }
-
-    const { stdout: worktreeOut } = await runGitCommand(["diff", "--shortstat", "HEAD"], {
+    const { stdout } = await runGitCommand(["diff", "--shortstat", mergeBase], {
       cwd,
       env: READ_ONLY_GIT_ENV,
     });
-    return combineCheckoutShortstats(committedShortstat, parseCheckoutShortstat(worktreeOut));
+    return parseCheckoutShortstat(stdout);
   } catch {
     return null;
   }
