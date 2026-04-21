@@ -35,6 +35,18 @@ export function useHoverSafeZone({
     // The pointer opened the card, so we start inside.
     let wasInside = true;
 
+    function enterSafeZone() {
+      if (wasInside) return;
+      wasInside = true;
+      onEnterSafeZone();
+    }
+
+    function leaveSafeZone() {
+      if (!wasInside) return;
+      wasInside = false;
+      onLeaveSafeZone();
+    }
+
     function handlePointerMove(event: PointerEvent) {
       const triggerNode = triggerRef.current as unknown as Element | null;
       const contentNode = contentRef.current as unknown as Element | null;
@@ -42,15 +54,23 @@ export function useHoverSafeZone({
       const contentRect = contentNode ? contentNode.getBoundingClientRect() : null;
 
       const inside = isInsideSafeZone(triggerRect, contentRect, event.clientX, event.clientY);
-      if (inside === wasInside) return;
-      wasInside = inside;
-      if (inside) onEnterSafeZone();
-      else onLeaveSafeZone();
+      if (inside) enterSafeZone();
+      else leaveSafeZone();
+    }
+
+    function handlePointerOut(event: PointerEvent) {
+      if (event.relatedTarget === null) {
+        leaveSafeZone();
+      }
     }
 
     document.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerout", handlePointerOut);
+    window.addEventListener("blur", leaveSafeZone);
     return () => {
       document.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerout", handlePointerOut);
+      window.removeEventListener("blur", leaveSafeZone);
     };
   }, [enabled, triggerRef, contentRef, onEnterSafeZone, onLeaveSafeZone]);
 }

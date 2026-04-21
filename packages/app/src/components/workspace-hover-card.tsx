@@ -132,7 +132,8 @@ function WorkspaceHoverCardDesktop({
 
   const handleTriggerLeave = useCallback(() => {
     triggerHoveredRef.current = false;
-  }, []);
+    scheduleClose();
+  }, [scheduleClose]);
 
   // While open, the safe zone covers trigger + content + the bridge between
   // them. Close only fires when the pointer leaves the safe zone; re-entering
@@ -155,11 +156,16 @@ function WorkspaceHoverCardDesktop({
 
   // When content becomes available while trigger is already hovered, open the card.
   useEffect(() => {
-    if (!hasContent || isDragging) return;
+    if (!hasContent) {
+      clearGraceTimer();
+      setOpen(false);
+      return;
+    }
+    if (isDragging) return;
     if (triggerHoveredRef.current) {
       setOpen(true);
     }
-  }, [hasContent, isDragging]);
+  }, [clearGraceTimer, hasContent, isDragging]);
 
   // Cleanup on unmount
   useEffect(() => {
