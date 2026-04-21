@@ -47,7 +47,11 @@ export default defineConfig({
       { find: "react", replacement: resolvePackageEntry("react") },
       { find: "react-dom", replacement: resolvePackageEntry("react-dom") },
       {
-        find: "@xterm/addon-ligatures",
+        find: /^@xterm\/addon-ligatures\/lib\/addon-ligatures\.mjs$/,
+        replacement: path.resolve(appDir, "test-stubs/xterm-addon-ligatures.ts"),
+      },
+      {
+        find: /^@xterm\/addon-ligatures$/,
         replacement: path.resolve(appDir, "test-stubs/xterm-addon-ligatures.ts"),
       },
     ],
