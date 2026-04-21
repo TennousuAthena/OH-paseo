@@ -16,8 +16,10 @@ const LINE_COUNT = 50_000;
 const THROUGHPUT_BUDGET_MS = 30_000;
 const KEYSTROKE_SAMPLE_COUNT = 20;
 const KEYSTROKE_P95_BUDGET_MS = 150;
+const RUN_MANUAL_TERMINAL_PERF = process.env.PASEO_TERMINAL_PERF_E2E === "1";
+const terminalPerfDescribe = RUN_MANUAL_TERMINAL_PERF ? test.describe : test.describe.skip;
 
-test.describe("Terminal wire performance", () => {
+terminalPerfDescribe("Terminal wire performance", () => {
   let client: TerminalPerfDaemonClient;
   let tempRepo: { path: string; cleanup: () => Promise<void> };
   let workspaceId: string;

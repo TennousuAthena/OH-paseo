@@ -19,6 +19,13 @@ export type TerminalPerfDaemonClient = {
     terminal: { id: string; name: string; cwd: string } | null;
     error: string | null;
   }>;
+  createAgent(options: {
+    provider: string;
+    cwd: string;
+    title?: string;
+    modeId?: string;
+  }): Promise<{ id: string; status: string }>;
+  sendAgentMessage(agentId: string, text: string): Promise<void>;
   subscribeTerminal(
     terminalId: string,
   ): Promise<{ terminalId: string; slot: number; error: null } | { error: string }>;

@@ -89,6 +89,16 @@ type ActiveTurn = {
   completed: Promise<AgentRunResult>;
 };
 
+type LargeAgentStreamPayloadRequest = {
+  bytes: number;
+  kind: "diff" | "file" | "image";
+};
+
+type AgentStreamStressRequest = {
+  count: number;
+  coalesced: boolean;
+};
+
 function resolveModelProfile(modelId: string | null | undefined): {
   modelId: string;
   durationMs: number;
@@ -113,6 +123,52 @@ function promptToText(prompt: AgentPromptInput): string {
     .flatMap((block) => (block.type === "text" ? [block.text] : []))
     .join("\n")
     .trim();
+}
+
+function parseLargeAgentStreamPayloadPrompt(
+  prompt: AgentPromptInput,
+): LargeAgentStreamPayloadRequest | null {
+  const text = promptToText(prompt);
+  const match =
+    /emit\s+(\d+)\s+(?:byte\s+)?(?:large\s+)?(diff|file|image)\s+agent stream (?:update|payload)/i.exec(
+      text,
+    );
+  if (!match) {
+    return null;
+  }
+  const bytes = Number(match[1]);
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return null;
+  }
+  return {
+    bytes: Math.min(bytes, 1_000_000),
+    kind: match[2]?.toLowerCase() as LargeAgentStreamPayloadRequest["kind"],
+  };
+}
+
+function parseAgentStreamStressPrompt(prompt: AgentPromptInput): AgentStreamStressRequest | null {
+  const text = promptToText(prompt);
+  const match = /emit\s+(\d+)\s+(coalesced\s+)?agent stream updates/i.exec(text);
+  if (!match) {
+    return null;
+  }
+  const count = Number(match[1]);
+  if (!Number.isFinite(count) || count <= 0) {
+    return null;
+  }
+  return {
+    count: Math.min(count, 5_000),
+    coalesced: Boolean(match[2]),
+  };
+}
+
+function buildRepeatedPayload(bytes: number, prefix: string): string {
+  const line = `${prefix} ${"x".repeat(96)}\n`;
+  let output = "";
+  while (output.length < bytes) {
+    output += line;
+  }
+  return output.slice(0, bytes);
 }
 
 function buildMarkdownDocument(iteration: number, prompt: AgentPromptInput): string {
@@ -282,7 +338,15 @@ export class MockLoadTestAgentSession implements AgentSession {
     };
     this.activeTurn = turn;
 
-    this.schedule(turn, 0);
+    const largePayload = parseLargeAgentStreamPayloadPrompt(prompt);
+    const stress = parseAgentStreamStressPrompt(prompt);
+    if (largePayload) {
+      this.scheduleLargePayloadTurn(turn, largePayload);
+    } else if (stress) {
+      this.scheduleStressTurn(turn, stress);
+    } else {
+      this.schedule(turn, 0);
+    }
     return { turnId };
   }
 
@@ -378,6 +442,147 @@ export class MockLoadTestAgentSession implements AgentSession {
       this.tick(turn);
     }, delayMs);
     turn.timer.unref?.();
+  }
+
+  private scheduleLargePayloadTurn(
+    turn: ActiveTurn,
+    largePayload: LargeAgentStreamPayloadRequest,
+  ): void {
+    turn.timer = setTimeout(() => {
+      this.emitLargePayloadTurn(turn, largePayload);
+    }, 0);
+    turn.timer.unref?.();
+  }
+
+  private scheduleStressTurn(turn: ActiveTurn, stress: AgentStreamStressRequest): void {
+    turn.timer = setTimeout(() => {
+      this.emitStressTurn(turn, stress);
+    }, 0);
+    turn.timer.unref?.();
+  }
+
+  private emitStressTurn(turn: ActiveTurn, stress: AgentStreamStressRequest): void {
+    if (this.activeTurn !== turn) {
+      return;
+    }
+
+    this.clearTurnTimer(turn);
+    this.emit({
+      type: "turn_started",
+      provider: this.provider,
+      turnId: turn.turnId,
+    });
+
+    for (let index = 0; index < stress.count; index += 1) {
+      this.emitTimeline(
+        turn.turnId,
+        stress.coalesced
+          ? {
+              type: "assistant_message",
+              text: `stress-update-${index}`,
+            }
+          : {
+              type: "todo",
+              items: [{ text: `stress-update-${index}`, completed: index % 2 === 0 }],
+            },
+      );
+    }
+
+    this.activeTurn = null;
+    const usage = {
+      inputTokens: 1,
+      outputTokens: stress.count,
+      contextWindowUsedTokens: stress.count,
+      contextWindowMaxTokens: 128_000,
+    };
+    this.emit({
+      type: "turn_completed",
+      provider: this.provider,
+      turnId: turn.turnId,
+      usage,
+    });
+    turn.resolve({
+      sessionId: this.id,
+      finalText: "Synthetic agent stream stress complete",
+      usage,
+      timeline: [],
+      canceled: false,
+    });
+  }
+
+  private emitLargePayloadTurn(
+    turn: ActiveTurn,
+    largePayload: LargeAgentStreamPayloadRequest,
+  ): void {
+    if (this.activeTurn !== turn) {
+      return;
+    }
+
+    this.clearTurnTimer(turn);
+    this.emit({
+      type: "turn_started",
+      provider: this.provider,
+      turnId: turn.turnId,
+    });
+
+    const payload = buildRepeatedPayload(largePayload.bytes, largePayload.kind);
+    if (largePayload.kind === "diff") {
+      this.emitTimeline(
+        turn.turnId,
+        createToolCall({
+          turnId: turn.turnId,
+          iteration: 0,
+          name: "edit",
+          status: "completed",
+          detail: {
+            type: "edit",
+            filePath: "src/large-diff.ts",
+            unifiedDiff: `diff --git a/src/large-diff.ts b/src/large-diff.ts\n${payload}`,
+          },
+        }),
+      );
+    } else if (largePayload.kind === "file") {
+      this.emitTimeline(
+        turn.turnId,
+        createToolCall({
+          turnId: turn.turnId,
+          iteration: 0,
+          name: "read",
+          status: "completed",
+          detail: {
+            type: "read",
+            filePath: "src/large-file.txt",
+            content: payload,
+          },
+        }),
+      );
+    } else {
+      this.emitTimeline(turn.turnId, {
+        type: "assistant_message",
+        text: `data:image/png;base64,${payload}`,
+      });
+    }
+
+    this.activeTurn = null;
+    const usage = {
+      inputTokens: 1,
+      outputTokens: largePayload.bytes,
+      contextWindowUsedTokens: largePayload.bytes,
+      contextWindowMaxTokens: 128_000,
+    };
+    this.emit({
+      type: "turn_completed",
+      provider: this.provider,
+      turnId: turn.turnId,
+      usage,
+    });
+    turn.resolve({
+      sessionId: this.id,
+      finalText: "Synthetic large payload complete",
+      usage,
+      timeline: [],
+      canceled: false,
+    });
   }
 
   private tick(turn: ActiveTurn): void {
