@@ -7,24 +7,23 @@ import {
   resetTerminalRenderProbe,
   startTerminalFrameSampling,
   summarizeTerminalRenderProbe,
-  terminalVisibleText,
 } from "./helpers/terminal-probes";
-import { waitForTerminalContent } from "./helpers/terminal-perf";
+import { getTerminalBufferText, waitForTerminalContent } from "./helpers/terminal-perf";
 
 async function waitForAlternateScreenExit(page: Page, afterAlt: string, timeout: number) {
-  let lastText = "";
+  let lastBufferText = "";
   let lastProbe = await readTerminalRenderProbe(page);
 
   try {
     await expect
       .poll(
         async () => {
-          lastText = await terminalVisibleText(page);
+          lastBufferText = await getTerminalBufferText(page);
           lastProbe = await readTerminalRenderProbe(page);
           return (
             lastProbe.altEnterWrites > 0 &&
             lastProbe.altExitWrites > 0 &&
-            lastText.includes(afterAlt)
+            lastBufferText.includes(afterAlt)
           );
         },
         {
@@ -41,7 +40,7 @@ async function waitForAlternateScreenExit(page: Page, afterAlt: string, timeout:
         {
           afterAlt,
           probe: summarizeTerminalRenderProbe(lastProbe),
-          visibleTextTail: lastText.slice(-500),
+          bufferTextTail: lastBufferText.slice(-500),
         },
         null,
         2,
@@ -114,9 +113,9 @@ test.describe("Terminal alternate-screen transitions", () => {
       );
       expect(probe.resetWrites, "alternate-screen exit should not replay a snapshot reset").toBe(0);
 
-      const finalText = await terminalVisibleText(page);
-      expect(finalText).toContain(historyReady);
-      expect(finalText).toContain(afterAlt);
+      const finalBufferText = await getTerminalBufferText(page);
+      expect(finalBufferText).toContain(historyReady);
+      expect(finalBufferText).toContain(afterAlt);
 
       const suspiciousFrames = probe.frames.filter(
         (frame) =>
