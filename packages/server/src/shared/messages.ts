@@ -1991,6 +1991,7 @@ export const WorkspaceScriptPayloadSchema = z.object({
   lifecycle: WorkspaceScriptLifecycleSchema,
   health: WorkspaceScriptHealthSchema.nullable(),
   exitCode: z.number().nullable().optional().default(null),
+  terminalId: z.string().nullable().optional().default(null),
 });
 
 const WorkspaceGitRuntimePayloadSchema = z
