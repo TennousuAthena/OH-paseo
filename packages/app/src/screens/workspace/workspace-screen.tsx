@@ -66,7 +66,7 @@ import {
 } from "@/utils/workspace-tab-identity";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
-import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
+import { shouldShowWorkspaceSetup, useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import {
@@ -976,6 +976,7 @@ function WorkspaceScreenContent({
   const workspaceSetupSnapshot = useWorkspaceSetupStore((state) =>
     persistenceKey ? (state.snapshots[persistenceKey] ?? null) : null,
   );
+  const showWorkspaceSetup = shouldShowWorkspaceSetup(workspaceSetupSnapshot);
   const uiTabs = useMemo(
     () => (workspaceLayout ? collectAllTabs(workspaceLayout.root) : EMPTY_UI_TABS),
     [workspaceLayout],
@@ -1229,7 +1230,7 @@ function WorkspaceScreenContent({
     if (!persistenceKey) {
       return;
     }
-    if (!workspaceSetupSnapshot) {
+    if (!workspaceSetupSnapshot || !showWorkspaceSetup) {
       if (autoOpenedSetupTabWorkspaceRef.current === persistenceKey) {
         autoOpenedSetupTabWorkspaceRef.current = null;
       }
@@ -1271,6 +1272,7 @@ function WorkspaceScreenContent({
     normalizedWorkspaceId,
     openWorkspaceTabInBackground,
     persistenceKey,
+    showWorkspaceSetup,
     workspaceSetupSnapshot,
   ]);
 
@@ -2258,14 +2260,18 @@ function WorkspaceScreenContent({
                             Copy branch name
                           </DropdownMenuItem>
                         ) : null}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          testID="workspace-header-show-setup"
-                          leading={<Settings size={16} color={theme.colors.foregroundMuted} />}
-                          onSelect={handleOpenSetupTab}
-                        >
-                          Show setup
-                        </DropdownMenuItem>
+                        {showWorkspaceSetup ? (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              testID="workspace-header-show-setup"
+                              leading={<Settings size={16} color={theme.colors.foregroundMuted} />}
+                              onSelect={handleOpenSetupTab}
+                            >
+                              Show setup
+                            </DropdownMenuItem>
+                          </>
+                        ) : null}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </View>

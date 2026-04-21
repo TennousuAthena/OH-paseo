@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useWorkspaceSetupStore } from "./workspace-setup-store";
+import { shouldShowWorkspaceSetup, useWorkspaceSetupStore } from "./workspace-setup-store";
 
 describe("workspace-setup-store", () => {
   beforeEach(() => {
@@ -37,5 +37,66 @@ describe("workspace-setup-store", () => {
     useWorkspaceSetupStore.getState().clearWorkspaceSetup();
 
     expect(useWorkspaceSetupStore.getState().pendingWorkspaceSetup).toBeNull();
+  });
+
+  it("hides empty successful setup snapshots", () => {
+    expect(
+      shouldShowWorkspaceSetup({
+        workspaceId: "workspace-1",
+        status: "completed",
+        detail: {
+          type: "worktree_setup",
+          worktreePath: "/Users/test/project",
+          branchName: "main",
+          log: "",
+          commands: [],
+        },
+        error: null,
+        updatedAt: Date.now(),
+      }),
+    ).toBe(false);
+  });
+
+  it("shows setup snapshots with commands or errors", () => {
+    expect(
+      shouldShowWorkspaceSetup({
+        workspaceId: "workspace-1",
+        status: "completed",
+        detail: {
+          type: "worktree_setup",
+          worktreePath: "/Users/test/project",
+          branchName: "main",
+          log: "done\n",
+          commands: [
+            {
+              index: 1,
+              command: "npm install",
+              cwd: "/Users/test/project",
+              log: "done\n",
+              status: "completed",
+              exitCode: 0,
+            },
+          ],
+        },
+        error: null,
+        updatedAt: Date.now(),
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldShowWorkspaceSetup({
+        workspaceId: "workspace-1",
+        status: "failed",
+        detail: {
+          type: "worktree_setup",
+          worktreePath: "/Users/test/project",
+          branchName: "main",
+          log: "",
+          commands: [],
+        },
+        error: "Failed to parse paseo.json",
+        updatedAt: Date.now(),
+      }),
+    ).toBe(true);
   });
 });

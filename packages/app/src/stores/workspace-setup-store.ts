@@ -23,6 +23,13 @@ export interface WorkspaceSetupSnapshot extends WorkspaceSetupProgressPayload {
   updatedAt: number;
 }
 
+export function shouldShowWorkspaceSetup(snapshot: WorkspaceSetupSnapshot | null): boolean {
+  if (!snapshot) {
+    return false;
+  }
+  return snapshot.error !== null || snapshot.detail.commands.length > 0;
+}
+
 interface WorkspaceSetupStoreState {
   pendingWorkspaceSetup: PendingWorkspaceSetup | null;
   snapshots: Record<string, WorkspaceSetupSnapshot>;
