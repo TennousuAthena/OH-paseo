@@ -220,6 +220,11 @@ if (args[0] === "pr" && args[1] === "list") {
   process.exit(0);
 }
 
+if (args[0] === "pr" && args[1] === "view" && args[2] === "--json" && args[3]) {
+  console.error("no pull requests found for branch");
+  process.exit(1);
+}
+
 if (args[0] === "issue" && args[1] === "list") {
   console.log("[]");
   process.exit(0);

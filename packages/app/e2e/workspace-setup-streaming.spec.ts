@@ -19,6 +19,18 @@ function getServerId(): string {
   return serverId;
 }
 
+type WorkspaceScriptStarter = {
+  startWorkspaceScript(
+    workspaceId: string,
+    scriptName: string,
+  ): Promise<{
+    workspaceId: string;
+    scriptName: string;
+    terminalId: string | null;
+    error: string | null;
+  }>;
+};
+
 /** Click the sidebar row for a workspace (by ID) and wait for navigation. */
 async function navigateToWorkspaceViaSidebar(
   page: import("@playwright/test").Page,
@@ -226,7 +238,7 @@ test.describe("Workspace setup streaming", () => {
     }
   });
 
-  test("launches script terminals after setup completes", async ({ page }) => {
+  test("launches script terminals from the workspace scripts menu", async ({ page }) => {
     test.setTimeout(90_000);
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-svc-ui-", {
@@ -263,12 +275,15 @@ test.describe("Workspace setup streaming", () => {
 
       await waitForWorkspaceTabsVisible(page);
 
-      // Wait for the script terminal tab to appear in the tabs bar.
-      // The tab title shows the command, not the script name.
+      await expect(page.locator('[data-testid^="workspace-tab-terminal_"]')).toHaveCount(0);
+      await page.getByTestId("workspace-scripts-button").click();
+      await expect(page.getByTestId("workspace-scripts-menu")).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId("workspace-scripts-start-web").click();
+      await page.keyboard.press("Escape");
+
       const terminalTab = page.locator('[data-testid^="workspace-tab-terminal_"]').first();
       await expect(terminalTab).toBeVisible({ timeout: 30_000 });
 
-      // Click the script terminal tab
       await terminalTab.click();
 
       // Verify the terminal surface rendered
@@ -294,7 +309,7 @@ test.describe("Workspace setup streaming", () => {
     }
   });
 
-  test("launches workspace scripts after setup completes", async () => {
+  test("launches workspace scripts through an explicit daemon request", async () => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-scripts-", {
       paseoConfig: {
@@ -303,7 +318,7 @@ test.describe("Workspace setup streaming", () => {
         },
         scripts: {
           editor: {
-            command: "npm run dev",
+            command: "node -e \"console.log('editor ready'); setInterval(() => {}, 1000)\"",
           },
         },
       },
@@ -325,8 +340,18 @@ test.describe("Workspace setup streaming", () => {
         throw new Error(result.error ?? "Failed to create workspace");
       }
       const workspaceDir = result.workspace.workspaceDirectory;
+      const workspaceId = String(result.workspace.id);
 
       await completed;
+
+      const scriptClient = client as typeof client & WorkspaceScriptStarter;
+      const startResult = await scriptClient.startWorkspaceScript(workspaceId, "editor");
+      expect(startResult).toMatchObject({
+        workspaceId,
+        scriptName: "editor",
+        terminalId: expect.any(String),
+        error: null,
+      });
 
       await expect
         .poll(async () => {
