@@ -163,6 +163,7 @@ describe("workspace message schemas", () => {
         lifecycle: "running",
         health: "healthy",
         exitCode: null,
+        terminalId: null,
       },
     ]);
   });
