@@ -5,11 +5,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 import type { AgentTimelineItem } from "./agent/agent-sdk-types.js";
-import {
-  runAsyncWorktreeBootstrap,
-  spawnWorkspaceScript,
-  spawnWorktreeScripts,
-} from "./worktree-bootstrap.js";
+import { runAsyncWorktreeBootstrap, spawnWorkspaceScript } from "./worktree-bootstrap.js";
 import { ensureWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
 import { ScriptRouteStore } from "./script-proxy.js";
 import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js";
@@ -717,17 +713,19 @@ describe("runAsyncWorktreeBootstrap", () => {
     const createTerminalCalls: CreateTerminalCall[] = [];
     const terminalRecords: StubTerminalRecord[] = [];
 
-    const results = await spawnWorktreeScripts({
+    const result = await spawnWorkspaceScript({
       repoRoot: repoDir,
       workspaceId: repoDir,
+      projectSlug: "repo",
       branchName: "feature-socket-service",
+      scriptName: "web",
       daemonPort: null,
       routeStore,
       runtimeStore,
       terminalManager: createStubTerminalManager(createTerminalCalls, terminalRecords),
     });
 
-    expect(results).toHaveLength(1);
+    expect(result).toBeDefined();
     expect(routeStore.listRoutes()).toEqual([]);
     expect(createTerminalCalls).toHaveLength(1);
     expect(createTerminalCalls[0]?.cwd).toBe(repoDir);
@@ -1344,15 +1342,19 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createTerminalManager();
     realTerminalManagers.push(terminalManager);
 
-    await spawnWorktreeScripts({
-      repoRoot: repoDir,
-      workspaceId: repoDir,
-      branchName: "feature-peer-env",
-      daemonPort: 6767,
-      routeStore,
-      runtimeStore,
-      terminalManager,
-    });
+    for (const scriptName of ["api", "web"]) {
+      await spawnWorkspaceScript({
+        repoRoot: repoDir,
+        workspaceId: repoDir,
+        projectSlug: "repo",
+        branchName: "feature-peer-env",
+        scriptName,
+        daemonPort: 6767,
+        routeStore,
+        runtimeStore,
+        terminalManager,
+      });
+    }
 
     const apiEnvPath = join(repoDir, "api-env.json");
     const webEnvPath = join(repoDir, "web-env.json");
@@ -1422,10 +1424,12 @@ describe("runAsyncWorktreeBootstrap", () => {
     const runtimeStore = new WorkspaceScriptRuntimeStore();
     const createTerminalCalls: CreateTerminalCall[] = [];
 
-    await spawnWorktreeScripts({
+    await spawnWorkspaceScript({
       repoRoot: repoDir,
       workspaceId: repoDir,
+      projectSlug: "repo",
       branchName: "feature-remote-service",
+      scriptName: "web",
       daemonPort: 6767,
       daemonListenHost: "100.64.0.20",
       routeStore,

@@ -3,7 +3,6 @@ import type { Logger } from "pino";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { TerminalSession } from "../terminal/terminal.js";
 import { buildScriptHostname } from "../utils/script-hostname.js";
-import { deriveProjectSlug } from "./workspace-git-metadata.js";
 import {
   getScriptConfigs,
   getWorktreeTerminalSpecs,
@@ -920,39 +919,6 @@ export async function spawnWorkspaceScript(
     );
     throw error;
   }
-}
-
-export async function spawnWorktreeScripts(options: {
-  repoRoot: string;
-  workspaceId: string;
-  branchName: string | null;
-  daemonPort?: number | null;
-  daemonListenHost?: string | null;
-  routeStore: ScriptRouteStore;
-  runtimeStore: WorkspaceScriptRuntimeStore;
-  terminalManager: TerminalManager;
-  logger?: Logger;
-  onLifecycleChanged?: () => void;
-}): Promise<WorktreeScriptResult[]> {
-  const { repoRoot } = options;
-  const projectSlug = deriveProjectSlug(repoRoot);
-  const scriptConfigs = getScriptConfigs(repoRoot);
-  if (scriptConfigs.size === 0) {
-    return [];
-  }
-
-  const results: WorktreeScriptResult[] = [];
-  for (const scriptName of scriptConfigs.keys()) {
-    results.push(
-      await spawnWorkspaceScript({
-        ...options,
-        projectSlug,
-        scriptName,
-      }),
-    );
-  }
-
-  return results;
 }
 
 export function teardownWorktreeScripts(options: {
