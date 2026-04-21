@@ -349,7 +349,7 @@ describe("create_agent MCP tool", () => {
     expect(providerWithEmptyProvider.success).toBe(false);
 
     await expect(
-      tool.handler({
+      tool.callback({
         cwd: existingCwd,
         mode: "default",
         title: "Short title",
@@ -399,7 +399,7 @@ describe("create_agent MCP tool", () => {
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["create_worktree"];
 
-    await expect(tool.handler({})).rejects.toThrow(
+    await expect(tool.callback({})).rejects.toThrow(
       "create_worktree requires branchName, refName, or githubPrNumber",
     );
   });
@@ -413,7 +413,7 @@ describe("create_agent MCP tool", () => {
     const tool = (server as any)._registeredTools["create_agent"];
 
     await expect(
-      tool.handler({
+      tool.callback({
         cwd: "/path/that/does/not/exist",
         title: "Short title",
         provider: "codex/gpt-5.4",
@@ -435,7 +435,7 @@ describe("create_agent MCP tool", () => {
 
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["create_agent"];
-    await tool.handler({
+    await tool.callback({
       cwd: existingCwd,
       title: "  Fix auth bug  ",
       provider: "codex/gpt-5.4",
@@ -465,7 +465,7 @@ describe("create_agent MCP tool", () => {
 
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["create_agent"];
-    await tool.handler({
+    await tool.callback({
       cwd: existingCwd,
       title: "  Fix auth  ",
       provider: "codex/gpt-5.4",
@@ -494,7 +494,7 @@ describe("create_agent MCP tool", () => {
 
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["create_agent"];
-    await tool.handler({
+    await tool.callback({
       cwd: existingCwd,
       title: "Config test",
       mode: "default",
@@ -556,7 +556,7 @@ describe("create_agent MCP tool", () => {
         logger,
       });
       const tool = (server as any)._registeredTools["create_agent"];
-      await tool.handler({
+      await tool.callback({
         cwd: repoDir,
         title: "Worktree agent",
         provider: "codex/gpt-5.4",
@@ -610,7 +610,7 @@ describe("create_agent MCP tool", () => {
         logger,
       });
       const tool = (server as any)._registeredTools["create_worktree"];
-      const response = await tool.handler({
+      const response = await tool.callback({
         cwd: repoDir,
         branchName: "tool-worktree",
         baseBranch: "main",
@@ -665,14 +665,14 @@ describe("create_agent MCP tool", () => {
       });
       const createTool = (server as any)._registeredTools["create_worktree"];
       const archiveTool = (server as any)._registeredTools["archive_worktree"];
-      const created = await createTool.handler({
+      const created = await createTool.callback({
         cwd: repoDir,
         branchName: "archive-tool-worktree",
         baseBranch: "main",
       });
       workspaceGitService.getSnapshot.mockClear();
 
-      await archiveTool.handler({
+      await archiveTool.callback({
         cwd: repoDir,
         worktreePath: created.structuredContent.worktreePath,
       });
@@ -706,7 +706,7 @@ describe("create_agent MCP tool", () => {
     });
     const tool = (server as any)._registeredTools["list_worktrees"];
 
-    const response = await tool.handler({ cwd: "/tmp/repo" });
+    const response = await tool.callback({ cwd: "/tmp/repo" });
 
     expect(workspaceGitService.listWorktrees).toHaveBeenCalledWith("/tmp/repo", {
       reason: "mcp:list-worktrees",
@@ -768,7 +768,7 @@ describe("create_agent MCP tool", () => {
     });
 
     const tool = (server as any)._registeredTools["create_agent"];
-    await tool.handler({
+    await tool.callback({
       cwd: "subdir",
       title: "Child",
       provider: "codex/gpt-5.4",
@@ -807,7 +807,7 @@ describe("create_agent MCP tool", () => {
       logger,
     });
     const tool = (server as any)._registeredTools["create_agent"];
-    await tool.handler({
+    await tool.callback({
       cwd: existingCwd,
       title: "Injected config test",
       mode: "default",
@@ -840,7 +840,7 @@ describe("create_schedule MCP tool", () => {
     });
     const tool = (server as any)._registeredTools["create_schedule"];
 
-    const response = await tool.handler({
+    const response = await tool.callback({
       prompt: "say hello",
       every: "5m",
       name: "Default schedule",
@@ -878,12 +878,12 @@ describe("create_schedule MCP tool", () => {
     });
     const tool = (server as any)._registeredTools["create_schedule"];
 
-    await tool.handler({
+    await tool.callback({
       prompt: "say hello",
       every: "5m",
       provider: "codex",
     });
-    await tool.handler({
+    await tool.callback({
       prompt: "say hello again",
       every: "10m",
       provider: "codex/gpt-5.4",
@@ -944,7 +944,7 @@ describe("provider listing MCP tool", () => {
       logger,
     });
     const tool = (server as any)._registeredTools["list_providers"];
-    const response = await tool.handler({});
+    const response = await tool.callback({});
 
     expect(response.structuredContent).toEqual({
       providers: [
@@ -980,7 +980,7 @@ describe("speak MCP tool", () => {
     const tool = (server as any)._registeredTools["speak"];
     expect(tool).toBeDefined();
 
-    await tool.handler({ text: "Hello from voice agent." });
+    await tool.callback({ text: "Hello from voice agent." });
     expect(speak).toHaveBeenCalledWith(
       expect.objectContaining({
         text: "Hello from voice agent.",
@@ -1000,7 +1000,7 @@ describe("speak MCP tool", () => {
       logger,
     });
     const tool = (server as any)._registeredTools["speak"];
-    await expect(tool.handler({ text: "Hello." })).rejects.toThrow(
+    await expect(tool.callback({ text: "Hello." })).rejects.toThrow(
       "No speak handler registered for caller agent",
     );
   });
@@ -1036,7 +1036,7 @@ describe("agent snapshot MCP serialization", () => {
 
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["list_agents"];
-    const response = await tool.handler({});
+    const response = await tool.callback({});
     const structured = response.structuredContent;
 
     expect(structured).toEqual({
@@ -1088,7 +1088,7 @@ describe("agent snapshot MCP serialization", () => {
       } as any,
     });
     const tool = (server as any)._registeredTools["get_agent_status"];
-    const response = await tool.handler({ agentId: "archived-agent" });
+    const response = await tool.callback({ agentId: "archived-agent" });
 
     expect(response.structuredContent).toEqual({
       status: "closed",
@@ -1144,7 +1144,7 @@ describe("agent snapshot MCP serialization", () => {
 
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["get_agent_status"];
-    const response = await tool.handler({ agentId: "full-detail-agent" });
+    const response = await tool.callback({ agentId: "full-detail-agent" });
     const snapshot = response.structuredContent.snapshot;
 
     const parsed = AgentSnapshotPayloadSchema.safeParse(snapshot);
@@ -1220,7 +1220,7 @@ describe("agent snapshot MCP serialization", () => {
     });
     const tool = (server as any)._registeredTools["get_agent_status"];
 
-    await expect(tool.handler({ agentId: "internal-agent" })).rejects.toThrow(
+    await expect(tool.callback({ agentId: "internal-agent" })).rejects.toThrow(
       "Agent internal-agent not found",
     );
   });
@@ -1264,7 +1264,7 @@ describe("agent snapshot MCP serialization", () => {
       callerAgentId: "caller-agent",
     });
     const tool = (server as any)._registeredTools["list_agents"];
-    const response = await tool.handler({});
+    const response = await tool.callback({});
 
     expect(response.structuredContent.agents.map((agent: { id: string }) => agent.id)).toEqual([
       "in-cwd",
@@ -1314,7 +1314,7 @@ describe("agent snapshot MCP serialization", () => {
       } as any,
     });
     const tool = (server as any)._registeredTools["list_agents"];
-    const response = await tool.handler({
+    const response = await tool.callback({
       cwd: "/tmp/target",
       includeArchived: true,
       sinceHours: 48,
@@ -1355,7 +1355,7 @@ describe("agent snapshot MCP serialization", () => {
       } as any,
     });
     const tool = (server as any)._registeredTools["list_agents"];
-    const response = await tool.handler({ includeArchived: true });
+    const response = await tool.callback({ includeArchived: true });
     const agentIds = response.structuredContent.agents.map((agent: { id: string }) => agent.id);
 
     expect(agentIds).toHaveLength(50);
@@ -1398,7 +1398,7 @@ describe("agent snapshot MCP serialization", () => {
       } as any,
     });
     const tool = (server as any)._registeredTools["list_agents"];
-    const response = await tool.handler({ cwd: "/tmp/repo", includeArchived: true });
+    const response = await tool.callback({ cwd: "/tmp/repo", includeArchived: true });
     const item = response.structuredContent.agents[0];
 
     expect(item).toEqual({
@@ -1471,7 +1471,7 @@ describe("agent snapshot MCP serialization", () => {
 
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["list_agents"];
-    const response = await tool.handler({});
+    const response = await tool.callback({});
 
     expect(response.structuredContent.agents.map((agent: { id: string }) => agent.id)).toEqual([
       "idle-attention-oldest",
@@ -1506,7 +1506,7 @@ describe("agent snapshot MCP serialization", () => {
       } as any,
     });
     const tool = (server as any)._registeredTools["list_agents"];
-    const response = await tool.handler({ includeArchived: true });
+    const response = await tool.callback({ includeArchived: true });
 
     const parsed = z.array(AgentListItemPayloadSchema).safeParse(response.structuredContent.agents);
     if (!parsed.success) {
@@ -1546,7 +1546,7 @@ describe("agent snapshot MCP serialization", () => {
       } as any,
     });
     const tool = (server as any)._registeredTools["get_agent_activity"];
-    const response = await tool.handler({ agentId: "archived-activity-agent" });
+    const response = await tool.callback({ agentId: "archived-activity-agent" });
 
     expect(response.structuredContent).toEqual(
       expect.objectContaining({
