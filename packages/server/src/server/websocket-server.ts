@@ -16,6 +16,7 @@ import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-sto
 import {
   type ServerInfoStatusPayload,
   type SessionOutboundMessage,
+  type WorkspaceSetupSnapshot,
   type WSHelloMessage,
   WSInboundMessageSchema,
   type ServerCapabilityState,
@@ -317,6 +318,7 @@ export class VoiceAssistantWebSocketServer {
   } | null;
   private readonly voiceSpeakHandlers = new Map<string, VoiceSpeakHandler>();
   private readonly voiceCallerContexts = new Map<string, VoiceCallerContext>();
+  private readonly workspaceSetupSnapshots = new Map<string, WorkspaceSetupSnapshot>();
   private readonly agentProviderRuntimeSettings: AgentProviderRuntimeSettingsMap | undefined;
   private readonly providerOverrides: Record<string, ProviderOverride> | undefined;
   private readonly isDev: boolean;
@@ -766,6 +768,7 @@ export class VoiceAssistantWebSocketServer {
       providerSnapshotManager: this.providerSnapshotManager,
       scriptRouteStore: this.scriptRouteStore ?? undefined,
       scriptRuntimeStore: this.scriptRuntimeStore ?? undefined,
+      workspaceSetupSnapshots: this.workspaceSetupSnapshots,
       onBranchChanged: this.onBranchChanged ?? undefined,
       getDaemonTcpPort: this.getDaemonTcpPort ?? undefined,
       getDaemonTcpHost: this.getDaemonTcpHost ?? undefined,

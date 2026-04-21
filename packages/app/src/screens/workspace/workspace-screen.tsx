@@ -976,6 +976,7 @@ function WorkspaceScreenContent({
   const workspaceSetupSnapshot = useWorkspaceSetupStore((state) =>
     persistenceKey ? (state.snapshots[persistenceKey] ?? null) : null,
   );
+  const upsertWorkspaceSetupProgress = useWorkspaceSetupStore((state) => state.upsertProgress);
   const showWorkspaceSetup = shouldShowWorkspaceSetup(workspaceSetupSnapshot);
   const uiTabs = useMemo(
     () => (workspaceLayout ? collectAllTabs(workspaceLayout.root) : EMPTY_UI_TABS),
@@ -1191,6 +1192,55 @@ function WorkspaceScreenContent({
 
   const emptyWorkspaceSeedRef = useRef<string | null>(null);
   const autoOpenedSetupTabWorkspaceRef = useRef<string | null>(null);
+  const requestedWorkspaceSetupStatusKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isRouteFocused) {
+      return;
+    }
+    if (!client || !normalizedServerId || !normalizedWorkspaceId || !persistenceKey) {
+      return;
+    }
+    if (workspaceSetupSnapshot) {
+      return;
+    }
+    if (requestedWorkspaceSetupStatusKeyRef.current === persistenceKey) {
+      return;
+    }
+
+    requestedWorkspaceSetupStatusKeyRef.current = persistenceKey;
+    let isCancelled = false;
+
+    client
+      .fetchWorkspaceSetupStatus(normalizedWorkspaceId)
+      .then((response) => {
+        if (isCancelled || response.workspaceId !== normalizedWorkspaceId || !response.snapshot) {
+          return;
+        }
+        upsertWorkspaceSetupProgress({
+          serverId: normalizedServerId,
+          payload: { workspaceId: response.workspaceId, ...response.snapshot },
+        });
+      })
+      .catch(() => {
+        if (requestedWorkspaceSetupStatusKeyRef.current === persistenceKey) {
+          requestedWorkspaceSetupStatusKeyRef.current = null;
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    client,
+    isRouteFocused,
+    normalizedServerId,
+    normalizedWorkspaceId,
+    persistenceKey,
+    upsertWorkspaceSetupProgress,
+    workspaceSetupSnapshot,
+  ]);
+
   useEffect(() => {
     if (!isRouteFocused) {
       return;

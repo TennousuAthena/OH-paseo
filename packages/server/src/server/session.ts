@@ -508,6 +508,7 @@ export type SessionOptions = {
   providerSnapshotManager?: ProviderSnapshotManager;
   scriptRouteStore?: ScriptRouteStore;
   scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
+  workspaceSetupSnapshots?: Map<string, WorkspaceSetupSnapshot>;
   onBranchChanged?: (
     workspaceId: string,
     oldBranch: string | null,
@@ -726,7 +727,7 @@ export class Session {
   );
   private readonly checkoutDiffSubscriptions = new Map<string, () => void>();
   private readonly workspaceGitWatchTargets = new Map<string, WorkspaceGitWatchTarget>();
-  private readonly workspaceSetupSnapshots = new Map<string, WorkspaceSetupSnapshot>();
+  private readonly workspaceSetupSnapshots: Map<string, WorkspaceSetupSnapshot>;
   private readonly workspaceGitFetchSubscriptions = new Map<string, () => void>();
   private readonly workspaceGitSubscriptions = new Map<string, () => void>();
   private readonly registerVoiceSpeakHandler?: (
@@ -775,6 +776,7 @@ export class Session {
       providerSnapshotManager,
       scriptRouteStore,
       scriptRuntimeStore,
+      workspaceSetupSnapshots,
       onBranchChanged,
       getDaemonTcpPort,
       getDaemonTcpHost,
@@ -816,6 +818,7 @@ export class Session {
     this.providerSnapshotManager = providerSnapshotManager ?? null;
     this.scriptRouteStore = scriptRouteStore ?? null;
     this.scriptRuntimeStore = scriptRuntimeStore ?? null;
+    this.workspaceSetupSnapshots = workspaceSetupSnapshots ?? new Map();
     this.onBranchChanged = onBranchChanged;
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
     this.getDaemonTcpHost = getDaemonTcpHost ?? null;
