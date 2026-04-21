@@ -1,5 +1,7 @@
 import equal from "fast-deep-equal";
 import { v4 as uuidv4 } from "uuid";
+import { TTLCache } from "@isaacs/ttlcache";
+import pMemoize from "p-memoize";
 import type { FSWatcher } from "node:fs";
 import { resolve, sep } from "path";
 import { homedir } from "node:os";
@@ -448,6 +450,8 @@ const MIN_STREAMING_SEGMENT_BYTES = Math.round(
 );
 const AgentIdSchema = z.string().uuid();
 const VOICE_INTERRUPT_CONFIRMATION_MS = 500;
+const AVAILABLE_EDITOR_TARGETS_CACHE_TTL_MS = 60_000;
+const AVAILABLE_EDITOR_TARGETS_CACHE_KEY = "available";
 
 type VoiceModeBaseConfig = {
   systemPrompt?: string;
@@ -705,6 +709,21 @@ export class Session {
   private nextTerminalSlot = 0;
   private inflightRequests = 0;
   private peakInflightRequests = 0;
+  private readonly availableEditorTargetsCache = new TTLCache<
+    string,
+    EditorTargetDescriptorPayload[]
+  >({
+    ttl: AVAILABLE_EDITOR_TARGETS_CACHE_TTL_MS,
+    max: 1,
+    checkAgeOnGet: true,
+  });
+  private readonly getMemoizedAvailableEditorTargets = pMemoize(
+    async () => this.resolveAvailableEditorTargets(),
+    {
+      cache: this.availableEditorTargetsCache,
+      cacheKey: () => AVAILABLE_EDITOR_TARGETS_CACHE_KEY,
+    },
+  );
   private readonly checkoutDiffSubscriptions = new Map<string, () => void>();
   private readonly workspaceGitWatchTargets = new Map<string, WorkspaceGitWatchTarget>();
   private readonly workspaceSetupSnapshots = new Map<string, WorkspaceSetupSnapshot>();
@@ -6590,8 +6609,12 @@ export class Session {
     });
   }
 
+  async resolveAvailableEditorTargets(): Promise<EditorTargetDescriptorPayload[]> {
+    return listAvailableEditorTargets();
+  }
+
   async getAvailableEditorTargets() {
-    return this.filterEditorsForClient(await listAvailableEditorTargets());
+    return this.filterEditorsForClient(await this.getMemoizedAvailableEditorTargets());
   }
 
   async openEditorTarget(options: { editorId: EditorTargetId; path: string }): Promise<void> {
