@@ -40,6 +40,7 @@ import {
 } from "./messages.js";
 import type { TerminalManager, TerminalsChangedEvent } from "../terminal/terminal-manager.js";
 import { captureTerminalLines, type TerminalSession } from "../terminal/terminal.js";
+import { TerminalOutputCoalescer } from "../terminal/terminal-output-coalescer.js";
 import {
   TerminalStreamOpcode,
   encodeTerminalSnapshotPayload,
@@ -329,6 +330,7 @@ type ActiveTerminalStream = {
   slot: number;
   unsubscribe: () => void;
   needsSnapshot: boolean;
+  outputCoalescer: TerminalOutputCoalescer;
 };
 
 export type SessionRuntimeMetrics = {
@@ -8876,6 +8878,21 @@ export class Session {
       slot,
       unsubscribe: () => {},
       needsSnapshot: true,
+      outputCoalescer: new TerminalOutputCoalescer({
+        timers: { setTimeout, clearTimeout },
+        onFlush: ({ payload }) => {
+          if (this.activeTerminalStreams.get(slot) !== activeStream) {
+            return;
+          }
+          this.emitBinary(
+            encodeTerminalStreamFrame({
+              opcode: TerminalStreamOpcode.Output,
+              slot,
+              payload,
+            }),
+          );
+        },
+      }),
     };
 
     this.activeTerminalStreams.set(slot, activeStream);
@@ -8885,21 +8902,19 @@ export class Session {
       if (this.activeTerminalStreams.get(slot) !== activeStream) {
         return;
       }
-      if (message.type === "snapshot" || message.type === "titleChange") {
+      if (message.type === "snapshot") {
+        activeStream.outputCoalescer.flush();
         activeStream.needsSnapshot = true;
         this.trySendTerminalSnapshot(activeStream);
+        return;
+      }
+      if (message.type === "titleChange") {
         return;
       }
       if (activeStream.needsSnapshot || message.data.length === 0) {
         return;
       }
-      this.emitBinary(
-        encodeTerminalStreamFrame({
-          opcode: TerminalStreamOpcode.Output,
-          slot,
-          payload: new Uint8Array(Buffer.from(message.data, "utf8")),
-        }),
-      );
+      activeStream.outputCoalescer.handle(message.data);
     });
     return slot;
   }
@@ -8918,6 +8933,7 @@ export class Session {
       return;
     }
 
+    activeStream.outputCoalescer.flush();
     activeStream.needsSnapshot = false;
     this.emitBinary(
       encodeTerminalStreamFrame({
@@ -8950,6 +8966,7 @@ export class Session {
       this.terminalIdToSlot.delete(terminalId);
       return false;
     }
+    activeStream.outputCoalescer.flush();
     this.activeTerminalStreams.delete(slot);
     this.terminalIdToSlot.delete(terminalId);
     try {

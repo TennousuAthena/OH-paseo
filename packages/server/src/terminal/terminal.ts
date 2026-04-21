@@ -560,6 +560,8 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   let title: string | undefined;
   let pendingTitle: string | undefined;
   let titleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingInput = "";
+  let inputFlushImmediate: ReturnType<typeof setImmediate> | null = null;
 
   // Create xterm.js headless terminal
   const terminal = new Terminal({
@@ -689,6 +691,11 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       return;
     }
     disposed = true;
+    pendingInput = "";
+    if (inputFlushImmediate) {
+      clearImmediate(inputFlushImmediate);
+      inputFlushImmediate = null;
+    }
     if (titleDebounceTimer) {
       clearTimeout(titleDebounceTimer);
       titleDebounceTimer = null;
@@ -757,14 +764,44 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     };
   }
 
+  function writeInputToPty(data: string): void {
+    ptyProcess.write(data);
+  }
+
+  function flushPendingInput(): void {
+    if (inputFlushImmediate) {
+      clearImmediate(inputFlushImmediate);
+      inputFlushImmediate = null;
+    }
+    const data = pendingInput;
+    pendingInput = "";
+    if (!data || killed || disposed) {
+      return;
+    }
+    writeInputToPty(data);
+  }
+
+  function scheduleInputFlush(): void {
+    if (inputFlushImmediate) {
+      return;
+    }
+    inputFlushImmediate = setImmediate(() => {
+      inputFlushImmediate = null;
+      flushPendingInput();
+    });
+  }
+
   function send(msg: ClientMessage): void {
     if (killed) return;
 
     switch (msg.type) {
-      case "input":
-        ptyProcess.write(msg.data);
+      case "input": {
+        pendingInput += msg.data;
+        scheduleInputFlush();
         break;
+      }
       case "resize":
+        flushPendingInput();
         terminal.resize(msg.cols, msg.rows);
         ptyProcess.resize(msg.cols, msg.rows);
         break;

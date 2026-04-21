@@ -1,0 +1,96 @@
+import { test, expect } from "./fixtures";
+import { TerminalE2EHarness, withTerminalInApp } from "./helpers/terminal-dsl";
+import {
+  installTerminalRenderProbe,
+  readTerminalRenderProbe,
+  resetTerminalRenderProbe,
+  startTerminalFrameSampling,
+  summarizeTerminalRenderProbe,
+  terminalVisibleText,
+} from "./helpers/terminal-probes";
+import { waitForTerminalContent } from "./helpers/terminal-perf";
+
+test.describe("Terminal alternate-screen transitions", () => {
+  let harness: TerminalE2EHarness;
+
+  test.beforeAll(async () => {
+    harness = await TerminalE2EHarness.create({ tempPrefix: "terminal-alt-" });
+  });
+
+  test.afterAll(async () => {
+    await harness?.cleanup();
+  });
+
+  test("restores the normal screen after full-screen alternate buffer exit without remounting", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(60_000);
+
+    await installTerminalRenderProbe(page);
+
+    await withTerminalInApp(page, harness, { name: "alternate-screen" }, async () => {
+      await harness.setupPrompt(page);
+
+      const terminal = harness.terminalSurface(page);
+      const historyReady = `HISTORY_READY_${Date.now()}`;
+      await terminal.pressSequentially(
+        `for i in $(seq 1 80); do echo HISTORY_$i; done; echo ${historyReady}\n`,
+        { delay: 0 },
+      );
+      await waitForTerminalContent(page, (text) => text.includes(historyReady), 10_000);
+
+      await resetTerminalRenderProbe(page);
+      await page.waitForTimeout(500);
+      const settledProbe = await readTerminalRenderProbe(page);
+      expect(settledProbe.resetWrites, "terminal should be idle before alternate-screen act").toBe(
+        0,
+      );
+      await resetTerminalRenderProbe(page);
+
+      const afterAlt = `AFTER_ALT_${Date.now()}`;
+      await startTerminalFrameSampling(page);
+      await terminal.pressSequentially(
+        `printf '\\033[?1049h\\033[2J\\033[HALT_SCREEN_TOP\\n'; sleep 0.25; printf '\\033[?1049l'; echo ${afterAlt}\n`,
+        { delay: 0 },
+      );
+      await waitForTerminalContent(page, (text) => text.includes(afterAlt), 10_000);
+      await page.waitForTimeout(250);
+      const probe = await readTerminalRenderProbe(page);
+      const probeSummary = summarizeTerminalRenderProbe(probe);
+
+      await testInfo.attach("alternate-screen-probe", {
+        body: JSON.stringify({ summary: probeSummary, probe }, null, 2),
+        contentType: "application/json",
+      });
+
+      expect(probe.setCount, "terminal instance should not be replaced after attach").toBe(0);
+      expect(probe.unsetCount, "terminal instance should not be unset after attach").toBe(0);
+      expect(
+        probe.altEnterWrites,
+        "test command should enter the alternate screen",
+      ).toBeGreaterThan(0);
+      expect(probe.altExitWrites, "test command should exit the alternate screen").toBeGreaterThan(
+        0,
+      );
+      expect(probe.resetWrites, "alternate-screen exit should not replay a snapshot reset").toBe(0);
+
+      const finalText = await terminalVisibleText(page);
+      expect(finalText).toContain(historyReady);
+      expect(finalText).toContain(afterAlt);
+
+      const suspiciousFrames = probe.frames.filter(
+        (frame) =>
+          frame.text.includes("$") &&
+          !frame.text.includes(historyReady) &&
+          !frame.text.includes(afterAlt) &&
+          frame.nonEmptyRows <= 2 &&
+          (frame.firstNonEmptyRow ?? Number.POSITIVE_INFINITY) <= 1,
+      );
+
+      expect(
+        suspiciousFrames,
+        "normal-screen restore should not flash to a mostly blank prompt-at-top frame",
+      ).toEqual([]);
+    });
+  });
+});
