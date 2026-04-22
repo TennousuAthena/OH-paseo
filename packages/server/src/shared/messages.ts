@@ -2090,7 +2090,7 @@ export const AgentUpdateMessageSchema = z.object({
     z.object({
       kind: z.literal("upsert"),
       agent: AgentSnapshotPayloadSchema,
-      project: ProjectPlacementPayloadSchema,
+      project: ProjectPlacementPayloadSchema.nullable().optional(),
     }),
     z.object({
       kind: z.literal("remove"),

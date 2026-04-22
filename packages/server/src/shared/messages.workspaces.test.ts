@@ -42,6 +42,46 @@ describe("workspace message schemas", () => {
     expect(activeScoped.scope).toBe("active");
   });
 
+  test("parses agent_update without project placement", () => {
+    const result = SessionOutboundMessageSchema.safeParse({
+      type: "agent_update",
+      payload: {
+        kind: "upsert",
+        agent: {
+          id: "agent-1",
+          provider: "codex",
+          cwd: "/tmp/repo",
+          model: null,
+          features: [],
+          thinkingOptionId: null,
+          effectiveThinkingOptionId: null,
+          createdAt: "2026-04-04T00:00:00.000Z",
+          updatedAt: "2026-04-04T00:00:00.000Z",
+          lastUserMessageAt: null,
+          status: "running",
+          capabilities: {
+            supportsStreaming: true,
+            supportsSessionPersistence: true,
+            supportsDynamicModes: true,
+            supportsMcpServers: true,
+            supportsReasoningStream: true,
+            supportsToolInvocations: true,
+          },
+          currentModeId: null,
+          availableModes: [],
+          pendingPermissions: [],
+          persistence: null,
+          title: null,
+          labels: {},
+          requiresAttention: false,
+          attentionReason: null,
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   test("parses paginated fetch_agent_history_request and response", () => {
     const request = SessionInboundMessageSchema.parse({
       type: "fetch_agent_history_request",

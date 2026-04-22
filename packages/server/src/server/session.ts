@@ -134,6 +134,7 @@ import type { AgentStorage } from "./agent/agent-storage.js";
 import {
   checkoutLiteFromGitSnapshot,
   normalizeWorkspaceId as normalizePersistedWorkspaceId,
+  deriveProjectGroupingName,
   deriveWorkspaceId,
   deriveProjectRootPath,
   deriveProjectKind,
@@ -1363,14 +1364,26 @@ export class Session {
     }
   }
 
-  private async findWorkspaceByDirectory(cwd: string): Promise<PersistedWorkspaceRecord | null> {
-    const normalizedCwd = await this.resolveWorkspaceDirectory(cwd);
+  private async findWorkspaceByDirectory(
+    cwd: string,
+    options?: { refreshGit?: boolean },
+  ): Promise<PersistedWorkspaceRecord | null> {
+    const normalizedCwd = await this.resolveWorkspaceDirectory(cwd, options);
     const workspaces = await this.workspaceRegistry.list();
-    return workspaces.find((workspace) => workspace.cwd === normalizedCwd) ?? null;
+    const workspaceId = this.resolveRegisteredWorkspaceIdForCwd(normalizedCwd, workspaces);
+    return workspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null;
   }
 
-  private async resolveWorkspaceDirectory(cwd: string): Promise<string> {
+  private async resolveWorkspaceDirectory(
+    cwd: string,
+    options?: { refreshGit?: boolean },
+  ): Promise<string> {
     const normalizedCwd = normalizePersistedWorkspaceId(cwd);
+    if (options?.refreshGit === false) {
+      const snapshot = this.workspaceGitService.peekSnapshot(normalizedCwd);
+      return normalizePersistedWorkspaceId(snapshot?.git.repoRoot ?? normalizedCwd);
+    }
+
     try {
       const snapshot = await this.workspaceGitService.getSnapshot(normalizedCwd);
       return normalizePersistedWorkspaceId(snapshot.git.repoRoot ?? normalizedCwd);
@@ -1424,10 +1437,32 @@ export class Session {
     };
   }
 
-  private async buildProjectPlacementForCwd(cwd: string): Promise<ProjectPlacementPayload | null> {
-    const workspace = await this.findWorkspaceByDirectory(cwd);
+  private async buildProjectPlacementForCwd(
+    cwd: string,
+    options?: { refreshGit?: boolean; fallback?: boolean },
+  ): Promise<ProjectPlacementPayload | null> {
+    const workspace = await this.findWorkspaceByDirectory(cwd, {
+      refreshGit: options?.refreshGit,
+    });
     if (!workspace) {
-      return null;
+      if (!options?.fallback) {
+        return null;
+      }
+
+      const normalizedCwd = normalizePersistedWorkspaceId(cwd);
+      return {
+        projectKey: normalizedCwd,
+        projectName: deriveProjectGroupingName(normalizedCwd),
+        checkout: {
+          cwd: normalizedCwd,
+          isGit: false,
+          currentBranch: null,
+          remoteUrl: null,
+          worktreeRoot: null,
+          isPaseoOwnedWorktree: false,
+          mainRepoRoot: null,
+        },
+      };
     }
     return this.buildProjectPlacementForWorkspace(workspace);
   }
@@ -1437,7 +1472,10 @@ export class Session {
       const subscription = this.agentUpdatesSubscription;
       const payload = await this.buildAgentPayload(agent);
       if (subscription) {
-        const project = await this.buildProjectPlacementForCwd(payload.cwd);
+        const project = await this.buildProjectPlacementForCwd(payload.cwd, {
+          refreshGit: false,
+          fallback: true,
+        });
         if (!project) {
           throw new Error(`Workspace not found for agent ${payload.id}`);
         }

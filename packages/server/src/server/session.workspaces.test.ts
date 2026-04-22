@@ -66,6 +66,48 @@ function makeAgent(input: {
   };
 }
 
+function makeManagedAgent(input: {
+  id: string;
+  cwd: string;
+  lifecycle: AgentSnapshotPayload["status"];
+  updatedAt: string;
+}) {
+  const now = new Date(input.updatedAt);
+  const snapshot = makeAgent({
+    id: input.id,
+    cwd: input.cwd,
+    status: input.lifecycle,
+    updatedAt: input.updatedAt,
+  });
+
+  return {
+    ...snapshot,
+    lifecycle: snapshot.status,
+    config: {
+      provider: snapshot.provider,
+      cwd: snapshot.cwd,
+    },
+    createdAt: now,
+    updatedAt: now,
+    pendingPermissions: new Map(),
+    bufferedPermissionResolutions: new Map(),
+    inFlightPermissionResponses: new Set(),
+    pendingReplacement: false,
+    persistence: null,
+    historyPrimed: true,
+    lastUserMessageAt: null,
+    attention: {
+      requiresAttention: false,
+      attentionReason: null,
+      attentionTimestamp: now,
+    },
+    foregroundTurnWaiters: new Set(),
+    unsubscribeSession: null,
+    session: null,
+    activeForegroundTurnId: input.lifecycle === "running" ? "turn-1" : null,
+  };
+}
+
 function agentIdsFromEntries(entries: Array<{ agent: Pick<AgentSnapshotPayload, "id"> }>) {
   return entries.map((entry) => entry.agent.id);
 }
@@ -272,6 +314,114 @@ function createSessionForWorkspaceTests(
 }
 
 describe("workspace aggregation", () => {
+  test("agent_update placement does not refresh git snapshots", async () => {
+    const emitted: SessionOutboundMessage[] = [];
+    const getSnapshot = vi.fn(async () => {
+      throw new Error("getSnapshot should not be called for agent_update placement");
+    });
+    const workspaceGitService = {
+      ...createNoopWorkspaceGitService(),
+      getSnapshot,
+      peekSnapshot: vi.fn(() => null),
+    };
+    const session = createSessionForWorkspaceTests({
+      onMessage: (message) => emitted.push(message),
+      workspaceGitService,
+    }) as any;
+    const project = createPersistedProjectRecord({
+      projectId: "proj-1",
+      rootPath: "/tmp/repo",
+      kind: "git",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const workspace = createPersistedWorkspaceRecord({
+      workspaceId: "ws-1",
+      projectId: project.projectId,
+      cwd: "/tmp/repo",
+      kind: "local_checkout",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+
+    session.projectRegistry.get = async (id: string) => (id === project.projectId ? project : null);
+    session.workspaceRegistry.list = async () => [workspace];
+    session.agentUpdatesSubscription = {
+      subscriptionId: "sub-agents",
+      filter: {},
+      isBootstrapping: false,
+      pendingUpdatesByAgentId: new Map(),
+    };
+
+    await session.forwardAgentUpdate(
+      makeManagedAgent({
+        id: "agent-1",
+        cwd: "/tmp/repo",
+        lifecycle: "running",
+        updatedAt: "2026-03-30T15:00:00.000Z",
+      }),
+    );
+
+    expect(getSnapshot).not.toHaveBeenCalled();
+    expect(emitted.find((message) => message.type === "agent_update")?.payload).toMatchObject({
+      kind: "upsert",
+      agent: {
+        id: "agent-1",
+        status: "running",
+      },
+      project: {
+        projectKey: "proj-1",
+        projectName: "repo",
+      },
+    });
+  });
+
+  test("agent_update emits fallback placement when no workspace is registered", async () => {
+    const emitted: SessionOutboundMessage[] = [];
+    const getSnapshot = vi.fn(async () => {
+      throw new Error("getSnapshot should not be called for fallback agent_update placement");
+    });
+    const session = createSessionForWorkspaceTests({
+      onMessage: (message) => emitted.push(message),
+      workspaceGitService: {
+        ...createNoopWorkspaceGitService(),
+        getSnapshot,
+        peekSnapshot: vi.fn(() => null),
+      },
+    }) as any;
+
+    session.agentUpdatesSubscription = {
+      subscriptionId: "sub-agents",
+      filter: {},
+      isBootstrapping: false,
+      pendingUpdatesByAgentId: new Map(),
+    };
+
+    await session.forwardAgentUpdate(
+      makeManagedAgent({
+        id: "agent-1",
+        cwd: "/tmp/unregistered",
+        lifecycle: "running",
+        updatedAt: "2026-03-30T15:00:00.000Z",
+      }),
+    );
+
+    expect(getSnapshot).not.toHaveBeenCalled();
+    expect(emitted.find((message) => message.type === "agent_update")?.payload).toMatchObject({
+      kind: "upsert",
+      project: {
+        projectKey: "/tmp/unregistered",
+        projectName: "unregistered",
+        checkout: {
+          cwd: "/tmp/unregistered",
+          isGit: false,
+        },
+      },
+    });
+  });
+
   test("archive emits an authoritative agent_update upsert for subscribed clients", async () => {
     const emitted: Array<{ type: string; payload: any }> = [];
     const archivedRecord = {
