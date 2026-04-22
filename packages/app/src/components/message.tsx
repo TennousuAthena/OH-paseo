@@ -433,7 +433,7 @@ interface AssistantMessageProps {
   serverId?: string;
   client?: DaemonClient | null;
   disableOuterSpacing?: boolean;
-  spacing?: "default" | "compact";
+  spacing?: "default" | "compactTop" | "compactBottom" | "compactBoth";
 }
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
@@ -441,8 +441,10 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[3],
   },
-  containerCompactVertical: {
+  containerCompactTop: {
     paddingTop: 0,
+  },
+  containerCompactBottom: {
     paddingBottom: 0,
   },
   containerSpacing: {
@@ -1107,7 +1109,7 @@ export const AssistantMessage = memo(function AssistantMessage({
 }: AssistantMessageProps) {
   const { theme } = useUnistyles();
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(
-    disableOuterSpacing ?? spacing === "compact",
+    disableOuterSpacing ?? spacing !== "default",
   );
 
   const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
@@ -1309,7 +1311,10 @@ export const AssistantMessage = memo(function AssistantMessage({
       testID="assistant-message"
       style={[
         assistantMessageStylesheet.container,
-        spacing === "compact" && assistantMessageStylesheet.containerCompactVertical,
+        (spacing === "compactTop" || spacing === "compactBoth") &&
+          assistantMessageStylesheet.containerCompactTop,
+        (spacing === "compactBottom" || spacing === "compactBoth") &&
+          assistantMessageStylesheet.containerCompactBottom,
         !resolvedDisableOuterSpacing && assistantMessageStylesheet.containerSpacing,
       ]}
     >

@@ -89,20 +89,33 @@ const isSameAssistantBlockGroup = (params: {
   params.item.blockGroupId !== undefined &&
   params.item.blockGroupId === params.other.blockGroupId;
 
-const isAssistantBlockFragment = (params: {
+const getAssistantBlockSpacing = (params: {
   item: StreamItem;
   aboveItem: StreamItem | null | undefined;
   belowItem: StreamItem | null | undefined;
-}) =>
-  params.item.kind === "assistant_message" &&
-  (isSameAssistantBlockGroup({
+}): "default" | "compactTop" | "compactBottom" | "compactBoth" => {
+  if (params.item.kind !== "assistant_message") {
+    return "default";
+  }
+  const compactTop = isSameAssistantBlockGroup({
     item: params.item,
     other: params.aboveItem,
-  }) ||
-    isSameAssistantBlockGroup({
-      item: params.item,
-      other: params.belowItem,
-    }));
+  });
+  const compactBottom = isSameAssistantBlockGroup({
+    item: params.item,
+    other: params.belowItem,
+  });
+  if (compactTop && compactBottom) {
+    return "compactBoth";
+  }
+  if (compactTop) {
+    return "compactTop";
+  }
+  if (compactBottom) {
+    return "compactBottom";
+  }
+  return "default";
+};
 export interface AgentStreamViewHandle {
   scrollToBottom(reason?: BottomAnchorLocalRequest["reason"]): void;
   prepareForViewportChange(): void;
@@ -373,13 +386,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               index,
               relation: "below",
             });
-            const spacing = isAssistantBlockFragment({
+            const spacing = getAssistantBlockSpacing({
               item,
               aboveItem,
               belowItem,
-            })
-              ? "compact"
-              : "default";
+            });
             return (
               <AssistantMessage
                 message={item.text}
@@ -518,12 +529,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         return (
           <View style={[stylesheet.streamItemWrapper, { marginBottom: gapBelow }]}>
             {content}
-            {isEndOfAssistantTurn ? (
-              <TurnCopyButton
-                getContent={getTurnContent}
-                containerStyle={stylesheet.assistantTurnCopyButton}
-              />
-            ) : null}
+            {isEndOfAssistantTurn ? <TurnCopyButton getContent={getTurnContent} /> : null}
           </View>
         );
       },
@@ -636,7 +642,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           <View
             style={[
               stylesheet.listHeaderContent,
-              boundary.hasLiveHead ? { paddingTop: looseGap } : null,
+              boundary.hasLiveHead
+                ? streamRenderStrategy.getFlatListInverted()
+                  ? { paddingBottom: looseGap }
+                  : { paddingTop: looseGap }
+                : null,
             ]}
           >
             {auxiliary.pendingPermissions}
@@ -644,7 +654,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           </View>
         </View>
       );
-    }, [auxiliary.pendingPermissions, auxiliary.workingIndicator, boundary.hasLiveHead, looseGap]);
+    }, [
+      auxiliary.pendingPermissions,
+      auxiliary.workingIndicator,
+      boundary.hasLiveHead,
+      looseGap,
+      streamRenderStrategy,
+    ]);
 
     const renderers = useMemo<StreamSegmentRenderers>(
       () => ({
@@ -1048,9 +1064,6 @@ const stylesheet = StyleSheet.create((theme) => ({
   },
   listHeaderContent: {
     gap: theme.spacing[3],
-  },
-  assistantTurnCopyButton: {
-    marginTop: theme.spacing[3],
   },
   bottomBarWrapper: {
     flexDirection: "row",
