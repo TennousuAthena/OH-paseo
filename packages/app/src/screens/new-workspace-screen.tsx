@@ -183,7 +183,7 @@ export function NewWorkspaceScreen({
         limit: 20,
       });
     },
-    enabled: isConnected && !!client,
+    enabled: pickerOpen && isConnected && !!client,
     staleTime: 15_000,
   });
 
@@ -198,7 +198,7 @@ export function NewWorkspaceScreen({
         kinds: ["github-pr"],
       });
     },
-    enabled: isConnected && !!client,
+    enabled: pickerOpen && isConnected && !!client,
     staleTime: 30_000,
   });
 

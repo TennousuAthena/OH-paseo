@@ -465,6 +465,7 @@ function DraftAgentScreenContent({
     },
     enabled:
       isCreateWorktree &&
+      isBranchOpen &&
       isGitDirectory &&
       !isNonGitDirectory &&
       Boolean(trimmedWorkingDir) &&

@@ -586,8 +586,13 @@ describe("NewWorkspaceScreen picker payload", () => {
     expect(pickerRow.style.transform).toBe("translateY(-216px)");
   });
 
-  it("searches only GitHub PRs for the picker", async () => {
+  it("lazily searches only GitHub PRs when the picker opens", async () => {
     renderScreen();
+    await flush();
+
+    expect(mockClient.searchGitHub).not.toHaveBeenCalled();
+
+    click(await findByTestId("new-workspace-ref-picker-trigger"));
     await flush();
 
     expect(mockClient.searchGitHub).toHaveBeenCalledWith({

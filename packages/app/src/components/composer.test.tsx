@@ -834,6 +834,23 @@ describe("Composer attachments", () => {
     expect(combobox.dataset.anchor).toBe("attached");
   });
 
+  it("lazily searches GitHub only after the GitHub combobox opens", async () => {
+    renderComposer();
+    await flushAsyncWork();
+
+    expect(mockClient.searchGitHub).not.toHaveBeenCalled();
+
+    click(queryByTestId("message-input-attach-button")!);
+    click(queryByTestId("message-input-attachment-menu-item-github")!);
+    await findByTestId("composer-github-combobox");
+
+    expect(mockClient.searchGitHub).toHaveBeenCalledWith({
+      cwd: "/repo",
+      query: "",
+      limit: 20,
+    });
+  });
+
   it("closes the GitHub combobox after selecting an item", async () => {
     renderComposer();
 

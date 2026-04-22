@@ -790,7 +790,7 @@ export function Composer({
         limit: 20,
       });
     },
-    enabled: isConnected && !!client && cwd.trim().length > 0,
+    enabled: isGithubPickerOpen && isConnected && !!client && cwd.trim().length > 0,
     staleTime: 30_000,
   });
 
