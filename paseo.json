@@ -9,7 +9,7 @@
   "scripts": {
     "daemon": {
       "type": "service",
-      "command": "PASEO_LISTEN=0.0.0.0:$PASEO_PORT npm run dev:server"
+      "command": "PASEO_LISTEN=0.0.0.0:$PASEO_PORT ./scripts/dev-daemon.sh"
     },
     "app": {
       "type": "service",

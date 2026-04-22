@@ -50,8 +50,8 @@ export class ProviderSnapshotManager {
     this.now = options.now ?? Date.now;
   }
 
-  getSnapshot(cwd?: string): ProviderSnapshotEntry[] {
-    const resolvedCwd = resolveSnapshotCwd(cwd);
+  getSnapshot(_cwd?: string): ProviderSnapshotEntry[] {
+    const resolvedCwd = resolveGlobalSnapshotCwd();
     const entries = this.snapshots.get(resolvedCwd);
     if (!entries) {
       const loadingEntries = this.resetSnapshotToLoading(resolvedCwd);
@@ -77,20 +77,20 @@ export class ProviderSnapshotManager {
   }
 
   async refreshSnapshotForCwd(options: ProviderSnapshotRefreshOptions): Promise<void> {
-    const cwd = resolveSnapshotCwd(options.cwd);
+    const snapshotCwd = resolveGlobalSnapshotCwd();
     const providers = this.resolveRefreshProviders(options.providers);
-    this.resetSnapshotToLoading(cwd, providers);
-    this.emitChange(cwd);
-    await this.refreshProviders(cwd, providers ?? this.getProviderIds());
+    this.resetSnapshotToLoading(snapshotCwd, providers);
+    this.emitChange(snapshotCwd);
+    await this.refreshProviders(snapshotCwd, providers ?? this.getProviderIds());
     if (!providers) {
-      this.lastCheckedAts.set(cwd, this.now());
+      this.lastCheckedAts.set(snapshotCwd, this.now());
     }
   }
 
   async refreshSettingsSnapshot(
     options: Omit<ProviderSnapshotRefreshOptions, "cwd"> = {},
   ): Promise<void> {
-    const homeCwd = resolveSnapshotCwd();
+    const homeCwd = resolveGlobalSnapshotCwd();
     const providers = this.resolveRefreshProviders(options.providers);
     const providersToRefresh = providers ?? this.getProviderIds();
 
@@ -100,28 +100,26 @@ export class ProviderSnapshotManager {
     if (!providers) {
       this.lastCheckedAts.set(homeCwd, this.now());
     }
-
-    this.invalidateNonHomeSnapshots({ homeCwd, providers });
   }
 
   async warmUpSnapshotForCwd(options: ProviderSnapshotRefreshOptions): Promise<void> {
-    const cwd = resolveSnapshotCwd(options.cwd);
+    const snapshotCwd = resolveGlobalSnapshotCwd();
     const providers = this.resolveRefreshProviders(options.providers);
     if (options.providers && providers?.length === 0) {
       return;
     }
 
-    const snapshot = this.snapshots.get(cwd);
+    const snapshot = this.snapshots.get(snapshotCwd);
     if (!snapshot) {
-      this.resetSnapshotToLoading(cwd, providers);
+      this.resetSnapshotToLoading(snapshotCwd, providers);
     } else if (providers) {
       const missingProviders = providers.filter((provider) => !snapshot.has(provider));
       if (missingProviders.length > 0) {
-        this.resetSnapshotToLoading(cwd, missingProviders);
+        this.resetSnapshotToLoading(snapshotCwd, missingProviders);
       }
     }
 
-    await this.warmUp(cwd, providers);
+    await this.warmUp(snapshotCwd, providers);
   }
 
   async refresh(options: ProviderSnapshotRefreshOptions): Promise<void> {
@@ -388,42 +386,6 @@ export class ProviderSnapshotManager {
     const providerIds = new Set(this.getProviderIds());
     return Array.from(new Set(providers)).filter((provider) => providerIds.has(provider));
   }
-
-  private invalidateNonHomeSnapshots(options: {
-    homeCwd: string;
-    providers?: AgentProvider[];
-  }): void {
-    for (const cwd of Array.from(this.snapshots.keys())) {
-      if (cwd === options.homeCwd) {
-        continue;
-      }
-
-      if (!options.providers) {
-        this.resetSnapshotToLoading(cwd);
-        this.lastCheckedAts.delete(cwd);
-        this.providerLoads.delete(cwd);
-        this.emitChange(cwd);
-        continue;
-      }
-
-      const snapshot = this.snapshots.get(cwd);
-      if (!snapshot) {
-        continue;
-      }
-      let changed = false;
-      for (const provider of options.providers) {
-        changed = snapshot.has(provider) || changed;
-        this.providerLoads.get(cwd)?.delete(provider);
-      }
-      this.resetSnapshotToLoading(cwd, options.providers);
-      if (this.providerLoads.get(cwd)?.size === 0) {
-        this.providerLoads.delete(cwd);
-      }
-      if (changed) {
-        this.emitChange(cwd);
-      }
-    }
-  }
 }
 
 export function resolveSnapshotCwd(cwd?: string | null): string {
@@ -434,6 +396,10 @@ export function resolveSnapshotCwd(cwd?: string | null): string {
   const expanded =
     trimmed === "~" || trimmed.startsWith("~/") ? `${homedir()}${trimmed.slice(1)}` : trimmed;
   return resolve(expanded);
+}
+
+function resolveGlobalSnapshotCwd(): string {
+  return resolveSnapshotCwd();
 }
 
 function entriesToArray(

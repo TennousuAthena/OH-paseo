@@ -1112,7 +1112,7 @@ describe("HostRuntimeStore", () => {
 
     expect(fakeClient.fetchAgentsCalls).toHaveLength(1);
     expect(fakeClient.fetchAgentsCalls[0]).toEqual({
-      filter: { includeArchived: true },
+      scope: "active",
       sort: [{ key: "updated_at", direction: "desc" }],
       subscribe: { subscriptionId: "app:srv_test" },
       page: { limit: 200 },
@@ -1160,7 +1160,7 @@ describe("HostRuntimeStore", () => {
 
     expect(fakeClient.fetchAgentsCalls).toHaveLength(1);
     expect(fakeClient.fetchAgentsCalls[0]).toEqual({
-      filter: { includeArchived: true },
+      scope: "active",
       sort: [{ key: "updated_at", direction: "desc" }],
       subscribe: { subscriptionId: "app:srv_no_session" },
       page: { limit: 200 },
@@ -1169,7 +1169,7 @@ describe("HostRuntimeStore", () => {
     store.syncHosts([]);
   });
 
-  it("fetches all pages during bootstrap so older workspace agents are present", async () => {
+  it("fetches all pages during bootstrap within the active agent scope", async () => {
     const host = makeHost({
       serverId: "srv_paged",
       connections: [
@@ -1234,13 +1234,13 @@ describe("HostRuntimeStore", () => {
 
     expect(fakeClient.fetchAgentsCalls).toHaveLength(2);
     expect(fakeClient.fetchAgentsCalls[0]).toEqual({
-      filter: { includeArchived: true },
+      scope: "active",
       sort: [{ key: "updated_at", direction: "desc" }],
       subscribe: { subscriptionId: "app:srv_paged" },
       page: { limit: 200 },
     });
     expect(fakeClient.fetchAgentsCalls[1]).toEqual({
-      filter: { includeArchived: true },
+      scope: "active",
       sort: [{ key: "updated_at", direction: "desc" }],
       page: { limit: 200, cursor: "cursor-page-2" },
     });
@@ -1314,13 +1314,13 @@ describe("HostRuntimeStore", () => {
 
     expect(fakeClient.fetchAgentsCalls).toEqual([
       {
-        filter: { includeArchived: true },
+        scope: "active",
         sort: [{ key: "updated_at", direction: "desc" }],
         subscribe: { subscriptionId: "app:srv_resubscribe" },
         page: { limit: 200 },
       },
       {
-        filter: { includeArchived: true },
+        scope: "active",
         sort: [{ key: "updated_at", direction: "desc" }],
         subscribe: { subscriptionId: "app:srv_resubscribe" },
         page: { limit: 200 },
@@ -1331,7 +1331,7 @@ describe("HostRuntimeStore", () => {
     useSessionStore.getState().clearSession(host.serverId);
   });
 
-  it("rehydrates archived agents over stale active session state after reconnect bootstrap", async () => {
+  it("replaces stale active session state when active bootstrap omits an agent", async () => {
     const host = makeHost({
       serverId: "srv_archived_rehydrate",
       connections: [
@@ -1346,15 +1346,7 @@ describe("HostRuntimeStore", () => {
     fakeClient.setConnectionState({ status: "connected" });
     fakeClient.fetchAgentsResponses.push(
       makeFetchAgentsPayload({
-        entries: [
-          makeFetchAgentsEntry({
-            id: "agent-archived",
-            cwd: "/Users/moboudra/dev/paseo",
-            updatedAt: "2026-03-30T15:30:00.000Z",
-            archivedAt: "2026-03-30T15:31:00.000Z",
-            title: "Archived remotely",
-          }),
-        ],
+        entries: [],
         subscriptionId: "app:srv_archived_rehydrate",
       }),
     );
@@ -1397,17 +1389,16 @@ describe("HostRuntimeStore", () => {
     store.syncHosts([host]);
 
     const timeoutAt = Date.now() + 300;
-    let archivedAt =
-      useSessionStore.getState().sessions[host.serverId]?.agents.get("agent-archived")
-        ?.archivedAt ?? null;
-    while (!archivedAt && Date.now() < timeoutAt) {
+    while (
+      useSessionStore.getState().sessions[host.serverId]?.agents.has("agent-archived") &&
+      Date.now() < timeoutAt
+    ) {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      archivedAt =
-        useSessionStore.getState().sessions[host.serverId]?.agents.get("agent-archived")
-          ?.archivedAt ?? null;
     }
 
-    expect(archivedAt?.toISOString()).toBe("2026-03-30T15:31:00.000Z");
+    expect(useSessionStore.getState().sessions[host.serverId]?.agents.has("agent-archived")).toBe(
+      false,
+    );
 
     store.syncHosts([]);
     useSessionStore.getState().clearSession(host.serverId);

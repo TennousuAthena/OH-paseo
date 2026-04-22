@@ -275,6 +275,7 @@ export interface SessionState {
 
   // Agents
   agents: Map<string, Agent>;
+  agentDetails: Map<string, Agent>;
   workspaces: Map<string, WorkspaceDescriptor>;
 
   // Permissions
@@ -367,6 +368,10 @@ interface SessionStoreActions {
     serverId: string,
     agents: Map<string, Agent> | ((prev: Map<string, Agent>) => Map<string, Agent>),
   ) => void;
+  setAgentDetails: (
+    serverId: string,
+    agents: Map<string, Agent> | ((prev: Map<string, Agent>) => Map<string, Agent>),
+  ) => void;
   setWorkspaces: (
     serverId: string,
     workspaces:
@@ -441,6 +446,7 @@ function createInitialSessionState(serverId: string, client: DaemonClient): Sess
     agentAuthoritativeHistoryApplied: new Map(),
     initializingAgents: new Map(),
     agents: new Map(),
+    agentDetails: new Map(),
     workspaces: new Map(),
     pendingPermissions: new Map(),
     fileExplorer: new Map(),
@@ -518,10 +524,13 @@ export const useSessionStore = create<SessionStore>()(
           const nextSessions = { ...prev.sessions };
           delete nextSessions[serverId];
           let nextActivity = prev.agentLastActivity;
-          if (session.agents.size > 0) {
+          if (session.agents.size > 0 || session.agentDetails.size > 0) {
             const candidate = new Map(prev.agentLastActivity);
             let changed = false;
-            for (const agentId of session.agents.keys()) {
+            for (const agentId of new Set([
+              ...session.agents.keys(),
+              ...session.agentDetails.keys(),
+            ])) {
               if (candidate.delete(agentId)) {
                 changed = true;
               }
@@ -946,6 +955,26 @@ export const useSessionStore = create<SessionStore>()(
             sessions: {
               ...prev.sessions,
               [serverId]: { ...session, agents: nextAgents },
+            },
+          };
+        });
+      },
+
+      setAgentDetails: (serverId, agents) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+          const nextAgents = typeof agents === "function" ? agents(session.agentDetails) : agents;
+          if (session.agentDetails === nextAgents) {
+            return prev;
+          }
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, agentDetails: nextAgents },
             },
           };
         });

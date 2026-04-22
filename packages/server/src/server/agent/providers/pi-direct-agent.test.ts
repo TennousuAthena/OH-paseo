@@ -1,7 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
+import type { Api, Model } from "@mariozechner/pi-ai";
+import pino from "pino";
 
 import type { AgentStreamEvent } from "../agent-sdk-types.js";
-import { PiDirectAgentSession, type PiDirectSessionAdapter } from "./pi-direct-agent.js";
+import {
+  PiDirectAgentClient,
+  PiDirectAgentSession,
+  type PiDirectSessionAdapter,
+} from "./pi-direct-agent.js";
 
 function createPiSession(prompt: () => Promise<void>): PiDirectSessionAdapter {
   return {
@@ -33,6 +39,15 @@ function createPiSession(prompt: () => Promise<void>): PiDirectSessionAdapter {
   };
 }
 
+function createPiModel(provider: string, id: string): Model<Api> {
+  return {
+    provider,
+    id,
+    name: id,
+    reasoning: true,
+  } as Model<Api>;
+}
+
 describe("PiDirectAgentSession", () => {
   test("treats SDK request abort rejections as turn cancellations", async () => {
     const session = new PiDirectAgentSession(
@@ -57,5 +72,25 @@ describe("PiDirectAgentSession", () => {
         reason: "Request was aborted.",
       },
     ]);
+  });
+});
+
+describe("PiDirectAgentClient", () => {
+  test("lists only Pi models with configured auth", async () => {
+    const client = new PiDirectAgentClient({
+      logger: pino({ level: "silent" }),
+    });
+    const registry = {
+      find: vi.fn(),
+      getAll: vi.fn(() => [createPiModel("amazon-bedrock", "claude-sonnet-4")]),
+      getAvailable: vi.fn(() => [createPiModel("anthropic", "claude-opus-4-5")]),
+    };
+    (client as unknown as { modelRegistry: typeof registry }).modelRegistry = registry;
+
+    const models = await client.listModels({ cwd: "/tmp/paseo-pi-test", force: false });
+
+    expect(registry.getAvailable).toHaveBeenCalledTimes(1);
+    expect(registry.getAll).not.toHaveBeenCalled();
+    expect(models.map((model) => model.id)).toEqual(["anthropic/claude-opus-4-5"]);
   });
 });

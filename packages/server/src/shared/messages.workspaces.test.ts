@@ -20,6 +20,52 @@ describe("workspace message schemas", () => {
     expect(parsed.type).toBe("fetch_workspaces_request");
   });
 
+  test("parses active-scoped fetch_agents_request as an optional extension", () => {
+    const legacy = SessionInboundMessageSchema.parse({
+      type: "fetch_agents_request",
+      requestId: "req-agents-legacy",
+      page: { limit: 50 },
+    });
+    const activeScoped = SessionInboundMessageSchema.parse({
+      type: "fetch_agents_request",
+      requestId: "req-agents-active",
+      scope: "active",
+      page: { limit: 50 },
+      subscribe: {},
+    });
+
+    expect(legacy.type).toBe("fetch_agents_request");
+    expect(activeScoped.type).toBe("fetch_agents_request");
+    if (activeScoped.type !== "fetch_agents_request") {
+      throw new Error("Expected fetch_agents_request");
+    }
+    expect(activeScoped.scope).toBe("active");
+  });
+
+  test("parses paginated fetch_agent_history_request and response", () => {
+    const request = SessionInboundMessageSchema.parse({
+      type: "fetch_agent_history_request",
+      requestId: "req-history",
+      page: { limit: 25, cursor: "cursor-1" },
+      sort: [{ key: "updated_at", direction: "desc" }],
+    });
+    const response = SessionOutboundMessageSchema.parse({
+      type: "fetch_agent_history_response",
+      payload: {
+        requestId: "req-history",
+        entries: [],
+        pageInfo: {
+          nextCursor: "cursor-2",
+          prevCursor: "cursor-1",
+          hasMore: true,
+        },
+      },
+    });
+
+    expect(request.type).toBe("fetch_agent_history_request");
+    expect(response.type).toBe("fetch_agent_history_response");
+  });
+
   test("parses open_project_request", () => {
     const parsed = SessionInboundMessageSchema.parse({
       type: "open_project_request",

@@ -4,6 +4,7 @@ import equal from "fast-deep-equal/es6";
 import {
   DaemonClient,
   type ConnectionState,
+  type FetchAgentsEntry,
   type FetchAgentsOptions,
 } from "@server/client/daemon-client";
 import {
@@ -31,8 +32,8 @@ import {
   createDesktopLocalDaemonTransportFactory,
 } from "@/desktop/daemon/desktop-daemon-transport";
 import { isDev } from "@/constants/platform";
-import { applyFetchedAgentDirectory } from "@/utils/agent-directory-sync";
-import { useSessionStore, type Agent } from "@/stores/session-store";
+import { replaceFetchedAgentDirectory } from "@/utils/agent-directory-sync";
+import { useSessionStore } from "@/stores/session-store";
 
 export type HostRuntimeConnectionStatus = "idle" | "connecting" | "online" | "offline" | "error";
 
@@ -1759,7 +1760,7 @@ export class HostRuntimeStore {
     subscribe?: FetchAgentsOptions["subscribe"];
     page?: FetchAgentsOptions["page"];
   }): Promise<{
-    agents: ReturnType<typeof applyFetchedAgentDirectory>["agents"];
+    agents: ReturnType<typeof replaceFetchedAgentDirectory>["agents"];
     subscriptionId: string | null;
   }> {
     const controller = this.controllers.get(input.serverId);
@@ -1778,23 +1779,18 @@ export class HostRuntimeStore {
       let cursor = input.page?.cursor ?? null;
       let includeSubscribe = true;
       let subscriptionId: string | null = null;
-      const allAgents = new Map<string, Agent>();
+      const allEntries: FetchAgentsEntry[] = [];
 
       while (true) {
         const payload = await client.fetchAgents({
-          filter: input.filter ?? { includeArchived: true },
+          scope: input.filter ? undefined : "active",
+          ...(input.filter ? { filter: input.filter } : {}),
           sort: DEFAULT_AGENT_DIRECTORY_SORT,
           ...(includeSubscribe && input.subscribe ? { subscribe: input.subscribe } : {}),
           page: cursor ? { limit: pageLimit, cursor } : { limit: pageLimit },
         });
 
-        const pageAgents = applyFetchedAgentDirectory({
-          serverId: input.serverId,
-          entries: payload.entries,
-        }).agents;
-        for (const [agentId, agent] of pageAgents) {
-          allAgents.set(agentId, agent);
-        }
+        allEntries.push(...payload.entries);
 
         subscriptionId = subscriptionId ?? payload.subscriptionId ?? null;
         includeSubscribe = false;
@@ -1810,9 +1806,14 @@ export class HostRuntimeStore {
         cursor = nextCursor;
       }
 
+      const { agents } = replaceFetchedAgentDirectory({
+        serverId: input.serverId,
+        entries: allEntries,
+      });
+
       controller.markAgentDirectorySyncReady();
       return {
-        agents: allAgents,
+        agents,
         subscriptionId,
       };
     } catch (error) {

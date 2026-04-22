@@ -377,6 +377,19 @@ export type FetchAgentsOptions = Omit<FetchAgentsRequest, "type" | "requestId"> 
 };
 export type FetchAgentsEntry = FetchAgentsPayload["entries"][number];
 export type FetchAgentsPageInfo = FetchAgentsPayload["pageInfo"];
+type FetchAgentHistoryPayload = Extract<
+  SessionOutboundMessage,
+  { type: "fetch_agent_history_response" }
+>["payload"];
+type FetchAgentHistoryRequest = Extract<
+  SessionInboundMessage,
+  { type: "fetch_agent_history_request" }
+>;
+export type FetchAgentHistoryOptions = Omit<FetchAgentHistoryRequest, "type" | "requestId"> & {
+  requestId?: string;
+};
+export type FetchAgentHistoryEntry = FetchAgentHistoryPayload["entries"][number];
+export type FetchAgentHistoryPageInfo = FetchAgentHistoryPayload["pageInfo"];
 type FetchWorkspacesPayload = Extract<
   SessionOutboundMessage,
   { type: "fetch_workspaces_response" }
@@ -1338,6 +1351,7 @@ export class DaemonClient {
     const message = SessionInboundMessageSchema.parse({
       type: "fetch_agents_request",
       requestId: resolvedRequestId,
+      ...(options?.scope ? { scope: options.scope } : {}),
       ...(options?.filter ? { filter: options.filter } : {}),
       ...(options?.sort ? { sort: options.sort } : {}),
       ...(options?.page ? { page: options.page } : {}),
@@ -1350,6 +1364,32 @@ export class DaemonClient {
       options: { skipQueue: true },
       select: (msg) => {
         if (msg.type !== "fetch_agents_response") {
+          return null;
+        }
+        if (msg.payload.requestId !== resolvedRequestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+  }
+
+  async fetchAgentHistory(options?: FetchAgentHistoryOptions): Promise<FetchAgentHistoryPayload> {
+    const resolvedRequestId = this.createRequestId(options?.requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "fetch_agent_history_request",
+      requestId: resolvedRequestId,
+      ...(options?.filter ? { filter: options.filter } : {}),
+      ...(options?.sort ? { sort: options.sort } : {}),
+      ...(options?.page ? { page: options.page } : {}),
+    });
+    return this.sendRequest({
+      requestId: resolvedRequestId,
+      message,
+      timeout: 10000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "fetch_agent_history_response") {
           return null;
         }
         if (msg.payload.requestId !== resolvedRequestId) {

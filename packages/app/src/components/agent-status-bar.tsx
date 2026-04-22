@@ -878,7 +878,7 @@ export const AgentStatusBar = memo(function AgentStatusBar({
     entries: snapshotEntries,
     isLoading: snapshotIsLoading,
     refetchIfStale: refetchSnapshotIfStale,
-  } = useProvidersSnapshot(serverId, agent?.cwd);
+  } = useProvidersSnapshot(serverId);
 
   const snapshotSelectedEntry = useMemo(() => {
     if (!snapshotEntries || !agent?.provider) {

@@ -9,11 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DaemonClient } from "@server/client/daemon-client";
 import type { ProviderSnapshotEntry } from "@server/server/agent/agent-sdk-types";
 import { useSessionStore } from "@/stores/session-store";
-import {
-  providersSnapshotQueryKey,
-  shouldApplyProvidersSnapshotUpdate,
-  useProvidersSnapshot,
-} from "./use-providers-snapshot";
+import { providersSnapshotQueryKey, useProvidersSnapshot } from "./use-providers-snapshot";
 
 type ProviderSnapshotUpdateMessage = {
   type: "providers_snapshot_update";
@@ -80,12 +76,12 @@ function enableProvidersSnapshot(): void {
   });
 }
 
-function renderProvidersSnapshotHook(cwd?: string | null) {
+function renderProvidersSnapshotHook() {
   const queryClient = createQueryClient();
   const wrapper = ({ children }: { children: React.ReactNode }) =>
     React.createElement(QueryClientProvider, { client: queryClient }, children);
 
-  return renderHook(() => useProvidersSnapshot(serverId, cwd), { wrapper });
+  return renderHook(() => useProvidersSnapshot(serverId), { wrapper });
 }
 
 const readyCodexModel = { provider: "codex", id: "gpt-5.4", label: "GPT-5.4" } as const;
@@ -124,7 +120,10 @@ async function waitForSnapshotEntries(
   });
 }
 
-async function emitProvidersSnapshotUpdate(entries: ProviderSnapshotEntry[]): Promise<void> {
+async function emitProvidersSnapshotUpdate(
+  entries: ProviderSnapshotEntry[],
+  cwd = "/repo",
+): Promise<void> {
   const listener = snapshotUpdateListeners.at(-1);
   expect(listener).toBeDefined();
 
@@ -132,7 +131,7 @@ async function emitProvidersSnapshotUpdate(entries: ProviderSnapshotEntry[]): Pr
     listener?.({
       type: "providers_snapshot_update",
       payload: {
-        cwd: "/repo",
+        cwd,
         entries,
         generatedAt: "2026-01-01T00:00:01.000Z",
       },
@@ -155,23 +154,8 @@ afterEach(() => {
 });
 
 describe("providers snapshot hook cache scope", () => {
-  it("uses no cwd in the settings query key", () => {
-    expect(providersSnapshotQueryKey(serverId)).toEqual(["providersSnapshot", serverId, null]);
-  });
-
-  it("accepts concrete home update events for settings snapshots", () => {
-    expect(shouldApplyProvidersSnapshotUpdate(undefined, "/Users/alex")).toBe(true);
-    expect(shouldApplyProvidersSnapshotUpdate(null, "/home/alex")).toBe(true);
-  });
-
-  it("keeps workspace snapshot updates scoped to matching cwd keys", () => {
-    expect(shouldApplyProvidersSnapshotUpdate("/Users/alex/project", "/Users/alex/project")).toBe(
-      true,
-    );
-    expect(
-      shouldApplyProvidersSnapshotUpdate("/Users/alex/project-a", "/Users/alex/project-b"),
-    ).toBe(false);
-    expect(shouldApplyProvidersSnapshotUpdate("/Users/alex/project", "/Users/alex")).toBe(false);
+  it("uses a global query key without cwd", () => {
+    expect(providersSnapshotQueryKey(serverId)).toEqual(["providersSnapshot", serverId]);
   });
 
   it("sends no cwd for settings snapshot loads and refreshes", async () => {
@@ -196,7 +180,7 @@ describe("providers snapshot hook cache scope", () => {
     expect(mockClient.getProvidersSnapshot).toHaveBeenLastCalledWith({});
   });
 
-  it("sends cwd for workspace snapshot loads and refreshes", async () => {
+  it("does not send cwd for repeated snapshot loads and refreshes", async () => {
     enableProvidersSnapshot();
     mockClient.getProvidersSnapshot.mockResolvedValue(providersSnapshot([]));
     mockClient.refreshProvidersSnapshot.mockResolvedValue({
@@ -204,21 +188,30 @@ describe("providers snapshot hook cache scope", () => {
       requestId: "workspace-refresh",
     });
 
-    const { result } = renderProvidersSnapshotHook("/repo");
+    const { result } = renderProvidersSnapshotHook();
 
     await waitFor(() => {
-      expect(mockClient.getProvidersSnapshot).toHaveBeenCalledWith({ cwd: "/repo" });
+      expect(mockClient.getProvidersSnapshot).toHaveBeenCalledWith({});
     });
 
     await act(async () => {
       await result.current.refresh(["codex"]);
     });
 
-    expect(mockClient.refreshProvidersSnapshot).toHaveBeenCalledWith({
-      cwd: "/repo",
-      providers: ["codex"],
-    });
-    expect(mockClient.getProvidersSnapshot).toHaveBeenLastCalledWith({ cwd: "/repo" });
+    expect(mockClient.refreshProvidersSnapshot).toHaveBeenCalledWith({ providers: ["codex"] });
+    expect(mockClient.getProvidersSnapshot).toHaveBeenLastCalledWith({});
+  });
+
+  it("applies provider snapshot updates from other cwd values to the global cache", async () => {
+    enableProvidersSnapshot();
+    mockClient.getProvidersSnapshot.mockResolvedValue(providersSnapshot([]));
+
+    const { result } = renderProvidersSnapshotHook();
+
+    await waitForSnapshotEntries(result, []);
+    await emitProvidersSnapshotUpdate([codexEntry("ready", [readyCodexModel])], "/repo-b");
+
+    await waitForSnapshotEntries(result, [codexEntry("ready", [readyCodexModel])]);
   });
 
   it("refetches loading snapshot updates through the read path but ignores empty updates", async () => {
@@ -227,7 +220,7 @@ describe("providers snapshot hook cache scope", () => {
       .mockResolvedValueOnce(providersSnapshot([codexEntry("ready", [])]))
       .mockResolvedValueOnce(providersSnapshot([codexEntry("ready", [readyCodexModel])]));
 
-    renderProvidersSnapshotHook("/repo");
+    renderProvidersSnapshotHook();
 
     await waitForSnapshotReads(1);
     await emitProvidersSnapshotUpdate([]);
@@ -237,7 +230,7 @@ describe("providers snapshot hook cache scope", () => {
     await emitProvidersSnapshotUpdate([codexEntry("loading")]);
     await waitForSnapshotReads(2);
 
-    expect(mockClient.getProvidersSnapshot).toHaveBeenLastCalledWith({ cwd: "/repo" });
+    expect(mockClient.getProvidersSnapshot).toHaveBeenLastCalledWith({});
     expect(mockClient.refreshProvidersSnapshot).not.toHaveBeenCalled();
   });
 
@@ -252,13 +245,13 @@ describe("providers snapshot hook cache scope", () => {
       .mockResolvedValueOnce(providersSnapshot(entries))
       .mockResolvedValueOnce(providersSnapshot([codexEntry("ready", [readyCodexModel])]));
 
-    const { result } = renderProvidersSnapshotHook("/repo");
+    const { result } = renderProvidersSnapshotHook();
 
     await waitForSnapshotEntries(result, entries);
     await openSelectorForSelectedProvider(result);
     await waitForSnapshotReads(2);
 
-    expect(mockClient.getProvidersSnapshot).toHaveBeenLastCalledWith({ cwd: "/repo" });
+    expect(mockClient.getProvidersSnapshot).toHaveBeenLastCalledWith({});
     expect(mockClient.refreshProvidersSnapshot).not.toHaveBeenCalled();
   });
 
@@ -266,7 +259,7 @@ describe("providers snapshot hook cache scope", () => {
     enableProvidersSnapshot();
     mockClient.getProvidersSnapshot.mockResolvedValue(providersSnapshot([codexEntry("ready", [])]));
 
-    const { result } = renderProvidersSnapshotHook("/repo");
+    const { result } = renderProvidersSnapshotHook();
 
     await waitForSnapshotEntries(result, [codexEntry("ready", [])]);
     await openSelectorForSelectedProvider(result);

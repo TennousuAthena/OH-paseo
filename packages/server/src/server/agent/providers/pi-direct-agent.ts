@@ -1452,7 +1452,7 @@ export class PiDirectAgentClient implements AgentClient {
   async listModels(_options: ListModelsOptions): Promise<AgentModelDefinition[]> {
     // Pi Direct uses an in-process global registry; cwd/force are intentionally irrelevant.
     const models = this.getModelRegistry()
-      .getAll()
+      .getAvailable()
       .map((model) => ({
         provider: PI_PROVIDER,
         id: `${model.provider}/${model.id}`,
