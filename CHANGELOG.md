@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.60-beta.1 - 2026-04-20
+## 0.1.60-beta.2 - 2026-04-22
 
 ### Added
 - Scripts and services per worktree — define named commands in `paseo.json`, and long-running services get supervised with their own ports and nice proxy URLs like `http://web.my-app.localhost:6767`. See the [worktrees guide](https://paseo.sh/docs/worktrees).
@@ -18,14 +18,24 @@
 
 ### Improved
 - Workspace and tab switching are dramatically faster on desktop and mobile — you can keep many workspaces open in parallel without lag.
+- Agent streams render more smoothly during heavy tool output.
+- App startup routes through a stable connection and lands on the right screen without flicker.
 - Provider refresh is reliable and no longer stalls on transient failures.
 - Git and GitHub state stay in sync with local changes like commits, branch switches, and pushes.
 - Composer attachments redesigned with a cleaner pill layout and an image lightbox.
 - In-app notifications route to whichever surface you're actually looking at.
 - Keyboard shortcuts keep working while Settings is open.
+- Escape reliably interrupts the active agent.
+- Checking out a pull request from a fork lands on an owner-prefixed branch so multiple forks don't collide.
+- `paseo ls` defaults to active agents; pass `-a` to include archived.
 
 ### Fixed
 - Composer textarea shrinks back down after sending on web.
+- New workspace drafts clear after submit instead of sticking around.
+- Replacing a running agent cleans up the previous one without leaving it behind.
+- Codex keeps fast mode after you approve a plan. ([#526](https://github.com/getpaseo/paseo/pull/526) by [@therainisme](https://github.com/therainisme))
+- Workspace tab focus is preserved across page refreshes.
+- Settings screen no longer pushes its header down with extra spacing.
 - Branch switcher title no longer overflows on narrow rows.
 - iOS image picker no longer leaves the screen unresponsive after cancelling.
 - Archiving a worktree recovers cleanly if a previous attempt was interrupted.
