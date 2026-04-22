@@ -247,7 +247,10 @@ export function useKeyboardShortcuts({
               const lastWorkspaceRoute = getLastNavigationWorkspaceRouteSelection();
               if (lastWorkspaceRoute) {
                 router.replace(
-                  buildHostWorkspaceRoute(lastWorkspaceRoute.serverId, lastWorkspaceRoute.workspaceId),
+                  buildHostWorkspaceRoute(
+                    lastWorkspaceRoute.serverId,
+                    lastWorkspaceRoute.workspaceId,
+                  ),
                 );
                 return true;
               }

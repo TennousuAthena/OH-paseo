@@ -353,7 +353,9 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
           }
         }
       } else {
-        void store.bootstrap({ manageBuiltInDaemon: settings.manageBuiltInDaemon });
+        setPhase("connecting");
+        setError(null);
+        await store.bootstrap({ manageBuiltInDaemon: settings.manageBuiltInDaemon });
         if (!cancelled) {
           setPhase("online");
           setError(null);
@@ -435,8 +437,6 @@ function AppContainer({
   const closeDesktopFileExplorer = usePanelStore((state) => state.closeDesktopFileExplorer);
   const toggleFocusMode = usePanelStore((state) => state.toggleFocusMode);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
-  const agentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
-  const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
 
   const cycleTheme = useCallback(() => {
     const currentIndex = THEME_CYCLE_ORDER.indexOf(settings.theme as ThemeName);
@@ -472,35 +472,6 @@ function AppContainer({
   // global concerns like keyboard shortcuts. Split those out so settings (and
   // other non-workspace routes) don't need a special-case to keep shortcuts alive.
   const keyboardShortcutsEnabled = chromeEnabled || pathname.startsWith("/settings");
-
-  useEffect(() => {
-    const bp = UnistylesRuntime.breakpoint;
-    const screenW = UnistylesRuntime.screen.width;
-    const screenH = UnistylesRuntime.screen.height;
-    const isElectron = getIsElectronRuntime();
-    const windowW = isWeb ? window.innerWidth : undefined;
-    const windowH = isWeb ? window.innerHeight : undefined;
-    const dpr = isWeb ? window.devicePixelRatio : undefined;
-    const ua = isWeb ? navigator.userAgent : undefined;
-
-    console.log(
-      "[layout-debug]",
-      JSON.stringify({
-        breakpoint: bp,
-        isCompactLayout,
-        isElectron,
-        chromeEnabled,
-        isFocusModeEnabled,
-        agentListOpen,
-        sidebarWidth,
-        sidebarRenderedInRow: !isCompactLayout && chromeEnabled && !isFocusModeEnabled,
-        unistylesScreen: { w: screenW, h: screenH },
-        window: { w: windowW, h: windowH },
-        devicePixelRatio: dpr,
-        userAgent: ua,
-      }),
-    );
-  }, [isCompactLayout, chromeEnabled, isFocusModeEnabled, agentListOpen, sidebarWidth]);
 
   useKeyboardShortcuts({
     enabled: keyboardShortcutsEnabled,
@@ -876,6 +847,7 @@ function RootStack() {
         },
       }}
     >
+      <Stack.Screen name="index" />
       <Stack.Protected guard={storeReady}>
         <Stack.Screen name="welcome" />
         <Stack.Screen name="settings/index" />
@@ -895,7 +867,6 @@ function RootStack() {
       <Stack.Screen name="h/[serverId]/sessions" />
       <Stack.Screen name="h/[serverId]/open-project" />
       <Stack.Screen name="h/[serverId]/settings" />
-      <Stack.Screen name="index" />
       <Stack.Screen name="settings/hosts/[serverId]" />
     </Stack>
   );

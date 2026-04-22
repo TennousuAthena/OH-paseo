@@ -213,17 +213,21 @@ function makeDeps(
       return client as unknown as DaemonClient;
     },
     connectToDaemon: async ({ host, connection }) => {
-      const value = latencyByConnectionId[connection.id];
-      if (value instanceof Error) {
-        throw value;
-      }
-      if (typeof value !== "number") {
-        throw new Error(`missing latency for ${connection.id}`);
-      }
+      const readLatency = (): number => {
+        const value = latencyByConnectionId[connection.id];
+        if (value instanceof Error) {
+          throw value;
+        }
+        if (typeof value !== "number") {
+          throw new Error(`missing latency for ${connection.id}`);
+        }
+        return value;
+      };
+      readLatency();
       const client = new FakeDaemonClient();
       client.connectCalls = 1;
       client.setConnectionState({ status: "connected" });
-      client.ping = async () => ({ rttMs: value });
+      client.ping = async () => ({ rttMs: readLatency() });
       createdClients.push(client);
       return {
         client: client as unknown as DaemonClient,
@@ -433,7 +437,95 @@ describe("HostRuntimeController", () => {
     await probeCycle;
   });
 
-  it("fails over when active connection becomes unavailable", async () => {
+  it("probes the active online connection through the existing client", async () => {
+    const host = makeHost({ preferredConnectionId: "direct:lan:6767" });
+    const probeAttempts: string[] = [];
+    const latencies: Record<string, number | Error> = {
+      "direct:lan:6767": 12,
+      "relay:relay.paseo.sh:443": 65,
+    };
+    const controller = new HostRuntimeController({
+      host,
+      deps: {
+        createClient: () => {
+          throw new Error("should adopt probe clients");
+        },
+        connectToDaemon: async ({ host, connection }) => {
+          probeAttempts.push(connection.id);
+          const value = latencies[connection.id];
+          if (value instanceof Error) {
+            throw value;
+          }
+          if (typeof value !== "number") {
+            throw new Error(`missing latency for ${connection.id}`);
+          }
+          return {
+            client: makeConnectedProbeClient(value) as unknown as DaemonClient,
+            serverId: host.serverId,
+            hostname: host.label ?? null,
+          };
+        },
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    await controller.start({ autoProbe: false });
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
+
+    probeAttempts.length = 0;
+    const activeClient = controller.getSnapshot().client as unknown as FakeDaemonClient;
+    activeClient.ping = async () => ({ rttMs: 9 });
+    clearProbeBackoff(controller);
+    await controller.runProbeCycleNow();
+
+    expect(probeAttempts).toEqual(["relay:relay.paseo.sh:443"]);
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
+    expect(controller.getSnapshot().connectionStatus).toBe("online");
+    expect(controller.getSnapshot().probeByConnectionId.get("direct:lan:6767")).toEqual({
+      status: "available",
+      latencyMs: 9,
+    });
+  });
+
+  it("rejects probes that resolve to a different server id", async () => {
+    const host = makeHost({
+      serverId: "srv_old",
+      connections: [
+        {
+          id: "direct:localhost:6767",
+          type: "directTcp",
+          endpoint: "localhost:6767",
+        },
+      ],
+    });
+    const mismatchedClient = makeConnectedProbeClient(8);
+    const controller = new HostRuntimeController({
+      host,
+      deps: {
+        createClient: () => {
+          throw new Error("should not create active client");
+        },
+        connectToDaemon: async () => ({
+          client: mismatchedClient as unknown as DaemonClient,
+          serverId: "srv_current",
+          hostname: "current host",
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    await controller.start({ autoProbe: false });
+
+    expect(controller.getSnapshot().connectionStatus).toBe("connecting");
+    expect(controller.getSnapshot().activeConnectionId).toBeNull();
+    expect(controller.getSnapshot().probeByConnectionId.get("direct:localhost:6767")).toEqual({
+      status: "unavailable",
+      latencyMs: null,
+    });
+    expect(mismatchedClient.closeCalls).toBe(1);
+  });
+
+  it("fails over when the active client ping fails", async () => {
     const host = makeHost({ preferredConnectionId: "direct:lan:6767" });
     const clients: FakeDaemonClient[] = [];
     const latencies: Record<string, number | Error> = {
@@ -450,6 +542,9 @@ describe("HostRuntimeController", () => {
     const initialClient = controller.getSnapshot().client;
     expect(initialClient).toBeTruthy();
 
+    (initialClient as unknown as FakeDaemonClient).ping = async () => {
+      throw new Error("active ping failed");
+    };
     latencies["direct:lan:6767"] = new Error("direct unavailable");
     latencies["relay:relay.paseo.sh:443"] = 42;
     clearProbeBackoff(controller);
@@ -838,7 +933,7 @@ describe("HostRuntimeController", () => {
     expect(createdClients[0]?.closeCalls).toBe(1);
   });
 
-  it("ignores stale probe results when overlapping probe cycles finish out of order", async () => {
+  it("coalesces overlapping probe cycles instead of invalidating the in-flight result", async () => {
     const host = makeHost({
       connections: [
         {
@@ -849,7 +944,6 @@ describe("HostRuntimeController", () => {
       ],
     });
     const slowProbe = createDeferred<number>();
-    const fastProbe = createDeferred<number>();
     let probeCalls = 0;
 
     const controller = new HostRuntimeController({
@@ -864,9 +958,6 @@ describe("HostRuntimeController", () => {
           client.ping = async () => {
             if (probeCalls === 1) {
               return { rttMs: await slowProbe.promise };
-            }
-            if (probeCalls === 2) {
-              return { rttMs: await fastProbe.promise };
             }
             throw new Error("unexpected probe call");
           };
@@ -883,23 +974,14 @@ describe("HostRuntimeController", () => {
     const first = controller.runProbeCycleNow();
     clearProbeBackoff(controller);
     const second = controller.runProbeCycleNow();
-
-    fastProbe.resolve(12);
-    await second;
-    const probeAfterSecond = controller.getSnapshot().probeByConnectionId.get("direct:lan:6767");
-    expect(probeAfterSecond).toEqual({
-      status: "available",
-      latencyMs: 12,
-    });
+    expect(probeCalls).toBe(1);
 
     slowProbe.resolve(900);
-    await first;
-    const probeAfterFirstSettles = controller
-      .getSnapshot()
-      .probeByConnectionId.get("direct:lan:6767");
-    expect(probeAfterFirstSettles).toEqual({
+    await Promise.all([first, second]);
+    const probeAfterCycle = controller.getSnapshot().probeByConnectionId.get("direct:lan:6767");
+    expect(probeAfterCycle).toEqual({
       status: "available",
-      latencyMs: 12,
+      latencyMs: 900,
     });
   });
 

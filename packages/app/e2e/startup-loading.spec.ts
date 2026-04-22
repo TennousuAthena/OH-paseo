@@ -43,6 +43,7 @@ test.describe("Startup loading presentation", () => {
 
     await startup.expectsDesktopDaemonStartup();
     await startup.expectsSidebarHidden();
+    await startup.expectsNoUndefinedRoute();
   });
 
   test("host-route refresh does not render route chrome around the bootstrap splash", async ({

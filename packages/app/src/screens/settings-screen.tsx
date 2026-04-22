@@ -61,10 +61,12 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
   buildHostOpenProjectRoute,
+  buildHostWorkspaceRoute,
   buildSettingsHostRoute,
   buildSettingsSectionRoute,
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
+import { getLastNavigationWorkspaceRouteSelection } from "@/stores/navigation-active-workspace-store";
 
 // ---------------------------------------------------------------------------
 // View model
@@ -720,6 +722,15 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
   }, [router]);
 
   const handleBackToWorkspace = useCallback(() => {
+    if (!isCompactLayout) {
+      const lastWorkspaceRoute = getLastNavigationWorkspaceRouteSelection();
+      if (lastWorkspaceRoute) {
+        router.replace(
+          buildHostWorkspaceRoute(lastWorkspaceRoute.serverId, lastWorkspaceRoute.workspaceId),
+        );
+        return;
+      }
+    }
     if (router.canGoBack()) {
       router.back();
       return;
@@ -729,7 +740,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
       return;
     }
     router.replace("/");
-  }, [anyOnlineServerId, router]);
+  }, [anyOnlineServerId, isCompactLayout, router]);
 
   const detailHeader = ((): {
     title: string;

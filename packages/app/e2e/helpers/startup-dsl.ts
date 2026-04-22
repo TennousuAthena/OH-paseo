@@ -178,6 +178,11 @@ class StartupAssertions {
     await expect(this.page.locator('[data-testid="sidebar-project-list"]:visible')).toHaveCount(0);
     return this;
   }
+
+  async expectsNoUndefinedRoute(): Promise<this> {
+    await expect(this.page).not.toHaveURL(/\/h\/undefined\/workspace\/undefined/);
+    return this;
+  }
 }
 
 async function installPendingDesktopBridge(page: Page): Promise<void> {

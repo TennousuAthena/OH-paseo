@@ -11,7 +11,6 @@ import {
   connectionFromListen,
   normalizeStoredHostProfile,
   upsertHostConnectionInProfiles,
-  registryHasDirectEndpoint,
   type HostConnection,
   type HostProfile,
 } from "@/types/host-connection";
@@ -489,6 +488,7 @@ export class HostRuntimeController {
   private clientIdHash: string | null = null;
   private switchRequestVersion = 0;
   private probeRequestVersion = 0;
+  private probeCycleInFlight: Promise<void> | null = null;
 
   constructor(input: {
     host: HostProfile;
@@ -629,6 +629,20 @@ export class HostRuntimeController {
   }
 
   async runProbeCycleNow(): Promise<void> {
+    if (this.probeCycleInFlight) {
+      return this.probeCycleInFlight;
+    }
+
+    const cycle = this.runProbeCycle().finally(() => {
+      if (this.probeCycleInFlight === cycle) {
+        this.probeCycleInFlight = null;
+      }
+    });
+    this.probeCycleInFlight = cycle;
+    return cycle;
+  }
+
+  private async runProbeCycle(): Promise<void> {
     const requestVersion = ++this.probeRequestVersion;
     if (this.host.connections.length === 0) {
       if (!this.isCurrentProbeRequest(requestVersion)) {
@@ -664,10 +678,15 @@ export class HostRuntimeController {
     const probeByConnectionId = new Map(this.snapshot.probeByConnectionId);
     for (const connection of connectionsToProbe) {
       this.connectionLastProbedAt.set(connection.id, performance.now());
-      probeByConnectionId.set(connection.id, {
-        status: "pending",
-        latencyMs: null,
-      });
+      const existingProbe = probeByConnectionId.get(connection.id);
+      const shouldPreserveActiveLatency =
+        isOnline && connection.id === activeConnectionId && existingProbe?.status === "available";
+      if (!shouldPreserveActiveLatency) {
+        probeByConnectionId.set(connection.id, {
+          status: "pending",
+          latencyMs: null,
+        });
+      }
     }
     this.updateSnapshot({ probeByConnectionId: new Map(probeByConnectionId) });
 
@@ -801,22 +820,39 @@ export class HostRuntimeController {
       for (const connection of connectionsToProbe) {
         void (async () => {
           let connectedClient: DaemonClient | null = null;
-          let handedOffClient = false;
+          let shouldCloseClient = false;
           try {
-            const { client } = await this.deps.connectToDaemon({
-              host: this.host,
-              connection,
-            });
-            connectedClient = client;
+            const activeClient =
+              this.snapshot.connectionStatus === "online" &&
+              this.snapshot.activeConnectionId === connection.id
+                ? this.snapshot.client
+                : null;
+
+            if (activeClient) {
+              connectedClient = activeClient;
+            } else {
+              const { client, serverId } = await this.deps.connectToDaemon({
+                host: this.host,
+                connection,
+              });
+              if (serverId !== this.host.serverId) {
+                await client.close().catch(() => undefined);
+                throw new Error(
+                  `Connection resolved to ${serverId}, expected ${this.host.serverId}.`,
+                );
+              }
+              connectedClient = client;
+              shouldCloseClient = true;
+            }
 
             if (!this.isCurrentProbeRequest(requestVersion)) {
               return;
             }
 
-            const activated = await maybeActivateFirstAvailable(connection.id, client);
-            handedOffClient = activated;
+            const activated = await maybeActivateFirstAvailable(connection.id, connectedClient);
+            shouldCloseClient = shouldCloseClient && !activated;
 
-            const { rttMs } = await client.ping({ timeoutMs: 5000 });
+            const { rttMs } = await connectedClient.ping({ timeoutMs: 5000 });
             if (!this.isCurrentProbeRequest(requestVersion)) {
               return;
             }
@@ -835,7 +871,7 @@ export class HostRuntimeController {
               publishProbeState();
             }
           } finally {
-            if (connectedClient && !handedOffClient) {
+            if (connectedClient && shouldCloseClient) {
               await connectedClient.close().catch(() => undefined);
             }
             settleProbe();
@@ -1100,7 +1136,6 @@ export class HostRuntimeController {
 
 const REGISTRY_STORAGE_KEY = "@paseo:daemon-registry";
 const DEFAULT_LOCALHOST_ENDPOINT = process.env.EXPO_PUBLIC_LOCAL_DAEMON?.trim() || "localhost:6767";
-const DEFAULT_LOCALHOST_BOOTSTRAP_KEY = "@paseo:default-localhost-bootstrap-v1";
 const DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS = 2500;
 const CONNECTION_ONLINE_TIMEOUT_MS = 15_000;
 const E2E_STORAGE_KEY = "@paseo:e2e";
@@ -1230,16 +1265,6 @@ export class HostRuntimeStore {
 
   private async bootstrapLocalhost(): Promise<void> {
     try {
-      const alreadyHandled = await AsyncStorage.getItem(DEFAULT_LOCALHOST_BOOTSTRAP_KEY);
-      if (alreadyHandled) {
-        return;
-      }
-
-      if (registryHasDirectEndpoint(this.hosts, DEFAULT_LOCALHOST_ENDPOINT)) {
-        await AsyncStorage.setItem(DEFAULT_LOCALHOST_BOOTSTRAP_KEY, "1");
-        return;
-      }
-
       try {
         const { client, serverId, hostname } = await connectToDaemon(
           {
@@ -1256,7 +1281,6 @@ export class HostRuntimeStore {
           label: hostname ?? undefined,
           existingClient: client,
         });
-        await AsyncStorage.setItem(DEFAULT_LOCALHOST_BOOTSTRAP_KEY, "1");
       } catch {
         // Best-effort bootstrap only
       }
