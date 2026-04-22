@@ -134,7 +134,6 @@ function createNoopWorkspaceGitService() {
           featuresEnabled: false,
           pullRequest: null,
           error: null,
-          refreshedAt: null,
         },
       },
       unsubscribe: () => {},
@@ -159,7 +158,6 @@ function createNoopWorkspaceGitService() {
         featuresEnabled: false,
         pullRequest: null,
         error: null,
-        refreshedAt: null,
       },
     }),
     resolveRepoRemoteUrl: async () => null,
@@ -210,7 +208,6 @@ function createWorkspaceRuntimeSnapshot(
         isMerged: false,
       },
       error: null,
-      refreshedAt: "2026-04-12T00:00:00.000Z",
     },
   };
 
@@ -2592,7 +2589,6 @@ describe("workspace aggregation", () => {
           headRefName: "runtime-branch",
           isMerged: false,
         },
-        refreshedAt: "2026-04-12T00:05:00.000Z",
       },
     });
     const workspaceGitService = createNoopWorkspaceGitService();
@@ -2674,7 +2670,6 @@ describe("workspace aggregation", () => {
             isMerged: false,
           },
           error: null,
-          refreshedAt: "2026-04-12T00:05:00.000Z",
         },
       }),
     ]);
@@ -2696,7 +2691,6 @@ describe("workspace aggregation", () => {
           headRefName: "feature/runtime-payloads",
           isMerged: true,
         },
-        refreshedAt: "2026-04-12T00:10:00.000Z",
       },
     });
     const workspaceGitService = createNoopWorkspaceGitService();
@@ -2770,7 +2764,6 @@ describe("workspace aggregation", () => {
               title: "Updated runtime payloads",
               isMerged: true,
             }),
-            refreshedAt: "2026-04-12T00:10:00.000Z",
           }),
         }),
       },

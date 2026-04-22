@@ -51,7 +51,6 @@ function createSnapshot(
         isMerged: false,
       },
       error: null,
-      refreshedAt: "2026-04-12T00:00:00.000Z",
     },
   };
 
@@ -267,12 +266,31 @@ describe("WorkspaceGitServiceImpl", () => {
             headRefName: "workspace-git-service",
             isMerged: false,
           },
-          refreshedAt: "2026-04-12T02:03:04.000Z",
         },
       }),
     );
     expect(getPullRequestStatus).toHaveBeenCalledTimes(1);
 
+    service.dispose();
+  });
+
+  test("non-forced GitHub refresh does not emit when pull request state is unchanged", async () => {
+    let nowMs = Date.parse("2026-04-12T00:00:00.000Z");
+    const getPullRequestStatus = vi.fn(async () => createPullRequestStatusResult());
+    const service = createService({
+      getPullRequestStatus,
+      now: () => new Date(nowMs),
+    });
+    const listener = vi.fn();
+    const subscription = await service.subscribe({ cwd: "/tmp/repo" }, listener);
+
+    nowMs += 3_000;
+    await service.refresh("/tmp/repo");
+
+    expect(getPullRequestStatus).toHaveBeenCalledTimes(2);
+    expect(listener).not.toHaveBeenCalled();
+
+    subscription.unsubscribe();
     service.dispose();
   });
 
@@ -361,13 +379,7 @@ describe("WorkspaceGitServiceImpl", () => {
 
     nowMs += 3_000;
     await service.refresh("/tmp/repo");
-    await expect(service.getSnapshot("/tmp/repo/.")).resolves.toEqual(
-      createSnapshot("/tmp/repo", {
-        github: {
-          refreshedAt: "2026-04-12T00:00:03.000Z",
-        },
-      }),
-    );
+    await expect(service.getSnapshot("/tmp/repo/.")).resolves.toEqual(createSnapshot("/tmp/repo"));
 
     expect(getPullRequestStatus).toHaveBeenCalledTimes(2);
     expect(resolveAbsoluteGitDir).toHaveBeenCalledTimes(1);
@@ -460,7 +472,6 @@ describe("WorkspaceGitServiceImpl", () => {
             headRefName: "feature",
             isMerged: true,
           },
-          refreshedAt: "2026-04-12T00:05:00.000Z",
         },
       }),
     );
@@ -534,7 +545,6 @@ describe("WorkspaceGitServiceImpl", () => {
         github: {
           featuresEnabled: false,
           pullRequest: null,
-          refreshedAt: null,
         },
       }),
     );

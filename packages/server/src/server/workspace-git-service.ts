@@ -79,7 +79,6 @@ export type WorkspaceGitRuntimeSnapshot = {
       reviewDecision?: "approved" | "changes_requested" | "pending" | null;
     } | null;
     error: { message: string } | null;
-    refreshedAt: string | null;
   };
 };
 
@@ -1499,7 +1498,6 @@ async function loadGitHubSnapshot(options: {
       featuresEnabled: false,
       pullRequest: null,
       error: null,
-      refreshedAt: null,
     };
   }
 
@@ -1510,7 +1508,6 @@ async function loadGitHubSnapshot(options: {
       featuresEnabled: false,
       pullRequest: null,
       error: null,
-      refreshedAt: null,
     };
   }
 
@@ -1523,7 +1520,6 @@ async function loadGitHubSnapshot(options: {
       featuresEnabled: true,
       pullRequest: result.status,
       error: null,
-      refreshedAt: options.now.toISOString(),
     };
   } catch (error) {
     return {
@@ -1532,7 +1528,6 @@ async function loadGitHubSnapshot(options: {
       error: {
         message: error instanceof Error ? error.message : String(error),
       },
-      refreshedAt: options.now.toISOString(),
     };
   }
 }
@@ -1607,7 +1602,6 @@ function buildNotGitSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot {
       featuresEnabled: false,
       pullRequest: null,
       error: null,
-      refreshedAt: null,
     },
   };
 }

@@ -32,7 +32,6 @@ const ELIGIBLE_WORKTREE_SNAPSHOT: WorkspaceGitRuntimeSnapshot = {
     featuresEnabled: false,
     pullRequest: null,
     error: null,
-    refreshedAt: null,
   },
 };
 

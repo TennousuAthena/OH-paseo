@@ -296,7 +296,6 @@ function createWorkspaceGitSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot {
       featuresEnabled: false,
       pullRequest: null,
       error: null,
-      refreshedAt: null,
     },
   };
 }

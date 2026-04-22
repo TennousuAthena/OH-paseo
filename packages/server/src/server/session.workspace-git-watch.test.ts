@@ -38,7 +38,6 @@ function createWorkspaceRuntimeSnapshot(
       featuresEnabled: true,
       pullRequest: null,
       error: null,
-      refreshedAt: "2026-04-12T00:00:00.000Z",
     },
   };
 
@@ -477,7 +476,6 @@ describe("workspace git watch targets", () => {
             headRefName: "workspace-git-service",
             isMerged: true,
           },
-          refreshedAt: "2026-04-12T00:05:00.000Z",
         },
       }),
     );

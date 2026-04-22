@@ -3,6 +3,7 @@ import { AppState } from "react-native";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { getIsElectron, isWeb, isNative } from "@/constants/platform";
 import { getDesktopSystemIdleTimeMs } from "@/desktop/electron/idle";
+import { useStableEvent } from "@/hooks/use-stable-event";
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
 const ACTIVITY_HEARTBEAT_THROTTLE_MS = 5_000;
@@ -41,7 +42,7 @@ export function useClientActivity({
     lastActivityAtRef.current = new Date();
   }, []);
 
-  const sendHeartbeat = useCallback(() => {
+  const sendHeartbeat = useStableEvent(() => {
     if (!client.isConnected) return;
     client.sendHeartbeat({
       deviceType,
@@ -50,7 +51,7 @@ export function useClientActivity({
       appVisible: appVisibleRef.current,
       appVisibilityChangedAt: appVisibilityChangedAtRef.current.toISOString(),
     });
-  }, [client, deviceType, focusedAgentId]);
+  });
 
   const setAppVisible = useCallback(
     (nextVisible: boolean) => {
@@ -190,10 +191,6 @@ export function useClientActivity({
         stopHeartbeat();
       }
     });
-
-    if (client.isConnected) {
-      startHeartbeat();
-    }
 
     return () => {
       unsubscribe();

@@ -237,7 +237,6 @@ function createWorkspaceGitSnapshot(
       featuresEnabled: false,
       pullRequest: null,
       error: null,
-      refreshedAt: null,
       ...overrides?.github,
     },
   };

@@ -49,7 +49,10 @@ vi.mock("@server/client/daemon-client", () => ({}));
 function createTestClient() {
   return {
     isConnected: true,
-    subscribeConnectionStatus: vi.fn(() => vi.fn()),
+    subscribeConnectionStatus: vi.fn((listener: (state: { status: "connected" }) => void) => {
+      listener({ status: "connected" });
+      return vi.fn();
+    }),
     sendHeartbeat: vi.fn<(payload: HeartbeatPayload) => void>(),
   };
 }
@@ -68,13 +71,15 @@ function heartbeatTimeMs(client: ReturnType<typeof createTestClient>): number {
 
 async function renderActivityHook({
   client = createTestClient(),
+  focusedAgentId = "agent-1",
 }: {
   client?: ReturnType<typeof createTestClient>;
+  focusedAgentId?: string | null;
 } = {}) {
-  function Probe() {
+  function Probe({ focusedAgentId }: { focusedAgentId: string | null }) {
     useClientActivity({
       client: client as unknown as Parameters<typeof useClientActivity>[0]["client"],
-      focusedAgentId: "agent-1",
+      focusedAgentId,
     });
     return null;
   }
@@ -84,10 +89,16 @@ async function renderActivityHook({
   const root = createRoot(container);
 
   await act(async () => {
-    root.render(<Probe />);
+    root.render(<Probe focusedAgentId={focusedAgentId} />);
   });
 
-  return { client, root };
+  const rerender = async (nextFocusedAgentId: string | null) => {
+    await act(async () => {
+      root.render(<Probe focusedAgentId={nextFocusedAgentId} />);
+    });
+  };
+
+  return { client, rerender, root };
 }
 
 async function advance(ms: number) {
@@ -136,6 +147,24 @@ describe("useClientActivity", () => {
 
     expect(heartbeatTimeMs(rendered.client)).toBe(Date.now());
     expect(getDesktopSystemIdleTimeMs).not.toHaveBeenCalled();
+  });
+
+  it("sends one immediate heartbeat when the focused agent changes", async () => {
+    const rendered = await renderActivityHook();
+    root = rendered.root;
+
+    expect(rendered.client.sendHeartbeat).toHaveBeenCalledTimes(1);
+    rendered.client.sendHeartbeat.mockClear();
+
+    vi.setSystemTime(new Date("2026-04-19T10:00:05.000Z"));
+    await rendered.rerender("agent-2");
+
+    expect(rendered.client.subscribeConnectionStatus).toHaveBeenCalledTimes(1);
+    expect(rendered.client.sendHeartbeat).toHaveBeenCalledTimes(1);
+    expect(latestHeartbeat(rendered.client)).toMatchObject({
+      focusedAgentId: "agent-2",
+      lastActivityAt: "2026-04-19T10:00:05.000Z",
+    });
   });
 
   it("drives lastActivityAt forward from Electron idle polling", async () => {

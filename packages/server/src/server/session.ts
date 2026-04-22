@@ -5837,7 +5837,6 @@ export class Session {
       featuresEnabled: snapshot.github.featuresEnabled,
       pullRequest: snapshot.github.pullRequest,
       error: snapshot.github.error,
-      refreshedAt: snapshot.github.refreshedAt,
     };
   }
 

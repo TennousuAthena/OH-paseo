@@ -137,7 +137,6 @@ function createSnapshot(
         isMerged: false,
       },
       error: null,
-      refreshedAt: "2026-04-12T00:00:00.000Z",
     },
   };
 
@@ -411,9 +410,6 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
       git: {
         currentBranch: "feature",
         diffStat: { additions: 4, deletions: 2 },
-      },
-      github: {
-        refreshedAt: "2026-04-12T00:00:16.000Z",
       },
     });
     await expect(Promise.all([first, second])).resolves.toEqual([freshSnapshot, freshSnapshot]);
