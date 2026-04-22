@@ -1,6 +1,6 @@
 import { resolve, dirname, basename } from "path";
 import { existsSync, realpathSync } from "fs";
-import { open as openFile, stat as statFile } from "fs/promises";
+import { open as openFile, readFile, stat as statFile } from "fs/promises";
 import { TTLCache } from "@isaacs/ttlcache";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
@@ -701,10 +701,32 @@ export async function getCurrentBranch(cwd: string): Promise<string | null> {
       env: READ_ONLY_GIT_ENV,
     });
     const branch = stdout.trim();
+    if (branch === "HEAD") {
+      return await getRebaseHeadBranch(cwd);
+    }
     return branch.length > 0 ? branch : null;
   } catch {
     return null;
   }
+}
+
+async function getRebaseHeadBranch(cwd: string): Promise<string | null> {
+  for (const path of ["rebase-merge/head-name", "rebase-apply/head-name"]) {
+    try {
+      const { stdout } = await runGitCommand(["rev-parse", "--git-path", path], {
+        cwd,
+        env: READ_ONLY_GIT_ENV,
+      });
+      const headName = (await readFile(resolve(cwd, stdout.trim()), "utf8")).trim();
+      if (headName.startsWith("refs/heads/")) {
+        return headName.slice("refs/heads/".length) || null;
+      }
+      return headName || null;
+    } catch {
+      // Try the other rebase backend.
+    }
+  }
+  return null;
 }
 
 async function getWorktreeRoot(cwd: string): Promise<string | null> {

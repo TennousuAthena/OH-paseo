@@ -194,6 +194,24 @@ describe("checkout git utilities", () => {
     expect(branch).toBeNull();
   });
 
+  it("returns the branch being rebased when HEAD is detached during a rebase", async () => {
+    execSync("git checkout -b feature/rebase-test", { cwd: repoDir });
+    writeFileSync(join(repoDir, "file.txt"), "feature\n");
+    execSync("git add file.txt", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'feature change'", { cwd: repoDir });
+
+    execSync("git checkout main", { cwd: repoDir });
+    writeFileSync(join(repoDir, "file.txt"), "main\n");
+    execSync("git add file.txt", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'main change'", { cwd: repoDir });
+
+    execSync("git checkout feature/rebase-test", { cwd: repoDir });
+    expect(() => execSync("git rebase main", { cwd: repoDir, stdio: "pipe" })).toThrow();
+
+    const branch = await getCurrentBranch(repoDir);
+    expect(branch).toBe("feature/rebase-test");
+  });
+
   it("handles status/diff/commit in a normal repo", async () => {
     writeFileSync(join(repoDir, "file.txt"), "updated\n");
 
