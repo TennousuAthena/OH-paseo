@@ -165,6 +165,7 @@ import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { type WorktreeConfig } from "../utils/worktree.js";
 import { runAsyncWorktreeBootstrap } from "./worktree-bootstrap.js";
+import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import type { ScriptRouteStore } from "./script-proxy.js";
 import {
   checkoutResolvedBranch,
@@ -6440,7 +6441,43 @@ export class Session {
   }
 
   private async reconcileActiveWorkspaceRecords(): Promise<Set<string>> {
-    return new Set();
+    const service = new WorkspaceReconciliationService({
+      projectRegistry: this.projectRegistry,
+      workspaceRegistry: this.workspaceRegistry,
+      logger: this.sessionLogger,
+      workspaceGitService: this.workspaceGitService,
+    });
+    const result = await service.runOnce();
+    const changedWorkspaceIds = new Set<string>();
+    const changedProjectIds = new Set<string>();
+
+    for (const change of result.changesApplied) {
+      switch (change.kind) {
+        case "workspace_archived":
+          await this.removeWorkspaceGitWatchTarget(change.directory);
+          this.scriptRuntimeStore?.removeForWorkspace(change.directory);
+          this.removeWorkspaceGitSubscription(change.workspaceId);
+          changedWorkspaceIds.add(change.workspaceId);
+          break;
+        case "workspace_updated":
+          changedWorkspaceIds.add(change.workspaceId);
+          break;
+        case "project_archived":
+        case "project_updated":
+          changedProjectIds.add(change.projectId);
+          break;
+      }
+    }
+
+    if (changedProjectIds.size > 0) {
+      for (const workspace of await this.workspaceRegistry.list()) {
+        if (changedProjectIds.has(workspace.projectId)) {
+          changedWorkspaceIds.add(workspace.workspaceId);
+        }
+      }
+    }
+
+    return changedWorkspaceIds;
   }
 
   private async emitWorkspaceUpdatesForWorkspaceIds(

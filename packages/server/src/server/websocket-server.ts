@@ -1524,12 +1524,14 @@ export class VoiceAssistantWebSocketServer {
     const activity = session.getClientActivity();
     if (!activity) {
       return {
+        appVisible: false,
         focusedAgentId: null,
         lastActivityAtMs: null,
       };
     }
 
     return {
+      appVisible: activity.appVisible,
       focusedAgentId: activity.focusedAgentId,
       lastActivityAtMs: activity.lastActivityAt.getTime(),
     };

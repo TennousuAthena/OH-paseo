@@ -3,6 +3,7 @@ import type { AgentAttentionReason } from "../shared/agent-attention-notificatio
 export const PRESENCE_THRESHOLD_MS = 180_000;
 
 export interface ClientPresenceState {
+  appVisible: boolean;
   lastActivityAtMs: number | null;
   focusedAgentId: string | null;
 }
@@ -38,7 +39,7 @@ export function computeNotificationPlan({
       continue;
     }
 
-    if (state.focusedAgentId === agentId) {
+    if (state.appVisible && state.focusedAgentId === agentId) {
       return { inAppRecipientIndex: null, shouldPush: false };
     }
 

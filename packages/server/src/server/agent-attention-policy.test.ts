@@ -7,6 +7,7 @@ import {
 
 function state(overrides: Partial<ClientPresenceState>): ClientPresenceState {
   return {
+    appVisible: true,
     focusedAgentId: null,
     lastActivityAtMs: null,
     ...overrides,
@@ -52,6 +53,23 @@ describe("computeNotificationPlan", () => {
         nowMs,
       }),
     ).toEqual({ inAppRecipientIndex: null, shouldPush: false });
+  });
+
+  it("does not suppress notifications when a focused client is backgrounded", () => {
+    const backgroundFocused = state({
+      appVisible: false,
+      focusedAgentId: "agent-1",
+      lastActivityAtMs: presentAtMs,
+    });
+
+    expect(
+      computeNotificationPlan({
+        allStates: [backgroundFocused],
+        agentId: "agent-1",
+        reason: "finished",
+        nowMs,
+      }),
+    ).toEqual({ inAppRecipientIndex: 0, shouldPush: false });
   });
 
   it("treats present clients focused on different agents as eligible", () => {
