@@ -379,6 +379,10 @@ function MobileSidebar({
     windowWidth,
   ]);
 
+  const handleWorkspacePress = useCallback(() => {
+    closeToAgent();
+  }, [closeToAgent]);
+
   const closeGesture = useMemo(
     () =>
       Gesture.Pan()
@@ -513,7 +517,7 @@ function MobileSidebar({
                 projects={projects}
                 isRefreshing={isManualRefresh && isRevalidating}
                 onRefresh={handleRefresh}
-                onWorkspacePress={() => closeToAgent()}
+                onWorkspacePress={handleWorkspacePress}
                 onAddProject={handleOpenProject}
                 parentGestureRef={closeGestureRef}
               />
