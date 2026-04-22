@@ -51,10 +51,7 @@ import { formatShortcut } from "@/utils/format-shortcut";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { isImeComposingKeyboardEvent } from "@/utils/keyboard-ime";
-import {
-  markScrollInvestigationEvent,
-  markScrollInvestigationRender,
-} from "@/utils/scroll-jank-investigation";
+import { markScrollInvestigationEvent, markScrollInvestigationRender } from "@/utils/scroll-jank";
 import { isWeb } from "@/constants/platform";
 import { useComposerHeightMirror } from "./composer-height-mirror";
 

@@ -71,7 +71,7 @@ import {
 } from "@/utils/inline-path";
 import { getMarkdownListMarker } from "@/utils/markdown-list";
 import { openExternalUrl } from "@/utils/open-external-url";
-import { markScrollInvestigationEvent } from "@/utils/scroll-jank-investigation";
+import { markScrollInvestigationEvent } from "@/utils/scroll-jank";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 import {
   getAssistantImageMetadata,
