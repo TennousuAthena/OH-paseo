@@ -149,6 +149,11 @@ function GettingStarted() {
             </a>
           </li>
           <li>
+            <a href="/docs/providers" className="underline hover:text-white/80">
+              Providers
+            </a>
+          </li>
+          <li>
             <a href="/docs/configuration" className="underline hover:text-white/80">
               Configuration
             </a>

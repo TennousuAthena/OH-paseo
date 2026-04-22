@@ -12,6 +12,7 @@ const navigation = [
   { name: "Git worktrees", href: "/docs/worktrees" },
   { name: "CLI", href: "/docs/cli" },
   { name: "Skills", href: "/docs/skills" },
+  { name: "Providers", href: "/docs/providers" },
   { name: "Configuration", href: "/docs/configuration" },
   { name: "Security", href: "/docs/security" },
   { name: "Best practices", href: "/docs/best-practices" },
