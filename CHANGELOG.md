@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.60-beta.2 - 2026-04-22
+## 0.1.60 - 2026-04-22
 
 ### Added
 - Scripts and services per worktree — define named commands in `paseo.json`, and long-running services get supervised with their own ports and nice proxy URLs like `http://web.my-app.localhost:6767`. See the [worktrees guide](https://paseo.sh/docs/worktrees).
@@ -28,6 +28,7 @@
 - Escape reliably interrupts the active agent.
 - Checking out a pull request from a fork lands on an owner-prefixed branch so multiple forks don't collide.
 - `paseo ls` defaults to active agents; pass `-a` to include archived.
+- GitHub branch and PR picker loads faster — queries are deferred until the picker opens.
 
 ### Fixed
 - Composer textarea shrinks back down after sending on web.
@@ -42,6 +43,11 @@
 - iOS image picker no longer leaves the screen unresponsive after cancelling.
 - Archiving a worktree recovers cleanly if a previous attempt was interrupted.
 - Images in agent messages with `~`-prefixed paths load instead of spinning forever.
+- Tool call blocks expand correctly on mobile while an agent is still streaming.
+- Timeline no longer stutters when catch-up and projected ranges overlap.
+- Codex no longer flashes idle when a replacement turn is in progress.
+- Branch state recovers correctly when a rebase is in progress.
+- Workspace hover card no longer clips near screen edges.
 
 ## 0.1.59 - 2026-04-16
 

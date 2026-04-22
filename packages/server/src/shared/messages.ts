@@ -251,7 +251,11 @@ export const AgentPermissionResponseSchema: z.ZodType<AgentPermissionResponse> =
   }),
 ]);
 
-export const AgentPermissionRequestPayloadSchema: z.ZodType<AgentPermissionRequest> = z.object({
+export const AgentPermissionRequestPayloadSchema: z.ZodType<
+  AgentPermissionRequest,
+  z.ZodTypeDef,
+  unknown
+> = z.object({
   id: z.string(),
   provider: AgentProviderSchema,
   name: z.string(),
@@ -286,7 +290,7 @@ const WorktreeSetupCommandSnapshotSchema = z.object({
   index: z.number().int().positive(),
   command: z.string(),
   cwd: z.string(),
-  log: z.string(),
+  log: z.string().optional().default(""),
   status: z.enum(["running", "completed", "failed"]),
   exitCode: z.number().nullable(),
   durationMs: z.number().nonnegative().optional(),
@@ -301,95 +305,96 @@ const WorktreeSetupDetailPayloadSchema = z.object({
   truncated: z.boolean().optional(),
 });
 
-const ToolCallDetailPayloadSchema: z.ZodType<ToolCallDetail> = z.discriminatedUnion("type", [
-  WorktreeSetupDetailPayloadSchema,
-  z.object({
-    type: z.literal("shell"),
-    command: z.string(),
-    cwd: z.string().optional(),
-    output: z.string().optional(),
-    exitCode: z.number().nullable().optional(),
-  }),
-  z.object({
-    type: z.literal("read"),
-    filePath: z.string(),
-    content: z.string().optional(),
-    offset: z.number().optional(),
-    limit: z.number().optional(),
-  }),
-  z.object({
-    type: z.literal("edit"),
-    filePath: z.string(),
-    oldString: z.string().optional(),
-    newString: z.string().optional(),
-    unifiedDiff: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("write"),
-    filePath: z.string(),
-    content: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("search"),
-    query: z.string(),
-    toolName: z.enum(["search", "grep", "glob", "web_search"]).optional(),
-    content: z.string().optional(),
-    filePaths: z.array(z.string()).optional(),
-    webResults: z
-      .array(
+const ToolCallDetailPayloadSchema: z.ZodType<ToolCallDetail, z.ZodTypeDef, unknown> =
+  z.discriminatedUnion("type", [
+    WorktreeSetupDetailPayloadSchema,
+    z.object({
+      type: z.literal("shell"),
+      command: z.string(),
+      cwd: z.string().optional(),
+      output: z.string().optional(),
+      exitCode: z.number().nullable().optional(),
+    }),
+    z.object({
+      type: z.literal("read"),
+      filePath: z.string(),
+      content: z.string().optional(),
+      offset: z.number().optional(),
+      limit: z.number().optional(),
+    }),
+    z.object({
+      type: z.literal("edit"),
+      filePath: z.string(),
+      oldString: z.string().optional(),
+      newString: z.string().optional(),
+      unifiedDiff: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("write"),
+      filePath: z.string(),
+      content: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("search"),
+      query: z.string(),
+      toolName: z.enum(["search", "grep", "glob", "web_search"]).optional(),
+      content: z.string().optional(),
+      filePaths: z.array(z.string()).optional(),
+      webResults: z
+        .array(
+          z.object({
+            title: z.string(),
+            url: z.string(),
+          }),
+        )
+        .optional(),
+      annotations: z.array(z.string()).optional(),
+      numFiles: z.number().optional(),
+      numMatches: z.number().optional(),
+      durationMs: z.number().optional(),
+      durationSeconds: z.number().optional(),
+      truncated: z.boolean().optional(),
+      mode: z.enum(["content", "files_with_matches", "count"]).optional(),
+    }),
+    z.object({
+      type: z.literal("fetch"),
+      url: z.string(),
+      prompt: z.string().optional(),
+      result: z.string().optional(),
+      code: z.number().optional(),
+      codeText: z.string().optional(),
+      bytes: z.number().optional(),
+      durationMs: z.number().optional(),
+    }),
+    z.object({
+      type: z.literal("sub_agent"),
+      subAgentType: z.string().optional(),
+      description: z.string().optional(),
+      log: z.string(),
+      actions: z.array(
         z.object({
-          title: z.string(),
-          url: z.string(),
+          index: z.number().int().positive(),
+          toolName: z.string(),
+          summary: z.string().optional(),
         }),
-      )
-      .optional(),
-    annotations: z.array(z.string()).optional(),
-    numFiles: z.number().optional(),
-    numMatches: z.number().optional(),
-    durationMs: z.number().optional(),
-    durationSeconds: z.number().optional(),
-    truncated: z.boolean().optional(),
-    mode: z.enum(["content", "files_with_matches", "count"]).optional(),
-  }),
-  z.object({
-    type: z.literal("fetch"),
-    url: z.string(),
-    prompt: z.string().optional(),
-    result: z.string().optional(),
-    code: z.number().optional(),
-    codeText: z.string().optional(),
-    bytes: z.number().optional(),
-    durationMs: z.number().optional(),
-  }),
-  z.object({
-    type: z.literal("sub_agent"),
-    subAgentType: z.string().optional(),
-    description: z.string().optional(),
-    log: z.string(),
-    actions: z.array(
-      z.object({
-        index: z.number().int().positive(),
-        toolName: z.string(),
-        summary: z.string().optional(),
-      }),
-    ),
-  }),
-  z.object({
-    type: z.literal("plain_text"),
-    label: z.string().optional(),
-    text: z.string().optional(),
-    icon: z.enum(TOOL_CALL_ICON_NAMES).optional(),
-  }),
-  z.object({
-    type: z.literal("plan"),
-    text: z.string(),
-  }),
-  z.object({
-    type: z.literal("unknown"),
-    input: UnknownValueSchema,
-    output: UnknownValueSchema,
-  }),
-]);
+      ),
+    }),
+    z.object({
+      type: z.literal("plain_text"),
+      label: z.string().optional(),
+      text: z.string().optional(),
+      icon: z.enum(TOOL_CALL_ICON_NAMES).optional(),
+    }),
+    z.object({
+      type: z.literal("plan"),
+      text: z.string(),
+    }),
+    z.object({
+      type: z.literal("unknown"),
+      input: UnknownValueSchema,
+      output: UnknownValueSchema,
+    }),
+  ]);
 
 const ToolCallBasePayloadSchema = z
   .object({
@@ -2060,29 +2065,34 @@ const WorkspaceGitHubRuntimePayloadSchema = z
   .optional()
   .nullable();
 
-export const WorkspaceDescriptorPayloadSchema = z.object({
-  id: z.string(),
-  projectId: z.string(),
-  projectDisplayName: z.string(),
-  projectRootPath: z.string(),
-  workspaceDirectory: z.string(),
-  projectKind: z.enum(["git", "non_git", "directory"]),
-  // COMPAT(workspaces): keep legacy directory workspace kind parseable.
-  workspaceKind: z.enum(["directory", "local_checkout", "checkout", "worktree"]),
-  name: z.string(),
-  status: WorkspaceStateBucketSchema,
-  activityAt: z.string().nullable(),
-  diffStat: z
-    .object({
-      additions: z.number(),
-      deletions: z.number(),
-    })
-    .nullable()
-    .optional(),
-  scripts: z.array(WorkspaceScriptPayloadSchema).default([]),
-  gitRuntime: WorkspaceGitRuntimePayloadSchema,
-  githubRuntime: WorkspaceGitHubRuntimePayloadSchema,
-});
+export const WorkspaceDescriptorPayloadSchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string(),
+    projectDisplayName: z.string(),
+    projectRootPath: z.string(),
+    workspaceDirectory: z.string().optional(),
+    projectKind: z.enum(["git", "non_git", "directory"]),
+    // COMPAT(workspaces): keep legacy directory workspace kind parseable.
+    workspaceKind: z.enum(["directory", "local_checkout", "checkout", "worktree"]),
+    name: z.string(),
+    status: WorkspaceStateBucketSchema,
+    activityAt: z.string().nullable(),
+    diffStat: z
+      .object({
+        additions: z.number(),
+        deletions: z.number(),
+      })
+      .nullable()
+      .optional(),
+    scripts: z.array(WorkspaceScriptPayloadSchema).default([]),
+    gitRuntime: WorkspaceGitRuntimePayloadSchema,
+    githubRuntime: WorkspaceGitHubRuntimePayloadSchema,
+  })
+  .transform((workspace) => ({
+    ...workspace,
+    workspaceDirectory: workspace.workspaceDirectory ?? workspace.projectRootPath,
+  }));
 
 export const AgentUpdateMessageSchema = z.object({
   type: z.literal("agent_update"),
