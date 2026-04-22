@@ -2253,6 +2253,8 @@ describe("AgentManager", () => {
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
     const secondStartEntered = deferred<void>();
+    const interruptStarted = deferred<void>();
+    const allowInterruptToFinish = deferred<void>();
     const allowSecondStartToResolve = deferred<void>();
     let capturedSession: StaleReplacementSession | null = null;
 
@@ -2280,6 +2282,8 @@ describe("AgentManager", () => {
       }
 
       override async interrupt(): Promise<void> {
+        interruptStarted.resolve();
+        await allowInterruptToFinish.promise;
         this.pushEvent({
           type: "turn_canceled",
           provider: this.provider,
@@ -2310,13 +2314,16 @@ describe("AgentManager", () => {
       cwd: workdir,
     });
 
-    const lifecycleUpdates: string[] = [];
+    const stateUpdates: Array<{ lifecycle: string; updatedAt: number }> = [];
     const unsubscribe = manager.subscribe(
       (event) => {
         if (event.type !== "agent_state" || event.agent.id !== snapshot.id) {
           return;
         }
-        lifecycleUpdates.push(event.agent.lifecycle);
+        stateUpdates.push({
+          lifecycle: event.agent.lifecycle,
+          updatedAt: event.agent.updatedAt.getTime(),
+        });
       },
       { agentId: snapshot.id, replayState: false },
     );
@@ -2330,12 +2337,24 @@ describe("AgentManager", () => {
 
     await manager.waitForAgentRunStart(snapshot.id);
 
+    const replaceUpdatesStart = stateUpdates.length;
+    const beforeReplaceUpdatedAt = manager.getAgent(snapshot.id)?.updatedAt.getTime() ?? 0;
     const secondRun = manager.replaceAgentRun(snapshot.id, "replacement run");
     const secondRunDrain = (async () => {
       for await (const _event of secondRun) {
         // Drain replacement run.
       }
     })();
+
+    await interruptStarted.promise;
+    const replacementUpdates = stateUpdates.slice(replaceUpdatesStart);
+    expect(
+      replacementUpdates.some(
+        (update) => update.lifecycle === "running" && update.updatedAt > beforeReplaceUpdatedAt,
+      ),
+    ).toBe(true);
+    expect(replacementUpdates.map((update) => update.lifecycle)).not.toContain("idle");
+    allowInterruptToFinish.resolve();
 
     await secondStartEntered.promise;
 
@@ -2349,10 +2368,11 @@ describe("AgentManager", () => {
     capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: "turn-1" });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // eslint-disable-next-line no-console
-    console.log("replace-gap-lifecycle", lifecycleUpdates, manager.getAgent(snapshot.id));
     expect(manager.getAgent(snapshot.id)?.lifecycle).toBe("running");
-    expect(lifecycleUpdates.at(-1)).toBe("running");
+    expect(stateUpdates.at(-1)?.lifecycle).toBe("running");
+    expect(stateUpdates.slice(replaceUpdatesStart).map((update) => update.lifecycle)).not.toContain(
+      "idle",
+    );
 
     allowSecondStartToResolve.resolve();
 

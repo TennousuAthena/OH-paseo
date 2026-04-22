@@ -187,6 +187,7 @@ type ManagedAgentBase = {
   lastError?: string;
   attention: AttentionState;
   foregroundTurnWaiters: Set<ForegroundTurnWaiter>;
+  finalizedForegroundTurnIds: Set<string>;
   unsubscribeSession: (() => void) | null;
   /**
    * Internal agents are hidden from listings and don't trigger notifications.
@@ -1302,8 +1303,11 @@ export class AgentManager {
     return streamForwarder;
   }
 
-  private finalizeForegroundTurn(agent: ActiveManagedAgent): void {
+  private finalizeForegroundTurn(agent: ActiveManagedAgent, turnId?: string): void {
     const mutableAgent = agent as ActiveManagedAgent;
+    if (turnId) {
+      this.rememberFinalizedForegroundTurn(mutableAgent, turnId);
+    }
     mutableAgent.activeForegroundTurnId = null;
     const terminalError = mutableAgent.lastError;
     const shouldHoldBusyForReplacement = mutableAgent.pendingReplacement && !terminalError;
@@ -1351,6 +1355,9 @@ export class AgentManager {
 
     const agent = this.requireSessionAgent(agentId);
     agent.pendingReplacement = true;
+    agent.lifecycle = "running";
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
 
     const self = this;
     return (async function* replaceRunForwarder() {
@@ -1990,6 +1997,7 @@ export class AgentManager {
       pendingReplacement: false,
       activeForegroundTurnId: null,
       foregroundTurnWaiters: new Set<ForegroundTurnWaiter>(),
+      finalizedForegroundTurnIds: new Set<string>(),
       unsubscribeSession: null,
       persistence: attachPersistenceCwd(session.describePersistence(), config.cwd),
       historyPrimed: options?.historyPrimed ?? durableTimelineHasRows,
@@ -2148,6 +2156,17 @@ export class AgentManager {
     }
     waiter.settled = true;
     waiter.resolveSettled();
+  }
+
+  private rememberFinalizedForegroundTurn(agent: ActiveManagedAgent, turnId: string): void {
+    agent.finalizedForegroundTurnIds.add(turnId);
+    if (agent.finalizedForegroundTurnIds.size <= 50) {
+      return;
+    }
+    const oldest = agent.finalizedForegroundTurnIds.values().next().value;
+    if (oldest) {
+      agent.finalizedForegroundTurnIds.delete(oldest);
+    }
   }
 
   private createPendingForegroundRun(): PendingForegroundRun {
@@ -2334,6 +2353,13 @@ export class AgentManager {
   ): Promise<boolean> {
     const eventTurnId = (event as { turnId?: string }).turnId;
     const isForegroundEvent = Boolean(eventTurnId && agent.activeForegroundTurnId === eventTurnId);
+    if (
+      eventTurnId &&
+      isTurnTerminalEvent(event) &&
+      agent.finalizedForegroundTurnIds.has(eventTurnId)
+    ) {
+      return false;
+    }
 
     // Only update timestamp for live events, not history replay
     if (!options?.fromHistory) {
@@ -2540,7 +2566,7 @@ export class AgentManager {
     }
 
     if (!options?.fromHistory && isForegroundEvent && isTurnTerminalEvent(event)) {
-      this.finalizeForegroundTurn(agent);
+      this.finalizeForegroundTurn(agent, eventTurnId);
     }
 
     // Skip dispatching individual stream events during history replay.
