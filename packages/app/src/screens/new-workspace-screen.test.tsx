@@ -15,6 +15,7 @@ const {
   mergeWorkspacesMock,
   navigateMock,
   saveDraftInputMock,
+  clearDraftInputMock,
   queueDraftSubmissionMock,
   createdAgent,
   createdWorkspace,
@@ -116,6 +117,7 @@ const {
     mergeWorkspacesMock: vi.fn(),
     navigateMock: vi.fn(),
     saveDraftInputMock: vi.fn(),
+    clearDraftInputMock: vi.fn(),
     queueDraftSubmissionMock: vi.fn(),
     createdAgent,
     createdWorkspace,
@@ -228,6 +230,7 @@ vi.mock("@/stores/draft-store", () => ({
   useDraftStore: {
     getState: () => ({
       saveDraftInput: saveDraftInputMock,
+      clearDraftInput: clearDraftInputMock,
     }),
   },
 }));
@@ -494,6 +497,7 @@ beforeEach(() => {
   mockClient.createPaseoWorktree.mockClear();
   mockClient.createAgent.mockClear();
   saveDraftInputMock.mockClear();
+  clearDraftInputMock.mockClear();
   queueDraftSubmissionMock.mockClear();
   navigateMock.mockClear();
   initialAttachments.length = 0;
@@ -646,6 +650,13 @@ describe("NewWorkspaceScreen picker payload", () => {
       target: { kind: "draft", draftId: "draft-new-workspace" },
       navigationMethod: "replace",
     });
+    expect(clearDraftInputMock).toHaveBeenCalledWith({
+      draftKey: "new-workspace:server:/repo",
+      lifecycle: "sent",
+    });
+    expect(navigateMock.mock.invocationCallOrder[0]).toBeLessThan(
+      clearDraftInputMock.mock.invocationCallOrder[0],
+    );
     expect(document.querySelector("textarea")).toHaveProperty("disabled", true);
   });
 
@@ -877,6 +888,7 @@ describe("NewWorkspaceScreen picker payload", () => {
     expect(queryByTestId("message-input-attach-button")).toHaveProperty("disabled", true);
     expect(queryByTestId("new-workspace-ref-picker-trigger")).toHaveProperty("disabled", true);
     expect(queryByTestId("new-workspace-ref-picker-branch-dev")).toHaveProperty("disabled", true);
+    expect(clearDraftInputMock).not.toHaveBeenCalled();
 
     createWorktree.reject(new Error("Create worktree failed"));
     await flush();

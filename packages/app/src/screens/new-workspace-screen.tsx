@@ -135,8 +135,9 @@ export function NewWorkspaceScreen({
   const isPending = pendingAction !== null;
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
+  const draftKey = `new-workspace:${serverId}:${sourceDirectory}`;
   const chatDraft = useAgentInputDraft({
-    draftKey: `new-workspace:${serverId}:${sourceDirectory}`,
+    draftKey,
     initialCwd: sourceDirectory,
     composer: {
       initialServerId: serverId || null,
@@ -370,6 +371,7 @@ export function NewWorkspaceScreen({
           target: { kind: "draft", draftId },
           navigationMethod: "replace",
         });
+        useDraftStore.getState().clearDraftInput({ draftKey, lifecycle: "sent" });
       } catch (error) {
         const message = toErrorMessage(error);
         setPendingAction(null);
@@ -377,7 +379,7 @@ export function NewWorkspaceScreen({
         toast.error(message);
       }
     },
-    [composerState, ensureWorkspace, serverId, toast],
+    [composerState, draftKey, ensureWorkspace, serverId, toast],
   );
 
   const workspaceTitle =

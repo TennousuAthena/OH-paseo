@@ -81,6 +81,9 @@ export function WorkspaceDraftAgentTab({
   if (!composerState) {
     throw new Error("Workspace draft composer state is required");
   }
+  const clearDraftInput = draftInput.clear;
+  const setDraftText = draftInput.setText;
+  const setDraftAttachments = draftInput.setAttachments;
   const pendingAutoSubmit = useWorkspaceDraftSubmissionStore((state) => {
     const pending = state.pendingByDraftId[draftId] ?? null;
     return pending?.serverId === serverId && pending.workspaceId === workspaceId ? pending : null;
@@ -220,6 +223,7 @@ export function WorkspaceDraftAgentTab({
       };
     },
     onCreateSuccess: ({ result }) => {
+      clearDraftInput("sent");
       onCreated(result);
     },
   });
@@ -246,11 +250,15 @@ export function WorkspaceDraftAgentTab({
       return;
     }
     autoSubmitKeyRef.current = submitKey;
+    setDraftText("");
+    setDraftAttachments([]);
     void handleCreateFromInput({
       text: submission.text,
       attachments: submission.attachments,
       cwd: submission.cwd,
     }).catch(() => {
+      setDraftText(submission.text);
+      setDraftAttachments(submission.attachments);
       autoSubmitKeyRef.current = null;
     });
   }, [
@@ -259,6 +267,8 @@ export function WorkspaceDraftAgentTab({
     handleCreateFromInput,
     isReadyForPendingAutoSubmit,
     serverId,
+    setDraftAttachments,
+    setDraftText,
     workspaceId,
   ]);
 
