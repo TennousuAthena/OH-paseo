@@ -1491,6 +1491,129 @@ describe("DaemonClient", () => {
     });
   });
 
+  test("sends active-scoped fetch_agents_request", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "clsk_unit_test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const promise = client.fetchAgents({
+      scope: "active",
+      page: { limit: 50 },
+    });
+
+    expect(mock.sent).toHaveLength(1);
+    const request = JSON.parse(String(mock.sent[0])) as {
+      type: "session";
+      message: {
+        type: "fetch_agents_request";
+        requestId: string;
+        scope?: "active";
+      };
+    };
+    expect(request.message).toMatchObject({
+      type: "fetch_agents_request",
+      scope: "active",
+    });
+
+    mock.triggerMessage(
+      JSON.stringify({
+        type: "session",
+        message: {
+          type: "fetch_agents_response",
+          payload: {
+            requestId: request.message.requestId,
+            entries: [],
+            pageInfo: {
+              nextCursor: null,
+              prevCursor: null,
+              hasMore: false,
+            },
+          },
+        },
+      }),
+    );
+
+    await expect(promise).resolves.toMatchObject({
+      requestId: request.message.requestId,
+      entries: [],
+    });
+  });
+
+  test("fetches paginated agent history separately from active agents", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "clsk_unit_test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const promise = client.fetchAgentHistory({
+      page: { limit: 25, cursor: "cursor-1" },
+      sort: [{ key: "updated_at", direction: "desc" }],
+    });
+
+    expect(mock.sent).toHaveLength(1);
+    const request = JSON.parse(String(mock.sent[0])) as {
+      type: "session";
+      message: {
+        type: "fetch_agent_history_request";
+        requestId: string;
+        page?: { limit: number; cursor?: string };
+      };
+    };
+    expect(request.message.type).toBe("fetch_agent_history_request");
+    expect(request.message.page).toEqual({ limit: 25, cursor: "cursor-1" });
+
+    mock.triggerMessage(
+      JSON.stringify({
+        type: "session",
+        message: {
+          type: "fetch_agent_history_response",
+          payload: {
+            requestId: request.message.requestId,
+            entries: [],
+            pageInfo: {
+              nextCursor: null,
+              prevCursor: "cursor-1",
+              hasMore: false,
+            },
+          },
+        },
+      }),
+    );
+
+    await expect(promise).resolves.toEqual({
+      requestId: request.message.requestId,
+      entries: [],
+      pageInfo: {
+        nextCursor: null,
+        prevCursor: "cursor-1",
+        hasMore: false,
+      },
+    });
+  });
+
   test("uses server-provided dictation finish timeout budget", async () => {
     vi.useFakeTimers();
     const logger = createMockLogger();

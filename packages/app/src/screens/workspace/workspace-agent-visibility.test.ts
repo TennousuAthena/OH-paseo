@@ -88,6 +88,25 @@ describe("workspace agent visibility", () => {
     expect(result.knownAgentIds.has("other-workspace-agent")).toBe(false);
   });
 
+  it("treats lazy historical details as known without making them active", () => {
+    const workspaceDirectory = "/repo/worktree";
+    const active = makeAgent({ id: "active-agent", cwd: workspaceDirectory });
+    const historicalDetail = makeAgent({
+      id: "historical-agent",
+      cwd: workspaceDirectory,
+      archivedAt: new Date("2026-03-04T00:01:00.000Z"),
+    });
+
+    const result = deriveWorkspaceAgentVisibility({
+      sessionAgents: new Map([[active.id, active]]),
+      agentDetails: new Map([[historicalDetail.id, historicalDetail]]),
+      workspaceDirectory,
+    });
+
+    expect(result.activeAgentIds).toEqual(new Set(["active-agent"]));
+    expect(result.knownAgentIds).toEqual(new Set(["active-agent", "historical-agent"]));
+  });
+
   it("prunes archived agent tabs so archiving on one client closes tabs on all clients", () => {
     const knownAgentIds = new Set(["archived-agent"]);
     const activeAgentIds = new Set<string>();

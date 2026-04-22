@@ -8,6 +8,9 @@ dotenv.config({
 });
 
 const daemonRunnerEntry = fileURLToPath(new URL("./supervisor-entrypoint.ts", import.meta.url));
+const inspectArg = process.env.PASEO_NODE_INSPECT ?? "--inspect";
+const inspectArgs =
+  inspectArg === "0" || inspectArg === "false" || inspectArg === "off" ? [] : [inspectArg];
 
 // The supervisor handles SIGINT/SIGTERM itself and needs time to drain the
 // worker gracefully. Ignore them here so spawnSync blocks until the supervisor
@@ -19,7 +22,7 @@ process.on("SIGTERM", () => {});
 const result = spawnSync(
   process.execPath,
   [
-    "--inspect",
+    ...inspectArgs,
     "--heapsnapshot-near-heap-limit=3",
     "--max-old-space-size=3072",
     "--report-on-fatalerror",

@@ -4,8 +4,12 @@ import { createTempGitRepo } from "./helpers/workspace";
 import {
   archiveAgentFromDaemon,
   archiveAgentFromSessions,
+  clickSessionRow,
+  closeWorkspaceAgentTab,
   connectArchiveTabDaemonClient,
   createIdleAgent,
+  expectArchivedAgentFocused,
+  expectSessionRowArchived,
   expectSessionRowVisible,
   expectWorkspaceArchiveOutcome,
   expectWorkspaceTabHidden,
@@ -99,5 +103,27 @@ test.describe("Archive tab reconciliation", () => {
     } finally {
       await passivePage.close();
     }
+  });
+
+  test("clicking an archived session reopens its closed tab focused", async ({ page }) => {
+    const archived = await createIdleAgent(client, {
+      cwd: tempRepo.path,
+      title: `reopen-archived-${randomUUID().slice(0, 8)}`,
+    });
+    const surviving = await createIdleAgent(client, {
+      cwd: tempRepo.path,
+      title: `reopen-control-${randomUUID().slice(0, 8)}`,
+    });
+
+    await resetSeededPageState(page);
+    await openWorkspaceWithAgents(page, [archived, surviving]);
+    await closeWorkspaceAgentTab(page, archived.id);
+    await archiveAgentFromDaemon(client, archived.id);
+    await openSessions(page);
+    await expectSessionRowArchived(page, archived.title);
+
+    await clickSessionRow(page, archived.title);
+
+    await expectArchivedAgentFocused(page, archived.id);
   });
 });

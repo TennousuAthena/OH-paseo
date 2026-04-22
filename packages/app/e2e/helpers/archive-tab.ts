@@ -231,6 +231,24 @@ export async function expectWorkspaceArchiveOutcome(
   await expectWorkspaceTabVisible(page, input.survivingAgentId);
 }
 
+export async function closeWorkspaceAgentTab(page: Page, agentId: string): Promise<void> {
+  const closeButton = page.getByTestId(`workspace-agent-close-${agentId}`).filter({
+    visible: true,
+  });
+  await expect(closeButton.first()).toBeVisible({ timeout: 30_000 });
+  await closeButton.first().click();
+  await expectWorkspaceTabHidden(page, agentId);
+}
+
+export async function expectArchivedAgentFocused(page: Page, agentId: string): Promise<void> {
+  await expectWorkspaceTabVisible(page, agentId);
+  await expect(
+    page.getByText("This agent is archived").filter({ visible: true }).first(),
+  ).toBeVisible({
+    timeout: 30_000,
+  });
+}
+
 export async function reloadWorkspace(page: Page, workspaceId: string): Promise<void> {
   const serverId = getServerId();
   await page.goto(buildHostWorkspaceRoute(serverId, workspaceId));
@@ -259,6 +277,12 @@ export async function expectSessionRowVisible(page: Page, title: string): Promis
 
 export async function expectSessionRowArchived(page: Page, title: string): Promise<void> {
   await expect(getSessionRowByTitle(page, title)).toContainText("Archived", { timeout: 30_000 });
+}
+
+export async function clickSessionRow(page: Page, title: string): Promise<void> {
+  const row = getSessionRowByTitle(page, title);
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await row.click();
 }
 
 export async function archiveAgentFromSessions(

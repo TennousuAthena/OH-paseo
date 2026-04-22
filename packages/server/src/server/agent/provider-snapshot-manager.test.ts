@@ -233,7 +233,7 @@ describe("ProviderSnapshotManager", () => {
       expect(changes).toHaveLength(1);
     });
 
-    expect(changes[0]?.cwd).toBe(projectCwd);
+    expect(changes[0]?.cwd).toBe(homedir());
     expect(getProviderEntry(changes[0]?.entries ?? [], "claude")?.status).toBe("ready");
     expect(getProviderEntry(changes[0]?.entries ?? [], "codex")?.status).toBe("loading");
 
@@ -534,22 +534,24 @@ describe("ProviderSnapshotManager", () => {
     await Promise.resolve();
 
     expect(fetchModels).toHaveBeenCalledTimes(1);
-    expect(fetchModels).toHaveBeenCalledWith(projectCwd, false);
-    expect(fetchModels).not.toHaveBeenCalledWith(projectCwd, true);
+    expect(fetchModels).toHaveBeenCalledWith(homedir(), false);
+    expect(fetchModels).not.toHaveBeenCalledWith(homedir(), true);
 
     loadingFetchModels.resolve([createModel("codex", "gpt-5.4")]);
     await warmUpPromise;
 
     expect(fetchModels).toHaveBeenCalledTimes(1);
-    expect(fetchModels).not.toHaveBeenCalledWith(projectCwd, true);
+    expect(fetchModels).not.toHaveBeenCalledWith(homedir(), true);
 
     manager.destroy();
   });
 
-  test("settings refresh refreshes only home cwd and invalidates matching provider elsewhere", async () => {
+  test("settings refresh refreshes the single global provider state once", async () => {
     const fetchModels = vi
       .fn<(cwd: string, force: boolean) => Promise<AgentModelDefinition[]>>()
-      .mockImplementation(async (cwd) => [createModel("codex", cwd)]);
+      .mockImplementation(async (_cwd, force) => [
+        createModel("codex", force ? "refreshed" : "initial"),
+      ]);
     const { registry } = createRegistry([
       createMockProvider({
         provider: "codex",
@@ -574,24 +576,28 @@ describe("ProviderSnapshotManager", () => {
 
     await manager.refreshSettingsSnapshot({ providers: ["codex"] });
 
-    expect(fetchModels.mock.calls.map(([cwd]) => cwd)).toEqual([
-      projectACwd,
-      projectBCwd,
-      homedir(),
+    expect(fetchModels.mock.calls).toEqual([
+      [homedir(), false],
+      [homedir(), true],
     ]);
-    expect(fetchModels.mock.calls.map(([, force]) => force)).toEqual([false, false, true]);
 
     const projectASnapshot = manager.getSnapshot(projectACwd);
-    expect(getProviderEntry(projectASnapshot, "codex")?.status).toBe("loading");
+    expect(getProviderEntry(projectASnapshot, "codex")).toMatchObject({
+      provider: "codex",
+      status: "ready",
+      models: [createModel("codex", "refreshed")],
+    });
     expect(getProviderEntry(projectASnapshot, "claude")?.status).toBe("ready");
 
     manager.destroy();
   });
 
-  test("settings refresh invalidation self-heals workspace snapshots through the next read without force", async () => {
+  test("settings refresh updates workspace reads through the shared global provider state", async () => {
     const fetchModels = vi
       .fn<(cwd: string, force: boolean) => Promise<AgentModelDefinition[]>>()
-      .mockImplementation(async (cwd) => [createModel("codex", cwd)]);
+      .mockImplementation(async (_cwd, force) => [
+        createModel("codex", force ? "refreshed" : "initial"),
+      ]);
     const { registry } = createRegistry([
       createMockProvider({
         provider: "codex",
@@ -609,24 +615,15 @@ describe("ProviderSnapshotManager", () => {
 
     await manager.refreshSettingsSnapshot({ providers: ["codex"] });
 
-    expect(fetchModels.mock.calls.map(([cwd]) => cwd)).toEqual([projectCwd, homedir()]);
-    expect(fetchModels.mock.calls.map(([, force]) => force)).toEqual([false, true]);
-
-    const invalidatedSnapshot = manager.getSnapshot(projectCwd);
-
-    expect(getProviderEntry(invalidatedSnapshot, "codex")).toMatchObject({
-      provider: "codex",
-      status: "loading",
-    });
+    expect(fetchModels.mock.calls).toEqual([
+      [homedir(), false],
+      [homedir(), true],
+    ]);
 
     await vi.waitFor(() => {
-      expect(fetchModels).toHaveBeenCalledTimes(3);
-    });
-
-    expect(fetchModels.mock.calls[2]).toEqual([projectCwd, false]);
-
-    await vi.waitFor(() => {
-      expect(getProviderEntry(manager.getSnapshot(projectCwd), "codex")?.status).toBe("ready");
+      expect(getProviderEntry(manager.getSnapshot(projectCwd), "codex")?.models?.[0]?.id).toBe(
+        "refreshed",
+      );
     });
 
     manager.destroy();
@@ -932,7 +929,7 @@ describe("ProviderSnapshotManager", () => {
     manager.destroy();
   });
 
-  test("different cwd keys get independent snapshots", async () => {
+  test("different cwd keys share the same global provider snapshot state", async () => {
     const seenCwds: string[] = [];
     const { registry } = createRegistry([
       createMockProvider({
@@ -954,12 +951,12 @@ describe("ProviderSnapshotManager", () => {
     });
 
     expect(getProviderEntry(manager.getSnapshot(projectACwd), "codex")?.models?.[0]?.id).toBe(
-      `model:${projectACwd}`,
+      `model:${homedir()}`,
     );
     expect(getProviderEntry(manager.getSnapshot(projectBCwd), "codex")?.models?.[0]?.id).toBe(
-      `model:${projectBCwd}`,
+      `model:${homedir()}`,
     );
-    expect(seenCwds).toEqual([projectACwd, projectBCwd]);
+    expect(seenCwds).toEqual([homedir()]);
 
     manager.destroy();
   });
@@ -991,7 +988,7 @@ describe("ProviderSnapshotManager", () => {
     manager.destroy();
   });
 
-  test("cwd normalization resolves tilde relative paths and trailing slashes before provider calls", async () => {
+  test("workspace cwd does not affect global provider model fetching", async () => {
     const seenCwds: string[] = [];
     const { registry } = createRegistry([
       createMockProvider({
@@ -1008,18 +1005,20 @@ describe("ProviderSnapshotManager", () => {
     manager.getSnapshot("relative-provider-test/..");
 
     await vi.waitFor(() => {
-      expect(seenCwds).toHaveLength(2);
+      expect(seenCwds).toHaveLength(1);
     });
 
-    expect(seenCwds).toEqual([resolve(homedir(), "paseo-provider-test"), resolve(".")]);
+    expect(seenCwds).toEqual([homedir()]);
 
     manager.destroy();
   });
 
-  test("workspace refresh refreshes only the requested cwd with force true", async () => {
+  test("workspace refresh refreshes the shared global provider state with force true", async () => {
     const fetchModels = vi
       .fn<(cwd: string, force: boolean) => Promise<AgentModelDefinition[]>>()
-      .mockImplementation(async (cwd) => [createModel("codex", cwd)]);
+      .mockImplementation(async (_cwd, force) => [
+        createModel("codex", force ? "refreshed" : "initial"),
+      ]);
     const { registry } = createRegistry([
       createMockProvider({
         provider: "codex",
@@ -1032,18 +1031,17 @@ describe("ProviderSnapshotManager", () => {
     manager.getSnapshot(projectBCwd);
 
     await vi.waitFor(() => {
-      expect(fetchModels).toHaveBeenCalledTimes(2);
+      expect(fetchModels).toHaveBeenCalledTimes(1);
     });
 
     await manager.refreshSnapshotForCwd({ cwd: projectACwd, providers: ["codex"] });
 
     expect(fetchModels.mock.calls).toEqual([
-      [projectACwd, false],
-      [projectBCwd, false],
-      [projectACwd, true],
+      [homedir(), false],
+      [homedir(), true],
     ]);
     expect(getProviderEntry(manager.getSnapshot(projectBCwd), "codex")?.models?.[0]?.id).toBe(
-      projectBCwd,
+      "refreshed",
     );
 
     manager.destroy();

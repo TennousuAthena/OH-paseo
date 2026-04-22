@@ -96,8 +96,9 @@ import {
 import { buildWorkspaceTabMenuEntries } from "@/screens/workspace/workspace-tab-menu";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
-  resolveWorkspaceHeader,
+  resolveWorkspaceHeaderRenderState,
   shouldRenderMissingWorkspaceDescriptor,
+  type WorkspaceHeaderCheckoutState,
 } from "@/screens/workspace/workspace-header-source";
 import {
   deriveWorkspaceAgentVisibility,
@@ -151,18 +152,6 @@ function decodeSegment(value: string): string {
   } catch {
     return value;
   }
-}
-
-function areHeaderLabelsEquivalent(
-  a: string | null | undefined,
-  b: string | null | undefined,
-): boolean {
-  const normalizedA = trimNonEmpty(a)?.toLocaleLowerCase();
-  const normalizedB = trimNonEmpty(b)?.toLocaleLowerCase();
-  if (!normalizedA || !normalizedB) {
-    return false;
-  }
-  return normalizedA === normalizedB;
 }
 
 function getFallbackTabOptionLabel(tab: WorkspaceTabDescriptor): string {
@@ -658,9 +647,8 @@ function WorkspaceScreenContent({
     workspaceDescriptor && !workspaceExecutionAuthority,
   );
 
-  // Warm the server-side provider snapshot for this workspace cwd so the model
-  // picker is ready when opened. Consumers share the same query cache key.
-  useProvidersSnapshot(normalizedServerId, workspaceDirectory, {
+  // Warm the global provider snapshot so the model picker is ready when opened.
+  useProvidersSnapshot(normalizedServerId, {
     enabled: isRouteFocused,
   });
   const [pendingTerminalCreateInput, setPendingTerminalCreateInput] = useState<{
@@ -675,6 +663,7 @@ function WorkspaceScreenContent({
     (state) =>
       deriveWorkspaceAgentVisibility({
         sessionAgents: state.sessions[normalizedServerId]?.agents,
+        agentDetails: state.sessions[normalizedServerId]?.agentDetails,
         workspaceDirectory,
       }),
     workspaceAgentVisibilityEqual,
@@ -879,21 +868,36 @@ function WorkspaceScreenContent({
     pendingTerminalCreateInput,
     toast,
   ]);
-  const workspaceHeader = workspaceDescriptor
-    ? resolveWorkspaceHeader({ workspace: workspaceDescriptor })
-    : null;
-  const isWorkspaceHeaderLoading = workspaceHeader === null || isCheckoutStatusLoading;
-  const workspaceHeaderTitle = workspaceHeader?.title ?? "";
-  const workspaceHeaderSubtitle = workspaceHeader?.subtitle ?? "";
-  const shouldShowWorkspaceHeaderSubtitle = !areHeaderLabelsEquivalent(
-    workspaceHeaderTitle,
-    workspaceHeaderSubtitle,
-  );
-
-  const isGitCheckout = checkoutQuery.data?.isGit ?? false;
+  let workspaceHeaderCheckoutState: WorkspaceHeaderCheckoutState;
+  if (isCheckoutStatusLoading) {
+    workspaceHeaderCheckoutState = { kind: "pending" };
+  } else if (checkoutQuery.isError || !checkoutQuery.data) {
+    workspaceHeaderCheckoutState = { kind: "error" };
+  } else {
+    workspaceHeaderCheckoutState = {
+      kind: "ready",
+      checkout: {
+        isGit: checkoutQuery.data.isGit,
+        currentBranch: checkoutQuery.data.currentBranch,
+      },
+    };
+  }
+  const workspaceHeaderRenderState = resolveWorkspaceHeaderRenderState({
+    workspace: workspaceDescriptor,
+    checkoutState: workspaceHeaderCheckoutState,
+  });
+  const isWorkspaceHeaderLoading = workspaceHeaderRenderState.kind === "skeleton";
+  const workspaceHeaderTitle =
+    workspaceHeaderRenderState.kind === "ready" ? workspaceHeaderRenderState.title : "";
+  const workspaceHeaderSubtitle =
+    workspaceHeaderRenderState.kind === "ready" ? workspaceHeaderRenderState.subtitle : "";
+  const shouldShowWorkspaceHeaderSubtitle =
+    workspaceHeaderRenderState.kind === "ready" && workspaceHeaderRenderState.shouldShowSubtitle;
+  const isGitCheckout =
+    workspaceHeaderRenderState.kind === "ready" ? workspaceHeaderRenderState.isGitCheckout : false;
   const currentBranchName =
-    checkoutQuery.data?.isGit && checkoutQuery.data.currentBranch !== "HEAD"
-      ? trimNonEmpty(checkoutQuery.data.currentBranch)
+    workspaceHeaderRenderState.kind === "ready"
+      ? workspaceHeaderRenderState.currentBranchName
       : null;
 
   const isExplorerOpen = usePanelStore((state) =>

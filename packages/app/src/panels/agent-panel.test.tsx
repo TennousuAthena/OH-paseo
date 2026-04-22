@@ -43,6 +43,7 @@ const {
   streamRenderCount,
   latestStreamPermissionKeys,
   latestStreamText,
+  runtimeIsConnected,
   theme,
   runtimeClient,
 } = vi.hoisted(() => {
@@ -71,6 +72,7 @@ const {
     streamRenderCount: vi.fn(),
     latestStreamPermissionKeys: { current: [] as string[] },
     latestStreamText: { current: null as string | null },
+    runtimeIsConnected: { current: false },
     theme: {
       colors: {
         foreground: "#ffffff",
@@ -121,8 +123,8 @@ function createPanelTestStyles(factory: PanelTestStyleFactory | PanelTestStyles)
 vi.mock("@/runtime/host-runtime", () => ({
   useHosts: () => [{ serverId: "server", label: "Test server" }],
   useHostRuntimeClient: () => runtimeClient,
-  useHostRuntimeIsConnected: () => false,
-  useHostRuntimeConnectionStatus: () => "offline",
+  useHostRuntimeIsConnected: () => runtimeIsConnected.current,
+  useHostRuntimeConnectionStatus: () => (runtimeIsConnected.current ? "online" : "offline"),
   useHostRuntimeLastError: () => null,
 }));
 
@@ -237,6 +239,51 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
     model: null,
     labels: {},
     ...overrides,
+  };
+}
+
+function makeFetchedAgentResult(agent: Agent): Awaited<ReturnType<DaemonClient["fetchAgent"]>> {
+  return {
+    project: {
+      projectKey: agent.cwd,
+      projectName: "workspace",
+      checkout: {
+        cwd: agent.cwd,
+        isGit: false,
+        currentBranch: null,
+        remoteUrl: null,
+        worktreeRoot: null,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      },
+    },
+    agent: {
+      id: agent.id,
+      provider: agent.provider,
+      status: agent.status,
+      createdAt: agent.createdAt.toISOString(),
+      updatedAt: agent.updatedAt.toISOString(),
+      lastUserMessageAt: agent.lastUserMessageAt?.toISOString() ?? null,
+      runtimeInfo: agent.runtimeInfo ?? {
+        provider: agent.provider,
+        sessionId: null,
+      },
+      capabilities: agent.capabilities,
+      currentModeId: agent.currentModeId,
+      availableModes: agent.availableModes,
+      pendingPermissions: agent.pendingPermissions,
+      persistence: agent.persistence,
+      title: agent.title,
+      cwd: agent.cwd,
+      model: agent.model,
+      thinkingOptionId: agent.thinkingOptionId ?? null,
+      requiresAttention: agent.requiresAttention ?? false,
+      attentionReason: agent.attentionReason ?? null,
+      attentionTimestamp: agent.attentionTimestamp?.toISOString() ?? null,
+      archivedAt: agent.archivedAt?.toISOString() ?? null,
+      labels: agent.labels,
+      lastError: agent.lastError ?? undefined,
+    },
   };
 }
 
@@ -367,6 +414,9 @@ describe("AgentPanel render isolation", () => {
     streamRenderCount.mockClear();
     latestStreamPermissionKeys.current = [];
     latestStreamText.current = null;
+    runtimeIsConnected.current = false;
+    runtimeClient.fetchAgent.mockReset();
+    runtimeClient.fetchAgentTimeline.mockReset();
   });
 
   it("refreshes the stream view without invoking Composer for stream-only updates", async () => {
@@ -462,5 +512,50 @@ describe("AgentPanel render isolation", () => {
 
     expect(latestStreamPermissionKeys.current).toEqual([]);
     expect(streamRenderCount).toHaveBeenCalledTimes(initialRenderCount + 2);
+  });
+
+  it("renders an archived lazy detail without adding it to the active agent store", async () => {
+    const archivedAgent = makeAgent({
+      archivedAt: new Date("2026-04-20T00:00:02.000Z"),
+    });
+    runtimeIsConnected.current = true;
+    runtimeClient.fetchAgent.mockResolvedValue(makeFetchedAgentResult(archivedAgent));
+    runtimeClient.fetchAgentTimeline.mockResolvedValue({
+      agent: null,
+      events: [],
+      nextCursor: null,
+      hasMore: false,
+    });
+    useSessionStore
+      .getState()
+      .initializeSession("server", runtimeClient as unknown as DaemonClient);
+    useSessionStore.getState().setAgentAuthoritativeHistoryApplied("server", "agent", true);
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await renderAgentPanel(root, {
+      isWorkspaceFocused: true,
+      isPaneFocused: true,
+      isInteractive: true,
+    });
+
+    const timeoutAt = Date.now() + 300;
+    while (
+      !container?.querySelector('[data-testid="archived-agent-callout"]') &&
+      Date.now() < timeoutAt
+    ) {
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+
+    expect(container?.querySelector('[data-testid="archived-agent-callout"]')).not.toBeNull();
+
+    expect(useSessionStore.getState().sessions.server?.agents.has("agent")).toBe(false);
+    expect(
+      useSessionStore.getState().sessions.server?.agentDetails.get("agent")?.archivedAt,
+    ).toEqual(archivedAgent.archivedAt);
   });
 });

@@ -22,6 +22,11 @@ PASEO_HOME=~/.paseo-blue npm run dev
 ```
 
 - `PASEO_HOME` — path for runtime state (agents, sockets, etc.). Defaults to `~/.paseo`.
+- In git worktrees, `npm run dev` derives a stable home like `~/.paseo-<worktree-name>`.
+  On first run, it seeds that home from `~/.paseo` by copying agent/project JSON metadata
+  and `config.json`; actual checkout/worktree directories are not copied.
+- `PASEO_DEV_SEED_HOME=/path/to/home npm run dev` seeds from a different source home.
+- `PASEO_DEV_RESET_HOME=1 npm run dev` clears and reseeds the derived worktree home.
 
 ### Default ports
 

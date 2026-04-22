@@ -62,6 +62,10 @@ function makeAgent(input: {
   };
 }
 
+function agentIdsFromEntries(entries: Array<{ agent: Pick<AgentSnapshotPayload, "id"> }>) {
+  return entries.map((entry) => entry.agent.id);
+}
+
 function createNoopWorkspaceGitService() {
   return {
     subscribe: async (params: { cwd: string }) => ({
@@ -929,6 +933,368 @@ describe("workspace aggregation", () => {
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0]?.name).toBe("non-git");
     expect(result.entries[0]?.name).not.toBe("Unknown branch");
+  });
+
+  test("active-scoped fetch_agents includes only unarchived agents in active exact workspaces", async () => {
+    const session = createSessionForWorkspaceTests() as any;
+    const archivedAt = "2026-03-02T12:00:00.000Z";
+    const activeProject = createPersistedProjectRecord({
+      projectId: "proj-active",
+      rootPath: "/tmp/active",
+      kind: "non_git",
+      displayName: "active",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const archivedProject = createPersistedProjectRecord({
+      projectId: "proj-archived",
+      rootPath: "/tmp/archived-project",
+      kind: "non_git",
+      displayName: "archived project",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+      archivedAt,
+    });
+    const activeWorkspace = createPersistedWorkspaceRecord({
+      workspaceId: "ws-active",
+      projectId: activeProject.projectId,
+      cwd: "/tmp/active",
+      kind: "directory",
+      displayName: "active",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const archivedWorkspace = createPersistedWorkspaceRecord({
+      workspaceId: "ws-archived",
+      projectId: activeProject.projectId,
+      cwd: "/tmp/archived-workspace",
+      kind: "directory",
+      displayName: "archived workspace",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+      archivedAt,
+    });
+    const workspaceInArchivedProject = createPersistedWorkspaceRecord({
+      workspaceId: "ws-archived-project",
+      projectId: archivedProject.projectId,
+      cwd: "/tmp/archived-project",
+      kind: "directory",
+      displayName: "archived project",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+
+    session.projectRegistry.list = async () => [activeProject, archivedProject];
+    session.projectRegistry.get = async (projectId: string) =>
+      [activeProject, archivedProject].find((project) => project.projectId === projectId) ?? null;
+    session.workspaceRegistry.list = async () => [
+      activeWorkspace,
+      archivedWorkspace,
+      workspaceInArchivedProject,
+    ];
+    session.listAgentPayloads = async () => [
+      makeAgent({
+        id: "agent-active",
+        cwd: "/tmp/active",
+        status: "idle",
+        updatedAt: "2026-03-01T12:04:00.000Z",
+      }),
+      makeAgent({
+        id: "agent-subdir",
+        cwd: "/tmp/active/packages/app",
+        status: "idle",
+        updatedAt: "2026-03-01T12:03:00.000Z",
+      }),
+      makeAgent({
+        id: "agent-archived-workspace",
+        cwd: "/tmp/archived-workspace",
+        status: "idle",
+        updatedAt: "2026-03-01T12:02:00.000Z",
+      }),
+      makeAgent({
+        id: "agent-archived-project",
+        cwd: "/tmp/archived-project",
+        status: "idle",
+        updatedAt: "2026-03-01T12:01:00.000Z",
+      }),
+      {
+        ...makeAgent({
+          id: "agent-archived",
+          cwd: "/tmp/active",
+          status: "idle",
+          updatedAt: "2026-03-01T12:00:00.000Z",
+        }),
+        archivedAt,
+      },
+    ];
+
+    const result = await session.listFetchAgentsEntries({
+      type: "fetch_agents_request",
+      requestId: "req-active-agents",
+      scope: "active",
+      filter: { includeArchived: true },
+    });
+
+    expect(agentIdsFromEntries(result.entries)).toEqual(["agent-active"]);
+    expect(result.pageInfo.hasMore).toBe(false);
+  });
+
+  test("active-scoped fetch_agents pages within active scope instead of global history", async () => {
+    const session = createSessionForWorkspaceTests() as any;
+    const project = createPersistedProjectRecord({
+      projectId: "proj-active-pages",
+      rootPath: "/tmp/pages",
+      kind: "non_git",
+      displayName: "pages",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const activeOne = createPersistedWorkspaceRecord({
+      workspaceId: "ws-active-one",
+      projectId: project.projectId,
+      cwd: "/tmp/pages/one",
+      kind: "directory",
+      displayName: "one",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const activeTwo = createPersistedWorkspaceRecord({
+      workspaceId: "ws-active-two",
+      projectId: project.projectId,
+      cwd: "/tmp/pages/two",
+      kind: "directory",
+      displayName: "two",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const archivedWorkspace = createPersistedWorkspaceRecord({
+      workspaceId: "ws-stale",
+      projectId: project.projectId,
+      cwd: "/tmp/pages/stale",
+      kind: "directory",
+      displayName: "stale",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+      archivedAt: "2026-03-02T12:00:00.000Z",
+    });
+
+    session.projectRegistry.list = async () => [project];
+    session.projectRegistry.get = async () => project;
+    session.workspaceRegistry.list = async () => [activeOne, activeTwo, archivedWorkspace];
+    session.listAgentPayloads = async () => [
+      makeAgent({
+        id: "active-one",
+        cwd: "/tmp/pages/one",
+        status: "idle",
+        updatedAt: "2026-03-01T12:03:00.000Z",
+      }),
+      makeAgent({
+        id: "stale-between",
+        cwd: "/tmp/pages/stale",
+        status: "idle",
+        updatedAt: "2026-03-01T12:02:00.000Z",
+      }),
+      makeAgent({
+        id: "active-two",
+        cwd: "/tmp/pages/two",
+        status: "idle",
+        updatedAt: "2026-03-01T12:01:00.000Z",
+      }),
+    ];
+
+    const firstPage = await session.listFetchAgentsEntries({
+      type: "fetch_agents_request",
+      requestId: "req-active-page-1",
+      scope: "active",
+      page: { limit: 1 },
+    });
+    const secondPage = await session.listFetchAgentsEntries({
+      type: "fetch_agents_request",
+      requestId: "req-active-page-2",
+      scope: "active",
+      page: { limit: 1, cursor: firstPage.pageInfo.nextCursor },
+    });
+
+    expect(agentIdsFromEntries(firstPage.entries)).toEqual(["active-one"]);
+    expect(firstPage.pageInfo.hasMore).toBe(true);
+    expect(agentIdsFromEntries(secondPage.entries)).toEqual(["active-two"]);
+    expect(secondPage.pageInfo.hasMore).toBe(false);
+  });
+
+  test("legacy unscoped fetch_agents keeps global workspace behavior", async () => {
+    const session = createSessionForWorkspaceTests() as any;
+    const project = createPersistedProjectRecord({
+      projectId: "proj-legacy-global",
+      rootPath: "/tmp/legacy",
+      kind: "non_git",
+      displayName: "legacy",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const activeWorkspace = createPersistedWorkspaceRecord({
+      workspaceId: "ws-legacy-active",
+      projectId: project.projectId,
+      cwd: "/tmp/legacy/active",
+      kind: "directory",
+      displayName: "active",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const archivedWorkspace = createPersistedWorkspaceRecord({
+      workspaceId: "ws-legacy-archived",
+      projectId: project.projectId,
+      cwd: "/tmp/legacy/archived",
+      kind: "directory",
+      displayName: "archived",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+      archivedAt: "2026-03-02T12:00:00.000Z",
+    });
+
+    session.projectRegistry.get = async () => project;
+    session.workspaceRegistry.list = async () => [activeWorkspace, archivedWorkspace];
+    session.listAgentPayloads = async () => [
+      makeAgent({
+        id: "legacy-active",
+        cwd: "/tmp/legacy/active",
+        status: "idle",
+        updatedAt: "2026-03-01T12:01:00.000Z",
+      }),
+      makeAgent({
+        id: "legacy-archived-workspace",
+        cwd: "/tmp/legacy/archived",
+        status: "idle",
+        updatedAt: "2026-03-01T12:00:00.000Z",
+      }),
+    ];
+
+    const result = await session.listFetchAgentsEntries({
+      type: "fetch_agents_request",
+      requestId: "req-legacy-global",
+    });
+
+    expect(agentIdsFromEntries(result.entries)).toEqual([
+      "legacy-active",
+      "legacy-archived-workspace",
+    ]);
+  });
+
+  test("fetch_agent_history_request pages archived historical rows separately", async () => {
+    const emitted: Array<{ type: string; payload: any }> = [];
+    const session = createSessionForWorkspaceTests() as any;
+    const project = createPersistedProjectRecord({
+      projectId: "proj-history",
+      rootPath: "/tmp/history",
+      kind: "non_git",
+      displayName: "history",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const workspace = createPersistedWorkspaceRecord({
+      workspaceId: "ws-history",
+      projectId: project.projectId,
+      cwd: "/tmp/history",
+      kind: "directory",
+      displayName: "history",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+      archivedAt: "2026-03-02T12:00:00.000Z",
+    });
+
+    session.emit = (message: any) => emitted.push(message);
+    session.projectRegistry.get = async () => project;
+    session.workspaceRegistry.list = async () => [workspace];
+    session.listAgentPayloads = async () => [
+      {
+        ...makeAgent({
+          id: "history-archived",
+          cwd: "/tmp/history",
+          status: "idle",
+          updatedAt: "2026-03-01T12:00:00.000Z",
+        }),
+        archivedAt: "2026-03-02T12:00:00.000Z",
+      },
+    ];
+
+    await session.handleMessage({
+      type: "fetch_agent_history_request",
+      requestId: "req-history",
+      page: { limit: 25 },
+    });
+
+    expect(emitted).toEqual([
+      {
+        type: "fetch_agent_history_response",
+        payload: expect.objectContaining({
+          requestId: "req-history",
+          entries: [
+            expect.objectContaining({
+              agent: expect.objectContaining({ id: "history-archived" }),
+            }),
+          ],
+          pageInfo: {
+            nextCursor: null,
+            prevCursor: null,
+            hasMore: false,
+          },
+        }),
+      },
+    ]);
+    expect(session.agentUpdatesSubscription).toBeNull();
+  });
+
+  test("fetch_agent_request still resolves archived historical agents", async () => {
+    const emitted: Array<{ type: string; payload: any }> = [];
+    const session = createSessionForWorkspaceTests() as any;
+    const agent = {
+      ...makeAgent({
+        id: "archived-history-agent",
+        cwd: "/tmp/history-detail",
+        status: "idle",
+        updatedAt: "2026-03-01T12:00:00.000Z",
+      }),
+      archivedAt: "2026-03-02T12:00:00.000Z",
+      title: "Archived History Agent",
+    };
+    session.emit = (message: any) => emitted.push(message);
+    session.resolveAgentIdentifier = async (identifier: string) =>
+      identifier === "Archived History Agent"
+        ? { ok: true, agentId: agent.id }
+        : { ok: false, error: `Agent not found: ${identifier}` };
+    session.getAgentPayloadById = async (agentId: string) => (agentId === agent.id ? agent : null);
+    session.buildProjectPlacementForCwd = async (cwd: string) => ({
+      projectKey: "proj-history-detail",
+      projectName: "history detail",
+      checkout: {
+        cwd,
+        isGit: false,
+        currentBranch: null,
+        remoteUrl: null,
+        worktreeRoot: null,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      },
+    });
+
+    await session.handleMessage({
+      type: "fetch_agent_request",
+      requestId: "req-agent-detail",
+      agentId: "Archived History Agent",
+    });
+
+    expect(emitted).toEqual([
+      {
+        type: "fetch_agent_response",
+        payload: {
+          requestId: "req-agent-detail",
+          agent,
+          project: expect.objectContaining({
+            projectKey: "proj-history-detail",
+          }),
+          error: null,
+        },
+      },
+    ]);
   });
 
   test("git branch workspace uses branch as canonical name", async () => {

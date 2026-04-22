@@ -1,53 +1,54 @@
+import type { DaemonClient } from "@server/client/daemon-client";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import invariant from "tiny-invariant";
 import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import invariant from "tiny-invariant";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/components/agent-stream-view";
-import { Composer } from "@/components/composer";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
+import { Composer } from "@/components/composer";
 import { FileDropZone } from "@/components/file-drop-zone";
-import { getProviderIcon } from "@/components/provider-icons";
 import type { ImageAttachment } from "@/components/message-input";
+import { getProviderIcon } from "@/components/provider-icons";
 import { ToastViewport, useToastHost } from "@/components/toast-host";
+import { isNative } from "@/constants/platform";
 import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
+import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import {
-  useAgentScreenStateMachine,
   type AgentScreenAgent,
   type AgentScreenMissingState,
+  useAgentScreenStateMachine,
 } from "@/hooks/use-agent-screen-state-machine";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
-import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import {
+  type HostRuntimeConnectionStatus,
   useHostRuntimeClient,
   useHostRuntimeConnectionStatus,
   useHostRuntimeIsConnected,
   useHostRuntimeLastError,
   useHosts,
-  type HostRuntimeConnectionStatus,
 } from "@/runtime/host-runtime";
-import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
-import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
-import { mergePendingCreateImages } from "@/utils/pending-create-images";
-import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
-import { useCreateFlowStore } from "@/stores/create-flow-store";
-import { buildDraftStoreKey } from "@/stores/draft-keys";
-import { useSessionStore, type Agent } from "@/stores/session-store";
-import type { PendingPermission } from "@/types/shared";
-import type { StreamItem } from "@/types/stream";
 import {
   deriveRouteBottomAnchorIntent,
   deriveRouteBottomAnchorRequest,
 } from "@/screens/agent/agent-ready-screen-bottom-anchor";
-import { isNative } from "@/constants/platform";
+import { useCreateFlowStore } from "@/stores/create-flow-store";
+import { buildDraftStoreKey } from "@/stores/draft-keys";
+import { type Agent, useSessionStore } from "@/stores/session-store";
+import type { PendingPermission } from "@/types/shared";
+import type { StreamItem } from "@/types/stream";
+import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
+import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
+import { mergePendingCreateImages } from "@/utils/pending-create-images";
+import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 
 function formatProviderLabel(provider: Agent["provider"]): string {
   if (!provider) {
@@ -74,13 +75,63 @@ function resolveWorkspaceAgentTabLabel(title: string | null | undefined): string
   return normalized;
 }
 
+function shouldStoreFetchedAgentInActiveDirectory(agent: Agent): boolean {
+  return !agent.archivedAt && Boolean(agent.projectPlacement);
+}
+
+type FetchAgentResult = Awaited<ReturnType<DaemonClient["fetchAgent"]>>;
+
+function storeFetchedAgentDetail(input: {
+  serverId: string;
+  result: NonNullable<FetchAgentResult>;
+}): Agent {
+  const normalized = normalizeAgentSnapshot(input.result.agent, input.serverId);
+  const hydrated: Agent = {
+    ...normalized,
+    projectPlacement: input.result.project,
+  };
+  const store = useSessionStore.getState();
+
+  if (shouldStoreFetchedAgentInActiveDirectory(hydrated)) {
+    store.setAgents(input.serverId, (previous) => {
+      const next = new Map(previous);
+      next.set(hydrated.id, hydrated);
+      return next;
+    });
+  } else {
+    store.setAgentDetails(input.serverId, (previous) => {
+      const next = new Map(previous);
+      next.set(hydrated.id, hydrated);
+      return next;
+    });
+  }
+
+  store.setPendingPermissions(input.serverId, (previous) => {
+    const next = new Map(previous);
+    for (const [key, pending] of next.entries()) {
+      if (pending.agentId === hydrated.id) {
+        next.delete(key);
+      }
+    }
+    for (const request of hydrated.pendingPermissions) {
+      const key = derivePendingPermissionKey(hydrated.id, request);
+      next.set(key, { key, agentId: hydrated.id, request });
+    }
+    return next;
+  });
+
+  return hydrated;
+}
+
 function useAgentPanelDescriptor(
   target: { kind: "agent"; agentId: string },
   context: { serverId: string },
 ): PanelDescriptor {
   const descriptorState = useSessionStore(
     useShallow((state) => {
-      const agent = state.sessions[context.serverId]?.agents?.get(target.agentId) ?? null;
+      const session = state.sessions[context.serverId];
+      const agent =
+        session?.agents?.get(target.agentId) ?? session?.agentDetails?.get(target.agentId) ?? null;
       return {
         provider: agent?.provider ?? "codex",
         title: agent?.title ?? null,
@@ -262,17 +313,27 @@ function AgentPanelBody({
   const { theme } = useUnistyles();
   const { isArchivingAgent } = useArchiveAgent();
   const hasSession = useSessionStore((state) => Boolean(state.sessions[serverId]));
-  const setAgents = useSessionStore((state) => state.setAgents);
-  const setPendingPermissions = useSessionStore((state) => state.setPendingPermissions);
   const projectPlacement = useStoreWithEqualityFn(
     useSessionStore,
-    (state) =>
-      agentId ? (state.sessions[serverId]?.agents?.get(agentId)?.projectPlacement ?? null) : null,
+    (state) => {
+      if (!agentId) {
+        return null;
+      }
+      const session = state.sessions[serverId];
+      return (
+        session?.agents?.get(agentId)?.projectPlacement ??
+        session?.agentDetails?.get(agentId)?.projectPlacement ??
+        null
+      );
+    },
     (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b),
   );
   const agentState = useSessionStore(
     useShallow((state) => {
-      const agent = agentId ? (state.sessions[serverId]?.agents?.get(agentId) ?? null) : null;
+      const session = state.sessions[serverId];
+      const agent = agentId
+        ? (session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null)
+        : null;
       return {
         serverId: agent?.serverId ?? null,
         id: agent?.id ?? null,
@@ -325,29 +386,7 @@ function AgentPanelBody({
           return;
         }
 
-        const normalized = normalizeAgentSnapshot(result.agent, serverId);
-        const hydrated = {
-          ...normalized,
-          projectPlacement: result.project,
-        };
-        setAgents(serverId, (previous) => {
-          const next = new Map(previous);
-          next.set(hydrated.id, hydrated);
-          return next;
-        });
-        setPendingPermissions(serverId, (previous) => {
-          const next = new Map(previous);
-          for (const [key, pending] of next.entries()) {
-            if (pending.agentId === hydrated.id) {
-              next.delete(key);
-            }
-          }
-          for (const request of hydrated.pendingPermissions) {
-            const key = derivePendingPermissionKey(hydrated.id, request);
-            next.set(key, { key, agentId: hydrated.id, request });
-          }
-          return next;
-        });
+        storeFetchedAgentDetail({ serverId, result });
         setLookupState({ tag: "idle" });
       })
       .catch((error) => {
@@ -361,17 +400,7 @@ function AgentPanelBody({
         }
         setLookupState({ tag: "error", message });
       });
-  }, [
-    agentId,
-    agentState.id,
-    client,
-    hasSession,
-    isConnected,
-    lookupState.tag,
-    serverId,
-    setAgents,
-    setPendingPermissions,
-  ]);
+  }, [agentId, agentState.id, client, hasSession, isConnected, lookupState.tag, serverId]);
 
   if (lookupState.tag === "not_found") {
     return (
@@ -471,7 +500,10 @@ function ChatAgentContent({
 
   const agentState = useSessionStore(
     useShallow((state) => {
-      const agent = agentId ? (state.sessions[serverId]?.agents?.get(agentId) ?? null) : null;
+      const session = state.sessions[serverId];
+      const agent = agentId
+        ? (session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null)
+        : null;
       return {
         serverId: agent?.serverId ?? null,
         id: agent?.id ?? null,
@@ -486,8 +518,17 @@ function ChatAgentContent({
   );
   const projectPlacement = useStoreWithEqualityFn(
     useSessionStore,
-    (state) =>
-      agentId ? (state.sessions[serverId]?.agents?.get(agentId)?.projectPlacement ?? null) : null,
+    (state) => {
+      if (!agentId) {
+        return null;
+      }
+      const session = state.sessions[serverId];
+      return (
+        session?.agents?.get(agentId)?.projectPlacement ??
+        session?.agentDetails?.get(agentId)?.projectPlacement ??
+        null
+      );
+    },
     (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b),
   );
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
@@ -505,8 +546,6 @@ function ChatAgentContent({
   const agentHistorySyncGeneration = useSessionStore((state) =>
     agentId ? (state.sessions[serverId]?.agentHistorySyncGeneration?.get(agentId) ?? -1) : -1,
   );
-  const setAgents = useSessionStore((state) => state.setAgents);
-  const setPendingPermissions = useSessionStore((state) => state.setPendingPermissions);
   const hasSession = useSessionStore((state) => Boolean(state.sessions[serverId]));
   const { ensureAgentIsInitialized } = useAgentInitialization({
     serverId,
@@ -776,7 +815,9 @@ function ChatAgentContent({
         if (attemptToken !== initAttemptTokenRef.current) {
           return;
         }
-        const currentAgent = useSessionStore.getState().sessions[serverId]?.agents.get(agentId);
+        const currentSession = useSessionStore.getState().sessions[serverId];
+        const currentAgent =
+          currentSession?.agents.get(agentId) ?? currentSession?.agentDetails.get(agentId);
         if (!currentAgent) {
           const result = await client.fetchAgent(agentId);
           if (attemptToken !== initAttemptTokenRef.current) {
@@ -789,29 +830,7 @@ function ChatAgentContent({
             });
             return;
           }
-          const normalized = normalizeAgentSnapshot(result.agent, serverId);
-          const hydrated = {
-            ...normalized,
-            projectPlacement: result.project,
-          };
-          setAgents(serverId, (previous) => {
-            const next = new Map(previous);
-            next.set(hydrated.id, hydrated);
-            return next;
-          });
-          setPendingPermissions(serverId, (previous) => {
-            const next = new Map(previous);
-            for (const [key, pending] of next.entries()) {
-              if (pending.agentId === hydrated.id) {
-                next.delete(key);
-              }
-            }
-            for (const request of hydrated.pendingPermissions) {
-              const key = derivePendingPermissionKey(hydrated.id, request);
-              next.set(key, { key, agentId: hydrated.id, request });
-            }
-            return next;
-          });
+          storeFetchedAgentDetail({ serverId, result });
         }
         if (attemptToken !== initAttemptTokenRef.current) {
           return;
@@ -838,8 +857,6 @@ function ChatAgentContent({
     isConnected,
     missingAgentState.kind,
     serverId,
-    setAgents,
-    setPendingPermissions,
     shouldUseOptimisticStream,
   ]);
 

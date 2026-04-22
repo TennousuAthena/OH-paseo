@@ -6,6 +6,7 @@ import path from "node:path";
 import net from "node:net";
 import { Buffer } from "node:buffer";
 import dotenv from "dotenv";
+import { forkPaseoHomeMetadata, resolvePaseoHomePath } from "./helpers/paseo-home-fork";
 
 type WaitForServerOptions = {
   host?: string;
@@ -185,6 +186,17 @@ let paseoHome: string | null = null;
 let fakeGhBinDir: string | null = null;
 let relayProcess: ChildProcess | null = null;
 
+function resolveOptionalPaseoHomeEnv(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed === "current") {
+    return resolvePaseoHomePath("~/.paseo");
+  }
+  return resolvePaseoHomePath(trimmed);
+}
+
 type OfferPayload = {
   v: 2;
   serverId: string;
@@ -322,11 +334,35 @@ export default async function globalSetup() {
   const port = await getAvailablePort();
   let relayPort = 0;
   const metroPort = await getAvailablePort();
-  paseoHome = await mkdtemp(path.join(tmpdir(), "paseo-e2e-home-"));
+  const requestedPaseoHome = resolveOptionalPaseoHomeEnv(process.env.E2E_PASEO_HOME);
+  const shouldRemovePaseoHome = !requestedPaseoHome && process.env.E2E_KEEP_PASEO_HOME !== "1";
+  paseoHome = requestedPaseoHome ?? (await mkdtemp(path.join(tmpdir(), "paseo-e2e-home-")));
   fakeGhBinDir = await createFakeGhBin();
   let relayLineBuffer = createLineBuffer();
   const metroLineBuffer = createLineBuffer();
   const daemonLineBuffer = createLineBuffer();
+
+  const forkSourceHome = resolveOptionalPaseoHomeEnv(process.env.E2E_FORK_PASEO_HOME_FROM);
+  if (forkSourceHome) {
+    const forkResult = await forkPaseoHomeMetadata({
+      sourceHome: forkSourceHome,
+      targetHome: paseoHome,
+    });
+    process.env.E2E_FORK_SOURCE_PASEO_HOME = forkResult.sourceHome;
+    process.env.E2E_FORK_TARGET_PASEO_HOME = forkResult.targetHome;
+    process.env.E2E_FORK_COPIED_FILES = String(forkResult.copiedFiles);
+    process.env.E2E_FORK_COPIED_BYTES = String(forkResult.copiedBytes);
+    console.log(
+      `[e2e] Forked Paseo metadata from ${forkResult.sourceHome} to ${forkResult.targetHome} ` +
+        `(${forkResult.agentFiles} agent files, ${forkResult.projectFiles} project registry files, ` +
+        `${forkResult.copiedBytes} bytes)`,
+    );
+    if (forkResult.skippedMissing.length > 0) {
+      console.warn(
+        `[e2e] Paseo metadata fork skipped missing paths: ${forkResult.skippedMissing.join(", ")}`,
+      );
+    }
+  }
 
   const cleanup = async () => {
     await Promise.all([
@@ -337,9 +373,11 @@ export default async function globalSetup() {
     daemonProcess = null;
     metroProcess = null;
     relayProcess = null;
-    if (paseoHome) {
+    if (paseoHome && shouldRemovePaseoHome) {
       await rm(paseoHome, { recursive: true, force: true });
       paseoHome = null;
+    } else if (paseoHome) {
+      console.log(`[e2e] Preserving PASEO_HOME: ${paseoHome}`);
     }
     if (fakeGhBinDir) {
       await rm(fakeGhBinDir, { recursive: true, force: true });

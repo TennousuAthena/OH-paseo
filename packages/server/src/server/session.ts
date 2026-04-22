@@ -341,6 +341,11 @@ export type SessionRuntimeMetrics = {
 };
 
 type FetchAgentsRequestMessage = Extract<SessionInboundMessage, { type: "fetch_agents_request" }>;
+type FetchAgentHistoryRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "fetch_agent_history_request" }
+>;
+type AgentDirectoryRequestMessage = FetchAgentsRequestMessage | FetchAgentHistoryRequestMessage;
 type FetchAgentsRequestFilter = NonNullable<FetchAgentsRequestMessage["filter"]>;
 type FetchAgentsRequestSort = NonNullable<FetchAgentsRequestMessage["sort"]>[number];
 type FetchAgentsResponsePayload = Extract<
@@ -1464,6 +1469,10 @@ export class Session {
 
           case "fetch_agents_request":
             await this.handleFetchAgents(msg);
+            break;
+
+          case "fetch_agent_history_request":
+            await this.handleFetchAgentHistory(msg);
             break;
 
           case "fetch_workspaces_request":
@@ -5539,21 +5548,68 @@ export class Session {
     return agent.id.localeCompare(cursor.id);
   }
 
-  private async listFetchAgentsEntries(
-    request: Extract<SessionInboundMessage, { type: "fetch_agents_request" }>,
-  ): Promise<{
+  private async buildActiveProjectPlacementsByWorkspaceCwd(): Promise<
+    Map<string, ProjectPlacementPayload>
+  > {
+    const [persistedWorkspaces, persistedProjects] = await Promise.all([
+      this.workspaceRegistry.list(),
+      this.projectRegistry.list(),
+    ]);
+    const activeProjects = new Map(
+      persistedProjects
+        .filter((project) => !project.archivedAt)
+        .map((project) => [project.projectId, project] as const),
+    );
+    const placementsByCwd = new Map<string, ProjectPlacementPayload>();
+
+    for (const workspace of persistedWorkspaces) {
+      if (workspace.archivedAt) {
+        continue;
+      }
+      const project = activeProjects.get(workspace.projectId);
+      if (!project) {
+        continue;
+      }
+      placementsByCwd.set(
+        normalizePersistedWorkspaceId(workspace.cwd),
+        await this.buildProjectPlacementForWorkspace(workspace, project),
+      );
+    }
+
+    return placementsByCwd;
+  }
+
+  private async listFetchAgentsEntries(request: AgentDirectoryRequestMessage): Promise<{
     entries: FetchAgentsResponseEntry[];
     pageInfo: FetchAgentsResponsePageInfo;
   }> {
-    const filter = request.filter;
+    const filter =
+      request.type === "fetch_agent_history_request" &&
+      request.filter?.includeArchived === undefined
+        ? { ...request.filter, includeArchived: true }
+        : request.filter;
+    const scope = request.type === "fetch_agents_request" ? request.scope : undefined;
     const sort = this.normalizeFetchAgentsSort(request.sort);
 
-    const agents = await this.listAgentPayloads({
+    let agents = await this.listAgentPayloads({
       labels: filter?.labels,
     });
+    const activePlacementsByCwd =
+      scope === "active" ? await this.buildActiveProjectPlacementsByWorkspaceCwd() : null;
+    if (activePlacementsByCwd) {
+      agents = agents.filter(
+        (agent) =>
+          !agent.archivedAt && activePlacementsByCwd.has(normalizePersistedWorkspaceId(agent.cwd)),
+      );
+    }
 
     const placementByCwd = new Map<string, Promise<ProjectPlacementPayload | null>>();
     const getPlacement = (cwd: string): Promise<ProjectPlacementPayload | null> => {
+      if (activePlacementsByCwd) {
+        return Promise.resolve(
+          activePlacementsByCwd.get(normalizePersistedWorkspaceId(cwd)) ?? null,
+        );
+      }
       const existing = placementByCwd.get(cwd);
       if (existing) {
         return existing;
@@ -5763,16 +5819,24 @@ export class Session {
       this.projectRegistry.list(),
     ]);
 
-    const activeRecords = persistedWorkspaces.filter((workspace) => !workspace.archivedAt);
     const activeProjects = new Map(
       persistedProjects
         .filter((project) => !project.archivedAt)
         .map((project) => [project.projectId, project] as const),
     );
+    const archivedProjectIds = new Set(
+      persistedProjects.filter((project) => project.archivedAt).map((project) => project.projectId),
+    );
+    const activeRecords = persistedWorkspaces.filter(
+      (workspace) => !workspace.archivedAt && !archivedProjectIds.has(workspace.projectId),
+    );
     const descriptorsByWorkspaceId = new Map<string, WorkspaceDescriptorPayload>();
     const workspaceIds = options.workspaceIds ? new Set(options.workspaceIds) : null;
     const workspaceIdsByDirectory = new Map(
-      activeRecords.map((workspace) => [workspace.cwd, workspace.workspaceId] as const),
+      activeRecords.map(
+        (workspace) =>
+          [normalizePersistedWorkspaceId(workspace.cwd), workspace.workspaceId] as const,
+      ),
     );
 
     for (const workspace of activeRecords) {
@@ -6421,6 +6485,34 @@ export class Session {
       const code = error instanceof SessionRequestError ? error.code : "fetch_agents_failed";
       const message = error instanceof Error ? error.message : "Failed to fetch agents";
       this.sessionLogger.error({ err: error }, "Failed to handle fetch_agents_request");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: request.requestId,
+          requestType: request.type,
+          error: message,
+          code,
+        },
+      });
+    }
+  }
+
+  private async handleFetchAgentHistory(
+    request: Extract<SessionInboundMessage, { type: "fetch_agent_history_request" }>,
+  ): Promise<void> {
+    try {
+      const payload = await this.listFetchAgentsEntries(request);
+      this.emit({
+        type: "fetch_agent_history_response",
+        payload: {
+          requestId: request.requestId,
+          ...payload,
+        },
+      });
+    } catch (error) {
+      const code = error instanceof SessionRequestError ? error.code : "fetch_agent_history_failed";
+      const message = error instanceof Error ? error.message : "Failed to fetch agent history";
+      this.sessionLogger.error({ err: error }, "Failed to handle fetch_agent_history_request");
       this.emit({
         type: "rpc_error",
         payload: {

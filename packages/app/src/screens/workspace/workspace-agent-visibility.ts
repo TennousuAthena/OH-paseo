@@ -12,11 +12,12 @@ export interface WorkspaceAgentVisibility {
 
 export function deriveWorkspaceAgentVisibility(input: {
   sessionAgents: Map<string, Agent> | undefined;
+  agentDetails?: Map<string, Agent> | undefined;
   workspaceDirectory: string | null | undefined;
 }): WorkspaceAgentVisibility {
-  const { sessionAgents, workspaceDirectory } = input;
+  const { sessionAgents, agentDetails, workspaceDirectory } = input;
   const normalizedWorkspaceDirectory = normalizeWorkspaceId(workspaceDirectory);
-  if (!sessionAgents || !normalizedWorkspaceDirectory) {
+  if ((!sessionAgents && !agentDetails) || !normalizedWorkspaceDirectory) {
     return {
       activeAgentIds: new Set<string>(),
       knownAgentIds: new Set<string>(),
@@ -25,7 +26,7 @@ export function deriveWorkspaceAgentVisibility(input: {
 
   const activeAgentIds = new Set<string>();
   const knownAgentIds = new Set<string>();
-  for (const agent of sessionAgents.values()) {
+  for (const agent of sessionAgents?.values() ?? []) {
     if (normalizeWorkspaceId(agent.cwd) !== normalizedWorkspaceDirectory) {
       continue;
     }
@@ -33,6 +34,12 @@ export function deriveWorkspaceAgentVisibility(input: {
     if (!agent.archivedAt) {
       activeAgentIds.add(agent.id);
     }
+  }
+  for (const agent of agentDetails?.values() ?? []) {
+    if (normalizeWorkspaceId(agent.cwd) !== normalizedWorkspaceDirectory) {
+      continue;
+    }
+    knownAgentIds.add(agent.id);
   }
 
   return { activeAgentIds, knownAgentIds };
