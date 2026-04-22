@@ -252,7 +252,7 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
       <View style={styles.container}>
         <TitlebarDragRegion />
         <PaseoLogo size={96} />
-        <Text style={styles.subtitle}>Starting up…</Text>
+        <Text style={styles.subtitle}>Connecting…</Text>
       </View>
     );
   }

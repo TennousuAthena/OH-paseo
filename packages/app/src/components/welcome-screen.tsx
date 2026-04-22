@@ -5,12 +5,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { QrCode, Link2, ClipboardPaste, ExternalLink, Settings } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HostProfile } from "@/types/host-connection";
-import {
-  getHostRuntimeStore,
-  isHostRuntimeConnected,
-  useHostRuntimeSnapshot,
-  useHosts,
-} from "@/runtime/host-runtime";
+import { getHostRuntimeStore, isHostRuntimeConnected, useHosts } from "@/runtime/host-runtime";
 import { AddHostModal } from "./add-host-modal";
 import { PairLinkModal } from "./pair-link-modal";
 import { Button } from "@/components/ui/button";
@@ -94,39 +89,6 @@ const styles = StyleSheet.create((theme) => ({
   actionTextPrimary: {
     color: theme.colors.accentForeground,
   },
-  hostList: {
-    width: "100%",
-    maxWidth: 420,
-    marginTop: theme.spacing[6],
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    paddingTop: theme.spacing[4],
-    gap: theme.spacing[2],
-  },
-  hostRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  hostLabel: {
-    flex: 1,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-  },
-  hostStatus: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
-  hostStatusError: {
-    color: theme.colors.destructive,
-    fontSize: theme.fontSize.sm,
-  },
   setupLink: {
     flexDirection: "row",
     alignItems: "center",
@@ -186,50 +148,6 @@ function useAnyHostOnline(serverIds: string[]): string | null {
       }
       return firstOnlineServerId;
     },
-  );
-}
-
-function HostStatusRow({ serverId, label }: { serverId: string; label: string }) {
-  const { theme } = useUnistyles();
-  const snapshot = useHostRuntimeSnapshot(serverId);
-  const status = snapshot?.connectionStatus ?? "connecting";
-  const lastError = snapshot?.lastError ?? null;
-
-  let dotColor: string;
-  let statusText: string;
-  let isError = false;
-
-  switch (status) {
-    case "online":
-      dotColor = theme.colors.success;
-      statusText = "Online";
-      break;
-    case "connecting":
-    case "idle":
-      dotColor = theme.colors.foregroundMuted;
-      statusText = "Connecting…";
-      break;
-    case "offline":
-      dotColor = theme.colors.foregroundMuted;
-      statusText = "Offline";
-      break;
-    case "error":
-      dotColor = theme.colors.destructive;
-      statusText = lastError ? lastError.slice(0, 40) : "Connection error";
-      isError = true;
-      break;
-  }
-
-  return (
-    <View style={styles.hostRow}>
-      <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
-      <Text style={styles.hostLabel} numberOfLines={1}>
-        {label}
-      </Text>
-      <Text style={isError ? styles.hostStatusError : styles.hostStatus} numberOfLines={1}>
-        {statusText}
-      </Text>
-    </View>
   );
 }
 
@@ -306,7 +224,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
         },
       ];
 
-  const showHostList = hosts.length > 0 && !anyOnlineServerId;
+  const isConnectingToSavedHosts = hosts.length > 0 && !anyOnlineServerId;
 
   return (
     <View style={styles.root}>
@@ -322,11 +240,11 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
         <View style={styles.content}>
           <PaseoLogo size={96} />
           <View style={styles.copyBlock}>
-            <Text style={styles.title}>Welcome to Paseo</Text>
-            {showHostList ? (
-              <Text style={styles.subtitle}>Connecting to your hosts…</Text>
+            {isConnectingToSavedHosts ? (
+              <Text style={styles.subtitle}>Connecting…</Text>
             ) : (
               <>
+                <Text style={styles.title}>Welcome to Paseo</Text>
                 <Text style={styles.subtitle}>Connect your computer to get started</Text>
                 {isNative ? (
                   <Pressable
@@ -364,14 +282,6 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
               );
             })}
           </View>
-
-          {showHostList && (
-            <View style={styles.hostList}>
-              {hosts.map((host) => (
-                <HostStatusRow key={host.serverId} serverId={host.serverId} label={host.label} />
-              ))}
-            </View>
-          )}
 
           <Button
             variant="ghost"

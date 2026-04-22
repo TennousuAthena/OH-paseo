@@ -817,8 +817,10 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const params = useGlobalSearchParams<{ open?: string | string[] }>();
   const hosts = useHosts();
+  const storeReady = useStoreReady();
   const activeServerId = useMemo(() => parseServerIdFromPathname(pathname), [pathname]);
-  const shouldShowAppChrome = activeServerId !== null;
+  const shouldShowAppChrome =
+    storeReady && activeServerId !== null && hosts.some((host) => host.serverId === activeServerId);
 
   useEffect(() => {
     if (!activeServerId || hosts.length === 0) {
