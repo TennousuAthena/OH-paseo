@@ -1033,9 +1033,10 @@ const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer(
   return (
     <View style={expandableBadgeStylesheet.shimmerOverlay} pointerEvents="none">
       <MaskedView
+        pointerEvents="none"
         style={nativeShimmerTrackStyle}
         maskElement={
-          <View style={nativeShimmerMaskStyle}>
+          <View pointerEvents="none" style={nativeShimmerMaskStyle}>
             <Text style={nativeLabelMaskStyle} numberOfLines={1}>
               {label}
             </Text>
@@ -1049,8 +1050,8 @@ const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer(
           </View>
         }
       >
-        <View style={nativeShimmerTrackStyle}>
-          <Animated.View style={nativeShimmerPeakCombinedStyle}>
+        <View pointerEvents="none" style={nativeShimmerTrackStyle}>
+          <Animated.View pointerEvents="none" style={nativeShimmerPeakCombinedStyle}>
             <Svg width="100%" height="100%" preserveAspectRatio="none">
               <Defs>
                 <SvgLinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
@@ -2105,10 +2106,9 @@ function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: Expa
   if (previous.isLastInSequence !== next.isLastInSequence) return false;
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
   if (previous.testID !== next.testID) return false;
-  if (Boolean(previous.onToggle) !== Boolean(next.onToggle)) return false;
-  if (previous.isExpanded && previous.renderDetails !== next.renderDetails) {
-    return false;
-  }
+  if (previous.onToggle !== next.onToggle) return false;
+  if (previous.onDetailHoverChange !== next.onDetailHoverChange) return false;
+  if (previous.renderDetails !== next.renderDetails) return false;
   return true;
 }
 
