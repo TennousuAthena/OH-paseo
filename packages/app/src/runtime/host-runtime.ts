@@ -11,6 +11,7 @@ import {
   connectionFromListen,
   normalizeStoredHostProfile,
   upsertHostConnectionInProfiles,
+  registryHasConnection,
   type HostConnection,
   type HostProfile,
 } from "@/types/host-connection";
@@ -1265,20 +1266,20 @@ export class HostRuntimeStore {
 
   private async bootstrapLocalhost(): Promise<void> {
     try {
-      try {
-        const { client, serverId, hostname } = await connectToDaemon(
-          {
-            id: `bootstrap:${DEFAULT_LOCALHOST_ENDPOINT}`,
-            type: "directTcp",
-            endpoint: DEFAULT_LOCALHOST_ENDPOINT,
-          },
-          { timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS },
-        );
+      const connection = connectionFromListen(DEFAULT_LOCALHOST_ENDPOINT);
+      if (!connection || registryHasConnection(this.hosts, connection)) {
+        return;
+      }
 
-        await this.upsertDirectConnection({
+      try {
+        const { client, serverId, hostname } = await connectToDaemon(connection, {
+          timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS,
+        });
+
+        await this.upsertHostConnection({
           serverId,
-          endpoint: DEFAULT_LOCALHOST_ENDPOINT,
           label: hostname ?? undefined,
+          connection,
           existingClient: client,
         });
       } catch {
