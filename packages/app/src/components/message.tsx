@@ -433,12 +433,17 @@ interface AssistantMessageProps {
   serverId?: string;
   client?: DaemonClient | null;
   disableOuterSpacing?: boolean;
+  spacing?: "default" | "compact";
 }
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   container: {
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[3],
+  },
+  containerCompactVertical: {
+    paddingTop: 0,
+    paddingBottom: 0,
   },
   containerSpacing: {
     marginBottom: theme.spacing[4],
@@ -952,6 +957,115 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   },
 }));
 
+interface NativeExpandableBadgeShimmerProps {
+  label: string;
+  secondaryLabel?: string;
+  rowWidth: number;
+  rowHeight: number;
+  peakWidth: number;
+  durationSeconds: number;
+  gradientId: string;
+}
+
+const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer({
+  label,
+  secondaryLabel,
+  rowWidth,
+  rowHeight,
+  peakWidth,
+  durationSeconds,
+  gradientId,
+}: NativeExpandableBadgeShimmerProps) {
+  const shimmerTranslateX = useSharedValue(0);
+
+  useEffect(() => {
+    const startPosition = -peakWidth;
+    const endPosition = rowWidth + peakWidth;
+    shimmerTranslateX.value = startPosition;
+    shimmerTranslateX.value = withRepeat(
+      withTiming(endPosition, {
+        duration: durationSeconds * 1000,
+        easing: Easing.linear,
+      }),
+      -1,
+      false,
+    );
+    return () => {
+      cancelAnimation(shimmerTranslateX);
+    };
+  }, [durationSeconds, peakWidth, rowWidth, shimmerTranslateX]);
+
+  const nativeShimmerPeakStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shimmerTranslateX.value }],
+  }));
+
+  const nativeShimmerTrackStyle = useMemo(
+    () => [expandableBadgeStylesheet.nativeShimmerTrack, { width: rowWidth, height: rowHeight }],
+    [rowHeight, rowWidth],
+  );
+
+  const nativeShimmerMaskStyle = useMemo(
+    () => [expandableBadgeStylesheet.shimmerMaskRow, { width: rowWidth, height: rowHeight }],
+    [rowHeight, rowWidth],
+  );
+
+  const nativeLabelMaskStyle = useMemo(
+    () => [expandableBadgeStylesheet.label, { color: "#000000", opacity: 1 }],
+    [],
+  );
+
+  const nativeSecondaryMaskStyle = useMemo(
+    () => [expandableBadgeStylesheet.secondaryLabel, { color: "#000000", opacity: 1 }],
+    [],
+  );
+
+  const nativeShimmerPeakCombinedStyle = useMemo(
+    () => [
+      expandableBadgeStylesheet.nativeShimmerPeak,
+      nativeShimmerPeakStyle,
+      { width: peakWidth, height: rowHeight },
+    ],
+    [nativeShimmerPeakStyle, peakWidth, rowHeight],
+  );
+
+  return (
+    <View style={expandableBadgeStylesheet.shimmerOverlay} pointerEvents="none">
+      <MaskedView
+        style={nativeShimmerTrackStyle}
+        maskElement={
+          <View style={nativeShimmerMaskStyle}>
+            <Text style={nativeLabelMaskStyle} numberOfLines={1}>
+              {label}
+            </Text>
+            {secondaryLabel ? (
+              <Text style={nativeSecondaryMaskStyle} numberOfLines={1}>
+                {secondaryLabel}
+              </Text>
+            ) : (
+              <View style={expandableBadgeStylesheet.spacer} />
+            )}
+          </View>
+        }
+      >
+        <View style={nativeShimmerTrackStyle}>
+          <Animated.View style={nativeShimmerPeakCombinedStyle}>
+            <Svg width="100%" height="100%" preserveAspectRatio="none">
+              <Defs>
+                <SvgLinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+                  <Stop offset="0%" stopColor="#ffffff" stopOpacity={0} />
+                  <Stop offset="50%" stopColor="#ffffff" stopOpacity={1} />
+                  <Stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
+                </SvgLinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
+            </Svg>
+          </Animated.View>
+        </View>
+      </MaskedView>
+    </View>
+  );
+});
+
 interface MemoizedMarkdownBlockProps {
   text: string;
   styles: ReturnType<typeof createMarkdownStyles>;
@@ -989,9 +1103,12 @@ export const AssistantMessage = memo(function AssistantMessage({
   serverId,
   client,
   disableOuterSpacing,
+  spacing = "default",
 }: AssistantMessageProps) {
   const { theme } = useUnistyles();
-  const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
+  const resolvedDisableOuterSpacing = useDisableOuterSpacing(
+    disableOuterSpacing ?? spacing === "compact",
+  );
 
   const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
 
@@ -1192,6 +1309,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       testID="assistant-message"
       style={[
         assistantMessageStylesheet.container,
+        spacing === "compact" && assistantMessageStylesheet.containerCompactVertical,
         !resolvedDisableOuterSpacing && assistantMessageStylesheet.containerSpacing,
       ]}
     >
@@ -1670,7 +1788,6 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const [labelWidth, setLabelWidth] = useState(0);
   const [secondaryOffsetX, setSecondaryOffsetX] = useState(0);
   const [secondaryWidth, setSecondaryWidth] = useState(0);
-  const shimmerTranslateX = useSharedValue(0);
 
   const totalShimmerChars = label.trim().length + (secondaryLabel?.trim().length ?? 0);
   const shortTextDurationAdjustment = totalShimmerChars <= 12 ? 0.25 : 0;
@@ -1739,28 +1856,6 @@ const ExpandableBadge = memo(function ExpandableBadge({
   }, [isWebShimmer]);
 
   useEffect(() => {
-    if (!isNativeShimmer) {
-      cancelAnimation(shimmerTranslateX);
-      shimmerTranslateX.value = -nativeShimmerPeakWidth;
-      return;
-    }
-    const startPosition = -nativeShimmerPeakWidth;
-    const endPosition = labelRowWidth + nativeShimmerPeakWidth;
-    shimmerTranslateX.value = startPosition;
-    shimmerTranslateX.value = withRepeat(
-      withTiming(endPosition, {
-        duration: shimmerDuration * 1000,
-        easing: Easing.linear,
-      }),
-      -1,
-      false,
-    );
-    return () => {
-      cancelAnimation(shimmerTranslateX);
-    };
-  }, [isNativeShimmer, labelRowWidth, nativeShimmerPeakWidth, shimmerDuration, shimmerTranslateX]);
-
-  useEffect(() => {
     if (isNative || !isExpanded || !hasDetailContent) {
       return;
     }
@@ -1783,10 +1878,6 @@ const ExpandableBadge = memo(function ExpandableBadge({
       node.removeEventListener("wheel", stopWheelPropagation);
     };
   }, [hasDetailContent, isExpanded, wheelInvestigationComponentId]);
-
-  const nativeShimmerPeakStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shimmerTranslateX.value }],
-  }));
 
   const shimmerGradient =
     "linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.45) 24%, #ffffff 40%, #ffffff 60%, rgba(255, 255, 255, 0.45) 76%, rgba(255, 255, 255, 0) 100%)";
@@ -1887,41 +1978,6 @@ const ExpandableBadge = memo(function ExpandableBadge({
     [shimmerSecondaryStyle],
   );
 
-  const nativeShimmerTrackStyle = useMemo(
-    () => [
-      expandableBadgeStylesheet.nativeShimmerTrack,
-      { width: labelRowWidth, height: labelRowHeight },
-    ],
-    [labelRowHeight, labelRowWidth],
-  );
-
-  const nativeShimmerMaskStyle = useMemo(
-    () => [
-      expandableBadgeStylesheet.shimmerMaskRow,
-      { width: labelRowWidth, height: labelRowHeight },
-    ],
-    [labelRowHeight, labelRowWidth],
-  );
-
-  const nativeLabelMaskStyle = useMemo(
-    () => [expandableBadgeStylesheet.label, { color: "#000000", opacity: 1 }],
-    [],
-  );
-
-  const nativeSecondaryMaskStyle = useMemo(
-    () => [expandableBadgeStylesheet.secondaryLabel, { color: "#000000", opacity: 1 }],
-    [],
-  );
-
-  const nativeShimmerPeakCombinedStyle = useMemo(
-    () => [
-      expandableBadgeStylesheet.nativeShimmerPeak,
-      nativeShimmerPeakStyle,
-      { width: nativeShimmerPeakWidth, height: labelRowHeight },
-    ],
-    [labelRowHeight, nativeShimmerPeakStyle, nativeShimmerPeakWidth],
-  );
-
   const chevronStyle = useMemo(
     () => [
       expandableBadgeStylesheet.chevron,
@@ -2003,52 +2059,15 @@ const ExpandableBadge = memo(function ExpandableBadge({
               </View>
             ) : null}
             {isNativeShimmer ? (
-              <View style={expandableBadgeStylesheet.shimmerOverlay} pointerEvents="none">
-                <MaskedView
-                  style={nativeShimmerTrackStyle}
-                  maskElement={
-                    <View style={nativeShimmerMaskStyle}>
-                      <Text style={nativeLabelMaskStyle} numberOfLines={1}>
-                        {label}
-                      </Text>
-                      {secondaryLabel ? (
-                        <Text style={nativeSecondaryMaskStyle} numberOfLines={1}>
-                          {secondaryLabel}
-                        </Text>
-                      ) : (
-                        <View style={expandableBadgeStylesheet.spacer} />
-                      )}
-                    </View>
-                  }
-                >
-                  <View style={nativeShimmerTrackStyle}>
-                    <Animated.View style={nativeShimmerPeakCombinedStyle}>
-                      <Svg width="100%" height="100%" preserveAspectRatio="none">
-                        <Defs>
-                          <SvgLinearGradient
-                            id={nativeGradientIdRef.current}
-                            x1="0%"
-                            y1="0%"
-                            x2="100%"
-                            y2="0%"
-                          >
-                            <Stop offset="0%" stopColor="#ffffff" stopOpacity={0} />
-                            <Stop offset="50%" stopColor="#ffffff" stopOpacity={1} />
-                            <Stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
-                          </SvgLinearGradient>
-                        </Defs>
-                        <Rect
-                          x="0"
-                          y="0"
-                          width="100%"
-                          height="100%"
-                          fill={`url(#${nativeGradientIdRef.current})`}
-                        />
-                      </Svg>
-                    </Animated.View>
-                  </View>
-                </MaskedView>
-              </View>
+              <NativeExpandableBadgeShimmer
+                label={label}
+                secondaryLabel={secondaryLabel}
+                rowWidth={labelRowWidth}
+                rowHeight={labelRowHeight}
+                peakWidth={nativeShimmerPeakWidth}
+                durationSeconds={shimmerDuration}
+                gradientId={nativeGradientIdRef.current}
+              />
             ) : null}
           </View>
           {isInteractive && isHovered ? (

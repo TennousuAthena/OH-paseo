@@ -8,8 +8,8 @@ import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
 import { prefetchProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { generateMessageId, type StreamItem } from "@/types/stream";
 import {
+  createSessionAgentStreamReducerQueue,
   processTimelineResponse,
-  processAgentStreamEvent,
 } from "@/contexts/session-stream-reducers";
 import type {
   ActivityLogPayload,
@@ -1049,6 +1049,14 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       applyAgentUpdatePayload(update);
     });
 
+    const agentStreamReducerQueue = createSessionAgentStreamReducerQueue({
+      serverId,
+      setAgentStreamState,
+      setAgentTimelineCursor,
+      setAgents,
+      requestCanonicalCatchUp,
+    });
+
     const unsubAgentStream = client.on("agent_stream", (message) => {
       if (message.type !== "agent_stream") return;
       const { agentId, event, timestamp, seq, epoch } = message.payload;
@@ -1075,95 +1083,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         }
       }
 
-      // Read current store state
-      const session = useSessionStore.getState().sessions[serverId];
-      const currentTail = session?.agentStreamTail.get(agentId) ?? [];
-      const currentHead = session?.agentStreamHead.get(agentId) ?? [];
-      const currentCursor = session?.agentTimelineCursor.get(agentId);
-      const currentAgentEntry = session?.agents.get(agentId);
-      const currentAgent = currentAgentEntry
-        ? {
-            status: currentAgentEntry.status,
-            updatedAt: currentAgentEntry.updatedAt,
-            lastActivityAt: currentAgentEntry.lastActivityAt,
-          }
-        : null;
-
-      // Call pure reducer
-      const result = processAgentStreamEvent({
+      agentStreamReducerQueue.enqueue(agentId, {
         event: streamEvent,
         seq,
         epoch,
-        currentTail,
-        currentHead,
-        currentCursor,
-        currentAgent,
         timestamp: parsedTimestamp,
       });
-
-      // Apply tail/head patches
-      if (result.changedTail || result.changedHead) {
-        setAgentStreamState(serverId, agentId, {
-          ...(result.changedTail ? { tail: result.tail } : {}),
-          ...(result.changedHead ? { head: result.head } : {}),
-        });
-      }
-
-      // Apply cursor patch
-      if (result.cursorChanged && result.cursor) {
-        const nextCursor = result.cursor;
-        setAgentTimelineCursor(serverId, (prev) => {
-          const current = prev.get(agentId);
-          if (
-            current &&
-            typeof seq === "number" &&
-            typeof epoch === "string" &&
-            current.epoch === epoch &&
-            seq >= current.startSeq &&
-            seq <= current.endSeq
-          ) {
-            // Fast-path: seq stays inside the current range during streaming.
-            return prev;
-          }
-          if (
-            current &&
-            current.epoch === nextCursor.epoch &&
-            current.startSeq === nextCursor.startSeq &&
-            current.endSeq === nextCursor.endSeq
-          ) {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.set(agentId, nextCursor);
-          return next;
-        });
-      }
-
-      // Apply agent patch (optimistic lifecycle)
-      if (result.agentChanged && result.agent) {
-        const nextAgent = result.agent;
-        setAgents(serverId, (prev) => {
-          const current = prev.get(agentId);
-          if (!current) {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.set(agentId, {
-            ...current,
-            status: nextAgent.status,
-            updatedAt: nextAgent.updatedAt,
-            lastActivityAt: nextAgent.lastActivityAt,
-          });
-          return next;
-        });
-      }
-
-      // Execute side effects
-      for (const effect of result.sideEffects) {
-        if (effect.type === "catch_up") {
-          requestCanonicalCatchUp(agentId, effect.cursor);
-        }
-      }
 
       // NOTE: We don't update lastActivityAt on every stream event to prevent
       // cascading rerenders. The agent_update handler updates agent.lastActivityAt
@@ -1172,6 +1097,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
     const unsubAgentTimeline = client.on("fetch_agent_timeline_response", (message) => {
       if (message.type !== "fetch_agent_timeline_response") return;
+      agentStreamReducerQueue.flushAgent(message.payload.agentId);
       applyTimelineResponse(message.payload);
     });
 
@@ -1572,6 +1498,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubVoiceInputState();
       unsubAgentDeleted();
       unsubAgentArchived();
+      agentStreamReducerQueue.dispose({ flush: true });
     };
   }, [
     client,

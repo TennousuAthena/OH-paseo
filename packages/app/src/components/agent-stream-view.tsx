@@ -79,6 +79,30 @@ import { isWeb } from "@/constants/platform";
 const isUserMessageItem = (item?: StreamItem) => item?.kind === "user_message";
 const isToolSequenceItem = (item?: StreamItem) =>
   item?.kind === "tool_call" || item?.kind === "thought" || item?.kind === "todo_list";
+
+const isSameAssistantBlockGroup = (params: {
+  item: StreamItem | null | undefined;
+  other: StreamItem | null | undefined;
+}) =>
+  params.item?.kind === "assistant_message" &&
+  params.other?.kind === "assistant_message" &&
+  params.item.blockGroupId !== undefined &&
+  params.item.blockGroupId === params.other.blockGroupId;
+
+const isAssistantBlockFragment = (params: {
+  item: StreamItem;
+  aboveItem: StreamItem | null | undefined;
+  belowItem: StreamItem | null | undefined;
+}) =>
+  params.item.kind === "assistant_message" &&
+  (isSameAssistantBlockGroup({
+    item: params.item,
+    other: params.aboveItem,
+  }) ||
+    isSameAssistantBlockGroup({
+      item: params.item,
+      other: params.belowItem,
+    }));
 export interface AgentStreamViewHandle {
   scrollToBottom(reason?: BottomAnchorLocalRequest["reason"]): void;
   prepareForViewportChange(): void;
@@ -249,6 +273,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     }
 
     const tightGap = theme.spacing[1]; // 4px
+    const assistantBlockGap = theme.spacing[3]; // 12px
     const looseGap = theme.spacing[4]; // 16px
 
     const getGapBetween = useCallback(
@@ -261,26 +286,23 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           return tightGap;
         }
         if (isToolSequenceItem(item) && isToolSequenceItem(belowItem)) {
-          return tightGap;
+          return 0;
         }
         if (item.kind === "user_message" && isToolSequenceItem(belowItem)) {
           return looseGap;
         }
-        if (
-          (item.kind === "user_message" || item.kind === "assistant_message") &&
-          isToolSequenceItem(belowItem)
-        ) {
-          return tightGap;
-        }
-        if (item.kind === "todo_list" && isToolSequenceItem(belowItem)) {
+        if (item.kind === "assistant_message" && isToolSequenceItem(belowItem)) {
           return tightGap;
         }
         if (isToolSequenceItem(item) && belowItem.kind === "assistant_message") {
-          return tightGap;
+          return looseGap;
+        }
+        if (isSameAssistantBlockGroup({ item, other: belowItem })) {
+          return assistantBlockGap;
         }
         return looseGap;
       },
-      [looseGap, tightGap],
+      [assistantBlockGap, looseGap, tightGap],
     );
 
     const renderStreamItemContent = useCallback(
@@ -335,7 +357,29 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             );
           }
 
-          case "assistant_message":
+          case "assistant_message": {
+            const aboveItem =
+              getStreamNeighborItem({
+                strategy: streamRenderStrategy,
+                items,
+                index,
+                relation: "above",
+              }) ??
+              seamAboveItem ??
+              undefined;
+            const belowItem = getStreamNeighborItem({
+              strategy: streamRenderStrategy,
+              items,
+              index,
+              relation: "below",
+            });
+            const spacing = isAssistantBlockFragment({
+              item,
+              aboveItem,
+              belowItem,
+            })
+              ? "compact"
+              : "default";
             return (
               <AssistantMessage
                 message={item.text}
@@ -344,8 +388,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 workspaceRoot={workspaceRoot}
                 serverId={serverId}
                 client={client}
+                spacing={spacing}
               />
             );
+          }
           case "thought": {
             const nextItem = getStreamNeighborItem({
               strategy: streamRenderStrategy,
@@ -485,21 +531,27 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const showWorkingIndicator = agent.status === "running";
-    const renderModel = useMemo<AgentStreamRenderModel>(() => {
-      const pendingPermissionsNode =
+    const pendingPermissionsNode = useMemo(
+      () =>
         pendingPermissionItems.length > 0 ? (
           <View style={stylesheet.permissionsContainer}>
             {pendingPermissionItems.map((permission) => (
               <PermissionRequestCard key={permission.key} permission={permission} client={client} />
             ))}
           </View>
-        ) : null;
-      const workingIndicatorNode = showWorkingIndicator ? (
-        <View style={stylesheet.bottomBarWrapper}>
-          <WorkingIndicator />
-        </View>
-      ) : null;
-
+        ) : null,
+      [client, pendingPermissionItems],
+    );
+    const workingIndicatorNode = useMemo(
+      () =>
+        showWorkingIndicator ? (
+          <View style={stylesheet.bottomBarWrapper}>
+            <WorkingIndicator />
+          </View>
+        ) : null,
+      [showWorkingIndicator],
+    );
+    const renderModel = useMemo<AgentStreamRenderModel>(() => {
       return {
         ...baseRenderModel,
         boundary: {
@@ -514,7 +566,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           workingIndicator: workingIndicatorNode,
         },
       };
-    }, [baseRenderModel, client, getGapBetween, pendingPermissionItems, showWorkingIndicator]);
+    }, [baseRenderModel, getGapBetween, pendingPermissionsNode, workingIndicatorNode]);
 
     const listEmptyComponent = useMemo(() => {
       if (
