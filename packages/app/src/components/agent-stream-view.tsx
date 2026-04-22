@@ -1069,6 +1069,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
+    marginTop: theme.spacing[4],
     paddingLeft: 3,
     paddingRight: 3,
     paddingTop: theme.spacing[3],
