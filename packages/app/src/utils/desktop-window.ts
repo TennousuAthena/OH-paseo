@@ -17,7 +17,12 @@ type RawWindowControlsPadding = {
   top: number;
 };
 
-type WindowControlsPaddingRole = "sidebar" | "header" | "tabRow" | "explorerSidebar";
+type WindowControlsPaddingRole =
+  | "sidebar"
+  | "header"
+  | "detailHeader"
+  | "tabRow"
+  | "explorerSidebar";
 
 // Module-level cache so hook remounts (e.g., on navigation) don't briefly
 // fall back to the default `false` while the async fullscreen check resolves.
@@ -114,22 +119,59 @@ export function useWindowControlsPadding(role: WindowControlsPaddingRole): {
   const rawPadding = useRawWindowControlsPadding();
   const sidebarClosed = !sidebarOpen;
 
-  let left = 0;
-  let right = 0;
-  let top = 0;
-
-  if (role === "sidebar") {
-    left = rawPadding.left;
-    top = rawPadding.top;
-  } else if (role === "header") {
-    left = sidebarClosed ? rawPadding.left : 0;
-    right = explorerOpen ? 0 : rawPadding.right;
-  } else if (role === "tabRow") {
-    left = sidebarClosed && focusModeEnabled ? rawPadding.left : 0;
-    right = focusModeEnabled && !explorerOpen ? rawPadding.right : 0;
-  } else if (role === "explorerSidebar") {
-    right = rawPadding.right;
-  }
+  const { left, right, top } = resolveWindowControlsPadding({
+    role,
+    rawPadding,
+    sidebarClosed,
+    explorerOpen,
+    focusModeEnabled,
+  });
 
   return useMemo(() => ({ left, right, top }), [left, right, top]);
+}
+
+export function resolveWindowControlsPadding(input: {
+  role: WindowControlsPaddingRole;
+  rawPadding: RawWindowControlsPadding;
+  sidebarClosed: boolean;
+  explorerOpen: boolean;
+  focusModeEnabled: boolean;
+}): RawWindowControlsPadding {
+  if (input.role === "sidebar") {
+    return {
+      left: input.rawPadding.left,
+      right: 0,
+      top: input.rawPadding.top,
+    };
+  }
+
+  if (input.role === "header") {
+    return {
+      left: input.sidebarClosed ? input.rawPadding.left : 0,
+      right: input.explorerOpen ? 0 : input.rawPadding.right,
+      top: 0,
+    };
+  }
+
+  if (input.role === "detailHeader") {
+    return {
+      left: 0,
+      right: input.rawPadding.right,
+      top: 0,
+    };
+  }
+
+  if (input.role === "tabRow") {
+    return {
+      left: input.sidebarClosed && input.focusModeEnabled ? input.rawPadding.left : 0,
+      right: input.focusModeEnabled && !input.explorerOpen ? input.rawPadding.right : 0,
+      top: 0,
+    };
+  }
+
+  return {
+    left: 0,
+    right: input.rawPadding.right,
+    top: 0,
+  };
 }

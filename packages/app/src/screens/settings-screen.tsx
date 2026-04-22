@@ -898,6 +898,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
         <View style={desktopStyles.contentPane}>
           <ScreenHeader
             borderless={!detailHeader}
+            windowControlsPaddingRole="detailHeader"
             left={
               detailHeader ? (
                 <>
