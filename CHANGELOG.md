@@ -33,6 +33,8 @@
 - Composer textarea shrinks back down after sending on web.
 - New workspace drafts clear after submit instead of sticking around.
 - Replacing a running agent cleans up the previous one without leaving it behind.
+- Agent notifications no longer get swallowed by a backgrounded focused client.
+- Removed workspace folders disappear from the workspace list again.
 - Codex keeps fast mode after you approve a plan. ([#526](https://github.com/getpaseo/paseo/pull/526) by [@therainisme](https://github.com/therainisme))
 - Workspace tab focus is preserved across page refreshes.
 - Settings screen no longer pushes its header down with extra spacing.
