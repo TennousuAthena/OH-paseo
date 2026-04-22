@@ -25,6 +25,10 @@ import { lineNumberGutterWidth } from "@/components/code-insets";
 import { isRenderedMarkdownFile } from "@/components/file-pane-render-mode";
 import { isWeb } from "@/constants/platform";
 import { createMarkdownStyles } from "@/styles/markdown-styles";
+import type { AttachmentMetadata } from "@/attachments/types";
+import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
+import { persistAttachmentFromBase64 } from "@/attachments/service";
+import { createPreviewAttachmentId, getFileNameFromPath } from "@/attachments/utils";
 
 interface CodeLineProps {
   tokens: HighlightToken[];
@@ -40,6 +44,7 @@ interface FilePreviewBodyProps {
   showDesktopWebScrollbar: boolean;
   isMobile: boolean;
   filePath: string;
+  imagePreviewUri: string | null;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -58,6 +63,32 @@ function formatFileSize({ size }: { size: number }): string {
     return `${(size / 1024).toFixed(1)} KB`;
   }
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function createFilePanePreview(file: ExplorerFile | null): Promise<{
+  file: ExplorerFile | null;
+  imageAttachment: AttachmentMetadata | null;
+}> {
+  if (!file || file.kind !== "image" || !file.content) {
+    return { file, imageAttachment: null };
+  }
+
+  const { content: _content, ...imageFile } = file;
+  const imageAttachment = await persistAttachmentFromBase64({
+    id: createPreviewAttachmentId({
+      base64: file.content,
+      mimeType: file.mimeType ?? "image/png",
+      path: file.path,
+    }),
+    base64: file.content,
+    mimeType: file.mimeType,
+    fileName: getFileNameFromPath(file.path),
+  });
+
+  return {
+    file: imageFile,
+    imageAttachment,
+  };
 }
 
 const CodeLine = React.memo(function CodeLine({
@@ -116,6 +147,7 @@ function FilePreviewBody({
   showDesktopWebScrollbar,
   isMobile,
   filePath,
+  imagePreviewUri,
 }: FilePreviewBodyProps) {
   const { theme } = useUnistyles();
   const isDark = theme.colorScheme === "dark";
@@ -230,7 +262,16 @@ function FilePreviewBody({
     );
   }
 
-  if (preview.kind === "image" && preview.content) {
+  if (preview.kind === "image") {
+    if (!imagePreviewUri) {
+      return (
+        <View style={styles.centerState}>
+          <ActivityIndicator size="small" />
+          <Text style={styles.loadingText}>Loading file…</Text>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.previewScrollContainer}>
         <RNScrollView
@@ -245,7 +286,7 @@ function FilePreviewBody({
         >
           <RNImage
             source={{
-              uri: `data:${preview.mimeType ?? "image/png"};base64,${preview.content}`,
+              uri: imagePreviewUri,
             }}
             style={styles.previewImage}
             resizeMode="contain"
@@ -292,11 +333,17 @@ export function FilePane({
         normalizedFilePath,
         "file",
       );
-      return { file: payload.file ?? null, error: payload.error ?? null };
+      const preview = await createFilePanePreview(payload.file ?? null);
+      return {
+        file: preview.file,
+        imageAttachment: preview.imageAttachment,
+        error: payload.error ?? null,
+      };
     },
     staleTime: 5_000,
     refetchOnMount: true,
   });
+  const imagePreviewUri = useAttachmentPreviewUrl(query.data?.imageAttachment ?? null);
 
   return (
     <View style={styles.container} testID="workspace-file-pane">
@@ -312,6 +359,7 @@ export function FilePane({
         showDesktopWebScrollbar={showDesktopWebScrollbar}
         isMobile={isMobile}
         filePath={filePath}
+        imagePreviewUri={imagePreviewUri}
       />
     </View>
   );

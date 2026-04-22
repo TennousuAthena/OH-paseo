@@ -72,6 +72,13 @@ async function writeFromSource(input: {
     return;
   }
 
+  if (input.source.kind === "base64") {
+    await FileSystem.writeAsStringAsync(input.targetUri, input.source.base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return;
+  }
+
   const base64 = await blobToBase64(input.source.blob);
   await FileSystem.writeAsStringAsync(input.targetUri, base64, {
     encoding: FileSystem.EncodingType.Base64,

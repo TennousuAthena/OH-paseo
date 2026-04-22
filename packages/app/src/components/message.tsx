@@ -78,11 +78,17 @@ import {
   setAssistantImageMetadata,
 } from "@/utils/assistant-image-metadata";
 import { resolveAssistantImageSource } from "@/utils/assistant-image-source";
+import {
+  createPreviewAttachmentId,
+  getFileNameFromPath,
+  parseImageDataUrl,
+} from "@/attachments/utils";
 export type { InlinePathTarget } from "@/utils/inline-path";
 import { PlanCard } from "./plan-card";
 import { useToolCallSheet } from "./tool-call-sheet";
 import { ToolCallDetailsContent } from "./tool-call-details";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
+import { persistAttachmentFromBase64, persistAttachmentFromDataUrl } from "@/attachments/service";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { isWeb, isNative } from "@/constants/platform";
 
@@ -595,6 +601,7 @@ function AssistantMarkdownImage({
     () => resolveAssistantImageSource({ source, workspaceRoot }),
     [source, workspaceRoot],
   );
+  const dataImage = useMemo(() => parseImageDataUrl(source), [source]);
   const containerStyle = useMemo<StyleProp<ViewStyle>>(
     () => ({
       marginTop: hasLeadingContent ? theme.spacing[4] : 0,
@@ -621,16 +628,44 @@ function AssistantMarkdownImage({
       if (payload.error) {
         throw new Error(payload.error);
       }
-      if (!payload.file || payload.file.kind !== "image" || !payload.file.content) {
+      const file = payload.file;
+      if (!file || file.kind !== "image" || !file.content) {
         throw new Error("Image preview unavailable.");
       }
 
-      return `data:${payload.file.mimeType ?? "image/png"};base64,${payload.file.content}`;
+      return await persistAttachmentFromBase64({
+        id: createPreviewAttachmentId({
+          base64: file.content,
+          mimeType: file.mimeType ?? "image/png",
+          path: file.path || resolution.path,
+        }),
+        base64: file.content,
+        mimeType: file.mimeType,
+        fileName: getFileNameFromPath(file.path || resolution.path),
+      });
+    },
+  });
+  const dataImageQuery = useQuery({
+    queryKey: ["assistantMarkdownDataImage", dataImage?.cacheKey ?? null],
+    enabled: dataImage !== null,
+    staleTime: 30_000,
+    queryFn: async () => {
+      if (!dataImage) {
+        return null;
+      }
+
+      return await persistAttachmentFromDataUrl({
+        id: createPreviewAttachmentId(dataImage),
+        dataUrl: source,
+        mimeType: dataImage.mimeType,
+      });
     },
   });
 
-  const directUri = resolution?.kind === "direct" ? resolution.uri : null;
-  const resolvedUri = directUri ?? query.data ?? null;
+  const fileAssetUri = useAttachmentPreviewUrl(query.data);
+  const dataImageAssetUri = useAttachmentPreviewUrl(dataImageQuery.data);
+  const directUri = resolution?.kind === "direct" && !dataImage ? resolution.uri : null;
+  const resolvedUri = directUri ?? dataImageAssetUri ?? fileAssetUri ?? null;
 
   if (resolvedUri) {
     return (
@@ -645,7 +680,7 @@ function AssistantMarkdownImage({
     );
   }
 
-  if (query.isLoading) {
+  if (query.isLoading || dataImageQuery.isLoading) {
     return (
       <View
         style={[
@@ -668,7 +703,11 @@ function AssistantMarkdownImage({
       ]}
     >
       <Text style={assistantMessageStylesheet.imageErrorText}>
-        {query.error instanceof Error ? query.error.message : "Unable to load image preview."}
+        {query.error instanceof Error
+          ? query.error.message
+          : dataImageQuery.error instanceof Error
+            ? dataImageQuery.error.message
+            : "Unable to load image preview."}
       </Text>
     </View>
   );
