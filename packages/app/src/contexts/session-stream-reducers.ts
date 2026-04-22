@@ -53,6 +53,7 @@ type InitRequestDirection = "tail" | "after";
 
 type TimelineResponseEntry = {
   seqStart: number;
+  seqEnd: number;
   provider: string;
   item: Record<string, unknown>;
   timestamp: string;
@@ -122,6 +123,7 @@ export function processTimelineResponse(
   // ------------------------------------------------------------------
   const timelineUnits = payload.entries.map((entry) => ({
     seq: entry.seqStart,
+    seqEnd: entry.seqEnd,
     event: {
       type: "timeline",
       provider: entry.provider,
@@ -200,7 +202,14 @@ export function processTimelineResponse(
         gapCursor = cursor ? { epoch: cursor.epoch, endSeq: cursor.endSeq } : null;
         break;
       }
-      if (decision === "drop_stale" || decision === "drop_epoch") {
+      if (decision === "drop_stale") {
+        if (cursor && unit.seqEnd > cursor.endSeq) {
+          gapCursor = { epoch: cursor.epoch, endSeq: cursor.endSeq };
+          break;
+        }
+        continue;
+      }
+      if (decision === "drop_epoch") {
         continue;
       }
 
@@ -209,7 +218,7 @@ export function processTimelineResponse(
         cursor = {
           epoch: payload.epoch,
           startSeq: unit.seq,
-          endSeq: unit.seq,
+          endSeq: unit.seqEnd,
         };
         continue;
       }
@@ -218,7 +227,7 @@ export function processTimelineResponse(
       }
       cursor = {
         ...cursor,
-        endSeq: unit.seq,
+        endSeq: unit.seqEnd,
       };
     }
 

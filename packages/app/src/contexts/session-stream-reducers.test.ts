@@ -19,6 +19,7 @@ import {
 function makeTimelineEntry(seq: number, text: string, type: string = "assistant_message") {
   return {
     seqStart: seq,
+    seqEnd: seq,
     provider: "claude",
     item: { type, text },
     timestamp: new Date(1000 + seq).toISOString(),
@@ -316,6 +317,39 @@ describe("processTimelineResponse", () => {
     // No new items appended (all dropped as stale)
     expect(result.tail).toBe(baseTimelineInput.currentTail);
     expect(result.cursorChanged).toBe(false);
+  });
+
+  it("requests canonical catch-up when a projected entry overlaps unseen seqs", () => {
+    const existingCursor: TimelineCursor = {
+      epoch: "epoch-1",
+      startSeq: 1,
+      endSeq: 5,
+    };
+
+    const result = processTimelineResponse({
+      ...baseTimelineInput,
+      currentCursor: existingCursor,
+      payload: {
+        ...baseTimelineInput.payload,
+        epoch: "epoch-1",
+        entries: [
+          {
+            ...makeTimelineEntry(4, "merged assistant message"),
+            seqEnd: 8,
+          },
+        ],
+      },
+    });
+
+    expect(result.tail).toBe(baseTimelineInput.currentTail);
+    expect(result.cursorChanged).toBe(false);
+    expect(result.sideEffects).toContainEqual({
+      type: "catch_up",
+      cursor: {
+        epoch: "epoch-1",
+        endSeq: 5,
+      },
+    });
   });
 
   it("drops entries with epoch mismatch", () => {
