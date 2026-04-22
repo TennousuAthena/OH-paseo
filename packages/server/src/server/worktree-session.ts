@@ -119,10 +119,11 @@ type HandleWorkspaceSetupStatusRequestDependencies = {
 type HandleCreatePaseoWorktreeRequestDependencies = {
   paseoHome?: string;
   describeWorkspaceRecord: (
-    workspace: PersistedWorkspaceRecord,
+    result: CreatePaseoWorktreeResult,
   ) => Promise<WorkspaceDescriptorPayload>;
   emit: EmitSessionMessage;
   createPaseoWorktree: (input: CreatePaseoWorktreeInput) => Promise<CreatePaseoWorktreeResult>;
+  warmWorkspaceGitData: (workspace: PersistedWorkspaceRecord) => Promise<void>;
   sessionLogger: Logger;
   runWorktreeSetupInBackground: (options: {
     requestCwd: string;
@@ -604,7 +605,7 @@ export async function handleCreatePaseoWorktreeRequest(
     const slug = basename(createdWorktree.worktree.worktreePath);
     const workspace = createdWorktree.workspace;
 
-    const descriptor = await dependencies.describeWorkspaceRecord(workspace);
+    const descriptor = await dependencies.describeWorkspaceRecord(createdWorktree);
     dependencies.emit({
       type: "create_paseo_worktree_response",
       payload: {
@@ -614,7 +615,20 @@ export async function handleCreatePaseoWorktreeRequest(
         requestId: request.requestId,
       },
     });
+    dependencies.emit({
+      type: "workspace_update",
+      payload: {
+        kind: "upsert",
+        workspace: descriptor,
+      },
+    });
 
+    void dependencies.warmWorkspaceGitData(workspace).catch((error) => {
+      dependencies.sessionLogger.warn(
+        { err: error, workspaceId: workspace.workspaceId },
+        "Failed to warm workspace git data after creating worktree",
+      );
+    });
     void dependencies.runWorktreeSetupInBackground({
       requestCwd: request.cwd,
       repoRoot: createdWorktree.repoRoot,

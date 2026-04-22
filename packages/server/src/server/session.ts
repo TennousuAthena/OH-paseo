@@ -900,6 +900,11 @@ export class Session {
     await this.emitWorkspaceUpdatesForWorkspaceIds([workspaceId], { skipReconcile: true });
   }
 
+  async warmWorkspaceGitDataForWorkspace(workspace: PersistedWorkspaceRecord): Promise<void> {
+    await this.primeWorkspaceGitWatchFingerprintForWorkspace(workspace);
+    await this.emitWorkspaceUpdateForWorkspaceId(workspace.workspaceId);
+  }
+
   /**
    * Get the client's current activity state
    */
@@ -5764,6 +5769,36 @@ export class Session {
     };
   }
 
+  private async describeCreatedWorktreeWorkspace(
+    result: CreatePaseoWorktreeResult,
+  ): Promise<WorkspaceDescriptorPayload> {
+    const projectRecord = await this.projectRegistry.get(result.workspace.projectId);
+    return {
+      id: result.workspace.workspaceId,
+      projectId: result.workspace.projectId,
+      projectDisplayName: projectRecord?.displayName ?? String(result.workspace.projectId),
+      projectRootPath: projectRecord?.rootPath ?? result.repoRoot,
+      workspaceDirectory: result.workspace.cwd,
+      projectKind: "git",
+      workspaceKind: result.workspace.kind,
+      name: result.worktree.branchName || result.workspace.displayName,
+      status: "done",
+      activityAt: null,
+      diffStat: { additions: 0, deletions: 0 },
+      scripts: [],
+      gitRuntime: {
+        currentBranch: result.worktree.branchName || null,
+        remoteUrl: null,
+        isPaseoOwnedWorktree: true,
+        isDirty: false,
+        aheadBehind: null,
+        aheadOfOrigin: null,
+        behindOfOrigin: null,
+      },
+      githubRuntime: null,
+    };
+  }
+
   private async buildWorkspaceDescriptor(input: {
     workspace: PersistedWorkspaceRecord;
     projectRecord?: PersistedProjectRecord | null;
@@ -6252,15 +6287,16 @@ export class Session {
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
       workspaceGitService: this.workspaceGitService,
-      primeWorkspaceGitWatchFingerprints: (workspace) =>
-        this.primeWorkspaceGitWatchFingerprintForWorkspace(workspace),
-      broadcastWorkspaceUpdate: (workspaceId) =>
-        this.emitWorkspaceUpdateForWorkspaceId(workspaceId),
     });
-    await Promise.all([
+    void Promise.all([
       this.notifyGitMutation(input.cwd, "create-worktree"),
       this.notifyGitMutation(result.worktree.worktreePath, "create-worktree"),
-    ]);
+    ]).catch((error) => {
+      this.sessionLogger.warn(
+        { err: error, cwd: input.cwd, worktreePath: result.worktree.worktreePath },
+        "Failed to warm git snapshots after creating worktree",
+      );
+    });
     return result;
   }
 
@@ -6758,9 +6794,10 @@ export class Session {
     return handleCreateWorktreeRequest(
       {
         paseoHome: this.paseoHome,
-        describeWorkspaceRecord: (workspace) => this.describeWorkspaceRecordWithGitData(workspace),
+        describeWorkspaceRecord: (result) => this.describeCreatedWorktreeWorkspace(result),
         emit: (message) => this.emit(message),
         createPaseoWorktree: (input) => this.createPaseoWorktree(input),
+        warmWorkspaceGitData: (workspace) => this.warmWorkspaceGitDataForWorkspace(workspace),
         sessionLogger: this.sessionLogger,
         runWorktreeSetupInBackground: (options) => this.runWorktreeSetupInBackground(options),
       },

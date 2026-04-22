@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
-import { expect, test } from "./fixtures";
+import { expect, test, type Page } from "./fixtures";
 import { gotoAppShell } from "./helpers/app";
 import {
   archiveWorkspaceFromDaemon,
@@ -27,6 +27,108 @@ import {
   waitForWorkspaceInSidebar,
   workspaceLabelFromPath,
 } from "./helpers/workspace-ui";
+
+type WebSocketMessage = string | Buffer;
+
+function parseWebSocketJson(message: WebSocketMessage): unknown {
+  const rawMessage = typeof message === "string" ? message : message.toString("utf8");
+  try {
+    return JSON.parse(rawMessage);
+  } catch {
+    return null;
+  }
+}
+
+function getSessionMessage(message: WebSocketMessage): Record<string, unknown> | null {
+  const envelope = parseWebSocketJson(message);
+  if (!envelope || typeof envelope !== "object") {
+    return null;
+  }
+
+  const maybeEnvelope = envelope as { type?: unknown; message?: unknown };
+  if (maybeEnvelope.type !== "session" || !maybeEnvelope.message) {
+    return null;
+  }
+  if (typeof maybeEnvelope.message !== "object") {
+    return null;
+  }
+
+  return maybeEnvelope.message as Record<string, unknown>;
+}
+
+function getStringField(input: Record<string, unknown>, key: string): string | null {
+  const value = input[key];
+  return typeof value === "string" ? value : null;
+}
+
+async function delayBrowserAgentCreatedStatus(page: Page) {
+  const daemonPort = process.env.E2E_DAEMON_PORT;
+  if (!daemonPort) {
+    throw new Error("E2E_DAEMON_PORT is not set.");
+  }
+
+  const daemonPortPattern = new RegExp(`:${daemonPort.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+  const createRequestIds = new Set<string>();
+  const delayedForwards: Array<() => void> = [];
+  let releaseRequested = false;
+  let resolveCreateRequest: (() => void) | null = null;
+  let resolveDelayedCreatedStatus: (() => void) | null = null;
+  const createRequestSeen = new Promise<void>((resolve) => {
+    resolveCreateRequest = resolve;
+  });
+  const delayedCreatedStatusSeen = new Promise<void>((resolve) => {
+    resolveDelayedCreatedStatus = resolve;
+  });
+
+  await page.routeWebSocket(daemonPortPattern, (ws) => {
+    const server = ws.connectToServer();
+
+    ws.onMessage((message) => {
+      const sessionMessage = getSessionMessage(message);
+      if (sessionMessage?.type === "create_agent_request") {
+        const requestId = getStringField(sessionMessage, "requestId");
+        if (requestId) {
+          createRequestIds.add(requestId);
+          resolveCreateRequest?.();
+        }
+      }
+      server.send(message);
+    });
+
+    server.onMessage((message) => {
+      const sessionMessage = getSessionMessage(message);
+      const payload =
+        sessionMessage?.type === "status" && typeof sessionMessage.payload === "object"
+          ? (sessionMessage.payload as Record<string, unknown>)
+          : null;
+      const requestId = payload ? getStringField(payload, "requestId") : null;
+
+      if (payload?.status === "agent_created" && requestId && createRequestIds.has(requestId)) {
+        resolveDelayedCreatedStatus?.();
+        if (releaseRequested) {
+          ws.send(message);
+          return;
+        }
+
+        delayedForwards.push(() => ws.send(message));
+        return;
+      }
+
+      ws.send(message);
+    });
+  });
+
+  return {
+    release() {
+      releaseRequested = true;
+      for (const forward of delayedForwards.splice(0)) {
+        forward();
+      }
+    },
+    waitForCreateRequest: () => createRequestSeen,
+    waitForDelayedCreatedStatus: () => delayedCreatedStatusSeen,
+  };
+}
 
 test.describe("New workspace flow", () => {
   let client: Awaited<ReturnType<typeof connectNewWorkspaceDaemonClient>>;
@@ -191,7 +293,7 @@ test.describe("New workspace flow", () => {
     }
   });
 
-  test("clicking new workspace redirects, renders header, shows sidebar row, and keeps one draft tab", async ({
+  test("clicking new workspace redirects, renders header, shows sidebar row, and keeps one agent tab", async ({
     page,
   }) => {
     const serverId = process.env.E2E_SERVER_ID;
@@ -262,8 +364,83 @@ test.describe("New workspace flow", () => {
       await agentTabs.first().click();
 
       const composer = page.getByRole("textbox", { name: "Message agent..." });
-      await expect(composer).toBeEditable({ timeout: 30_000 });
+      await expect(composer).toBeVisible({ timeout: 30_000 });
     } finally {
+      await tempRepo.cleanup();
+    }
+  });
+
+  test("redirects to the optimistic draft tab before agent creation resolves", async ({ page }) => {
+    const serverId = process.env.E2E_SERVER_ID;
+    if (!serverId) {
+      throw new Error("E2E_SERVER_ID is not set.");
+    }
+
+    const tempRepo = await createTempGitRepo("new-workspace-optimistic-");
+    const agentCreatedDelay = await delayBrowserAgentCreatedStatus(page);
+
+    try {
+      const openedProject = await openProjectViaDaemon(client, tempRepo.path);
+      localWorkspaceIds.add(openedProject.workspaceId);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+
+      await switchWorkspaceViaSidebar({
+        page,
+        serverId,
+        targetWorkspacePath: openedProject.workspaceId,
+      });
+      await expectWorkspaceHeader(page, {
+        title: openedProject.workspaceName,
+        subtitle: openedProject.projectDisplayName,
+      });
+
+      await openNewWorkspaceComposer(page, {
+        projectKey: openedProject.projectKey,
+        projectDisplayName: openedProject.projectDisplayName,
+      });
+
+      const createButton = page
+        .getByTestId("message-input-root")
+        .getByRole("button", { name: "Create" });
+      await expect(createButton).toBeVisible({ timeout: 30_000 });
+      await createButton.click();
+
+      await agentCreatedDelay.waitForCreateRequest();
+      await agentCreatedDelay.waitForDelayedCreatedStatus();
+
+      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
+        serverId,
+        previousWorkspaceId: openedProject.workspaceId,
+        projectDisplayName: openedProject.projectDisplayName,
+      });
+      createdWorktreeIds.add(createdWorkspace.workspaceId);
+
+      await expect(page).toHaveURL(
+        buildHostWorkspaceRoute(serverId, createdWorkspace.workspaceId),
+        {
+          timeout: 30_000,
+        },
+      );
+
+      const activeWorkspaceDeckEntry = page
+        .getByTestId(`workspace-deck-entry-${serverId}:${createdWorkspace.workspaceId}`)
+        .filter({ visible: true });
+      await expect(activeWorkspaceDeckEntry).toBeVisible({ timeout: 30_000 });
+
+      const draftTabs = activeWorkspaceDeckEntry.locator('[data-testid^="workspace-tab-draft_"]');
+      await expect(draftTabs).toHaveCount(1, { timeout: 30_000 });
+      await expect(
+        activeWorkspaceDeckEntry.locator('[data-testid^="workspace-tab-agent_"]'),
+      ).toHaveCount(0);
+
+      agentCreatedDelay.release();
+      await expect(
+        activeWorkspaceDeckEntry.locator('[data-testid^="workspace-tab-agent_"]'),
+      ).toHaveCount(1, { timeout: 30_000 });
+    } finally {
+      agentCreatedDelay.release();
       await tempRepo.cleanup();
     }
   });

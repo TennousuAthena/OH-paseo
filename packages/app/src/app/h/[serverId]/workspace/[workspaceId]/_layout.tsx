@@ -69,9 +69,11 @@ function clearConsumedOpenIntent(input: {
   serverId: string;
   workspaceId: string;
 }) {
-  input.router.replace(buildHostWorkspaceRoute(input.serverId, input.workspaceId));
   input.navigation.setParams({ open: undefined });
-  stripOpenSearchParamFromBrowserUrl();
+  if (isWeb) {
+    input.router.replace(buildHostWorkspaceRoute(input.serverId, input.workspaceId));
+    stripOpenSearchParamFromBrowserUrl();
+  }
 }
 
 export default function HostWorkspaceLayout() {

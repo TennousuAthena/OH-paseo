@@ -110,6 +110,33 @@ See `image-picker-repro.yaml` for an example.
 
 **Prefer direct connection over relay pairing for local E2E.** Relay needs a 400+ character pairing URL typed into an input; direct needs `127.0.0.1:6767`. The daemon listens on 6767 and the simulator can reach it directly.
 
+### New Workspace Creation
+
+The Android workspace-creation regression has a dedicated harness:
+
+```bash
+bash packages/app/maestro/test-workspace-create-android-crash.sh
+```
+
+For a short recording that starts after launch/connection/sidebar setup:
+
+```bash
+bash packages/app/maestro/record-workspace-create-android-focus.sh
+```
+
+The flow details are documented in `packages/app/maestro/README.md`. The important rule is that a valid new-workspace assertion must prove the redirect completed: select a real model, tap `Create`, wait for `workspace-header-title`, wait for `message-input-root`, assert `New workspace` is gone, and assert the Android redbox strings are absent. Waiting for the composer alone is too weak because it can still be the `/new` route after a validation error.
+
+New workspace scenarios should compose the reusable subflows in `packages/app/maestro/flows/`:
+
+- `android-dev-client.yaml`
+- `connect-direct-if-welcome.yaml`
+- `open-prepared-project-sidebar.yaml`
+- `new-workspace-open-from-sidebar.yaml`
+- `new-workspace-select-codex-gpt54.yaml`
+- `new-workspace-submit-and-assert-created.yaml`
+
+The workspace-create shell scripts render those subflows into a temp directory before running Maestro, which keeps nested `runFlow` paths and `${PASEO_MAESTRO_*}` placeholders working together.
+
 ### Inputs that Maestro types into
 
 Maestro `inputText` fires one character at a time. React Native's **controlled** `TextInput` re-renders per keystroke; if a controlled input's state update lags or re-mounts mid-type, characters are dropped silently — the final value on screen is a truncated/scrambled version of what was "typed."

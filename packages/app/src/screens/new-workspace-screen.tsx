@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated from "react-native-reanimated";
 import { createNameId } from "mnemonic-id";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, GitBranch, GitPullRequest } from "lucide-react-native";
@@ -16,12 +17,13 @@ import { ScreenHeader } from "@/components/headers/screen-header";
 import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
+import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
-import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
-import { encodeImages } from "@/utils/encode-images";
+import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
+import { useDraftStore } from "@/stores/draft-store";
+import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { toErrorMessage } from "@/utils/error-messages";
-import { requireWorkspaceExecutionAuthority } from "@/utils/workspace-execution";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import type { ComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload } from "@/components/message-input";
@@ -105,9 +107,11 @@ export function NewWorkspaceScreen({
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const isCompact = useIsCompactFormFactor();
+  const { style: keyboardAnimatedStyle } = useKeyboardShiftStyle({
+    mode: "translate",
+  });
   const toast = useToast();
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
-  const setAgents = useSessionStore((state) => state.setAgents);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdWorkspace, setCreatedWorkspace] = useState<ReturnType<
     typeof normalizeWorkspaceDescriptor
@@ -319,10 +323,6 @@ export function NewWorkspaceScreen({
       try {
         setPendingAction("chat");
         setErrorMessage(null);
-        const { images, attachments: reviewAttachments } =
-          splitComposerAttachmentsForSubmit(attachments);
-        const workspace = await ensureWorkspace({ cwd, attachments: reviewAttachments });
-        const connectedClient = withConnectedClient();
         if (!composerState) {
           throw new Error("Composer state is required");
         }
@@ -330,15 +330,30 @@ export function NewWorkspaceScreen({
           throw new Error("Select a model");
         }
 
-        const initialPrompt = text.trim();
-        const encodedImages = await encodeImages(images);
-        const workspaceDirectory = requireWorkspaceExecutionAuthority({
-          workspace,
-        }).workspaceDirectory;
-        const agent = await connectedClient.createAgent({
-          provider: composerState.selectedProvider,
-          cwd: workspaceDirectory,
+        const { attachments: reviewAttachments } = splitComposerAttachmentsForSubmit(attachments);
+        const workspace = await ensureWorkspace({ cwd, attachments: reviewAttachments });
+        const draftId = generateDraftId();
+        const workspaceDirectory = workspace.workspaceDirectory;
+        useDraftStore.getState().saveDraftInput({
+          draftKey: buildDraftStoreKey({
+            serverId,
+            agentId: draftId,
+            draftId,
+          }),
+          draft: {
+            text,
+            attachments,
+            cwd: workspaceDirectory,
+          },
+        });
+        useWorkspaceDraftSubmissionStore.getState().setPending({
+          serverId,
           workspaceId: workspace.id,
+          draftId,
+          text,
+          attachments,
+          cwd: workspaceDirectory,
+          provider: composerState.selectedProvider,
           ...(composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
             ? { modeId: composerState.selectedMode }
             : {}),
@@ -346,31 +361,23 @@ export function NewWorkspaceScreen({
           ...(composerState.effectiveThinkingOptionId
             ? { thinkingOptionId: composerState.effectiveThinkingOptionId }
             : {}),
-          ...(initialPrompt ? { initialPrompt } : {}),
-          ...(encodedImages && encodedImages.length > 0 ? { images: encodedImages } : {}),
-          ...(reviewAttachments.length > 0 ? { attachments: reviewAttachments } : {}),
-        });
-
-        setAgents(serverId, (previous) => {
-          const next = new Map(previous);
-          next.set(agent.id, normalizeAgentSnapshot(agent, serverId));
-          return next;
+          ...(composerState.featureValues ? { featureValues: composerState.featureValues } : {}),
+          allowEmptyText: true,
         });
         navigateToPreparedWorkspaceTab({
           serverId,
           workspaceId: workspace.id,
-          target: { kind: "agent", agentId: agent.id },
+          target: { kind: "draft", draftId },
           navigationMethod: "replace",
         });
       } catch (error) {
         const message = toErrorMessage(error);
+        setPendingAction(null);
         setErrorMessage(message);
         toast.error(message);
-      } finally {
-        setPendingAction(null);
       }
     },
-    [composerState, ensureWorkspace, serverId, setAgents, toast, withConnectedClient],
+    [composerState, ensureWorkspace, serverId, toast],
   );
 
   const workspaceTitle =
@@ -494,7 +501,10 @@ export function NewWorkspaceScreen({
             }
             onAddImages={handleAddImagesCallback}
           />
-          <View style={styles.optionsRow}>
+          <Animated.View
+            testID="new-workspace-ref-picker-row"
+            style={[styles.optionsRow, keyboardAnimatedStyle]}
+          >
             <View>
               <Tooltip>
                 <TooltipTrigger asChild triggerRefProp="ref">
@@ -557,7 +567,7 @@ export function NewWorkspaceScreen({
                 renderOption={renderPickerOption}
               />
             </View>
-          </View>
+          </Animated.View>
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         </View>
       </View>

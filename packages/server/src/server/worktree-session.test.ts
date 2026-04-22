@@ -236,12 +236,6 @@ function createPaseoWorktreeForTest(options: {
         },
       },
       workspaceGitService,
-      primeWorkspaceGitWatchFingerprints: async (workspace) => {
-        options.events?.push(`prime:${workspace.workspaceId}`);
-      },
-      broadcastWorkspaceUpdate: async (workspaceId) => {
-        options.events?.push(`broadcast:${workspaceId}`);
-      },
     });
   };
 }
@@ -1041,10 +1035,11 @@ describe("handleCreatePaseoWorktreeRequest", () => {
     await handleCreatePaseoWorktreeRequest(
       {
         paseoHome,
-        describeWorkspaceRecord: async (workspace) =>
-          createWorkspaceDescriptor({ workspace, repoDir }),
+        describeWorkspaceRecord: async (result) =>
+          createWorkspaceDescriptor({ workspace: result.workspace, repoDir }),
         emit: (message) => emitted.push(message),
         createPaseoWorktree: createPaseoWorktreeForTest({ paseoHome }),
+        warmWorkspaceGitData: async () => {},
         sessionLogger: logger,
         runWorktreeSetupInBackground: async () => {},
       },
@@ -1137,7 +1132,6 @@ describe("handleCreatePaseoWorktreeRequest", () => {
     expect(result.worktreeBootstrap?.worktree.branchName).toBe("feature/review-pr");
     expect(result.worktreeBootstrap?.worktree.worktreePath).toContain("agent-review-pr-123");
     expect(events.some((event) => event.startsWith("workspace:"))).toBe(true);
-    expect(events.some((event) => event.startsWith("broadcast:"))).toBe(true);
 
     const branch = execSync("git branch --show-current", {
       cwd: result.sessionConfig.cwd,
@@ -1281,9 +1275,9 @@ describe("handleCreatePaseoWorktreeRequest", () => {
           sessionLogger: createLogger(),
           emit: (message) => emitted.push(message),
           createPaseoWorktree: createPaseoWorktreeForTest({ paseoHome, events }),
-          describeWorkspaceRecord: vi.fn(async (workspace) => ({
-            id: workspace.workspaceId,
-            projectId: workspace.projectId,
+          describeWorkspaceRecord: vi.fn(async (result) => ({
+            id: result.workspace.workspaceId,
+            projectId: result.workspace.projectId,
             projectDisplayName: path.basename(repoDir),
             projectRootPath: repoDir,
             projectKind: "git",
@@ -1291,7 +1285,20 @@ describe("handleCreatePaseoWorktreeRequest", () => {
             name: "single-call",
             status: "done",
             activityAt: null,
+            diffStat: { additions: 0, deletions: 0 },
+            scripts: [],
+            gitRuntime: {
+              currentBranch: "single-call",
+              remoteUrl: null,
+              isPaseoOwnedWorktree: true,
+              isDirty: false,
+              aheadBehind: null,
+              aheadOfOrigin: null,
+              behindOfOrigin: null,
+            },
+            githubRuntime: null,
           })),
+          warmWorkspaceGitData: async () => {},
           runWorktreeSetupInBackground: vi.fn(async () => {}),
         },
         {
@@ -1303,7 +1310,6 @@ describe("handleCreatePaseoWorktreeRequest", () => {
       );
 
       expect(events.some((event) => event.startsWith("workspace:"))).toBe(true);
-      expect(events.some((event) => event.startsWith("broadcast:"))).toBe(true);
       const response = emitted.find(
         (
           message,
@@ -1321,6 +1327,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
     const paseoHome = path.join(tempDir, ".paseo");
     const emitted: SessionOutboundMessage[] = [];
     const backgroundWork = vi.fn(async () => {});
+    const warmWorkspaceGitData = vi.fn(async () => {});
     let registeredWorktreePath: string | null = null;
 
     try {
@@ -1335,9 +1342,10 @@ describe("handleCreatePaseoWorktreeRequest", () => {
             registeredWorktreePath = result.worktree.worktreePath;
             return result;
           },
-          describeWorkspaceRecord: vi.fn(async (workspace) =>
-            createWorkspaceDescriptor({ workspace, repoDir }),
+          describeWorkspaceRecord: vi.fn(async (result) =>
+            createWorkspaceDescriptor({ workspace: result.workspace, repoDir }),
           ),
+          warmWorkspaceGitData,
           runWorktreeSetupInBackground: backgroundWork,
         },
         {
@@ -1356,8 +1364,26 @@ describe("handleCreatePaseoWorktreeRequest", () => {
       );
       expect(response?.payload.error).toBeNull();
       expect(response?.payload.workspace?.id).toBeTruthy();
+      expect(emitted.map((message) => message.type).slice(0, 2)).toEqual([
+        "create_paseo_worktree_response",
+        "workspace_update",
+      ]);
+      const workspaceUpdate = emitted[1];
+      expect(workspaceUpdate).toMatchObject({
+        type: "workspace_update",
+        payload: {
+          kind: "upsert",
+          workspace: response?.payload.workspace,
+        },
+      });
       expect(registeredWorktreePath).toBeTruthy();
       expect(existsSync(registeredWorktreePath!)).toBe(true);
+      expect(warmWorkspaceGitData).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: response?.payload.workspace?.id,
+          cwd: registeredWorktreePath,
+        }),
+      );
       expect(backgroundWork).toHaveBeenCalledWith(
         expect.objectContaining({
           requestCwd: repoDir,
@@ -1386,9 +1412,10 @@ describe("handleCreatePaseoWorktreeRequest", () => {
           sessionLogger: createLogger(),
           emit: (message) => emitted.push(message),
           createPaseoWorktree: createPaseoWorktreeForTest({ paseoHome }),
-          describeWorkspaceRecord: vi.fn(async (workspace) =>
-            createWorkspaceDescriptor({ workspace, repoDir }),
+          describeWorkspaceRecord: vi.fn(async (result) =>
+            createWorkspaceDescriptor({ workspace: result.workspace, repoDir }),
           ),
+          warmWorkspaceGitData: async () => {},
           runWorktreeSetupInBackground: vi.fn(async () => {}),
         },
         {
@@ -1426,9 +1453,10 @@ describe("handleCreatePaseoWorktreeRequest", () => {
           sessionLogger: createLogger(),
           emit: (message) => emitted.push(message),
           createPaseoWorktree: createPaseoWorktreeForTest({ paseoHome }),
-          describeWorkspaceRecord: vi.fn(async (workspace) =>
-            createWorkspaceDescriptor({ workspace, repoDir }),
+          describeWorkspaceRecord: vi.fn(async (result) =>
+            createWorkspaceDescriptor({ workspace: result.workspace, repoDir }),
           ),
+          warmWorkspaceGitData: async () => {},
           runWorktreeSetupInBackground: vi.fn(async () => {}),
         },
         {

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Keyboard, ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +14,7 @@ import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-dr
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import type { Agent } from "@/stores/session-store";
 import { useWorkspaceExecutionAuthority } from "@/stores/session-store-hooks";
+import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { encodeImages } from "@/utils/encode-images";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import type { AgentCapabilityFlags } from "@server/server/agent/agent-sdk-types";
@@ -80,6 +81,23 @@ export function WorkspaceDraftAgentTab({
   if (!composerState) {
     throw new Error("Workspace draft composer state is required");
   }
+  const pendingAutoSubmit = useWorkspaceDraftSubmissionStore((state) => {
+    const pending = state.pendingByDraftId[draftId] ?? null;
+    return pending?.serverId === serverId && pending.workspaceId === workspaceId ? pending : null;
+  });
+  const consumePendingAutoSubmit = useWorkspaceDraftSubmissionStore(
+    (state) => state.consumePending,
+  );
+  const autoSubmitConfig = pendingAutoSubmit
+    ? {
+        provider: pendingAutoSubmit.provider,
+        modeId: pendingAutoSubmit.modeId ?? null,
+        model: pendingAutoSubmit.model ?? null,
+        thinkingOptionId: pendingAutoSubmit.thinkingOptionId ?? null,
+        featureValues: pendingAutoSubmit.featureValues,
+      }
+    : null;
+  const allowsEmptyAutoSubmit = pendingAutoSubmit?.allowEmptyText === true;
 
   const {
     formErrorMessage,
@@ -90,20 +108,21 @@ export function WorkspaceDraftAgentTab({
   } = useDraftAgentCreateFlow<Agent, AgentSnapshotPayload>({
     draftId,
     getPendingServerId: () => serverId,
+    allowEmptyText: allowsEmptyAutoSubmit,
     validateBeforeSubmit: ({ text }) => {
-      if (!text.trim()) {
+      if (!allowsEmptyAutoSubmit && !text.trim()) {
         return "Initial prompt is required";
       }
       if (composerState.providerDefinitions.length === 0) {
         return "No available providers on the selected host";
       }
-      if (!composerState.selectedProvider) {
+      if (!(autoSubmitConfig?.provider ?? composerState.selectedProvider)) {
         return "Select a model";
       }
       if (composerState.isModelLoading) {
         return "Model defaults are still loading";
       }
-      if (!composerState.effectiveModelId) {
+      if (!(autoSubmitConfig?.model ?? composerState.effectiveModelId)) {
         return "No model is available for the selected provider";
       }
       if (!workspaceDirectory) {
@@ -124,13 +143,15 @@ export function WorkspaceDraftAgentTab({
     buildDraftAgent: (attempt) => {
       invariant(workspaceDirectory, "Workspace directory is required");
       const now = attempt.timestamp;
-      const model = composerState.effectiveModelId || null;
-      const thinkingOptionId = composerState.effectiveThinkingOptionId || null;
+      const model = autoSubmitConfig?.model ?? (composerState.effectiveModelId || null);
+      const thinkingOptionId =
+        autoSubmitConfig?.thinkingOptionId ?? (composerState.effectiveThinkingOptionId || null);
       const modeId =
-        composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
+        autoSubmitConfig?.modeId ??
+        (composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
           ? composerState.selectedMode
-          : null;
-      const provider = composerState.selectedProvider;
+          : null);
+      const provider = autoSubmitConfig?.provider ?? composerState.selectedProvider;
       if (!provider) {
         throw new Error("Select a model");
       }
@@ -164,19 +185,23 @@ export function WorkspaceDraftAgentTab({
         throw new Error("Host is not connected");
       }
 
-      const provider = composerState.selectedProvider;
+      const provider = autoSubmitConfig?.provider ?? composerState.selectedProvider;
       if (!provider) {
         throw new Error("Select a model");
       }
       const config = buildWorkspaceDraftAgentConfig({
         provider,
         cwd: workspaceDirectory,
-        ...(composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
-          ? { modeId: composerState.selectedMode }
-          : {}),
-        model: composerState.effectiveModelId || undefined,
-        thinkingOptionId: composerState.effectiveThinkingOptionId || undefined,
-        featureValues: composerState.featureValues,
+        ...(autoSubmitConfig?.modeId
+          ? { modeId: autoSubmitConfig.modeId }
+          : composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
+            ? { modeId: composerState.selectedMode }
+            : {}),
+        model: autoSubmitConfig?.model ?? (composerState.effectiveModelId || undefined),
+        thinkingOptionId:
+          autoSubmitConfig?.thinkingOptionId ??
+          (composerState.effectiveThinkingOptionId || undefined),
+        featureValues: autoSubmitConfig?.featureValues ?? composerState.featureValues,
       });
 
       const imagesData = await encodeImages(images);
@@ -198,6 +223,44 @@ export function WorkspaceDraftAgentTab({
       onCreated(result);
     },
   });
+
+  const isReadyForPendingAutoSubmit = Boolean(
+    pendingAutoSubmit &&
+      draftInput.isHydrated &&
+      workspaceDirectory &&
+      client &&
+      !isSubmitting &&
+      !composerState.isModelLoading,
+  );
+  const autoSubmitKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isReadyForPendingAutoSubmit) {
+      return;
+    }
+    const submitKey = `${serverId}:${workspaceId}:${draftId}`;
+    if (autoSubmitKeyRef.current === submitKey) {
+      return;
+    }
+    const submission = consumePendingAutoSubmit({ serverId, workspaceId, draftId });
+    if (!submission) {
+      return;
+    }
+    autoSubmitKeyRef.current = submitKey;
+    void handleCreateFromInput({
+      text: submission.text,
+      attachments: submission.attachments,
+      cwd: submission.cwd,
+    }).catch(() => {
+      autoSubmitKeyRef.current = null;
+    });
+  }, [
+    consumePendingAutoSubmit,
+    draftId,
+    handleCreateFromInput,
+    isReadyForPendingAutoSubmit,
+    serverId,
+    workspaceId,
+  ]);
 
   const handleFilesDropped = useCallback((files: ImageAttachment[]) => {
     addImagesRef.current?.(files);

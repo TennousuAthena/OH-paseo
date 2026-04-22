@@ -505,9 +505,9 @@ export async function createPaseoDaemon(
           providerRegistry,
           github,
           workspaceGitService,
-          createPaseoWorktree: (input, serviceOptions) => {
+          createPaseoWorktree: async (input, serviceOptions) => {
             const coreDeps = createWorktreeCoreDeps(github);
-            return createPaseoWorktree(input, {
+            const result = await createPaseoWorktree(input, {
               ...coreDeps,
               ...(serviceOptions?.resolveDefaultBranch
                 ? {
@@ -517,23 +517,13 @@ export async function createPaseoDaemon(
               projectRegistry,
               workspaceRegistry,
               workspaceGitService,
-              primeWorkspaceGitWatchFingerprints: async (workspace) => {
-                await Promise.all(
-                  wsServer
-                    ?.listActiveSessions()
-                    .map((session) =>
-                      session.primeWorkspaceGitWatchFingerprintForWorkspace(workspace),
-                    ) ?? [],
-                );
-              },
-              broadcastWorkspaceUpdate: async (workspaceId) => {
-                await Promise.all(
-                  wsServer
-                    ?.listActiveSessions()
-                    .map((session) => session.emitWorkspaceUpdateForWorkspaceId(workspaceId)) ?? [],
-                );
-              },
             });
+            await Promise.all(
+              wsServer
+                ?.listActiveSessions()
+                .map((session) => session.warmWorkspaceGitDataForWorkspace(result.workspace)) ?? [],
+            );
+            return result;
           },
           paseoHome: config.paseoHome,
           callerAgentId,

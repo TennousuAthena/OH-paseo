@@ -238,11 +238,8 @@ function createPaseoWorktreeForMcpTest(options: {
         },
       },
       workspaceGitService,
-      primeWorkspaceGitWatchFingerprints: async () => {},
-      broadcastWorkspaceUpdate: async (workspaceId) => {
-        options.broadcasts.push(workspaceId);
-      },
     });
+    options.broadcasts.push(result.workspace.workspaceId);
     options.createdWorkspaceIds?.push(result.workspace.workspaceId);
     return result;
   };

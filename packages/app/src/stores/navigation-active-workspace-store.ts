@@ -39,6 +39,8 @@ interface NavigationObserverRef {
 }
 
 let snapshot: ActiveWorkspaceSelection | null = null;
+let lastWorkspaceRouteSelection: ActiveWorkspaceSelection | null = null;
+let nextWorkspaceRouteSelectionOverride: ActiveWorkspaceSelection | null = null;
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void): () => void {
@@ -165,7 +167,18 @@ function getActiveWorkspaceForNavigationSync(
 }
 
 export function syncNavigationActiveWorkspace(navigationRef: NavigationObserverRef) {
-  emitIfChanged(getActiveWorkspaceForNavigationSync(navigationRef.current?.getCurrentRoute()));
+  const route = navigationRef.current?.getCurrentRoute();
+  const routeState = classifyNavigationWorkspaceRoute(route);
+  if (routeState.kind === "workspace") {
+    lastWorkspaceRouteSelection = routeState.selection;
+    if (nextWorkspaceRouteSelectionOverride) {
+      const overrideSelection = nextWorkspaceRouteSelectionOverride;
+      nextWorkspaceRouteSelectionOverride = null;
+      emitIfChanged(overrideSelection);
+      return;
+    }
+  }
+  emitIfChanged(getActiveWorkspaceForNavigationSync(route));
 }
 
 export function activateNavigationWorkspaceSelection(
@@ -178,6 +191,14 @@ export function activateNavigationWorkspaceSelection(
 
 export function getNavigationActiveWorkspaceSelection(): ActiveWorkspaceSelection | null {
   return getSnapshot();
+}
+
+export function getLastNavigationWorkspaceRouteSelection(): ActiveWorkspaceSelection | null {
+  return lastWorkspaceRouteSelection;
+}
+
+export function overrideNextNavigationWorkspaceRouteSelection(next: ActiveWorkspaceSelection) {
+  nextWorkspaceRouteSelectionOverride = next;
 }
 
 export function syncBrowserActiveWorkspaceFromLocation() {

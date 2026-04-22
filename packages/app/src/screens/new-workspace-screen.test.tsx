@@ -13,8 +13,9 @@ const {
   theme,
   mockClient,
   mergeWorkspacesMock,
-  setAgentsMock,
   navigateMock,
+  saveDraftInputMock,
+  queueDraftSubmissionMock,
   createdAgent,
   createdWorkspace,
   prItem,
@@ -113,8 +114,9 @@ const {
     theme,
     mockClient,
     mergeWorkspacesMock: vi.fn(),
-    setAgentsMock: vi.fn(),
     navigateMock: vi.fn(),
+    saveDraftInputMock: vi.fn(),
+    queueDraftSubmissionMock: vi.fn(),
     createdAgent,
     createdWorkspace,
     prItem,
@@ -159,6 +161,21 @@ vi.mock("lucide-react-native", () => {
   };
 });
 
+vi.mock("react-native-reanimated", () => ({
+  default: {
+    View: ({
+      testID,
+      style,
+      ...props
+    }: React.HTMLAttributes<HTMLDivElement> & { testID?: string; style?: unknown }) => {
+      const flattenedStyle = Array.isArray(style)
+        ? Object.assign({}, ...style.filter(Boolean))
+        : style;
+      return <div {...props} data-testid={testID} style={flattenedStyle as React.CSSProperties} />;
+    },
+  },
+}));
+
 vi.mock("@/runtime/host-runtime", () => ({
   useHostRuntimeClient: () => mockClient,
   useHostRuntimeIsConnected: () => true,
@@ -168,7 +185,6 @@ vi.mock("@/stores/session-store", () => ({
   useSessionStore: (selector: (state: unknown) => unknown) =>
     selector({
       mergeWorkspaces: mergeWorkspacesMock,
-      setAgents: setAgentsMock,
     }),
   normalizeWorkspaceDescriptor: (workspace: unknown) => workspace,
 }));
@@ -193,6 +209,35 @@ vi.mock("@/utils/workspace-execution", () => ({
 
 vi.mock("@/utils/workspace-navigation", () => ({
   navigateToPreparedWorkspaceTab: navigateMock,
+}));
+
+vi.mock("@/stores/draft-keys", () => ({
+  buildDraftStoreKey: ({
+    serverId,
+    agentId,
+    draftId,
+  }: {
+    serverId: string;
+    agentId: string;
+    draftId?: string | null;
+  }) => (draftId ? `draft:${serverId}:${draftId}` : `agent:${serverId}:${agentId}`),
+  generateDraftId: () => "draft-new-workspace",
+}));
+
+vi.mock("@/stores/draft-store", () => ({
+  useDraftStore: {
+    getState: () => ({
+      saveDraftInput: saveDraftInputMock,
+    }),
+  },
+}));
+
+vi.mock("@/stores/workspace-draft-submission-store", () => ({
+  useWorkspaceDraftSubmissionStore: {
+    getState: () => ({
+      setPending: queueDraftSubmissionMock,
+    }),
+  },
 }));
 
 vi.mock("@/contexts/toast-context", () => ({
@@ -220,6 +265,10 @@ vi.mock("@/hooks/use-agent-input-draft", () => ({
       },
     };
   },
+}));
+
+vi.mock("@/hooks/use-keyboard-shift-style", () => ({
+  useKeyboardShiftStyle: () => ({ style: { transform: "translateY(-216px)" } }),
 }));
 
 vi.mock("@/components/composer", () => ({
@@ -444,6 +493,9 @@ beforeEach(() => {
   });
   mockClient.createPaseoWorktree.mockClear();
   mockClient.createAgent.mockClear();
+  saveDraftInputMock.mockClear();
+  queueDraftSubmissionMock.mockClear();
+  navigateMock.mockClear();
   initialAttachments.length = 0;
   initialDraftState.text = "";
 });
@@ -522,6 +574,14 @@ function firstCreateWorktreeCall(): CreatePaseoWorktreeArg {
 }
 
 describe("NewWorkspaceScreen picker payload", () => {
+  it("moves the ref picker row with the mobile keyboard shift", async () => {
+    renderScreen();
+    await flush();
+
+    const pickerRow = await findByTestId("new-workspace-ref-picker-row");
+    expect(pickerRow.style.transform).toBe("translateY(-216px)");
+  });
+
   it("searches only GitHub PRs for the picker", async () => {
     renderScreen();
     await flush();
@@ -550,6 +610,43 @@ describe("NewWorkspaceScreen picker payload", () => {
     expect(call).not.toHaveProperty("refName");
     expect(call).not.toHaveProperty("action");
     expect(call).not.toHaveProperty("githubPrNumber");
+  });
+
+  it("opens the new workspace draft tab as soon as the worktree is ready", async () => {
+    initialDraftState.text = "please review this change";
+    renderScreen();
+    await flush();
+
+    click(await findByTestId("test-composer-submit"));
+    await flush();
+
+    expect(mockClient.createPaseoWorktree).toHaveBeenCalledTimes(1);
+    expect(mockClient.createAgent).not.toHaveBeenCalled();
+    expect(saveDraftInputMock).toHaveBeenCalledWith({
+      draftKey: "draft:server:draft-new-workspace",
+      draft: {
+        text: "please review this change",
+        attachments: [],
+        cwd: createdWorkspace.workspaceDirectory,
+      },
+    });
+    expect(queueDraftSubmissionMock).toHaveBeenCalledWith({
+      serverId: "server",
+      workspaceId: createdWorkspace.id,
+      draftId: "draft-new-workspace",
+      text: "please review this change",
+      attachments: [],
+      cwd: createdWorkspace.workspaceDirectory,
+      provider: "claude-code",
+      allowEmptyText: true,
+    });
+    expect(navigateMock).toHaveBeenCalledWith({
+      serverId: "server",
+      workspaceId: createdWorkspace.id,
+      target: { kind: "draft", draftId: "draft-new-workspace" },
+      navigationMethod: "replace",
+    });
+    expect(document.querySelector("textarea")).toHaveProperty("disabled", true);
   });
 
   it("shows the selected PR number, title, and PR icon in the picker trigger", async () => {
@@ -747,10 +844,13 @@ describe("NewWorkspaceScreen picker payload", () => {
     );
   });
 
-  it("preserves and locks the composer and picker while chat creation is pending, then unlocks on error", async () => {
+  it("preserves and locks the composer and picker while worktree creation is pending, then unlocks on error", async () => {
     initialDraftState.text = "please review this change";
-    const createAgent = createDeferredPromise<typeof createdAgent>();
-    mockClient.createAgent.mockImplementationOnce(async () => await createAgent.promise);
+    const createWorktree = createDeferredPromise<{
+      workspace: typeof createdWorkspace;
+      error: null;
+    }>();
+    mockClient.createPaseoWorktree.mockImplementationOnce(async () => await createWorktree.promise);
     renderScreen();
     await flush();
 
@@ -778,7 +878,7 @@ describe("NewWorkspaceScreen picker payload", () => {
     expect(queryByTestId("new-workspace-ref-picker-trigger")).toHaveProperty("disabled", true);
     expect(queryByTestId("new-workspace-ref-picker-branch-dev")).toHaveProperty("disabled", true);
 
-    createAgent.reject(new Error("Create agent failed"));
+    createWorktree.reject(new Error("Create worktree failed"));
     await flush();
 
     expect(textInput).toHaveProperty("value", "please review this change");

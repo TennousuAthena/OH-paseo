@@ -112,10 +112,18 @@ describe("navigation active workspace store", () => {
       serverId: "server-1",
       workspaceId: "workspace-a",
     });
+    expect(store.getLastNavigationWorkspaceRouteSelection()).toEqual({
+      serverId: "server-1",
+      workspaceId: "workspace-a",
+    });
 
     store.syncNavigationActiveWorkspace(createNavigationPathRef("/h/server-1/sessions"));
 
     expect(store.getNavigationActiveWorkspaceSelection()).toBeNull();
+    expect(store.getLastNavigationWorkspaceRouteSelection()).toEqual({
+      serverId: "server-1",
+      workspaceId: "workspace-a",
+    });
   });
 
   it("clears stale workspace params when navigation sync reports a non-workspace path", async () => {
@@ -133,5 +141,36 @@ describe("navigation active workspace store", () => {
     );
 
     expect(store.getNavigationActiveWorkspaceSelection()).toBeNull();
+  });
+
+  it("uses a one-shot workspace route override when returning to a retained shell", async () => {
+    installWindowStub("/h/server-1/workspace/workspace-a");
+    const store = await import("@/stores/navigation-active-workspace-store");
+
+    store.syncNavigationActiveWorkspace(
+      createNavigationPathRef("/h/server-1/workspace/workspace-a"),
+    );
+    store.overrideNextNavigationWorkspaceRouteSelection({
+      serverId: "server-1",
+      workspaceId: "workspace-b",
+    });
+
+    store.syncNavigationActiveWorkspace(
+      createNavigationPathRef("/h/server-1/workspace/workspace-a"),
+    );
+
+    expect(store.getNavigationActiveWorkspaceSelection()).toEqual({
+      serverId: "server-1",
+      workspaceId: "workspace-b",
+    });
+
+    store.syncNavigationActiveWorkspace(
+      createNavigationPathRef("/h/server-1/workspace/workspace-a"),
+    );
+
+    expect(store.getNavigationActiveWorkspaceSelection()).toEqual({
+      serverId: "server-1",
+      workspaceId: "workspace-a",
+    });
   });
 });
