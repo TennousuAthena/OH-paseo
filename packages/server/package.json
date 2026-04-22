@@ -28,7 +28,7 @@
     }
   },
   "scripts": {
-    "dev": "cross-env NODE_ENV=development tsx scripts/dev-runner.ts",
+    "dev": "cross-env NODE_ENV=development node --import tsx scripts/dev-runner.ts",
     "dev:tsx": "cross-env NODE_ENV=development tsx watch --ignore '**/*.timestamp-*' src/server/index.ts",
     "build": "node -e \"require('node:fs').rmSync('dist',{ recursive: true, force: true })\" && npm run build:lib && npm run build:scripts",
     "build:lib": "tsc -p tsconfig.server.json --incremental false && node -e \"const fs=require('node:fs'); fs.mkdirSync('dist/server/server/speech/providers/local/sherpa/assets',{recursive:true}); fs.copyFileSync('src/server/speech/providers/local/sherpa/assets/silero_vad.onnx','dist/server/server/speech/providers/local/sherpa/assets/silero_vad.onnx'); fs.cpSync('src/terminal/shell-integration','dist/server/terminal/shell-integration',{recursive:true}); fs.cpSync('src/terminal/shell-integration','dist/src/terminal/shell-integration',{recursive:true});\"",
