@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.61-beta.1 - 2026-04-22
+
+### Added
+- `additionalModels` option in provider config lets you add or relabel models without replacing the full list — entries merge with runtime-discovered models (ACP) or your static `models` list. See the [Providers docs](https://paseo.sh/docs/providers).
+- New [Providers docs page](https://paseo.sh/docs/providers) covering first-class providers and every custom provider config pattern in one place.
+
+### Improved
+- Pi loads your installed extensions on startup so their models show up in the model picker.
+- Resizing the explorer sidebar no longer rerenders the rest of the workspace.
+- Images in assistant messages (both file paths and inline data URLs) persist as local attachments and open in the file pane.
+
 ## 0.1.60 - 2026-04-22
 
 ### Added
