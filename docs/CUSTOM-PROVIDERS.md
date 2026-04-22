@@ -424,6 +424,48 @@ Models and modes are discovered dynamically at runtime from the agent process. I
 
 Profile models (defined in config.json) completely replace runtime-discovered models when present.
 
+If you want to keep runtime-discovered models and add or relabel a few entries, use `additionalModels` instead.
+
+Example: add an experimental model while keeping every model the provider discovers at runtime:
+
+```json
+{
+  "agents": {
+    "providers": {
+      "my-agent": {
+        "extends": "acp",
+        "label": "My Agent",
+        "command": ["my-agent", "--acp"],
+        "additionalModels": [
+          { "id": "experimental-model", "label": "Experimental", "isDefault": true }
+        ]
+      }
+    }
+  }
+}
+```
+
+Example: relabel a discovered model without replacing the full list:
+
+```json
+{
+  "agents": {
+    "providers": {
+      "my-agent": {
+        "extends": "acp",
+        "label": "My Agent",
+        "command": ["my-agent", "--acp"],
+        "additionalModels": [
+          { "id": "provider/model-id", "label": "My Preferred Label" }
+        ]
+      }
+    }
+  }
+}
+```
+
+When an `additionalModels` entry has the same `id` as a discovered model, it updates that model in place.
+
 ---
 
 ## Provider override reference
@@ -438,6 +480,7 @@ Every entry under `agents.providers` accepts these fields:
 | `command` | `string[]` | Yes (ACP only) | Command to spawn the agent process |
 | `env` | `Record<string, string>` | No | Environment variables to set for the agent process |
 | `models` | `ProviderProfileModel[]` | No | Static model list (overrides runtime discovery) |
+| `additionalModels` | `ProviderProfileModel[]` | No | Static model additions (merged with runtime discovery or `models`) |
 | `disallowedTools` | `string[]` | No | Tool names to disable for this provider (e.g. `["WebSearch"]`) |
 | `enabled` | `boolean` | No | Set to `false` to hide the provider (default: `true`) |
 | `order` | `number` | No | Sort order in the provider list |

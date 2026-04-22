@@ -63,6 +63,7 @@ type ResolvedProvider = {
   definition: AgentProviderDefinition;
   runtimeSettings?: ProviderRuntimeSettings;
   profileModels: ProviderProfileModel[];
+  additionalModels: ProviderProfileModel[];
   enabled: boolean;
   createBaseClient: (logger: Logger) => AgentClient;
 };
@@ -224,16 +225,59 @@ function mapModel(provider: AgentProvider, model: AgentModelDefinition): AgentMo
 function mergeModels(
   provider: AgentProvider,
   profileModels: ProviderProfileModel[],
+  additionalModels: ProviderProfileModel[],
   runtimeModels: AgentModelDefinition[],
 ): AgentModelDefinition[] {
-  if (profileModels.length === 0) {
-    return runtimeModels.map((model) => mapModel(provider, model));
+  const baseModels =
+    profileModels.length === 0
+      ? runtimeModels.map((model) => mapModel(provider, model))
+      : profileModels.map((model) => ({
+          ...model,
+          provider,
+        }));
+
+  if (additionalModels.length === 0) {
+    return baseModels;
   }
 
-  return profileModels.map((model) => ({
-    ...model,
-    provider,
-  }));
+  const mergedModels = [...baseModels];
+  let hasAdditionalDefault = false;
+
+  for (const model of additionalModels) {
+    const additionalModel = {
+      ...model,
+      provider,
+    };
+    hasAdditionalDefault ||= additionalModel.isDefault === true;
+
+    const existingIndex = mergedModels.findIndex((candidate) => candidate.id === model.id);
+    if (existingIndex === -1) {
+      mergedModels.push(additionalModel);
+      continue;
+    }
+
+    mergedModels[existingIndex] = {
+      ...mergedModels[existingIndex],
+      ...additionalModel,
+    };
+  }
+
+  if (!hasAdditionalDefault) {
+    return mergedModels;
+  }
+
+  const additionalDefaultIds = new Set(
+    additionalModels.filter((model) => model.isDefault === true).map((model) => model.id),
+  );
+
+  return mergedModels.map((model) =>
+    additionalDefaultIds.has(model.id)
+      ? model
+      : {
+          ...model,
+          isDefault: false,
+        },
+  );
 }
 
 function wrapSessionProvider(provider: AgentProvider, inner: AgentSession): AgentSession {
@@ -330,7 +374,12 @@ function createRegistryEntry(
       return inner.provider === provider ? inner : wrapClientProvider(provider, inner);
     },
     fetchModels: async (options: ListModelsOptions) =>
-      mergeModels(provider, resolved.profileModels, await modelClient.listModels(options)),
+      mergeModels(
+        provider,
+        resolved.profileModels,
+        resolved.additionalModels,
+        await modelClient.listModels(options),
+      ),
     fetchModes: async (options: ListModesOptions) => {
       const modes = modelClient.listModes
         ? await modelClient.listModes(options)
@@ -373,6 +422,7 @@ function buildResolvedBuiltinProviders(
       definition: applyOverrideToDefinition(definition, override),
       runtimeSettings: mergedRuntimeSettings,
       profileModels: override?.models ?? [],
+      additionalModels: override?.additionalModels ?? [],
       enabled: override?.enabled !== false,
       createBaseClient: (logger) =>
         factory(logger, mergedRuntimeSettings, {
@@ -416,6 +466,7 @@ function addDerivedProviders(
         ),
         runtimeSettings: toRuntimeSettings(override),
         profileModels: override.models ?? [],
+        additionalModels: override.additionalModels ?? [],
         enabled: override.enabled !== false,
         createBaseClient: (logger) =>
           new GenericACPAgentClient({
@@ -445,6 +496,7 @@ function addDerivedProviders(
       definition: createDerivedDefinition(providerId, baseDefinition, override),
       runtimeSettings: mergedRuntimeSettings,
       profileModels: override.models ?? [],
+      additionalModels: override.additionalModels ?? [],
       enabled: override.enabled !== false,
       createBaseClient: (logger) => baseFactory(logger, mergedRuntimeSettings),
     });
