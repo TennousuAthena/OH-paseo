@@ -76,9 +76,11 @@ async function createFilePanePreview(file: ExplorerFile | null): Promise<{
   const { content: _content, ...imageFile } = file;
   const imageAttachment = await persistAttachmentFromBase64({
     id: createPreviewAttachmentId({
-      base64: file.content,
       mimeType: file.mimeType ?? "image/png",
       path: file.path,
+      size: file.size,
+      modifiedAt: file.modifiedAt,
+      contentLength: file.content.length,
     }),
     base64: file.content,
     mimeType: file.mimeType,

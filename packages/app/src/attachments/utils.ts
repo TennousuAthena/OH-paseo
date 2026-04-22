@@ -55,9 +55,10 @@ export function parseImageDataUrl(
     if (!parsed.mimeType.toLowerCase().startsWith("image/")) {
       return null;
     }
+    const fingerprint = `${parsed.mimeType}\0${parsed.base64.length}\0${parsed.base64.slice(0, 64)}\0${parsed.base64.slice(-64)}`;
     return {
       ...parsed,
-      cacheKey: `data-image:${parsed.mimeType}:${parsed.base64.length}:${hashString(parsed.base64)}`,
+      cacheKey: `data-image:${parsed.mimeType}:${parsed.base64.length}:${hashString(fingerprint)}`,
     };
   } catch {
     return null;
@@ -80,13 +81,18 @@ export function getFileNameFromPath(path: string | null | undefined): string | n
 }
 
 export function createPreviewAttachmentId(input: {
-  base64: string;
   mimeType: string;
   path?: string | null;
+  size?: number | null;
+  modifiedAt?: string | null;
+  contentLength?: number | null;
 }): string {
   const path = input.path?.trim() ?? "";
-  const hash = hashString(`${input.mimeType}\0${path}\0${input.base64}`);
-  return `preview_${input.base64.length}_${hash}`;
+  const size = Number.isFinite(input.size) ? String(input.size) : "";
+  const modifiedAt = input.modifiedAt?.trim() ?? "";
+  const contentLength = Number.isFinite(input.contentLength) ? String(input.contentLength) : "";
+  const hash = hashString(`${input.mimeType}\0${path}\0${size}\0${modifiedAt}\0${contentLength}`);
+  return `preview_${size || contentLength || "unknown"}_${hash}`;
 }
 
 export async function blobToBase64(blob: Blob): Promise<string> {
