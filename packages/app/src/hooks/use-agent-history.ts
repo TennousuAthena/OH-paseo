@@ -8,6 +8,7 @@ import { useCallback, useMemo } from "react";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useHostRuntimeClient, useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
 import { buildAgentDirectoryState } from "@/utils/agent-directory-sync";
+import { agentHistoryQueryKey } from "./agent-history-query-key";
 
 const AGENT_HISTORY_PAGE_LIMIT = 200;
 const AGENT_HISTORY_SORT: NonNullable<FetchAgentHistoryOptions["sort"]> = [
@@ -29,10 +30,6 @@ type AgentHistoryPage = {
   agents: AggregatedAgent[];
   pageInfo: FetchAgentHistoryPageInfo;
 };
-
-export function agentHistoryQueryKey(serverId: string | null) {
-  return ["agentHistory", serverId] as const;
-}
 
 async function fetchAgentHistoryPage(input: {
   client: DaemonClient;

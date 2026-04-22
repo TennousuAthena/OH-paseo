@@ -22,6 +22,7 @@ import { buildHostAgentDetailRoute } from "@/utils/host-routes";
 import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import type { Agent } from "@/stores/session-store";
+import { useArchiveAgent } from "@/hooks/use-archive-agent";
 
 interface AgentListProps {
   agents: AggregatedAgent[];
@@ -280,6 +281,7 @@ export function AgentList({
   const insets = useSafeAreaInsets();
   const [actionAgent, setActionAgent] = useState<AggregatedAgent | null>(null);
   const isMobile = useIsCompactFormFactor();
+  const { archiveAgent } = useArchiveAgent();
 
   const actionClient = useSessionStore((state) =>
     actionAgent?.serverId ? (state.sessions[actionAgent.serverId]?.client ?? null) : null,
@@ -320,20 +322,23 @@ export function AgentList({
     [isActionSheetVisible, onAgentSelect],
   );
 
-  const handleAgentLongPress = useCallback((agent: AggregatedAgent) => {
-    const isRunning = agent.status === "running" || agent.status === "initializing";
-    if (isRunning) {
-      setActionAgent(agent);
-      return;
-    }
+  const handleAgentLongPress = useCallback(
+    (agent: AggregatedAgent) => {
+      const isRunning = agent.status === "running" || agent.status === "initializing";
+      if (isRunning) {
+        setActionAgent(agent);
+        return;
+      }
 
-    const client = useSessionStore.getState().sessions[agent.serverId]?.client ?? null;
-    if (!client) {
-      setActionAgent(agent);
-      return;
-    }
-    void client.archiveAgent(agent.id);
-  }, []);
+      const client = useSessionStore.getState().sessions[agent.serverId]?.client ?? null;
+      if (!client) {
+        setActionAgent(agent);
+        return;
+      }
+      void archiveAgent({ serverId: agent.serverId, agentId: agent.id }).catch(() => {});
+    },
+    [archiveAgent],
+  );
 
   const handleCloseActionSheet = useCallback(() => {
     setActionAgent(null);
@@ -344,9 +349,9 @@ export function AgentList({
       return;
     }
     // Timeout errors are swallowed — the daemon will still process the archive
-    void actionClient.archiveAgent(actionAgent.id).catch(() => {});
+    void archiveAgent({ serverId: actionAgent.serverId, agentId: actionAgent.id }).catch(() => {});
     setActionAgent(null);
-  }, [actionAgent, actionClient]);
+  }, [actionAgent, actionClient, archiveAgent]);
 
   const flatItems = useMemo((): FlatListItem[] => {
     const order = ["Today", "Yesterday", "This week", "This month", "Older"] as const;

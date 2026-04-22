@@ -344,7 +344,7 @@ vi.mock("@/contexts/toast-context", () => ({
   useToast: () => ({ error: vi.fn() }),
 }));
 
-vi.mock("@/utils/scroll-jank-investigation", () => ({
+vi.mock("@/utils/scroll-jank", () => ({
   markScrollInvestigationRender: markScrollInvestigationRenderMock,
   markScrollInvestigationEvent: vi.fn(),
 }));
