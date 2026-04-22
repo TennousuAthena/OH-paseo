@@ -518,7 +518,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         return (
           <View style={[stylesheet.streamItemWrapper, { marginBottom: gapBelow }]}>
             {content}
-            {isEndOfAssistantTurn ? <TurnCopyButton getContent={getTurnContent} /> : null}
+            {isEndOfAssistantTurn ? (
+              <TurnCopyButton
+                getContent={getTurnContent}
+                containerStyle={stylesheet.assistantTurnCopyButton}
+              />
+            ) : null}
           </View>
         );
       },
@@ -631,7 +636,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           <View
             style={[
               stylesheet.listHeaderContent,
-              boundary.hasLiveHead ? { paddingTop: tightGap } : null,
+              boundary.hasLiveHead ? { paddingTop: looseGap } : null,
             ]}
           >
             {auxiliary.pendingPermissions}
@@ -639,7 +644,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           </View>
         </View>
       );
-    }, [auxiliary.pendingPermissions, auxiliary.workingIndicator, boundary.hasLiveHead, tightGap]);
+    }, [auxiliary.pendingPermissions, auxiliary.workingIndicator, boundary.hasLiveHead, looseGap]);
 
     const renderers = useMemo<StreamSegmentRenderers>(
       () => ({
@@ -1043,6 +1048,9 @@ const stylesheet = StyleSheet.create((theme) => ({
   },
   listHeaderContent: {
     gap: theme.spacing[3],
+  },
+  assistantTurnCopyButton: {
+    marginTop: theme.spacing[3],
   },
   bottomBarWrapper: {
     flexDirection: "row",
