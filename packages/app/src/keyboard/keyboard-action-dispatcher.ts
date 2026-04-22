@@ -1,6 +1,7 @@
 export type KeyboardActionScope = "global" | "message-input" | "sidebar" | "workspace";
 
 export type KeyboardActionId =
+  | "agent.interrupt"
   | "message-input.focus"
   | "message-input.send"
   | "message-input.dictation-toggle"
@@ -29,6 +30,7 @@ export type KeyboardActionId =
   | "worktree.archive";
 
 export type KeyboardActionDefinition =
+  | { id: "agent.interrupt"; scope: KeyboardActionScope }
   | { id: "message-input.focus"; scope: KeyboardActionScope }
   | { id: "message-input.send"; scope: KeyboardActionScope }
   | { id: "message-input.dictation-toggle"; scope: KeyboardActionScope }

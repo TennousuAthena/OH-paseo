@@ -11,6 +11,7 @@ const { navigateToWorkspaceMock, routerMock, pathState } = vi.hoisted(() => ({
   routerMock: {
     back: vi.fn(),
     push: vi.fn(),
+    replace: vi.fn(),
   },
   pathState: {
     pathname: "/h/srv/workspace/ws-2",
@@ -56,6 +57,7 @@ vi.mock("@/hooks/use-workspace-navigation", () => ({
 }));
 
 import { useKeyboardShortcuts } from "./use-keyboard-shortcuts";
+import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import {
   activateNavigationWorkspaceSelection,
@@ -80,6 +82,7 @@ describe("useKeyboardShortcuts", () => {
     navigateToWorkspaceMock.mockReset();
     routerMock.back.mockReset();
     routerMock.push.mockReset();
+    routerMock.replace.mockReset();
     pathState.pathname = "/h/srv/workspace/ws-2";
     syncNavigationActiveWorkspace({ current: null });
     useKeyboardShortcutsStore.setState({
@@ -130,6 +133,59 @@ describe("useKeyboardShortcuts", () => {
     expect(navigateToWorkspaceMock).toHaveBeenCalledWith("srv", "ws-5", {
       currentPathname: "/h/srv/workspace/ws-2",
     });
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("dispatches Escape as an agent interrupt action", async () => {
+    const handleInterrupt = vi.fn(() => true);
+    const unregister = keyboardActionDispatcher.registerHandler({
+      handlerId: "test-agent-interrupt",
+      actions: ["agent.interrupt"],
+      enabled: true,
+      priority: 100,
+      isActive: () => true,
+      handle: handleInterrupt,
+    });
+
+    await act(async () => {
+      root?.render(<Probe />);
+    });
+
+    const event = new KeyboardEvent("keydown", {
+      key: "Escape",
+      code: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+
+    expect(handleInterrupt).toHaveBeenCalledTimes(1);
+    unregister();
+  });
+
+  it("returns from desktop settings to the retained workspace without browser history back", async () => {
+    syncNavigationActiveWorkspace({
+      current: {
+        getCurrentRoute: () => ({ path: "/h/srv/workspace/ws-2" }),
+      },
+    });
+    pathState.pathname = "/settings/general";
+
+    await act(async () => {
+      root?.render(<Probe />);
+    });
+
+    const event = new KeyboardEvent("keydown", {
+      key: ",",
+      code: "Comma",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+
+    expect(routerMock.replace).toHaveBeenCalledWith("/h/srv/workspace/ws-2");
+    expect(routerMock.back).not.toHaveBeenCalled();
     expect(event.defaultPrevented).toBe(true);
   });
 });

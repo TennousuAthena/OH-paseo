@@ -176,7 +176,7 @@ export function Composer({
   toastErrorRef.current = toast.error;
   const voice = useVoiceOptional();
   const voiceToggleKeys = useShortcutKeys("voice-toggle");
-  const dictationCancelKeys = useShortcutKeys("dictation-cancel");
+  const agentInterruptKeys = useShortcutKeys("agent-interrupt");
   const isDictationReady = useIsDictationReady({
     serverId,
     isConnected,
@@ -525,6 +525,15 @@ export function Composer({
       }
 
       switch (action.id) {
+        case "agent.interrupt":
+          if (messageInputRef.current?.runKeyboardAction("dictation-cancel")) {
+            return true;
+          }
+          if (!isAgentRunning || isCancellingAgent || !isConnected) {
+            return false;
+          }
+          handleCancelAgent();
+          return true;
         case "message-input.send":
           return messageInputRef.current?.runKeyboardAction("send") ?? false;
         case "message-input.dictation-confirm":
@@ -560,12 +569,13 @@ export function Composer({
           return false;
       }
     },
-    [isPaneFocused],
+    [handleCancelAgent, isAgentRunning, isCancellingAgent, isConnected, isPaneFocused],
   );
 
   useKeyboardActionHandler({
     handlerId: keyboardHandlerIdRef.current,
     actions: [
+      "agent.interrupt",
       "message-input.focus",
       "message-input.send",
       "message-input.dictation-toggle",
@@ -640,24 +650,12 @@ export function Composer({
 
   const hasSendableContent = userInput.trim().length > 0 || selectedAttachments.length > 0;
 
-  // Handle keyboard navigation for command autocomplete and stop action.
+  // Handle keyboard navigation for command autocomplete.
   const handleCommandKeyPress = useCallback(
     (event: { key: string; preventDefault: () => void }) => {
-      if (
-        event.key === "Escape" &&
-        isAgentRunning &&
-        !hasSendableContent &&
-        !isCancellingAgent &&
-        isConnected
-      ) {
-        event.preventDefault();
-        handleCancelAgent();
-        return true;
-      }
-
       return autocompleteOnKeyPressRef.current(event);
     },
-    [hasSendableContent, isAgentRunning, isCancellingAgent, isConnected, handleCancelAgent],
+    [],
   );
 
   const cancelButton = useMemo(
@@ -683,16 +681,16 @@ export function Composer({
           <TooltipContent side="top" align="center" offset={8}>
             <View style={styles.tooltipRow}>
               <Text style={styles.tooltipText}>Interrupt</Text>
-              {dictationCancelKeys ? (
-                <Shortcut chord={dictationCancelKeys} style={styles.tooltipShortcut} />
+              {agentInterruptKeys ? (
+                <Shortcut chord={agentInterruptKeys} style={styles.tooltipShortcut} />
               ) : null}
             </View>
           </TooltipContent>
         </Tooltip>
       ) : null,
     [
+      agentInterruptKeys,
       buttonIconSize,
-      dictationCancelKeys,
       handleCancelAgent,
       hasSendableContent,
       isAgentRunning,

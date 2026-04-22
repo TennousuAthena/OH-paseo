@@ -307,8 +307,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
       if (action === "dictation-cancel") {
         if (isDictatingRef.current) {
           cancelDictation();
+          return true;
         }
-        return true;
+        return false;
       }
 
       if (action === "dictation-toggle") {

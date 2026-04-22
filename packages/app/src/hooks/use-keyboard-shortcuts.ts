@@ -4,6 +4,7 @@ import { getIsElectronRuntime } from "@/constants/layout";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import {
+  buildHostWorkspaceRoute,
   buildSettingsRoute,
   parseHostAgentRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
@@ -27,7 +28,10 @@ import { isNative } from "@/constants/platform";
 import { isImeComposingKeyboardEvent } from "@/utils/keyboard-ime";
 import { getRelativeSidebarShortcutTarget } from "@/utils/sidebar-shortcuts";
 import { useActiveServerId } from "@/hooks/use-active-server-id";
-import { getNavigationActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import {
+  getLastNavigationWorkspaceRouteSelection,
+  getNavigationActiveWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
 
 export function useKeyboardShortcuts({
   enabled,
@@ -159,6 +163,11 @@ export function useKeyboardShortcuts({
       event: KeyboardEvent;
     }): boolean => {
       switch (input.action) {
+        case "agent.interrupt":
+          return keyboardActionDispatcher.dispatch({
+            id: "agent.interrupt",
+            scope: "global",
+          });
         case "agent.new":
           return openProjectPicker();
         case "workspace.tab.new":
@@ -234,6 +243,15 @@ export function useKeyboardShortcuts({
           return true;
         case "settings.toggle":
           if (pathname.startsWith("/settings")) {
+            if (!isMobile) {
+              const lastWorkspaceRoute = getLastNavigationWorkspaceRouteSelection();
+              if (lastWorkspaceRoute) {
+                router.replace(
+                  buildHostWorkspaceRoute(lastWorkspaceRoute.serverId, lastWorkspaceRoute.workspaceId),
+                );
+                return true;
+              }
+            }
             router.back();
             return true;
           }

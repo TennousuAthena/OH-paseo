@@ -9,6 +9,8 @@ import type { GitHubSearchItem } from "@server/shared/messages";
 import { Composer } from "./composer";
 import { splitComposerAttachmentsForSubmit } from "./composer-attachments";
 
+const keyboardActionHandlerMock = vi.hoisted(() => vi.fn());
+
 const {
   theme,
   imageMetadata,
@@ -325,7 +327,9 @@ vi.mock("@/hooks/use-shortcut-keys", () => ({
 }));
 
 vi.mock("@/hooks/use-keyboard-action-handler", () => ({
-  useKeyboardActionHandler: () => {},
+  useKeyboardActionHandler: (input: unknown) => {
+    keyboardActionHandlerMock(input);
+  },
 }));
 
 vi.mock("@/hooks/use-keyboard-shift-style", () => ({
@@ -575,6 +579,10 @@ beforeEach(() => {
   vi.stubGlobal("Node", dom.window.Node);
   vi.stubGlobal("navigator", dom.window.navigator);
   vi.stubGlobal("Blob", dom.window.Blob);
+  Object.assign(dom.window.HTMLElement.prototype, {
+    attachEvent: vi.fn(),
+    detachEvent: vi.fn(),
+  });
 
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -593,6 +601,7 @@ beforeEach(() => {
   setAgentStreamTailMock.mockClear();
   setAgentStreamHeadMock.mockClear();
   setQueuedMessagesMock.mockClear();
+  keyboardActionHandlerMock.mockClear();
   agentDirectoryStatusMock.mockReset();
   agentDirectoryStatusMock.mockReturnValue("ready");
   mockSessionState.sessions.server.serverInfo = {
@@ -606,6 +615,9 @@ beforeEach(() => {
       },
     },
   };
+  mockSessionState.sessions.server.agents = new Map([
+    ["agent", { status: "idle", lastUsage: null }],
+  ]);
   mockSessionState.sessions.server.agentStreamHead = new Map();
   mockSessionState.sessions.server.agentStreamTail = new Map();
   mockSessionState.sessions.server.queuedMessages = new Map();
@@ -719,11 +731,60 @@ function queryAllAttachmentMenuItems(): NodeListOf<HTMLElement> {
   return document.querySelectorAll('[data-testid^="message-input-attachment-menu-item-"]');
 }
 
+function dispatchAgentInterrupt() {
+  act(() => {
+    const registeredHandler = keyboardActionHandlerMock.mock.calls.at(-1)?.[0];
+    registeredHandler?.handle({ id: "agent.interrupt", scope: "global" });
+  });
+}
+
 function countMessageInputRenders(): number {
   return markScrollInvestigationRenderMock.mock.calls.filter(
     ([componentId]) => componentId === "MessageInput:server:agent",
   ).length;
 }
+
+describe("Composer keyboard shortcuts", () => {
+  it("interrupts a running agent without clearing a filled draft", async () => {
+    mockSessionState.sessions.server.agents = new Map([
+      ["agent", { status: "running", lastUsage: null }],
+    ]);
+
+    renderComposer({ initialText: "keep this prompt" });
+    await flushAsyncWork();
+
+    dispatchAgentInterrupt();
+
+    expect(mockClient.cancelAgent).toHaveBeenCalledWith("agent");
+    expect(document.querySelector('[aria-label="Message agent..."]')).toHaveProperty(
+      "value",
+      "keep this prompt",
+    );
+  });
+
+  it("interrupts a running agent when the message input is unfocused", async () => {
+    mockSessionState.sessions.server.agents = new Map([
+      ["agent", { status: "running", lastUsage: null }],
+    ]);
+
+    renderComposer();
+    await flushAsyncWork();
+
+    const input = document.querySelector('[aria-label="Message agent..."]') as HTMLElement | null;
+    input?.blur();
+    dispatchAgentInterrupt();
+
+    expect(mockClient.cancelAgent).toHaveBeenCalledWith("agent");
+  });
+
+  it("does not interrupt when the agent is idle", () => {
+    renderComposer();
+
+    dispatchAgentInterrupt();
+
+    expect(mockClient.cancelAgent).not.toHaveBeenCalled();
+  });
+});
 
 describe("Composer attachments", () => {
   it("opens a Plus menu with image and GitHub attachment actions", () => {
