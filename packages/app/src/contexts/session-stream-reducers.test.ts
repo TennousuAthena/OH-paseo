@@ -602,6 +602,28 @@ describe("processAgentStreamEvent", () => {
     expect(result.agent!.status).toBe("error");
   });
 
+  it("does not derive optimistic idle status on turn_canceled for running agent", () => {
+    const turnCanceledEvent: AgentStreamEventPayload = {
+      type: "turn_canceled",
+      provider: "codex",
+      reason: "interrupted",
+    };
+
+    const result = processAgentStreamEvent({
+      ...baseStreamInput,
+      event: turnCanceledEvent,
+      currentAgent: {
+        status: "running",
+        updatedAt: new Date(1000),
+        lastActivityAt: new Date(1000),
+      },
+      timestamp: new Date(2000),
+    });
+
+    expect(result.agentChanged).toBe(false);
+    expect(result.agent).toBe(null);
+  });
+
   it("does not change agent when status is not running", () => {
     const turnCompletedEvent: AgentStreamEventPayload = {
       type: "turn_completed",
