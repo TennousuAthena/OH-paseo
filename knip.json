@@ -22,12 +22,15 @@
       "entry": [
         "index.ts",
         "app.config.js",
+        "babel.config.js",
         "app/**/*.{ts,tsx}",
         "src/**/*.test.{ts,tsx}",
         "src/**/*.e2e.{ts,tsx}",
+        "src/**/*.native.{ts,tsx}",
         "e2e/**/*.{ts,tsx}",
         "playwright.config.{ts,js}",
-        "vitest.config.{ts,js}"
+        "vitest.config.{ts,js}",
+        "test-stubs/**/*.ts"
       ],
       "project": ["**/*.{ts,tsx,js,jsx}"],
       "ignore": ["android/**", "ios/**", ".expo/**", "dist/**", "scripts/reset-project.js"]
