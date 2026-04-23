@@ -1,5 +1,8 @@
 import "@/styles/unistyles";
-import { polyfillCrypto } from "@/polyfills/crypto";
+import { PortalProvider } from "@gorhom/portal";
+import { QueryClientProvider } from "@tanstack/react-query";
+import * as Linking from "expo-linking";
+import * as Notifications from "expo-notifications";
 import {
   Stack,
   useGlobalSearchParams,
@@ -7,95 +10,92 @@ import {
   usePathname,
   useRouter,
 } from "expo-router";
-import { SafeAreaProvider } from "react-native-safe-area-context";
-import { KeyboardProvider } from "react-native-keyboard-controller";
-import { GestureHandlerRootView, Gesture, GestureDetector } from "react-native-gesture-handler";
-import { PortalProvider } from "@gorhom/portal";
-import { VoiceProvider } from "@/contexts/voice-context";
-import { useAppSettings } from "@/hooks/use-settings";
-import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
-import { useFaviconStatus } from "@/hooks/use-favicon-status";
-import { View, Text } from "react-native";
-import { UnistylesRuntime, useUnistyles } from "react-native-unistyles";
-import { QueryClientProvider } from "@tanstack/react-query";
-import {
-  getHostRuntimeStore,
-  useHosts,
-  useHostMutations,
-  useHostRuntimeClient,
-} from "@/runtime/host-runtime";
-import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
-import { loadSettingsFromStorage } from "@/hooks/use-settings";
-import { useColorScheme } from "@/hooks/use-color-scheme";
-import { useOpenProject } from "@/hooks/use-open-project";
-import { useStableEvent } from "@/hooks/use-stable-event";
-import { SessionProvider } from "@/contexts/session-context";
-import type { HostProfile } from "@/types/host-connection";
 import {
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
-  useState,
   useEffect,
-  type ReactNode,
   useMemo,
   useRef,
+  useState,
 } from "react";
-import { Platform } from "react-native";
-import * as Linking from "expo-linking";
-import * as Notifications from "expo-notifications";
-import { LeftSidebar } from "@/components/left-sidebar";
+import { Platform, Text, View } from "react-native";
+import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import { Extrapolation, interpolate, runOnJS, useSharedValue } from "react-native-reanimated";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { CommandCenter } from "@/components/command-center";
+import { DaemonVersionMismatchCalloutSource } from "@/components/daemon-version-mismatch-callout-source";
 import { DownloadToast } from "@/components/download-toast";
-import { UpdateBanner } from "@/desktop/updates/update-banner";
-import { ToastProvider } from "@/contexts/toast-context";
-import { usePanelStore } from "@/stores/panel-store";
-import { runOnJS, interpolate, Extrapolation, useSharedValue } from "react-native-reanimated";
-import {
-  SidebarAnimationProvider,
-  useSidebarAnimation,
-} from "@/contexts/sidebar-animation-context";
+import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { LeftSidebar } from "@/components/left-sidebar";
+import { ProjectPickerModal } from "@/components/project-picker-modal";
+import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
+import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
+import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
+import { isNative, isWeb } from "@/constants/platform";
 import {
   HorizontalScrollProvider,
   useHorizontalScrollOptional,
 } from "@/contexts/horizontal-scroll-context";
-import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
-import { CommandCenter } from "@/components/command-center";
-import { ProjectPickerModal } from "@/components/project-picker-modal";
-import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
-import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
-import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
-import { resolveActiveHost } from "@/utils/active-host";
-import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-action";
-import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
-import { queryClient } from "@/query/query-client";
-import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
+import { SessionProvider } from "@/contexts/session-context";
 import {
-  WEB_NOTIFICATION_CLICK_EVENT,
-  type WebNotificationClickDetail,
-  ensureOsNotificationPermission,
-} from "@/utils/os-notifications";
+  SidebarAnimationProvider,
+  useSidebarAnimation,
+} from "@/contexts/sidebar-animation-context";
+import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
+import { ToastProvider } from "@/contexts/toast-context";
+import { VoiceProvider } from "@/contexts/voice-context";
+import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
-import { getDesktopHost } from "@/desktop/host";
 import { updateDesktopWindowControls } from "@/desktop/electron/window";
-import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
-import {
-  buildHostRootRoute,
-  mapPathnameToServer,
-  parseServerIdFromPathname,
-  parseHostAgentRouteFromPathname,
-  parseWorkspaceOpenIntent,
-  decodeWorkspaceIdFromPathSegment,
-} from "@/utils/host-routes";
-import { useSessionStore } from "@/stores/session-store";
-import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
+import { getDesktopHost } from "@/desktop/host";
+import { UpdateCalloutSource } from "@/desktop/updates/update-callout-source";
+import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-action";
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useFaviconStatus } from "@/hooks/use-favicon-status";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useOpenProject } from "@/hooks/use-open-project";
+import { loadSettingsFromStorage, useAppSettings } from "@/hooks/use-settings";
+import { useStableEvent } from "@/hooks/use-stable-event";
 import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
-import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
+import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
+import { polyfillCrypto } from "@/polyfills/crypto";
+import { queryClient } from "@/query/query-client";
+import {
+  getHostRuntimeStore,
+  useHostMutations,
+  useHostRuntimeClient,
+  useHosts,
+} from "@/runtime/host-runtime";
 import {
   addBrowserActiveWorkspaceLocationListener,
   syncNavigationActiveWorkspace,
 } from "@/stores/navigation-active-workspace-store";
-import { isWeb, isNative } from "@/constants/platform";
+import { usePanelStore } from "@/stores/panel-store";
+import { useSessionStore } from "@/stores/session-store";
+import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
+import type { HostProfile } from "@/types/host-connection";
+import { resolveActiveHost } from "@/utils/active-host";
+import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
+import {
+  buildHostRootRoute,
+  decodeWorkspaceIdFromPathSegment,
+  mapPathnameToServer,
+  parseHostAgentRouteFromPathname,
+  parseServerIdFromPathname,
+  parseWorkspaceOpenIntent,
+} from "@/utils/host-routes";
+import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
+import {
+  ensureOsNotificationPermission,
+  WEB_NOTIFICATION_CLICK_EVENT,
+  type WebNotificationClickDetail,
+} from "@/utils/os-notifications";
+import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
+import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 
 polyfillCrypto();
 
@@ -499,7 +499,8 @@ function AppContainer({
       </View>
       {isCompactLayout && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
       <DownloadToast />
-      <UpdateBanner />
+      <UpdateCalloutSource />
+      <DaemonVersionMismatchCalloutSource />
       <CommandCenter />
       <ProjectPickerModal />
       <WorkspaceShortcutTargetsSubscriber
@@ -906,18 +907,20 @@ export default function RootLayout() {
             <QueryProvider>
               <HostRuntimeBootstrapProvider>
                 <PushNotificationRouter />
-                <ToastProvider>
-                  <ProvidersWrapper>
-                    <SidebarAnimationProvider>
-                      <HorizontalScrollProvider>
-                        <OpenProjectListener />
-                        <AppWithSidebar>
-                          <RootStack />
-                        </AppWithSidebar>
-                      </HorizontalScrollProvider>
-                    </SidebarAnimationProvider>
-                  </ProvidersWrapper>
-                </ToastProvider>
+                <SidebarCalloutProvider>
+                  <ToastProvider>
+                    <ProvidersWrapper>
+                      <SidebarAnimationProvider>
+                        <HorizontalScrollProvider>
+                          <OpenProjectListener />
+                          <AppWithSidebar>
+                            <RootStack />
+                          </AppWithSidebar>
+                        </HorizontalScrollProvider>
+                      </SidebarAnimationProvider>
+                    </ProvidersWrapper>
+                  </ToastProvider>
+                </SidebarCalloutProvider>
               </HostRuntimeBootstrapProvider>
             </QueryProvider>
           </KeyboardProvider>

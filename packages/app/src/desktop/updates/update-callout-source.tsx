@@ -1,0 +1,149 @@
+import { Gift } from "lucide-react-native";
+import { type ReactNode, useEffect, useRef } from "react";
+import { useUnistyles } from "react-native-unistyles";
+import { CalloutDescriptionText } from "@/components/callout-card";
+import { type SidebarCalloutAction, useSidebarCallouts } from "@/contexts/sidebar-callout-context";
+import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
+import { useStableEvent } from "@/hooks/use-stable-event";
+import { openExternalUrl } from "@/utils/open-external-url";
+
+const CHECK_INTERVAL_MS = 30 * 60 * 1000;
+const CHANGELOG_URL = "https://paseo.sh/changelog";
+
+export function UpdateCalloutSource() {
+  const callouts = useSidebarCallouts();
+  const { theme } = useUnistyles();
+  const {
+    isDesktopApp,
+    status,
+    availableUpdate,
+    errorMessage,
+    checkForUpdates,
+    installUpdate,
+    isInstalling,
+  } = useDesktopAppUpdater();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const openChangelog = useStableEvent(() => {
+    void openExternalUrl(CHANGELOG_URL);
+  });
+  const install = useStableEvent(() => {
+    void installUpdate();
+  });
+  const retry = useStableEvent(() => {
+    void checkForUpdates();
+  });
+  useEffect(() => {
+    if (!isDesktopApp) return;
+
+    void checkForUpdates({ silent: true });
+
+    intervalRef.current = setInterval(() => {
+      void checkForUpdates({ silent: true });
+    }, CHECK_INTERVAL_MS);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isDesktopApp, checkForUpdates]);
+
+  useEffect(() => {
+    if (!isDesktopApp) {
+      return;
+    }
+    if (
+      status !== "available" &&
+      status !== "installed" &&
+      status !== "installing" &&
+      status !== "error"
+    ) {
+      return;
+    }
+
+    const isInstalled = status === "installed";
+    const isError = status === "error";
+    const isAvailable = !isInstalled && !isInstalling && !isError;
+
+    let title = "Update available";
+    if (isInstalled) {
+      title = "Update installed";
+    } else if (isInstalling) {
+      title = "Installing update";
+    } else if (isError) {
+      title = "Update failed";
+    }
+
+    let description: ReactNode = <UpdateAvailableDescription />;
+    if (isInstalled) {
+      description = "Restart to use the new version.";
+    } else if (isInstalling) {
+      description = "Installing and restarting...";
+    } else if (isError) {
+      description = errorMessage ?? "Something went wrong.";
+    } else if (availableUpdate?.latestVersion) {
+      description = (
+        <UpdateAvailableDescription
+          versionLabel={`v${availableUpdate.latestVersion.replace(/^v/i, "")}`}
+        />
+      );
+    }
+
+    const actions: SidebarCalloutAction[] = [{ label: "What's new", onPress: openChangelog }];
+
+    if (isError) {
+      actions.push({ label: "Retry", onPress: retry, variant: "primary" });
+    } else if (!isInstalled) {
+      actions.push({
+        label: isInstalling ? "Installing..." : "Install & restart",
+        onPress: install,
+        variant: "primary",
+        disabled: isInstalling,
+      });
+    }
+
+    return callouts.show({
+      id: "desktop-update",
+      dismissalKey: `desktop-update:${status}:${availableUpdate?.latestVersion ?? "unknown"}`,
+      priority: 200,
+      title,
+      description,
+      icon: isAvailable ? (
+        <Gift size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+      ) : undefined,
+      variant: isError ? "error" : "default",
+      actions,
+      testID: "update-callout",
+    });
+  }, [
+    availableUpdate?.latestVersion,
+    callouts,
+    errorMessage,
+    install,
+    isDesktopApp,
+    isInstalling,
+    openChangelog,
+    retry,
+    status,
+    theme.colors.foregroundMuted,
+    theme.iconSize.sm,
+  ]);
+
+  return null;
+}
+
+function UpdateAvailableDescription({ versionLabel }: { versionLabel?: string }) {
+  return (
+    <>
+      <CalloutDescriptionText>
+        {versionLabel
+          ? `${versionLabel} is ready to install.`
+          : "A new version is ready to install."}
+      </CalloutDescriptionText>
+      <CalloutDescriptionText>
+        Upgrading the app will stop running agents and close terminal sessions.
+      </CalloutDescriptionText>
+    </>
+  );
+}

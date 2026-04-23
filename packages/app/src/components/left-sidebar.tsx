@@ -1,66 +1,67 @@
+import { router, usePathname } from "expo-router";
+import { MessagesSquare, Plus, Settings } from "lucide-react-native";
 import {
-  memo,
-  useCallback,
-  useMemo,
-  useState,
-  useEffect,
-  useRef,
   type Dispatch,
+  memo,
   type ReactElement,
   type RefObject,
   type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-  View,
   Pressable,
+  StyleSheet as RNStyleSheet,
   Text,
   useWindowDimensions,
-  StyleSheet as RNStyleSheet,
+  View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  useAnimatedStyle,
-  interpolate,
   Extrapolation,
+  interpolate,
   runOnJS,
+  useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { MessagesSquare, Plus, Settings } from "lucide-react-native";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Shortcut } from "@/components/ui/shortcut";
-import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
-import { router, usePathname } from "expo-router";
-import {
-  usePanelStore,
-  selectIsAgentListOpen,
-  MIN_SIDEBAR_WIDTH,
-  MAX_SIDEBAR_WIDTH,
-} from "@/stores/panel-store";
+import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
-import { SidebarWorkspaceList } from "./sidebar-workspace-list";
-import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
+import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
+import { Shortcut } from "@/components/ui/shortcut";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { isWeb } from "@/constants/platform";
+import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
+import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
+import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useSidebarShortcutModel } from "@/hooks/use-sidebar-shortcut-model";
 import {
-  useSidebarWorkspacesList,
   type SidebarProjectEntry,
+  useSidebarWorkspacesList,
 } from "@/hooks/use-sidebar-workspaces-list";
-import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
-import { useWindowControlsPadding } from "@/utils/desktop-window";
-import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
-import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { useHostRuntimeSnapshot, useHosts } from "@/runtime/host-runtime";
+import {
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+  selectIsAgentListOpen,
+  usePanelStore,
+} from "@/stores/panel-store";
+import { resolveActiveHost } from "@/utils/active-host";
 import { formatConnectionStatus } from "@/utils/daemons";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import { useWindowControlsPadding } from "@/utils/desktop-window";
 import {
   buildHostSessionsRoute,
   buildSettingsRoute,
   mapPathnameToServer,
 } from "@/utils/host-routes";
-import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
-import { isWeb } from "@/constants/platform";
-import { resolveActiveHost } from "@/utils/active-host";
+import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
+import { SidebarCalloutSlot } from "./sidebar-callout-slot";
+import { SidebarWorkspaceList } from "./sidebar-workspace-list";
 
 const MIN_CHAT_WIDTH = 400;
 
@@ -713,6 +714,8 @@ function DesktopSidebar({
             onAddProject={handleOpenProject}
           />
         )}
+
+        <SidebarCalloutSlot />
 
         <View style={styles.sidebarFooter}>
           <View style={styles.footerHostSlot}>
