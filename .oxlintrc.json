@@ -1,0 +1,72 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "react",
+    "react-perf",
+    "unicorn",
+    "typescript",
+    "oxc",
+    "import",
+    "promise"
+  ],
+  "categories": {
+    "correctness": "warn",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+
+    "no-unused-expressions": "warn",
+    "no-useless-catch": "warn",
+    "preserve-caught-error": "warn",
+    "require-await": "warn",
+    "no-async-promise-executor": "warn",
+    "no-useless-escape": "warn",
+    "no-empty-pattern": "warn",
+    "no-self-assign": "warn",
+    "no-shadow": "warn",
+    "no-use-before-define": ["warn", { "functions": false, "classes": false, "variables": true }],
+    "require-await": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/no-array-sort": "off",
+
+    "unicorn/no-useless-spread": "warn",
+    "unicorn/no-useless-fallback-in-spread": "warn",
+    "unicorn/no-new-array": "warn",
+    "unicorn/no-empty-file": "warn",
+
+    "promise/always-return": "warn",
+    "promise/no-multiple-resolved": "warn",
+
+    "react/no-array-index-key": "warn",
+    "react/jsx-no-useless-fragment": "warn",
+    "react/jsx-no-constructed-context-values": "warn",
+    "react/no-unescaped-entities": "warn",
+    "react/button-has-type": "warn",
+    "react/jsx-max-depth": ["warn", { "max": 6 }],
+
+    "react-hooks/rules-of-hooks": "warn",
+    "react-hooks/exhaustive-deps": "warn",
+
+    "react-perf/jsx-no-new-array-as-prop": "warn",
+    "react-perf/jsx-no-new-function-as-prop": "warn",
+    "react-perf/jsx-no-new-object-as-prop": "warn",
+    "react-perf/jsx-no-jsx-as-prop": "warn",
+
+    "oxc/no-map-spread": "warn",
+    "oxc/no-async-endpoint-handlers": "warn",
+    "oxc/only-used-in-recursion": "warn",
+
+    "typescript/no-explicit-any": "warn",
+    "typescript/prefer-as-const": "warn",
+    "typescript/no-this-alias": "warn",
+
+    "no-nested-ternary": "warn",
+    "no-unneeded-ternary": "warn",
+
+    "complexity": ["warn", { "max": 20 }],
+    "max-depth": ["warn", { "max": 4 }],
+    "max-nested-callbacks": ["warn", { "max": 3 }]
+  }
+}

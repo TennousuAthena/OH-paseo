@@ -2,6 +2,25 @@
   "name": "paseo",
   "version": "0.1.62",
   "private": true,
+  "description": "Paseo: voice-controlled development environment with OpenAI Realtime API",
+  "keywords": [
+    "development",
+    "mcp",
+    "openai",
+    "realtime",
+    "voice",
+    "voice-assistant"
+  ],
+  "homepage": "https://paseo.sh",
+  "license": "AGPL-3.0-or-later",
+  "author": {
+    "name": "Mohamed Boudra",
+    "email": "hello@moboudra.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/getpaseo/paseo.git"
+  },
   "workspaces": [
     "packages/expo-two-way-audio",
     "packages/highlight",
@@ -25,8 +44,10 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "typecheck:daemon": "npm run typecheck --workspace=@getpaseo/relay && npm run typecheck --workspace=@getpaseo/server && npm run typecheck --workspace=@getpaseo/cli",
     "test": "npm run test --workspaces --if-present",
-    "format": "biome format --write .",
-    "format:check": "biome format .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
     "start": "npm run start --workspace=@getpaseo/server",
     "android": "npm run android --workspace=@getpaseo/app",
     "android:development": "npm run android:development --workspace=@getpaseo/app",
@@ -65,45 +86,27 @@
     "release:minor": "npm run release:check && npm run version:all:minor && npm run release:publish && npm run release:push",
     "release:major": "npm run release:check && npm run version:all:major && npm run release:publish && npm run release:push"
   },
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.8",
-    "concurrently": "^9.2.1",
-    "get-port-cli": "^3.0.0",
-    "knip": "^5.82.1",
-    "patch-package": "^8.0.1",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "typescript": "^5.9.3"
-  },
-  "description": "Paseo: voice-controlled development environment with OpenAI Realtime API",
-  "homepage": "https://paseo.sh",
-  "keywords": [
-    "openai",
-    "realtime",
-    "voice",
-    "voice-assistant",
-    "development",
-    "mcp"
-  ],
-  "author": {
-    "name": "Mohamed Boudra",
-    "email": "hello@moboudra.com"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/getpaseo/paseo.git"
-  },
-  "license": "AGPL-3.0-or-later",
-  "overrides": {
-    "lightningcss": "1.30.1",
-    "react": "19.1.0",
-    "react-dom": "19.1.0"
-  },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.11",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "expo": "~54.0.33",
     "react": "19.1.0",
     "react-native": "0.81.5"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "get-port-cli": "^3.0.0",
+    "knip": "^5.82.1",
+    "oxfmt": "0.46.0",
+    "oxlint": "1.61.0",
+    "patch-package": "^8.0.1",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "lightningcss": "1.30.1",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   }
 }
