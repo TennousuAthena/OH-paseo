@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.62 - 2026-04-23
+
+### Added
+- Sidebar warning when your app and daemon versions drift apart, with a shortcut to settings.
+
+### Improved
+- Workspaces appear in the sidebar immediately on startup instead of waiting for git registration.
+
+### Fixed
+- Pull request status resolves correctly for PRs opened from forks.
+- Installing the paseo CLI from the macOS desktop app now works in packaged builds.
+- Agents launched from the desktop app no longer inherit Electron-only environment variables.
+
 ## 0.1.61 - 2026-04-23
 
 ### Added
