@@ -92,9 +92,7 @@ type DaemonClientConfig = {
 };
 
 async function loadDaemonClientConstructor(): Promise<
-  new (
-    config: DaemonClientConfig,
-  ) => DaemonClientInstance
+  new (config: DaemonClientConfig) => DaemonClientInstance
 > {
   const repoRoot = path.resolve(__dirname, "../../../../");
   const moduleUrl = pathToFileURL(

@@ -1776,9 +1776,9 @@ describe("workspace aggregation", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
 
-    const response = emitted.find((message) => message.type === "create_paseo_worktree_response") as
-      | { type: "create_paseo_worktree_response"; payload: any }
-      | undefined;
+    const response = emitted.find(
+      (message) => message.type === "create_paseo_worktree_response",
+    ) as { type: "create_paseo_worktree_response"; payload: any } | undefined;
 
     expect(response?.payload.error).toBeNull();
     expect(response?.payload.workspace).toMatchObject({

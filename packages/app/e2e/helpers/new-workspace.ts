@@ -49,9 +49,7 @@ function getDaemonWsUrl(): string {
 }
 
 async function loadDaemonClientConstructor(): Promise<
-  new (
-    config: NewWorkspaceDaemonClientConfig,
-  ) => NewWorkspaceDaemonClient
+  new (config: NewWorkspaceDaemonClientConfig) => NewWorkspaceDaemonClient
 > {
   const repoRoot = path.resolve(__dirname, "../../../../");
   const moduleUrl = pathToFileURL(

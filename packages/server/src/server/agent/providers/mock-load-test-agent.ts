@@ -291,11 +291,7 @@ export class MockLoadTestAgentSession implements AgentSession {
   private modeId: string | null;
   private modelId: string | null;
 
-  constructor(options: {
-    config: AgentSessionConfig;
-    sessionId: string;
-    logger?: Logger;
-  }) {
+  constructor(options: { config: AgentSessionConfig; sessionId: string; logger?: Logger }) {
     this.id = options.sessionId;
     this.logger = options.logger;
     this.modeId = options.config.modeId ?? MOCK_LOAD_TEST_MODE_ID;

@@ -17,17 +17,17 @@ This is an npm workspace monorepo:
 
 ## Documentation
 
-| Doc | What's in it |
-|---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, package layering, WebSocket protocol, agent lifecycle, data flow |
-| [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md) | Type hygiene, error handling, state design, React patterns, file organization |
-| [docs/TESTING.md](docs/TESTING.md) | TDD workflow, determinism, real dependencies over mocks, test organization |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Dev server, build sync gotchas, CLI reference, agent state, Playwright MCP |
-| [docs/RELEASE.md](docs/RELEASE.md) | Release playbook, draft releases, completion checklist |
+| Doc                                                  | What's in it                                                                      |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | System design, package layering, WebSocket protocol, agent lifecycle, data flow   |
+| [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md) | Type hygiene, error handling, state design, React patterns, file organization     |
+| [docs/TESTING.md](docs/TESTING.md)                   | TDD workflow, determinism, real dependencies over mocks, test organization        |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)           | Dev server, build sync gotchas, CLI reference, agent state, Playwright MCP        |
+| [docs/RELEASE.md](docs/RELEASE.md)                   | Release playbook, draft releases, completion checklist                            |
 | [docs/CUSTOM-PROVIDERS.md](docs/CUSTOM-PROVIDERS.md) | Custom provider config: Z.AI, Alibaba/Qwen, ACP agents, profiles, custom binaries |
-| [docs/ANDROID.md](docs/ANDROID.md) | App variants, local/cloud builds, EAS workflows |
-| [docs/DESIGN.md](docs/DESIGN.md) | How to design features before implementation |
-| [SECURITY.md](SECURITY.md) | Relay threat model, E2E encryption, DNS rebinding, agent auth |
+| [docs/ANDROID.md](docs/ANDROID.md)                   | App variants, local/cloud builds, EAS workflows                                   |
+| [docs/DESIGN.md](docs/DESIGN.md)                     | How to design features before implementation                                      |
+| [SECURITY.md](SECURITY.md)                           | Relay threat model, E2E encryption, DNS rebinding, agent auth                     |
 
 ## Quick start
 
@@ -68,23 +68,23 @@ The app runs on iOS, Android, web (browser), and web (Electron desktop). Code is
 
 ### The four gates
 
-| Gate | Type | When to use |
-|---|---|---|
-| `isWeb` | constant | DOM APIs — `document`, `window`, `<div>`, `addEventListener`, `ResizeObserver`. This is the **exception**, not the default. |
-| `isNative` | constant | Native-only APIs — Haptics, `StatusBar.currentHeight`, push tokens, camera/scanner, `expo-av`. |
-| `getIsElectron()` | cached fn | Desktop wrapper features — file dialogs, titlebar drag region, daemon management, app updates, dock badges. |
-| `useIsCompactFormFactor()` | hook | Layout decisions — sidebar overlay vs pinned, modal vs full screen, single-panel vs split. From `@/constants/layout`. |
+| Gate                       | Type      | When to use                                                                                                                 |
+| -------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `isWeb`                    | constant  | DOM APIs — `document`, `window`, `<div>`, `addEventListener`, `ResizeObserver`. This is the **exception**, not the default. |
+| `isNative`                 | constant  | Native-only APIs — Haptics, `StatusBar.currentHeight`, push tokens, camera/scanner, `expo-av`.                              |
+| `getIsElectron()`          | cached fn | Desktop wrapper features — file dialogs, titlebar drag region, daemon management, app updates, dock badges.                 |
+| `useIsCompactFormFactor()` | hook      | Layout decisions — sidebar overlay vs pinned, modal vs full screen, single-panel vs split. From `@/constants/layout`.       |
 
 ### Decision matrix
 
-| I need to... | Use |
-|---|---|
-| Access DOM (`document`, `window`, `<div>`, `addEventListener`) | `if (isWeb)` |
-| Use a native-only API (Haptics, push tokens, camera) | `if (isNative)` |
-| Use an Electron bridge (file dialog, titlebar, updates) | `if (getIsElectron())` |
-| Switch layout between phone and tablet/desktop | `useIsCompactFormFactor()` |
-| Show something on hover, always-visible on native | `isHovered \|\| isNative \|\| isCompact` (hover only works on web) |
-| Gate to iOS or Android specifically | `Platform.OS === "ios"` / `Platform.OS === "android"` (rare, keep inline) |
+| I need to...                                                   | Use                                                                       |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Access DOM (`document`, `window`, `<div>`, `addEventListener`) | `if (isWeb)`                                                              |
+| Use a native-only API (Haptics, push tokens, camera)           | `if (isNative)`                                                           |
+| Use an Electron bridge (file dialog, titlebar, updates)        | `if (getIsElectron())`                                                    |
+| Switch layout between phone and tablet/desktop                 | `useIsCompactFormFactor()`                                                |
+| Show something on hover, always-visible on native              | `isHovered \|\| isNative \|\| isCompact` (hover only works on web)        |
+| Gate to iOS or Android specifically                            | `Platform.OS === "ios"` / `Platform.OS === "android"` (rare, keep inline) |
 
 ### Rules
 
@@ -103,6 +103,5 @@ The app runs on iOS, Android, web (browser), and web (Electron desktop). Code is
 - **Import `isWeb`/`isNative` from `@/constants/platform`.** Never write `const isWeb = Platform.OS === "web"` locally.
 
 ## Debugging
-
 
 Find the complete daemon logs and traces in the $PASEO_HOME/daemon.log

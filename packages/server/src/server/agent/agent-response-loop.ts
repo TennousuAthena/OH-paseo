@@ -130,9 +130,7 @@ function buildZodValidator<T>(schema: z.ZodTypeAny, schemaName: string): SchemaV
 
 function buildJsonSchemaValidator<T>(schema: JsonSchema): SchemaValidator<T> {
   const AjvConstructor = Ajv as unknown as {
-    new (
-      options?: AjvOptions,
-    ): {
+    new (options?: AjvOptions): {
       compile: (input: JsonSchema) => ((value: unknown) => boolean) & {
         errors?: ErrorObject[] | null;
       };

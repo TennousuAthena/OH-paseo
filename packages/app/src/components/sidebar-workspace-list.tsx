@@ -1954,8 +1954,8 @@ export function SidebarWorkspaceList({
       select: toProjectIconDataUri,
       enabled: Boolean(
         getHostRuntimeStore().getClient(request.serverId) &&
-          isHostRuntimeConnected(getHostRuntimeStore().getSnapshot(request.serverId)) &&
-          request.cwd,
+        isHostRuntimeConnected(getHostRuntimeStore().getSnapshot(request.serverId)) &&
+        request.cwd,
       ),
       staleTime: Infinity,
       gcTime: 1000 * 60 * 60,

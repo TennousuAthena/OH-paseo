@@ -49,9 +49,7 @@ export class ClaudeSidechainTracker {
   private readonly activeSidechains = new Map<string, SubAgentActivityState>();
   private readonly getToolInput: (toolUseId: string) => AgentMetadata | null | undefined;
 
-  constructor(input: {
-    getToolInput: (toolUseId: string) => AgentMetadata | null | undefined;
-  }) {
+  constructor(input: { getToolInput: (toolUseId: string) => AgentMetadata | null | undefined }) {
     this.getToolInput = input.getToolInput;
   }
 

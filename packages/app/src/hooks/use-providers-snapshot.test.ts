@@ -237,23 +237,24 @@ describe("providers snapshot hook cache scope", () => {
   it.each([
     { name: "missing", entries: [] },
     { name: "loading", entries: [codexEntry("loading")] },
-  ])("ensures a selected provider snapshot on selector open when it is $name", async ({
-    entries,
-  }) => {
-    enableProvidersSnapshot();
-    mockClient.getProvidersSnapshot
-      .mockResolvedValueOnce(providersSnapshot(entries))
-      .mockResolvedValueOnce(providersSnapshot([codexEntry("ready", [readyCodexModel])]));
+  ])(
+    "ensures a selected provider snapshot on selector open when it is $name",
+    async ({ entries }) => {
+      enableProvidersSnapshot();
+      mockClient.getProvidersSnapshot
+        .mockResolvedValueOnce(providersSnapshot(entries))
+        .mockResolvedValueOnce(providersSnapshot([codexEntry("ready", [readyCodexModel])]));
 
-    const { result } = renderProvidersSnapshotHook();
+      const { result } = renderProvidersSnapshotHook();
 
-    await waitForSnapshotEntries(result, entries);
-    await openSelectorForSelectedProvider(result);
-    await waitForSnapshotReads(2);
+      await waitForSnapshotEntries(result, entries);
+      await openSelectorForSelectedProvider(result);
+      await waitForSnapshotReads(2);
 
-    expect(mockClient.getProvidersSnapshot).toHaveBeenLastCalledWith({});
-    expect(mockClient.refreshProvidersSnapshot).not.toHaveBeenCalled();
-  });
+      expect(mockClient.getProvidersSnapshot).toHaveBeenLastCalledWith({});
+      expect(mockClient.refreshProvidersSnapshot).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not ensure a selected provider snapshot on selector open when the provider is ready with no models", async () => {
     enableProvidersSnapshot();

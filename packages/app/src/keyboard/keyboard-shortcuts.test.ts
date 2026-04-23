@@ -289,23 +289,19 @@ describe("keyboard-shortcuts", () => {
     },
   ];
 
-  it.each(matchingCases)("$name", ({
-    event,
-    context,
-    action,
-    payload,
-    preventDefault,
-    stopPropagation,
-  }) => {
-    expectShortcutResolution({
-      event,
-      context,
-      action,
-      ...(payload !== undefined ? { payload } : {}),
-      ...(preventDefault !== undefined ? { preventDefault } : {}),
-      ...(stopPropagation !== undefined ? { stopPropagation } : {}),
-    });
-  });
+  it.each(matchingCases)(
+    "$name",
+    ({ event, context, action, payload, preventDefault, stopPropagation }) => {
+      expectShortcutResolution({
+        event,
+        context,
+        action,
+        ...(payload !== undefined ? { payload } : {}),
+        ...(preventDefault !== undefined ? { preventDefault } : {}),
+        ...(stopPropagation !== undefined ? { stopPropagation } : {}),
+      });
+    },
+  );
 
   const nonMatchingCases: NonMatchingShortcutCase[] = [
     {

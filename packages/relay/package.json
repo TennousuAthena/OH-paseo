@@ -2,14 +2,11 @@
   "name": "@getpaseo/relay",
   "version": "0.1.62",
   "description": "Paseo relay for bridging daemon and client connections",
-  "type": "module",
-  "publishConfig": {
-    "access": "public"
-  },
-  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
+  "type": "module",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -29,6 +26,9 @@
       "import": "./src/cloudflare-adapter.ts",
       "default": "./src/cloudflare-adapter.ts"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{ recursive: true, force: true })\" && tsc -p tsconfig.json --incremental false",

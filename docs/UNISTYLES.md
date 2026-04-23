@@ -19,7 +19,7 @@ The important detail: the automatic native path tracks `props.style`. It does no
 Avoid this pattern when the style depends on the theme:
 
 ```tsx
-<ScrollView contentContainerStyle={styles.container} />
+<ScrollView contentContainerStyle={styles.container} />;
 
 const styles = StyleSheet.create((theme) => ({
   container: {
@@ -39,10 +39,8 @@ Preferred pattern: put themed backgrounds on a normal wrapper view, and keep `co
 
 ```tsx
 <View style={styles.container}>
-  <ScrollView contentContainerStyle={styles.contentContainer}>
-    {children}
-  </ScrollView>
-</View>
+  <ScrollView contentContainerStyle={styles.contentContainer}>{children}</ScrollView>
+</View>;
 
 const styles = StyleSheet.create((theme) => ({
   container: {
@@ -66,10 +64,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 
 const ThemedScrollView = withUnistyles(ScrollView);
 
-<ThemedScrollView
-  style={styles.scrollView}
-  contentContainerStyle={styles.contentContainer}
-/>
+<ThemedScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer} />;
 ```
 
 `withUnistyles` extracts dependency metadata from both `style` and `contentContainerStyle`, subscribes to the relevant theme/runtime changes, and re-renders only that wrapped component when needed. Its [auto-mapping behavior for `style` and `contentContainerStyle`](https://www.unistyl.es/v3/references/with-unistyles#auto-mapping-for-style-and-contentcontainerstyle-props) is the reason it fixes themed `ScrollView` content containers. Reach for it when wrapper-view layout would be awkward or when a third-party component needs theme-aware non-`style` props mapped through Unistyles.
@@ -80,11 +75,8 @@ The smallest escape hatch is to use `useUnistyles()` and pass an inline value th
 const { theme } = useUnistyles();
 
 <ScrollView
-  contentContainerStyle={[
-    styles.contentContainer,
-    { backgroundColor: theme.colors.surface0 },
-  ]}
-/>
+  contentContainerStyle={[styles.contentContainer, { backgroundColor: theme.colors.surface0 }]}
+/>;
 ```
 
 Use this sparingly. It works because React re-renders the prop, but it gives up the main Unistyles native-update path for that value.
@@ -98,8 +90,14 @@ The sharp edge: Unistyles hashes styles by value. If `withUnistyles` receives a 
 Concrete regression we hit: `welcome-screen.tsx` had `const ThemedScrollView = withUnistyles(ScrollView)` with `style={{ flex: 1, backgroundColor: theme.colors.surface0 }}`. `agent-panel.tsx` had `root` and `container` styles with the exact same value. All three collided on class `unistyles_j2k2iilhfz`, so the browser stylesheet contained:
 
 ```css
-.unistyles_j2k2iilhfz { flex: 1 1 0%; background-color: var(--colors-surface0); }
-.unistyles_j2k2iilhfz > * { flex: 1 1 0%; background-color: var(--colors-surface0); }
+.unistyles_j2k2iilhfz {
+  flex: 1 1 0%;
+  background-color: var(--colors-surface0);
+}
+.unistyles_j2k2iilhfz > * {
+  flex: 1 1 0%;
+  background-color: var(--colors-surface0);
+}
 ```
 
 The child-selector rule forced `flex:1` and `background-color: surface0` onto the Composer's outer `Animated.View` (a direct child of `container`), stretching it to fill remaining space and leaving a large empty gap between the composer UI and the bottom of the screen. It also painted a `surface0` band behind the scroll-to-bottom button. The bug only appeared in the browser — Electron skips `WelcomeScreen` after pairing, so the `> *` rule was never injected there.
@@ -113,8 +111,10 @@ Symptoms to watch for:
 Quick confirmation in DevTools console:
 
 ```js
-[...document.styleSheets].flatMap(s => [...(s.cssRules || [])])
-  .map(r => r.cssText).filter(t => t.includes("unistyles") && t.includes("> *"));
+[...document.styleSheets]
+  .flatMap((s) => [...(s.cssRules || [])])
+  .map((r) => r.cssText)
+  .filter((t) => t.includes("unistyles") && t.includes("> *"));
 ```
 
 Any match beyond benign `r-pointerEvents-* > *` rules from react-native-web is a leak.
@@ -130,9 +130,7 @@ We saw this in `AdaptiveModalSheet`: the body text and buttons were dark-theme-c
 ```tsx
 const { theme } = useUnistyles();
 
-<Text style={[styles.title, { color: theme.colors.foreground }]}>
-  {title}
-</Text>
+<Text style={[styles.title, { color: theme.colors.foreground }]}>{title}</Text>;
 ```
 
 Keep layout and typography in `StyleSheet.create`; move only the stale theme-dependent value through React. If a larger subtree shows the same behavior, consider remounting the sheet on theme changes or moving the themed paint onto a wrapper that is mounted with the visible content.
@@ -170,7 +168,7 @@ Use `useUnistyles()` inside the component instead:
 ```tsx
 const { theme } = useUnistyles();
 
-<ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+<ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />;
 ```
 
 Importing `baseColors`, theme-name constants, or `type Theme` is fine when the value is intentionally static or type-only.
@@ -233,4 +231,4 @@ The welcome-screen investigation used this approach to prove the white layer was
 - [GitHub issue #550: ScrollView sticky-header theme updates](https://github.com/jpudysz/react-native-unistyles/issues/550)
 - [GitHub issue #817: `UnistylesRuntime.themeName` does not re-render](https://github.com/jpudysz/react-native-unistyles/issues/817)
 - [GitHub issue #1030: `Image.tintColor` and native style update edge case](https://github.com/jpudysz/react-native-unistyles/issues/1030)
-- [Local research note: welcome theme split](</Users/USER/.paseo/notes/welcome-theme-split-research.md>)
+- [Local research note: welcome theme split](/Users/USER/.paseo/notes/welcome-theme-split-research.md)

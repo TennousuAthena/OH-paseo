@@ -78,52 +78,51 @@ describe("daemon E2E", () => {
     await ctx.cleanup();
   }, 60000);
 
-  describe.each([
-    "claude",
-    "codex",
-    "opencode",
-  ] as const)("live model switching (%s)", (provider) => {
-    const shouldRun =
-      provider === "claude" ||
-      (provider === "codex" && hasCodex) ||
-      (provider === "opencode" && hasOpenCode);
+  describe.each(["claude", "codex", "opencode"] as const)(
+    "live model switching (%s)",
+    (provider) => {
+      const shouldRun =
+        provider === "claude" ||
+        (provider === "codex" && hasCodex) ||
+        (provider === "opencode" && hasOpenCode);
 
-    test.runIf(shouldRun)(
-      "updates agent model without restarting",
-      async () => {
-        const cwd = tmpCwd();
-        try {
-          const modelList = await ctx.client.listProviderModels(provider);
-          if (!modelList.models || modelList.models.length === 0) {
-            throw new Error(`No models returned for provider ${provider}`);
+      test.runIf(shouldRun)(
+        "updates agent model without restarting",
+        async () => {
+          const cwd = tmpCwd();
+          try {
+            const modelList = await ctx.client.listProviderModels(provider);
+            if (!modelList.models || modelList.models.length === 0) {
+              throw new Error(`No models returned for provider ${provider}`);
+            }
+            const [modelA, modelB] = pickTwoDistinctModels(modelList.models);
+
+            const agent = await ctx.client.createAgent({
+              provider,
+              cwd,
+              title: `Model Switch (${provider})`,
+              model: modelA,
+            });
+
+            const startIndex = messages.length;
+            await ctx.client.setAgentModel(agent.id, modelB);
+
+            const updated = await waitForAgentUpdate(
+              messages,
+              startIndex,
+              (a) => a.id === agent.id && a.model === modelB,
+              { timeoutMs: 20000 },
+            );
+
+            expect(updated.model).toBe(modelB);
+          } finally {
+            rmSync(cwd, { recursive: true, force: true });
           }
-          const [modelA, modelB] = pickTwoDistinctModels(modelList.models);
-
-          const agent = await ctx.client.createAgent({
-            provider,
-            cwd,
-            title: `Model Switch (${provider})`,
-            model: modelA,
-          });
-
-          const startIndex = messages.length;
-          await ctx.client.setAgentModel(agent.id, modelB);
-
-          const updated = await waitForAgentUpdate(
-            messages,
-            startIndex,
-            (a) => a.id === agent.id && a.model === modelB,
-            { timeoutMs: 20000 },
-          );
-
-          expect(updated.model).toBe(modelB);
-        } finally {
-          rmSync(cwd, { recursive: true, force: true });
-        }
-      },
-      180000,
-    );
-  });
+        },
+        180000,
+      );
+    },
+  );
 
   test("live thinking switching works for Claude (off -> on)", async () => {
     const cwd = tmpCwd();

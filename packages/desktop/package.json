@@ -3,6 +3,16 @@
   "version": "0.1.62",
   "private": true,
   "description": "Paseo desktop app (Electron wrapper)",
+  "homepage": "https://paseo.sh",
+  "license": "AGPL-3.0-or-later",
+  "author": {
+    "name": "Mohamed Boudra",
+    "email": "hello@moboudra.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/getpaseo/paseo.git"
+  },
   "main": "dist/main.js",
   "scripts": {
     "build": "npm --prefix ../.. run build:daemon && npm run build:main && electron-builder --config electron-builder.yml",
@@ -27,15 +37,5 @@
     "typescript": "5.9.3",
     "unzip-crx-3": "^0.2.0",
     "wait-on": "8.0.5"
-  },
-  "homepage": "https://paseo.sh",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/getpaseo/paseo.git"
-  },
-  "author": {
-    "name": "Mohamed Boudra",
-    "email": "hello@moboudra.com"
-  },
-  "license": "AGPL-3.0-or-later"
+  }
 }

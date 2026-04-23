@@ -8,4 +8,3 @@
  * This file is kept as a stub to document the migration.
  * It can be deleted once the refactoring is confirmed working.
  */
-

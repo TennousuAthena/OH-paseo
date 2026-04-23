@@ -2,11 +2,6 @@
   "name": "@getpaseo/server",
   "version": "0.1.62",
   "description": "Paseo backend server",
-  "type": "module",
-  "publishConfig": {
-    "access": "public"
-  },
-  "types": "./dist/server/server/exports.d.ts",
   "files": [
     "dist/server",
     "dist/src",
@@ -15,6 +10,8 @@
     "README.md",
     ".env.example"
   ],
+  "type": "module",
+  "types": "./dist/server/server/exports.d.ts",
   "exports": {
     ".": {
       "types": "./dist/server/server/exports.d.ts",
@@ -26,6 +23,9 @@
       "source": "./src/utils/tool-call-parsers.ts",
       "default": "./dist/server/utils/tool-call-parsers.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "dev": "cross-env NODE_ENV=development node --import tsx scripts/dev-runner.ts",

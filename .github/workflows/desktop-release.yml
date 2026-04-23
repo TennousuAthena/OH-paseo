@@ -3,21 +3,21 @@ name: Desktop Release
 on:
   push:
     tags:
-      - 'v*'
-      - 'desktop-v*'
-      - 'desktop-macos-v*'
-      - 'desktop-linux-v*'
-      - 'desktop-windows-v*'
+      - "v*"
+      - "desktop-v*"
+      - "desktop-macos-v*"
+      - "desktop-linux-v*"
+      - "desktop-windows-v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to build (e.g. v0.1.0)'
+        description: "Existing tag to build (e.g. v0.1.0)"
         required: true
         type: string
       platform:
-        description: 'Optional desktop platform to build.'
+        description: "Optional desktop platform to build."
         required: false
-        default: 'all'
+        default: "all"
         type: choice
         options:
           - all
@@ -31,8 +31,8 @@ concurrency:
 
 env:
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-  DESKTOP_WORKSPACE: '@getpaseo/desktop'
-  DESKTOP_PACKAGE_PATH: 'packages/desktop'
+  DESKTOP_WORKSPACE: "@getpaseo/desktop"
+  DESKTOP_PACKAGE_PATH: "packages/desktop"
 
 jobs:
   create-release:
@@ -100,11 +100,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
           cache-dependency-path: package-lock.json
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@boudra'
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@boudra"
 
       - name: Install JS dependencies
         run: npm ci
@@ -278,11 +278,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
           cache-dependency-path: package-lock.json
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@boudra'
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@boudra"
 
       - name: Install JS dependencies
         run: npm ci
@@ -346,11 +346,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
           cache-dependency-path: package-lock.json
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@boudra'
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@boudra"
 
       - name: Install JS dependencies
         run: npm ci

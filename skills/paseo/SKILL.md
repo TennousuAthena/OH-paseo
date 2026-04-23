@@ -193,6 +193,7 @@ paseo terminal send-keys <terminal-id> --literal "raw text"  # No special token 
 `Enter`, `Tab`, `Escape`, `Space`, `BSpace`, `C-c`, `C-d`, `C-z`, `C-l`, `C-a`, `C-e`
 
 **Common pattern — launch a process and interact with it:**
+
 ```bash
 id=$(paseo terminal create --name "my-shell" -q)
 paseo terminal send-keys "$id" "claude" Enter
@@ -208,11 +209,13 @@ paseo terminal kill "$id"
 ## Available Models
 
 **Claude (default provider):**
+
 - `--provider claude/haiku` — Fast/cheap, ONLY for tests (not for real work)
 - `--provider claude/sonnet` — Good for most tasks
 - `--provider claude/opus` — For harder reasoning, complex debugging
 
 **Codex:**
+
 - `--provider codex/gpt-5.4` — Latest frontier agentic coding model (preferred for all engineering tasks)
 - `--provider codex/gpt-5.4-mini` — Cheaper, faster, but less capable
 
@@ -236,6 +239,7 @@ Both `paseo run` and `paseo wait` block until the agent completes. Trust them.
 `paseo run` blocks by default and `--output-schema` returns structured JSON, making it easy to compose agents in bash loops and pipelines.
 
 **Detach + wait pattern for parallel work:**
+
 ```bash
 api_id=$(paseo run -d --name "impl-api" "implement the API" -q)
 ui_id=$(paseo run -d --name "impl-ui" "implement the UI" -q)

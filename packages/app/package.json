@@ -1,8 +1,8 @@
 {
   "name": "@getpaseo/app",
-  "main": "index.ts",
   "version": "0.1.62",
   "private": true,
+  "main": "index.ts",
   "scripts": {
     "start": "APP_VARIANT=development expo start",
     "reset-project": "node ./scripts/reset-project.js",

@@ -63,9 +63,7 @@ type TerminalPerfDaemonClientConfig = {
 };
 
 async function loadDaemonClientConstructor(): Promise<
-  new (
-    config: TerminalPerfDaemonClientConfig,
-  ) => TerminalPerfDaemonClient
+  new (config: TerminalPerfDaemonClientConfig) => TerminalPerfDaemonClient
 > {
   const repoRoot = path.resolve(__dirname, "../../../../");
   const moduleUrl = pathToFileURL(

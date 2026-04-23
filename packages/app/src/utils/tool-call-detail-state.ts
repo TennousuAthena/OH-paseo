@@ -36,10 +36,10 @@ export function hasMeaningfulToolCallDetail(detail: ToolCallDetail | undefined):
     case "search":
       return Boolean(
         detail.query.trim().length > 0 ||
-          detail.content ||
-          (detail.filePaths && detail.filePaths.length > 0) ||
-          (detail.webResults && detail.webResults.length > 0) ||
-          (detail.annotations && detail.annotations.length > 0),
+        detail.content ||
+        (detail.filePaths && detail.filePaths.length > 0) ||
+        (detail.webResults && detail.webResults.length > 0) ||
+        (detail.annotations && detail.annotations.length > 0),
       );
     case "fetch":
       return Boolean(detail.url || detail.result || detail.codeText);

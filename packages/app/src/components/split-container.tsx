@@ -134,18 +134,17 @@ interface SplitNodeViewProps extends Omit<SplitContainerProps, "layout"> {
   tabDropPreview: TabDropPreview | null;
 }
 
-interface SplitPaneViewProps
-  extends Omit<
-    SplitNodeViewProps,
-    | "node"
-    | "workspaceKey"
-    | "focusedPaneId"
-    | "activeDragTabId"
-    | "showDropZones"
-    | "dropPreview"
-    | "onMoveTabToPane"
-    | "onResizeSplit"
-  > {
+interface SplitPaneViewProps extends Omit<
+  SplitNodeViewProps,
+  | "node"
+  | "workspaceKey"
+  | "focusedPaneId"
+  | "activeDragTabId"
+  | "showDropZones"
+  | "dropPreview"
+  | "onMoveTabToPane"
+  | "onResizeSplit"
+> {
   pane: SplitPane;
   uiTabs: WorkspaceTab[];
   isFocused: boolean;

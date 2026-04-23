@@ -232,11 +232,10 @@ export interface CreateAgentRequestOptions extends AgentConfigOverrides {
   labels?: Record<string, string>;
 }
 
-export interface CreatePaseoWorktreeInput
-  extends Pick<
-    CreatePaseoWorktreeRequest,
-    "cwd" | "worktreeSlug" | "attachments" | "refName" | "action" | "githubPrNumber"
-  > {}
+export interface CreatePaseoWorktreeInput extends Pick<
+  CreatePaseoWorktreeRequest,
+  "cwd" | "worktreeSlug" | "attachments" | "refName" | "action" | "githubPrNumber"
+> {}
 
 type CheckoutStatusPayload = CheckoutStatusResponse["payload"];
 type SubscribeCheckoutDiffPayload = Extract<

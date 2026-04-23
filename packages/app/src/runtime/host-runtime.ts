@@ -491,10 +491,7 @@ export class HostRuntimeController {
   private probeRequestVersion = 0;
   private probeCycleInFlight: Promise<void> | null = null;
 
-  constructor(input: {
-    host: HostProfile;
-    deps?: HostRuntimeControllerDeps;
-  }) {
+  constructor(input: { host: HostProfile; deps?: HostRuntimeControllerDeps }) {
     this.host = input.host;
     this.deps = input.deps ?? createDefaultDeps();
     this.connectionMachineState = {
@@ -1155,9 +1152,7 @@ export class HostRuntimeStore {
   private storageLoaded = false;
   private bootstrapAttempted = false;
 
-  constructor(input?: {
-    deps?: HostRuntimeControllerDeps;
-  }) {
+  constructor(input?: { deps?: HostRuntimeControllerDeps }) {
     this.deps = input?.deps ?? createDefaultDeps();
   }
 

@@ -35,11 +35,7 @@ export {
   type ProviderOverride,
   type ProviderProfileModel,
 } from "./agent/provider-launch-config.js";
-export {
-  findExecutable,
-  quoteWindowsArgument,
-  quoteWindowsCommand,
-} from "../utils/executable.js";
+export { findExecutable, quoteWindowsArgument, quoteWindowsCommand } from "../utils/executable.js";
 export { execCommand, spawnProcess } from "../utils/spawn.js";
 
 // Provider manifest (source of truth for provider definitions)
