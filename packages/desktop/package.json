@@ -23,7 +23,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@getpaseo/cli": "0.1.62",
     "@getpaseo/server": "0.1.62",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.6.2",
@@ -36,6 +35,7 @@
     "electron-builder": "26.8.1",
     "typescript": "5.9.3",
     "unzip-crx-3": "^0.2.0",
+    "vitest": "^3.2.4",
     "wait-on": "8.0.5"
   }
 }

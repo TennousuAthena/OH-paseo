@@ -87,23 +87,17 @@
     "release:minor": "npm run release:check && npm run version:all:minor && npm run release:publish && npm run release:push",
     "release:major": "npm run release:check && npm run version:all:major && npm run release:publish && npm run release:push"
   },
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.11",
-    "@modelcontextprotocol/sdk": "^1.27.1",
-    "expo": "~54.0.33",
-    "react": "19.1.0",
-    "react-native": "0.81.5"
-  },
   "devDependencies": {
+    "@types/ws": "^8.5.14",
     "concurrently": "^9.2.1",
     "get-port-cli": "^3.0.0",
     "knip": "^5.82.1",
     "oxfmt": "0.46.0",
     "oxlint": "1.61.0",
     "patch-package": "^8.0.1",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "typescript": "^5.9.3"
+    "playwright": "^1.56.1",
+    "typescript": "^5.9.3",
+    "ws": "^8.20.0"
   },
   "overrides": {
     "lightningcss": "1.30.1",
