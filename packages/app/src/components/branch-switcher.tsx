@@ -3,7 +3,7 @@ import { Pressable, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, GitBranch } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
+import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useToast } from "@/contexts/toast-context";

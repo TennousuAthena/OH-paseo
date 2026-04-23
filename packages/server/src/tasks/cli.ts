@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { appendFileSync, existsSync, openSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { FileTaskStore } from "./task-store.js";
 import { computeExecutionOrder, buildSortedChildrenMap } from "./execution-order.js";
 import { resolvePackageVersion } from "../server/package-version.js";
 import { spawnProcess } from "../utils/spawn.js";
-import type { AgentType, ModelName, Task } from "./types.js";
+import type { AgentType, Task } from "./types.js";
 
 const TASKS_DIR = resolve(process.cwd(), ".tasks");
 const store = new FileTaskStore(TASKS_DIR);

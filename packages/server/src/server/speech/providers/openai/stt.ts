@@ -250,7 +250,7 @@ export class OpenAISTT implements SpeechToTextProvider {
       if (tempFilePath) {
         try {
           await unlink(tempFilePath);
-        } catch (cleanupError) {
+        } catch {
           logger.warn({ tempFilePath }, "Failed to clean up temp file");
         }
       }

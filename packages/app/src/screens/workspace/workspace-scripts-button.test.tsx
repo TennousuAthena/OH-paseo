@@ -6,7 +6,7 @@ import { act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { WorkspaceScriptPayload } from "@server/shared/messages";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot } from "react-dom/client";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 
 const { theme, startWorkspaceScriptMock } = vi.hoisted(() => {

@@ -1,4 +1,4 @@
-import type { ProviderSnapshotEntry, AgentProvider } from "@server/server/agent/agent-sdk-types";
+import type { ProviderSnapshotEntry } from "@server/server/agent/agent-sdk-types";
 import {
   type AgentModeColorTier,
   type AgentModeIcon,

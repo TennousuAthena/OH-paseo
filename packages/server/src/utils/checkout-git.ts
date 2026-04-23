@@ -710,7 +710,7 @@ function isGitError(error: unknown): boolean {
 async function requireGitRepo(cwd: string): Promise<void> {
   try {
     await runGitCommand(["rev-parse", "--git-dir"], { cwd, env: READ_ONLY_GIT_ENV });
-  } catch (error) {
+  } catch {
     throw new NotGitRepoError(cwd);
   }
 }

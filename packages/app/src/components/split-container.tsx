@@ -31,7 +31,6 @@ import { View, Text } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
 import { shouldFocusPaneFromEventTarget } from "@/components/split-container-pane-focus";
-import { usePanelStore } from "@/stores/panel-store";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import {

@@ -15,12 +15,7 @@
  * Usage: npx tsx src/poc-commands/run-poc.ts
  */
 
-import {
-  query,
-  type Query,
-  type SlashCommand,
-  type SDKUserMessage,
-} from "@anthropic-ai/claude-agent-sdk";
+import { query, type SlashCommand, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 // Pattern from claude-agent.ts listModels():
 // Use an empty async generator when you just need control methods

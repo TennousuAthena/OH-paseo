@@ -1,12 +1,5 @@
 import * as React from "react";
-import {
-  motion,
-  AnimatePresence,
-  useInView,
-  useScroll,
-  useTransform,
-  useMotionValueEvent,
-} from "framer-motion";
+import { motion, AnimatePresence, useInView, useScroll, useTransform } from "framer-motion";
 import { CursorFieldProvider } from "~/components/butterfly";
 import { CommandDialog } from "~/components/command-dialog";
 import {

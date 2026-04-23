@@ -28,7 +28,7 @@ import type {
 } from "@server/server/agent/agent-sdk-types";
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
 import { getModeVisuals, type AgentModeIcon } from "@server/server/agent/provider-manifest";
-import { Combobox, ComboboxItem, ComboboxEmpty } from "@/components/ui/combobox";
+import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import {
   IsolatedBottomSheetModal,
   useIsolatedBottomSheetVisibility,

@@ -21,7 +21,6 @@ import {
   Download,
   MoreVertical,
   RotateCw,
-  X,
 } from "lucide-react-native";
 import { getFileIconSvg } from "@/components/material-file-icons";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";

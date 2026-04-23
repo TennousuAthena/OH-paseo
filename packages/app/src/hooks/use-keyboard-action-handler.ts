@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import {
   keyboardActionDispatcher,
   type KeyboardActionDefinition,
-  type KeyboardActionHandler,
   type KeyboardActionId,
 } from "@/keyboard/keyboard-action-dispatcher";
 

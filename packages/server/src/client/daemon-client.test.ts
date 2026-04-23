@@ -3,7 +3,6 @@ import { DaemonClient, type DaemonTransport } from "./daemon-client";
 import {
   asUint8Array,
   decodeTerminalResizePayload,
-  decodeTerminalSnapshotPayload,
   decodeTerminalStreamFrame,
   encodeTerminalSnapshotPayload,
   encodeTerminalStreamFrame,

@@ -7,7 +7,7 @@
  * to understand how command output is delivered.
  */
 
-import { query, type SDKUserMessage, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 class Pushable<T> implements AsyncIterable<T> {
   private queue: T[] = [];

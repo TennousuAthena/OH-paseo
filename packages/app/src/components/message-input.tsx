@@ -2,13 +2,11 @@ import {
   View,
   Text,
   TextInput,
-  Pressable,
   ActivityIndicator,
   NativeSyntheticEvent,
   TextInputContentSizeChangeEventData,
   TextInputKeyPressEventData,
   TextInputSelectionChangeEventData,
-  BackHandler,
 } from "react-native";
 import {
   useState,

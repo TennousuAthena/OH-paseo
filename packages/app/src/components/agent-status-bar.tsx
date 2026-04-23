@@ -40,11 +40,7 @@ import type {
   AgentProvider,
 } from "@server/server/agent/agent-sdk-types";
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
-import {
-  getModeVisuals,
-  type AgentModeColorTier,
-  type AgentModeIcon,
-} from "@server/server/agent/provider-manifest";
+import { getModeVisuals, type AgentModeColorTier } from "@server/server/agent/provider-manifest";
 import {
   getFeatureHighlightColor,
   getFeatureTooltip,
@@ -1154,36 +1150,34 @@ export function DraftAgentStatusBar({
   }));
 
   return (
-    <>
-      <ControlledStatusBar
-        provider={selectedProvider ?? ""}
-        providerDefinitions={providerDefinitions}
-        allProviderModels={allProviderModels}
-        modeOptions={hasSelectedProvider ? mappedModeOptions : undefined}
-        selectedModeId={effectiveSelectedMode}
-        onSelectMode={onSelectMode}
-        modelOptions={modelOptions}
-        selectedModelId={selectedModel}
-        onSelectModel={(modelId) => onSelectModel(modelId)}
-        onSelectProviderAndModel={onSelectProviderAndModel}
-        isModelLoading={isAllModelsLoading}
-        favoriteKeys={favoriteKeys}
-        onToggleFavoriteModel={(provider, modelId) => {
-          void updatePreferences((current) =>
-            toggleFavoriteModel({ preferences: current, provider, modelId }),
-          ).catch((error) => {
-            console.warn("[DraftAgentStatusBar] toggle favorite model failed", error);
-          });
-        }}
-        thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
-        selectedThinkingOptionId={effectiveSelectedThinkingOption}
-        onSelectThinkingOption={onSelectThinkingOption}
-        features={features}
-        onSetFeature={onSetFeature}
-        onModelSelectorOpen={onModelSelectorOpen}
-        disabled={disabled}
-      />
-    </>
+    <ControlledStatusBar
+      provider={selectedProvider ?? ""}
+      providerDefinitions={providerDefinitions}
+      allProviderModels={allProviderModels}
+      modeOptions={hasSelectedProvider ? mappedModeOptions : undefined}
+      selectedModeId={effectiveSelectedMode}
+      onSelectMode={onSelectMode}
+      modelOptions={modelOptions}
+      selectedModelId={selectedModel}
+      onSelectModel={(modelId) => onSelectModel(modelId)}
+      onSelectProviderAndModel={onSelectProviderAndModel}
+      isModelLoading={isAllModelsLoading}
+      favoriteKeys={favoriteKeys}
+      onToggleFavoriteModel={(provider, modelId) => {
+        void updatePreferences((current) =>
+          toggleFavoriteModel({ preferences: current, provider, modelId }),
+        ).catch((error) => {
+          console.warn("[DraftAgentStatusBar] toggle favorite model failed", error);
+        });
+      }}
+      thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
+      selectedThinkingOptionId={effectiveSelectedThinkingOption}
+      onSelectThinkingOption={onSelectThinkingOption}
+      features={features}
+      onSetFeature={onSetFeature}
+      onModelSelectorOpen={onModelSelectorOpen}
+      disabled={disabled}
+    />
   );
 }
 

@@ -10,7 +10,7 @@ import {
   type GestureResponderEvent,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { useMutation, useQueries } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import {
   useCallback,
   useMemo,
@@ -53,7 +53,6 @@ import {
   buildHostNewWorkspaceRoute,
   parseHostWorkspaceRouteFromPathname,
 } from "@/utils/host-routes";
-import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import {
   createSidebarWorkspaceEntry,
   type SidebarProjectEntry,
@@ -95,11 +94,7 @@ import {
   useIsNavigationProjectActive,
   useIsNavigationWorkspaceSelected,
 } from "@/stores/navigation-active-workspace-store";
-import {
-  normalizeWorkspaceDescriptor,
-  useSessionStore,
-  type WorkspaceDescriptor,
-} from "@/stores/session-store";
+import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -109,7 +104,6 @@ import {
 } from "@/utils/workspace-execution";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { createNameId } from "mnemonic-id";
 import { isWeb as platformIsWeb, isNative as platformIsNative } from "@/constants/platform";
 
 function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): string | null {

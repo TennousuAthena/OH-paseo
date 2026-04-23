@@ -18,7 +18,6 @@ const IS_WEB = platformIsWeb;
 
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import { getProviderIcon } from "@/components/provider-icons";
-import type { FavoriteModelRow } from "@/hooks/use-form-preferences";
 import {
   buildModelRows,
   buildSelectedTriggerLabel,

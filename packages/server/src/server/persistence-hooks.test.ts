@@ -1,11 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import type { ManagedAgent } from "./agent/agent-manager.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
-import {
-  attachAgentStoragePersistence,
-  buildConfigOverrides,
-  buildSessionConfig,
-} from "./persistence-hooks.js";
+import { buildConfigOverrides, buildSessionConfig } from "./persistence-hooks.js";
 import type {
   AgentPermissionRequest,
   AgentSession,

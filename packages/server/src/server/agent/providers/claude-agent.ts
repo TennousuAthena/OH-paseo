@@ -3281,7 +3281,7 @@ class ClaudeAgentSession implements AgentSession {
         return;
       }
       this.ingestPersistedHistory(fs.readFileSync(historyPath, "utf8"));
-    } catch (error) {
+    } catch {
       // ignore history load failures
     }
   }

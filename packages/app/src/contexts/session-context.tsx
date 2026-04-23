@@ -1,4 +1,4 @@
-import { useRef, ReactNode, useCallback, useEffect, useMemo } from "react";
+import { useRef, ReactNode, useCallback, useEffect } from "react";
 import { Buffer } from "buffer";
 import { AppState } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,7 +12,6 @@ import {
   processTimelineResponse,
 } from "@/contexts/session-stream-reducers";
 import type {
-  ActivityLogPayload,
   AgentAttachment,
   AgentStreamEventPayload,
   SessionOutboundMessage,
@@ -25,7 +24,6 @@ import {
 } from "@server/shared/agent-attention-notification";
 import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 import type { DaemonClient } from "@server/client/daemon-client";
-import { File } from "expo-file-system";
 import { getHostRuntimeStore, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useVoiceAudioEngineOptional, useVoiceRuntimeOptional } from "@/contexts/voice-context";
 import type { AudioPlaybackSource } from "@/voice/audio-engine-types";
@@ -38,7 +36,6 @@ import {
 } from "@/stores/session-store";
 import { useDraftStore } from "@/stores/draft-store";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
-import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import { sendOsNotification } from "@/utils/os-notifications";
 import { getIsAppActivelyVisible } from "@/utils/app-visibility";
 import {

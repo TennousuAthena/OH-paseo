@@ -6,7 +6,6 @@ import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focu
 import {
   buildHostWorkspaceRoute,
   buildSettingsRoute,
-  parseHostAgentRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
 } from "@/utils/host-routes";
 import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";

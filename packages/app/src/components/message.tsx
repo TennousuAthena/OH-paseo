@@ -36,7 +36,6 @@ import {
   ChevronDown,
   Check,
   CheckSquare,
-  X,
   Copy,
   TriangleAlertIcon,
   Scissors,
@@ -54,7 +53,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { createMarkdownStyles } from "@/styles/markdown-styles";
-import { Colors, Fonts } from "@/constants/theme";
+import { Fonts } from "@/constants/theme";
 import * as Clipboard from "expo-clipboard";
 import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";

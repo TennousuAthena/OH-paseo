@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
@@ -13,7 +13,7 @@ import {
   DaemonClient,
 } from "./test-utils/index.js";
 import { getFullAccessConfig, getAskModeConfig } from "./daemon-e2e/agent-configs.js";
-import { chunkPcm16, parsePcm16MonoWav, wordSimilarity } from "./test-utils/dictation-e2e.js";
+import { parsePcm16MonoWav, wordSimilarity } from "./test-utils/dictation-e2e.js";
 import type {
   AgentClient,
   AgentPersistenceHandle,

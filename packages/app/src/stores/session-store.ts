@@ -8,24 +8,18 @@ import type { PendingPermission } from "@/types/shared";
 import type { ComposerAttachment } from "@/attachments/types";
 import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 import type {
-  AgentPermissionResponse,
   AgentPermissionRequest,
-  AgentSessionConfig,
   AgentFeature,
   AgentProvider,
   AgentMode,
   AgentCapabilityFlags,
-  AgentModelDefinition,
   AgentUsage,
   AgentPersistenceHandle,
 } from "@server/server/agent/agent-sdk-types";
 import type {
-  FileDownloadTokenResponse,
-  GitSetupOptions,
   ServerInfoStatusPayload,
   ProjectPlacementPayload,
   ServerCapabilities,
-  AgentSnapshotPayload,
   WorkspaceDescriptorPayload,
 } from "@server/shared/messages";
 import { normalizeWorkspaceOpaqueId } from "@/utils/workspace-identity";

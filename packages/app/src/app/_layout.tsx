@@ -20,7 +20,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Platform, Text, View } from "react-native";
+import { View } from "react-native";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { Extrapolation, interpolate, runOnJS, useSharedValue } from "react-native-reanimated";
@@ -82,7 +82,6 @@ import { resolveActiveHost } from "@/utils/active-host";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
 import {
   buildHostRootRoute,
-  decodeWorkspaceIdFromPathSegment,
   mapPathnameToServer,
   parseHostAgentRouteFromPathname,
   parseServerIdFromPathname,

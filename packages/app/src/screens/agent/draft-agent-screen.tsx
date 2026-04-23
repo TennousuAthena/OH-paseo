@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createNameId } from "mnemonic-id";
 import type { ImageAttachment } from "@/components/message-input";
-import { View, Text, Pressable, ScrollView, Keyboard } from "react-native";
+import { View, Text, ScrollView, Keyboard } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -47,7 +47,6 @@ import type {
   AgentCapabilityFlags,
   AgentSessionConfig,
 } from "@server/server/agent/agent-sdk-types";
-import { AGENT_PROVIDER_DEFINITIONS } from "@server/server/agent/provider-manifest";
 import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
@@ -57,7 +56,6 @@ import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispat
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import { useDraftAgentCreateFlow } from "@/hooks/use-draft-agent-create-flow";
-import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 import { isWeb } from "@/constants/platform";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();

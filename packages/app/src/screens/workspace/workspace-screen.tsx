@@ -21,7 +21,6 @@ import {
   X,
 } from "lucide-react-native";
 import { GestureDetector } from "react-native-gesture-handler";
-import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
