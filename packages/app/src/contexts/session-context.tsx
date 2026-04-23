@@ -1109,9 +1109,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         return;
       }
       const workspace = normalizeWorkspaceDescriptor(message.payload.workspace);
-      const existingWorkspace = useSessionStore
-        .getState()
-        .sessions[serverId]?.workspaces.get(workspace.id);
       mergeWorkspaces(serverId, [workspace]);
     });
 
