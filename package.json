@@ -48,6 +48,7 @@
     "format:check": "oxfmt --check .",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
+    "knip": "knip",
     "start": "npm run start --workspace=@getpaseo/server",
     "android": "npm run android --workspace=@getpaseo/app",
     "android:development": "npm run android:development --workspace=@getpaseo/app",
