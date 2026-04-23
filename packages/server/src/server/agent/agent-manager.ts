@@ -278,7 +278,7 @@ type SubscriptionRecord = {
   agentId: string | null;
 };
 
-const BUSY_STATUSES: AgentLifecycleStatus[] = new Set(["initializing", "running"]);
+const BUSY_STATUSES: Set<AgentLifecycleStatus> = new Set(["initializing", "running"]);
 const AgentIdSchema = z.string().uuid();
 
 function isAgentBusy(status: AgentLifecycleStatus): boolean {

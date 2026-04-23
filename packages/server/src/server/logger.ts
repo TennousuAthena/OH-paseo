@@ -37,7 +37,7 @@ type ResolveLogConfigOptions = {
   env?: NodeJS.ProcessEnv;
 };
 
-const LOG_LEVELS: LogLevel[] = new Set(["trace", "debug", "info", "warn", "error", "fatal"]);
+const LOG_LEVELS: Set<LogLevel> = new Set(["trace", "debug", "info", "warn", "error", "fatal"]);
 const LOG_FORMATS: LogFormat[] = ["pretty", "json"];
 const LOG_LEVEL_PRIORITIES: Record<LogLevel, number> = {
   trace: 10,
