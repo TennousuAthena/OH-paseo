@@ -76,7 +76,7 @@ export class OpenAITTS implements TextToSpeechProvider {
       };
     } catch (error: any) {
       this.logger.error({ err: error }, "Speech synthesis error");
-      throw new Error(`TTS synthesis failed: ${error.message}`);
+      throw new Error(`TTS synthesis failed: ${error.message}`, { cause: error });
     }
   }
 }

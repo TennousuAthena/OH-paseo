@@ -154,7 +154,7 @@ describe("TerminalManager", () => {
         for (let attempt = 0; attempt < 10 && !existsSync(markerPath); attempt++) {
           session.send({
             type: "input",
-            data: `printf '%s' \"$PASEO_WORKTREE_PORT\" > ${JSON.stringify(markerPath)}\r`,
+            data: `printf '%s' "$PASEO_WORKTREE_PORT" > ${JSON.stringify(markerPath)}\r`,
           });
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
@@ -181,7 +181,7 @@ describe("TerminalManager", () => {
         for (let attempt = 0; attempt < 10 && !existsSync(markerPath); attempt++) {
           session.send({
             type: "input",
-            data: `printf '%s' \"$PASEO_WORKTREE_PORT\" > ${JSON.stringify(markerPath)}\r`,
+            data: `printf '%s' "$PASEO_WORKTREE_PORT" > ${JSON.stringify(markerPath)}\r`,
           });
           await new Promise((resolve) => setTimeout(resolve, 100));
         }

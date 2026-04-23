@@ -122,8 +122,9 @@ export function createStreamStrategy(config: StreamStrategyConfig): StreamStrate
   return {
     render: config.render,
     orderTail: (streamItems) =>
-      config.orderTailReverse ? [...streamItems].reverse() : streamItems,
-    orderHead: (streamHead) => (config.orderHeadReverse ? [...streamHead].reverse() : streamHead),
+      config.orderTailReverse ? [...streamItems].toReversed() : streamItems,
+    orderHead: (streamHead) =>
+      config.orderHeadReverse ? [...streamHead].toReversed() : streamHead,
     getNeighborIndex: (index, relation) =>
       relation === "above"
         ? index + config.assistantTurnTraversalStep
@@ -153,7 +154,7 @@ export function createStreamStrategy(config: StreamStrategyConfig): StreamStrate
           messages.push(currentItem.text);
         }
       }
-      return messages.reverse().join("\n\n");
+      return messages.toReversed().join("\n\n");
     },
     isNearBottom: (input) => config.isNearBottom(input),
     getBottomOffset: (metrics) => config.getBottomOffset(metrics),

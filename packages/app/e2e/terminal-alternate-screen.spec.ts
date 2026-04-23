@@ -45,6 +45,7 @@ async function waitForAlternateScreenExit(page: Page, afterAlt: string, timeout:
         null,
         2,
       )}`,
+      { cause: error },
     );
   }
 

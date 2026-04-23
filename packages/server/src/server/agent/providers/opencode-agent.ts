@@ -948,7 +948,7 @@ type OpenCodeServerGeneration = {
 };
 
 export class OpenCodeAgentClient implements AgentClient {
-  readonly provider: "opencode" = "opencode";
+  readonly provider = "opencode" as const;
   readonly capabilities = OPENCODE_CAPABILITIES;
 
   private readonly serverManager: OpenCodeServerManager;
@@ -1667,7 +1667,7 @@ export function translateOpenCodeEvent(
           input: { questions },
           metadata: {
             source: "opencode_question",
-            ...(event.properties.tool ?? {}),
+            ...event.properties.tool,
           },
         },
       });
@@ -1757,7 +1757,7 @@ export function translateOpenCodeEvent(
 }
 
 class OpenCodeAgentSession implements AgentSession {
-  readonly provider: "opencode" = "opencode";
+  readonly provider = "opencode" as const;
   readonly capabilities = OPENCODE_CAPABILITIES;
 
   private readonly config: OpenCodeAgentConfig;

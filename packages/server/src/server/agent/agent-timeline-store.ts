@@ -244,7 +244,7 @@ export class InMemoryAgentTimelineStore {
       return null;
     }
 
-    return chunks.reverse().join("");
+    return chunks.toReversed().join("");
   }
 
   getCanonicalUserMessagesById(agentId: string): Map<string, string> {

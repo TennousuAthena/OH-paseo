@@ -220,7 +220,7 @@ function applyRuntimeSettingsToClaudeOptions(
         cwd: spawnOptions.cwd,
         env: {
           ...applyProviderEnv(spawnOptions.env, runtimeSettings),
-          ...(launchEnv ?? {}),
+          ...launchEnv,
         },
         signal: spawnOptions.signal,
         stdio: ["pipe", "pipe", "pipe"],
@@ -1057,7 +1057,7 @@ export function readEventIdentifiers(message: SDKMessage): EventIdentifiers {
 const claudeDebug = process.env.PASEO_CLAUDE_DEBUG === "1";
 
 export class ClaudeAgentClient implements AgentClient {
-  readonly provider: "claude" = "claude";
+  readonly provider = "claude" as const;
   readonly capabilities = CLAUDE_CAPABILITIES;
 
   private readonly defaults?: { agents?: Record<string, AgentDefinition> };
@@ -1347,7 +1347,7 @@ function readStreamRequestOutputTokens(event: Record<string, unknown>): number |
 }
 
 class ClaudeAgentSession implements AgentSession {
-  readonly provider: "claude" = "claude";
+  readonly provider = "claude" as const;
   readonly capabilities = CLAUDE_CAPABILITIES;
 
   private readonly config: ClaudeAgentConfig;
@@ -2174,7 +2174,7 @@ class ClaudeAgentSession implements AgentSession {
         // Increase MCP timeouts for long-running tool calls (10 minutes)
         MCP_TIMEOUT: "600000",
         MCP_TOOL_TIMEOUT: "600000",
-        ...(this.launchEnv ?? {}),
+        ...this.launchEnv,
       },
       // Required for provider-level /rewind support.
       enableFileCheckpointing: true,

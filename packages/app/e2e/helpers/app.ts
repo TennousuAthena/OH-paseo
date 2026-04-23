@@ -156,7 +156,9 @@ async function assertE2EUsesSeededTestDaemon(page: Page): Promise<void> {
     }
   } catch (error) {
     if (error instanceof Error) throw error;
-    throw new Error("E2E expected @paseo:create-agent-preferences to be valid JSON.");
+    throw new Error("E2E expected @paseo:create-agent-preferences to be valid JSON.", {
+      cause: error,
+    });
   }
 }
 

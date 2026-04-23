@@ -185,7 +185,7 @@ export function applyProviderEnv(
 ): Record<string, string | undefined> {
   const merged: Record<string, string | undefined> = {
     ...baseEnv,
-    ...(runtimeSettings?.env ?? {}),
+    ...runtimeSettings?.env,
   };
   for (const key of PARENT_SESSION_ENV_VARS) {
     delete merged[key];

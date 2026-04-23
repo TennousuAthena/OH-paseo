@@ -666,8 +666,8 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       const childAgentDefaultLabels = callerContext?.childAgentDefaultLabels;
       const mergedLabels = {
         ...(callerAgentId ? { "paseo.parent-agent-id": callerAgentId } : {}),
-        ...(childAgentDefaultLabels ?? {}),
-        ...(labels ?? {}),
+        ...childAgentDefaultLabels,
+        ...labels,
       };
       const snapshot = await agentManager.createAgent(
         {

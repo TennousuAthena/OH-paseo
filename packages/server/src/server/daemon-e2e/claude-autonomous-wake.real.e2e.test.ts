@@ -26,7 +26,7 @@ const BACKGROUND_TASK_SLEEP_5_PROMPT = [
 const BACKGROUND_TASK_SLEEP_5_REPEAT_PROMPT = `do it again: ${BACKGROUND_TASK_SLEEP_5_PROMPT}`;
 
 function sanitizeClaudeProjectPath(cwd: string): string {
-  return cwd.replace(/[\\/\.]/g, "-").replace(/_/g, "-");
+  return cwd.replace(/[\\/.]/g, "-").replace(/_/g, "-");
 }
 
 function resolveClaudeTranscriptPath(params: { cwd: string; sessionId: string }): string {
@@ -169,13 +169,13 @@ function extractTranscriptRaceEvidence(
   const userLines = lines.filter((line) => line.type === "user");
   const assistantLines = lines.filter((line) => line.type === "assistant");
   const doItAgain = [...userLines]
-    .reverse()
+    .toReversed()
     .find((line) => readUserText(line).toLowerCase().includes("do it again"));
   const isHelloPrompt = (line: ClaudeTranscriptLine): boolean => {
     const text = readUserText(line).trim().toLowerCase();
     return text === "hello" || text === "say exactly hello";
   };
-  const helloUser = [...userLines].reverse().find((line) => isHelloPrompt(line));
+  const helloUser = [...userLines].toReversed().find((line) => isHelloPrompt(line));
 
   if (!doItAgain || !helloUser || typeof helloUser.uuid !== "string") {
     return null;
@@ -201,7 +201,7 @@ function extractTranscriptRaceEvidence(
     return readUserText(line).includes("<task-notification>");
   });
   const taskNotificationUser =
-    [...taskNotificationCandidates].reverse().find((line) => parseTimestamp(line) >= helloTs) ??
+    [...taskNotificationCandidates].toReversed().find((line) => parseTimestamp(line) >= helloTs) ??
     taskNotificationCandidates[0];
   if (!taskNotificationUser || typeof taskNotificationUser.uuid !== "string") {
     return null;

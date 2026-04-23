@@ -92,8 +92,8 @@ describe("daemon E2E checkout diff subscriptions", () => {
       writeFileSync(path.join(cwd, "alpha.txt"), "alpha\n");
 
       const update = await waitForCheckoutDiffUpdate(ctx, subscriptionId, (payload) => {
-        const paths = payload.files.map((file) => file.path);
-        return paths.includes("alpha.txt") && paths.includes("zeta.txt");
+        const paths = new Set(payload.files.map((file) => file.path));
+        return paths.has("alpha.txt") && paths.has("zeta.txt");
       });
 
       expect(update.error).toBeNull();

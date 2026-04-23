@@ -240,7 +240,7 @@ program
     // Print ancestors first (root to immediate parent)
     if (ancestors.length > 0) {
       process.stdout.write("# Parent Context\n\n");
-      for (const ancestor of ancestors.reverse()) {
+      for (const ancestor of ancestors.toReversed()) {
         process.stdout.write(`## ${ancestor.title} (${ancestor.id}) [${ancestor.status}]\n`);
         if (ancestor.body) {
           process.stdout.write(`\n${ancestor.body}\n`);
@@ -702,7 +702,7 @@ async function buildTaskContext(task: Task, scopeId?: string): Promise<string> {
   let parentContext = "";
   if (ancestors.length > 0) {
     parentContext = "# Parent Context\n\n";
-    for (const ancestor of ancestors.reverse()) {
+    for (const ancestor of ancestors.toReversed()) {
       parentContext += `## ${ancestor.title} (${ancestor.id})\n`;
       if (ancestor.body) {
         parentContext += `\n${ancestor.body}\n`;

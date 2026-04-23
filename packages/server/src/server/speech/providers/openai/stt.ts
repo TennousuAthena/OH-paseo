@@ -245,7 +245,7 @@ export class OpenAISTT implements SpeechToTextProvider {
       };
     } catch (error: any) {
       logger.error({ err: error }, "Transcription error");
-      throw new Error(`STT transcription failed: ${error.message}`);
+      throw new Error(`STT transcription failed: ${error.message}`, { cause: error });
     } finally {
       if (tempFilePath) {
         try {

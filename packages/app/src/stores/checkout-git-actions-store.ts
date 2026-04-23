@@ -53,7 +53,7 @@ function setStatus(
       statusByCheckout: {
         ...state.statusByCheckout,
         [key]: {
-          ...(state.statusByCheckout[key] ?? {}),
+          ...state.statusByCheckout[key],
           [actionId]: status,
         },
       },

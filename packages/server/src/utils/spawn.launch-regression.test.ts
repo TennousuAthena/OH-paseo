@@ -57,7 +57,7 @@ console.log("ARGV_OK");
   if (options?.includeCmdShim !== false) {
     writeFileSync(
       shim,
-      ["@echo off", "setlocal", `\"${fakeDaemonNode}\" \"${assertScript}\" %*`, ""].join("\r\n"),
+      ["@echo off", "setlocal", `"${fakeDaemonNode}" "${assertScript}" %*`, ""].join("\r\n"),
     );
   }
 

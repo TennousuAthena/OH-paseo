@@ -1530,13 +1530,13 @@ export class HostRuntimeStore {
         this.emit(host.serverId);
       });
       void controller
-        .start({
-          ...(initialConnection
+        .start(
+          initialConnection
             ? {
                 initialConnection,
               }
-            : {}),
-        })
+            : {},
+        )
         .catch((error) => {
           const message = error instanceof Error ? error.message : String(error);
           controller.markStartupError(message);

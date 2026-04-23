@@ -193,7 +193,7 @@ async function checkProviderBinaries(): Promise<ProviderBinaryStatus[]> {
   const results = await Promise.all(
     PROVIDER_BINARIES.map(async ({ label, binary }) => {
       const result = await checkProviderBinary(binary);
-      return { label, ...result };
+      return Object.assign({ label }, result);
     }),
   );
   return results;

@@ -368,7 +368,7 @@ function summarizeByType(records: WireFrameRecord[]): Array<{
     byType.set(type, current);
   }
   return [...byType.entries()]
-    .map(([type, value]) => ({ type, ...value }))
+    .map(([type, value]) => Object.assign({ type }, value))
     .sort((left, right) => right.bytes - left.bytes);
 }
 

@@ -1047,15 +1047,17 @@ export async function resolveRepositoryDefaultBranch(repoRoot: string): Promise<
     cwd: repoRoot,
     env: READ_ONLY_GIT_ENV,
   });
-  const branches = stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  const branches = new Set(
+    stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0),
+  );
 
-  if (branches.includes("main")) {
+  if (branches.has("main")) {
     return "main";
   }
-  if (branches.includes("master")) {
+  if (branches.has("master")) {
     return "master";
   }
 

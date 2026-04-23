@@ -55,7 +55,7 @@ console.log("ARGV_OK");
   const shim = path.join(root, `${binaryName}.cmd`);
   writeFileSync(
     shim,
-    ["@echo off", "setlocal", `\"${fakeDaemonNode}\" \"${assertScript}\" %*`, ""].join("\r\n"),
+    ["@echo off", "setlocal", `"${fakeDaemonNode}" "${assertScript}" %*`, ""].join("\r\n"),
   );
 
   return { root, shim, expectedArgs };

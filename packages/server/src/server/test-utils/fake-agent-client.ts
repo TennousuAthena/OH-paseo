@@ -88,7 +88,7 @@ function buildPersistence(
   metadata?: Record<string, unknown>,
 ): AgentPersistenceHandle {
   if (provider === "codex") {
-    return { provider, sessionId, metadata: { conversationId: sessionId, ...(metadata ?? {}) } };
+    return { provider, sessionId, metadata: { conversationId: sessionId, ...metadata } };
   }
   return { provider, sessionId, ...(metadata ? { metadata } : {}) };
 }
@@ -150,7 +150,7 @@ function buildToolCallForPrompt(provider: string, prompt: string) {
       return { name: "apply_patch", input: { patch: "*** Begin Patch\n*** End Patch\n" }, output };
     }
     const printfMatch =
-      /printf\s+\"ok\"\s*>\s*([^\s`]+)/i.exec(text) ?? /printf\s+ok\s*>\s*([^\s`]+)/i.exec(text);
+      /printf\s+"ok"\s*>\s*([^\s`]+)/i.exec(text) ?? /printf\s+ok\s*>\s*([^\s`]+)/i.exec(text);
     if (printfMatch) {
       const fileName = printfMatch[1] ?? "permission.txt";
       return {

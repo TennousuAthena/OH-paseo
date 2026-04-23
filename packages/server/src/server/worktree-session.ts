@@ -46,7 +46,7 @@ import {
 } from "./paseo-worktree-archive-service.js";
 import { toWorktreeWireError } from "./worktree-errors.js";
 
-const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9._\/-]+$/;
+const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
 export interface NormalizedGitOptions {
   baseBranch?: string;

@@ -130,8 +130,8 @@ function mergeRuntimeSettings(
     env:
       base?.env || override?.env
         ? {
-            ...(base?.env ?? {}),
-            ...(override?.env ?? {}),
+            ...base?.env,
+            ...override?.env,
           }
         : undefined,
     disallowedTools:

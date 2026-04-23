@@ -153,7 +153,7 @@ function tailFile(filePath: string, lines = 50): string {
 function logDesktopDaemonLifecycle(message: string, details?: Record<string, unknown>): void {
   log.info("[desktop daemon]", message, {
     pid: process.pid,
-    ...(details ?? {}),
+    ...details,
   });
 }
 

@@ -267,7 +267,7 @@ function attachPersistenceCwd(
   return {
     ...handle,
     metadata: {
-      ...(handle.metadata ?? {}),
+      ...handle.metadata,
       cwd,
     },
   };
@@ -278,11 +278,11 @@ type SubscriptionRecord = {
   agentId: string | null;
 };
 
-const BUSY_STATUSES: AgentLifecycleStatus[] = ["initializing", "running"];
+const BUSY_STATUSES: AgentLifecycleStatus[] = new Set(["initializing", "running"]);
 const AgentIdSchema = z.string().uuid();
 
 function isAgentBusy(status: AgentLifecycleStatus): boolean {
-  return BUSY_STATUSES.includes(status);
+  return BUSY_STATUSES.has(status);
 }
 
 function isTurnTerminalEvent(event: AgentStreamEvent): boolean {
@@ -649,7 +649,7 @@ export class AgentManager {
                 type: "http" as const,
                 url: `${this.mcpBaseUrl}?callerAgentId=${resolvedAgentId}`,
               },
-              ...(config.mcpServers ?? {}),
+              ...config.mcpServers,
             },
           };
     const normalizedConfig = await this.normalizeConfig(injectedConfig);
@@ -1708,7 +1708,7 @@ export class AgentManager {
     }
 
     return {
-      text: chunks.reverse().join(""),
+      text: chunks.toReversed().join(""),
       startsAtBeginning,
     };
   }
@@ -2847,12 +2847,12 @@ export class AgentManager {
           "code" in error &&
           (error as NodeJS.ErrnoException).code === "ENOENT"
         ) {
-          throw new Error(`Working directory does not exist: ${normalized.cwd}`);
+          throw new Error(`Working directory does not exist: ${normalized.cwd}`, { cause: error });
         }
         if (error instanceof Error) {
           throw error;
         }
-        throw new Error(`Failed to access working directory: ${normalized.cwd}`);
+        throw new Error(`Failed to access working directory: ${normalized.cwd}`, { cause: error });
       }
     }
 

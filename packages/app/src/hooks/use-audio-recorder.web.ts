@@ -190,7 +190,7 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
     try {
       stream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch (error: any) {
-      throw new Error(`Failed to access microphone: ${error?.message ?? error}`);
+      throw new Error(`Failed to access microphone: ${error?.message ?? error}`, { cause: error });
     }
 
     try {
@@ -225,7 +225,9 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
       recorder = new MediaRecorder(stream, recorderOptions);
     } catch (error: any) {
       cleanupStream();
-      throw new Error(`Failed to initialize recorder: ${error?.message ?? error}`);
+      throw new Error(`Failed to initialize recorder: ${error?.message ?? error}`, {
+        cause: error,
+      });
     }
 
     mediaRecorderRef.current = recorder;

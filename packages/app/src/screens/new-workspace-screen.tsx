@@ -292,7 +292,7 @@ export function NewWorkspaceScreen({
         cwd: input.cwd,
         worktreeSlug: createNameId(),
         ...(input.attachments.length > 0 ? { attachments: input.attachments } : {}),
-        ...(checkoutRequest ?? {}),
+        ...checkoutRequest,
       };
     },
     [selectedItem],

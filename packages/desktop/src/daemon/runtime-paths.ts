@@ -349,6 +349,7 @@ export async function runCliJsonCommand(args: string[]): Promise<unknown> {
   } catch (error) {
     throw new Error(
       `CLI command returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 }

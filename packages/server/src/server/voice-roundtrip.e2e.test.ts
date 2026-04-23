@@ -285,6 +285,7 @@ describe("voice roundtrip e2e", () => {
           } catch (error) {
             throw new Error(
               `${error instanceof Error ? error.message : String(error)} | requestedVoiceAgentId=${voiceAgentId} | timelineTools=${JSON.stringify(timelineTools)} | timelineToolAgentIds=${JSON.stringify(Array.from(timelineToolAgentIds))} | activityErrors=${JSON.stringify(activityErrors)}`,
+              { cause: error },
             );
           } finally {
             offStream();

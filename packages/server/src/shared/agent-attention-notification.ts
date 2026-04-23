@@ -153,7 +153,7 @@ export function findLatestAssistantMessageFromTimeline(
     return null;
   }
 
-  return chunks.reverse().join("");
+  return chunks.toReversed().join("");
 }
 
 export function findLatestPermissionRequest(

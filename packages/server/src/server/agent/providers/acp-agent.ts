@@ -516,9 +516,9 @@ export class ACPAgentClient implements AgentClient {
       const sessions: PersistedAgentDescriptor[] = [];
       let cursor: string | null | undefined;
       do {
-        const page: ListSessionsResponse = await probe.connection.listSessions({
-          ...(cursor ? { cursor } : {}),
-        });
+        const page: ListSessionsResponse = await probe.connection.listSessions(
+          cursor ? { cursor } : {},
+        );
         for (const session of page.sessions) {
           sessions.push({
             provider: this.provider,
@@ -566,7 +566,7 @@ export class ACPAgentClient implements AgentClient {
           process.env as Record<string, string | undefined>,
           this.runtimeSettings,
         ),
-        ...(launchEnv ?? {}),
+        ...launchEnv,
       },
       stdio: ["pipe", "pipe", "pipe"],
     }) as ChildProcessWithoutNullStreams;
@@ -1413,7 +1413,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
           process.env as Record<string, string | undefined>,
           this.runtimeSettings,
         ),
-        ...(this.launchEnv ?? {}),
+        ...this.launchEnv,
       },
       stdio: ["pipe", "pipe", "pipe"],
     }) as ChildProcessWithoutNullStreams;

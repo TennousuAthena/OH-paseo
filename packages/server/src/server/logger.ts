@@ -37,7 +37,7 @@ type ResolveLogConfigOptions = {
   env?: NodeJS.ProcessEnv;
 };
 
-const LOG_LEVELS: LogLevel[] = ["trace", "debug", "info", "warn", "error", "fatal"];
+const LOG_LEVELS: LogLevel[] = new Set(["trace", "debug", "info", "warn", "error", "fatal"]);
 const LOG_FORMATS: LogFormat[] = ["pretty", "json"];
 const LOG_LEVEL_PRIORITIES: Record<LogLevel, number> = {
   trace: 10,
@@ -56,7 +56,7 @@ const DEFAULT_FILE_ROTATE_MAX_FILES = 2;
 const DEFAULT_DAEMON_LOG_FILENAME = "daemon.log";
 
 function parseLogLevel(value: string | undefined): LogLevel | undefined {
-  if (!value || !LOG_LEVELS.includes(value as LogLevel)) {
+  if (!value || !LOG_LEVELS.has(value as LogLevel)) {
     return undefined;
   }
   return value as LogLevel;
@@ -158,7 +158,7 @@ function rotateOnRestart(filePath: string, maxFiles: number): void {
   const rotatedFiles = readdirSync(dir)
     .filter((f) => f.endsWith(`-${base}`) && f !== base)
     .sort()
-    .reverse();
+    .toReversed();
 
   for (const file of rotatedFiles.slice(maxFiles)) {
     try {

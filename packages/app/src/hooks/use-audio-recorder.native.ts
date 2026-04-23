@@ -227,7 +227,7 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
       if (error?.message !== "Recording cancelled") {
         console.error("[AudioRecorder] Failed to start recording:", error);
       }
-      throw new Error(`Failed to start audio recording: ${error.message}`);
+      throw new Error(`Failed to start audio recording: ${error.message}`, { cause: error });
     }
   }, [recordingOptions.sampleRate, recordingOptions.numberOfChannels, recordingOptions.bitRate]);
 
@@ -293,7 +293,7 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
     } catch (error: any) {
       setRecordingStartTime(null);
       console.error("[AudioRecorder] Failed to stop recording:", error);
-      throw new Error(`Failed to stop audio recording: ${error.message}`);
+      throw new Error(`Failed to stop audio recording: ${error.message}`, { cause: error });
     } finally {
       startStopMutexRef.current = null;
     }

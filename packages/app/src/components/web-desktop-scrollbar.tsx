@@ -279,26 +279,23 @@ export function WebDesktopScrollbarOverlay({
         setIsDragging(false);
       },
     });
-  }, [applyDragDelta, platformIsWeb]);
+  }, [applyDragDelta]);
 
-  const startWebDrag = useCallback(
-    (event: any) => {
-      if (!platformIsWeb) {
-        return;
-      }
-      const clientY = readClientY(event);
-      if (clientY === null) {
-        return;
-      }
-      event?.preventDefault?.();
-      event?.stopPropagation?.();
-      event?.nativeEvent?.preventDefault?.();
-      dragStartOffsetRef.current = normalizedOffsetRef.current;
-      dragStartClientYRef.current = clientY;
-      setIsDragging(true);
-    },
-    [platformIsWeb],
-  );
+  const startWebDrag = useCallback((event: any) => {
+    if (!platformIsWeb) {
+      return;
+    }
+    const clientY = readClientY(event);
+    if (clientY === null) {
+      return;
+    }
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    event?.nativeEvent?.preventDefault?.();
+    dragStartOffsetRef.current = normalizedOffsetRef.current;
+    dragStartClientYRef.current = clientY;
+    setIsDragging(true);
+  }, []);
 
   const handleGrabHoverIn = useCallback(() => {
     if (!isScrollVisible && !isDragging) {
@@ -334,7 +331,7 @@ export function WebDesktopScrollbarOverlay({
       window.removeEventListener("pointerup", stopDragging);
       window.removeEventListener("pointercancel", stopDragging);
     };
-  }, [applyDragDelta, isDragging, platformIsWeb]);
+  }, [applyDragDelta, isDragging]);
 
   if (!enabled || !geometry.isVisible) {
     return null;

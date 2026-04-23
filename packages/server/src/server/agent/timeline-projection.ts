@@ -79,7 +79,7 @@ function mergeToolCallItems(
   const mergedDetail = mergeToolCallDetail(existing.detail, incoming.detail);
   const mergedMetadata =
     existing.metadata || incoming.metadata
-      ? { ...(existing.metadata ?? {}), ...(incoming.metadata ?? {}) }
+      ? { ...existing.metadata, ...incoming.metadata }
       : undefined;
 
   const merged: Extract<AgentTimelineItem, { type: "tool_call" }> = {

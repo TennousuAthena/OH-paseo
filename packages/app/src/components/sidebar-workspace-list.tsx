@@ -2158,7 +2158,6 @@ export function SidebarWorkspaceList({
       serverId,
       shortcutIndexByWorkspaceKey,
       showShortcutBadges,
-      platformIsNative,
       creatingWorkspaceIds,
     ],
   );

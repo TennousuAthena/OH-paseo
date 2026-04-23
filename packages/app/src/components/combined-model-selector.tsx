@@ -618,7 +618,7 @@ export function CombinedModelSelector({
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [isOpen, platformIsWeb]);
+  }, [isOpen]);
 
   return (
     <>

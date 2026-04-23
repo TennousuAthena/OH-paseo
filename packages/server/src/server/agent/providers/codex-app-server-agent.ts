@@ -1408,11 +1408,13 @@ function mapCodexPatchNotificationToToolCall(params: {
       : {
           ...(files.length > 0
             ? {
-                files: files.map((file) => ({
-                  path: file.path,
-                  ...(file.kind ? { kind: file.kind } : {}),
-                  ...codexPatchTextFields(file.content ?? patchText),
-                })),
+                files: files.map((file) =>
+                  Object.assign(
+                    { path: file.path },
+                    file.kind ? { kind: file.kind } : {},
+                    codexPatchTextFields(file.content ?? patchText),
+                  ),
+                ),
               }
             : {}),
           ...(params.stdout ? { stdout: params.stdout } : {}),
@@ -2667,7 +2669,7 @@ class CodexAppServerAgentSession implements AgentSession {
 
   private applyFeatureValue(featureId: "fast_mode" | "plan_mode", value: boolean): void {
     this.config.featureValues = {
-      ...(this.config.featureValues ?? {}),
+      ...this.config.featureValues,
       [featureId]: value,
     };
 

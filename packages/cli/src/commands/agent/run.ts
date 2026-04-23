@@ -325,7 +325,7 @@ export async function runRunCommand(
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          throw new Error(`Failed to read image ${imagePath}: ${message}`);
+          throw new Error(`Failed to read image ${imagePath}: ${message}`, { cause: err });
         }
       });
     }

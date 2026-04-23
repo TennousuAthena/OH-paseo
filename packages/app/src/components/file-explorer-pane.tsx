@@ -287,14 +287,14 @@ export function FileExplorerPane({
         directoryPaths.unshift(".");
       }
 
-      await Promise.all([
-        ...directoryPaths.map((path) =>
+      await Promise.all(
+        directoryPaths.map((path) =>
           requestDirectoryListing(path, {
             recordHistory: false,
             setCurrentPath: false,
           }),
         ),
-      ]);
+      );
       return null;
     },
     enabled: false,

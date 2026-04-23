@@ -1580,7 +1580,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           console.error("[Session] Failed to send agent message:", error);
         });
     },
-    [encodeImages, serverId, client, setAgentStreamTail, setAgentStreamHead],
+    [serverId, client, setAgentStreamTail, setAgentStreamHead],
   );
 
   // Keep the ref updated so the agent_update handler can call it
@@ -1677,7 +1677,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         ...(requestId ? { requestId } : {}),
       });
     },
-    [encodeImages, client],
+    [client],
   );
 
   const setAgentMode = useCallback(
