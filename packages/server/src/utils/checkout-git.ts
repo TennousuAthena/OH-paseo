@@ -4,9 +4,11 @@ import { open as openFile, readFile, stat as statFile } from "fs/promises";
 import { TTLCache } from "@isaacs/ttlcache";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
+import { parseGitHubRepoFromRemote } from "../server/workspace-git-metadata.js";
 import {
   GitHubAuthenticationError,
   GitHubCliMissingError,
+  GitHubCommandError,
   createGitHubService,
   resolveGitHubRepo,
   type GitHubRepoRemoteUrlResolver,
@@ -29,6 +31,7 @@ const SHORTSTAT_CACHE_MAX = 1_000;
 let pullRequestStatusCacheTtlMs = DEFAULT_PULL_REQUEST_STATUS_CACHE_TTL_MS;
 let pullRequestStatusCache = createPullRequestStatusCache(pullRequestStatusCacheTtlMs);
 const pullRequestStatusInFlight = new Map<string, Promise<PullRequestStatusResult>>();
+const lastSuccessfulPullRequestStatus = new Map<string, PullRequestStatusResult>();
 let shortstatCacheTtlMs = DEFAULT_SHORTSTAT_CACHE_TTL_MS;
 let shortstatCache = createShortstatCache(shortstatCacheTtlMs);
 const shortstatInFlight = new Map<string, Promise<CheckoutShortstat | null>>();
@@ -36,6 +39,11 @@ const shortstatInFlight = new Map<string, Promise<CheckoutShortstat | null>>();
 interface CheckoutReadCacheOptions {
   force?: boolean;
   reason?: string;
+}
+
+interface PullRequestStatusLookupTarget {
+  headRef: string;
+  headRepositoryOwner?: string;
 }
 
 function createPullRequestStatusCache(ttlMs: number) {
@@ -58,6 +66,17 @@ function getPullRequestStatusCacheKey(cwd: string): string {
   return resolve(cwd);
 }
 
+function rememberPullRequestStatus(cacheKey: string, status: PullRequestStatusResult): void {
+  lastSuccessfulPullRequestStatus.set(cacheKey, status);
+  if (lastSuccessfulPullRequestStatus.size <= PULL_REQUEST_STATUS_CACHE_MAX) {
+    return;
+  }
+  const oldest = lastSuccessfulPullRequestStatus.keys().next();
+  if (!oldest.done) {
+    lastSuccessfulPullRequestStatus.delete(oldest.value);
+  }
+}
+
 function getShortstatCacheKey(cwd: string): string {
   return resolve(cwd);
 }
@@ -68,6 +87,7 @@ export function __resetPullRequestStatusCacheForTests(): void {
   pullRequestStatusCacheTtlMs = DEFAULT_PULL_REQUEST_STATUS_CACHE_TTL_MS;
   pullRequestStatusCache = createPullRequestStatusCache(pullRequestStatusCacheTtlMs);
   pullRequestStatusInFlight.clear();
+  lastSuccessfulPullRequestStatus.clear();
 }
 
 export function __setPullRequestStatusCacheTtlForTests(ttlMs: number): void {
@@ -76,6 +96,7 @@ export function __setPullRequestStatusCacheTtlForTests(ttlMs: number): void {
   pullRequestStatusCacheTtlMs = ttlMs;
   pullRequestStatusCache = createPullRequestStatusCache(ttlMs);
   pullRequestStatusInFlight.clear();
+  lastSuccessfulPullRequestStatus.clear();
 }
 
 export function __resetCheckoutShortstatCacheForTests(): void {
@@ -903,6 +924,52 @@ export async function getOriginRemoteUrl(cwd: string): Promise<string | null> {
 export async function hasOriginRemote(cwd: string): Promise<boolean> {
   const url = await getOriginRemoteUrl(cwd);
   return url !== null;
+}
+
+async function getGitConfigValue(cwd: string, key: string): Promise<string | null> {
+  try {
+    const { stdout } = await runGitCommand(["config", "--get", key], {
+      cwd,
+      env: READ_ONLY_GIT_ENV,
+    });
+    const value = stdout.trim();
+    return value.length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseBranchMergeHeadRef(mergeRef: string | null): string | null {
+  const prefix = "refs/heads/";
+  if (!mergeRef?.startsWith(prefix)) {
+    return null;
+  }
+  const headRef = mergeRef.slice(prefix.length).trim();
+  return headRef.length > 0 ? headRef : null;
+}
+
+async function resolvePullRequestStatusLookupTarget(
+  cwd: string,
+  currentBranch: string,
+): Promise<PullRequestStatusLookupTarget> {
+  const remoteName = await getGitConfigValue(cwd, `branch.${currentBranch}.remote`);
+  if (!remoteName?.startsWith("paseo-pr-")) {
+    return { headRef: currentBranch };
+  }
+
+  const mergeRef = await getGitConfigValue(cwd, `branch.${currentBranch}.merge`);
+  const trackedHeadRef = parseBranchMergeHeadRef(mergeRef);
+  if (!trackedHeadRef) {
+    return { headRef: currentBranch };
+  }
+
+  const remoteUrl = await getGitConfigValue(cwd, `remote.${remoteName}.url`);
+  const remoteRepo = remoteUrl ? parseGitHubRepoFromRemote(remoteUrl) : null;
+  const headRepositoryOwner = remoteRepo?.split("/")[0];
+  return {
+    headRef: trackedHeadRef,
+    ...(headRepositoryOwner ? { headRepositoryOwner } : {}),
+  };
 }
 
 export async function resolveAbsoluteGitDir(cwd: string): Promise<string | null> {
@@ -2106,7 +2173,17 @@ export async function getPullRequestStatus(
   const lookup = getPullRequestStatusUncached(cwd, github, options)
     .then((status) => {
       pullRequestStatusCache.set(cacheKey, status);
+      rememberPullRequestStatus(cacheKey, status);
       return status;
+    })
+    .catch((error) => {
+      if (error instanceof GitHubCommandError) {
+        const stale = lastSuccessfulPullRequestStatus.get(cacheKey);
+        if (stale) {
+          return stale;
+        }
+      }
+      throw error;
     })
     .finally(() => {
       pullRequestStatusInFlight.delete(cacheKey);
@@ -2130,9 +2207,10 @@ async function getPullRequestStatusUncached(
     };
   }
   try {
+    const lookupTarget = await resolvePullRequestStatusLookupTarget(cwd, head);
     const status = await github.getCurrentPullRequestStatus({
       cwd,
-      headRef: head,
+      ...lookupTarget,
       reason: options?.reason,
     });
     return {

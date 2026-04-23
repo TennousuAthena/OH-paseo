@@ -1220,6 +1220,78 @@ describe("GitHubService", () => {
     ]);
   });
 
+  it("selects the requested fork owner when resolving a scoped PR worktree branch", async () => {
+    const runner = createScriptedRunner([
+      { error: noPullRequestError() },
+      JSON.stringify([
+        {
+          number: 77,
+          url: "https://github.com/repoOwner/repo/pull/77",
+          title: "Unrelated fork main branch",
+          state: "OPEN",
+          isDraft: false,
+          baseRefName: "main",
+          headRefName: "main",
+          mergedAt: null,
+          statusCheckRollup: [],
+          reviewDecision: "REVIEW_REQUIRED",
+          headRepositoryOwner: { login: "otherForkOwner" },
+        },
+        {
+          number: 345,
+          url: "https://github.com/repoOwner/repo/pull/345",
+          title: "Requested fork main branch",
+          state: "OPEN",
+          isDraft: false,
+          baseRefName: "main",
+          headRefName: "main",
+          mergedAt: null,
+          statusCheckRollup: [],
+          reviewDecision: "REVIEW_REQUIRED",
+          headRepositoryOwner: { login: "chethanuk" },
+        },
+      ]),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "main",
+      headRepositoryOwner: "chethanuk",
+    });
+
+    expect(status).toMatchObject({
+      number: 345,
+      repoOwner: "repoOwner",
+      repoName: "repo",
+      headRefName: "main",
+    });
+    expect(runner.calls.map((call) => call.args)).toEqual([
+      [
+        "pr",
+        "view",
+        "--json",
+        "number,url,title,state,isDraft,baseRefName,headRefName,mergedAt,statusCheckRollup,reviewDecision,headRepositoryOwner",
+      ],
+      [
+        "pr",
+        "list",
+        "--state",
+        "all",
+        "--head",
+        "main",
+        "--json",
+        "number,url,title,state,isDraft,baseRefName,headRefName,mergedAt,statusCheckRollup,reviewDecision,headRepositoryOwner",
+        "--limit",
+        "10",
+      ],
+    ]);
+  });
+
   it("finds a fork PR in the parent repo when the direct current branch view is unavailable", async () => {
     const runner = createScriptedRunner([
       { error: noPullRequestError() },

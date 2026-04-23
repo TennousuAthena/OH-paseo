@@ -481,6 +481,7 @@ export interface GitHubService {
     options: {
       cwd: string;
       headRef: string;
+      headRepositoryOwner?: string;
     } & GitHubReadOptions,
   ): Promise<GitHubCurrentPullRequestStatus | null>;
   getPullRequestTimeline(
@@ -854,12 +855,16 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       return cached({
         cwd: options.cwd,
         method: "getCurrentPullRequestStatus",
-        args: { headRef: options.headRef },
+        args: {
+          headRef: options.headRef,
+          headRepositoryOwner: options.headRepositoryOwner,
+        },
         readOptions: options,
         load: async () => {
           return resolveCurrentPullRequestView({
             cwd: options.cwd,
             headRef: options.headRef,
+            headRepositoryOwner: options.headRepositoryOwner,
             run,
           });
         },
@@ -1281,33 +1286,51 @@ function isNoPullRequestFoundError(error: unknown): boolean {
 async function resolveCurrentPullRequestView(options: {
   cwd: string;
   headRef: string;
+  headRepositoryOwner?: string;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
 }): Promise<GitHubCurrentPullRequestStatus | null> {
   const viewCandidate = await tryCurrentPullRequestView(options);
-  if (viewCandidate && isCandidateForHeadRef(viewCandidate, options.headRef)) {
-    return viewCandidate.status;
+  const viewMatch = viewCandidate
+    ? pickPullRequestCandidate({
+        candidates: [viewCandidate],
+        headRef: options.headRef,
+        headRepositoryOwner: options.headRepositoryOwner,
+      })
+    : null;
+  if (viewMatch) {
+    return viewMatch.status;
   }
 
-  const repo = await getGitHubRepoView(options);
-  const forkOwner = repo?.owner?.login;
-  const parentOwner = repo?.parent?.owner?.login;
-  const parentName = repo?.parent?.name;
-  if (!forkOwner || !parentOwner || !parentName) {
-    return null;
+  let listHeadRef = options.headRef;
+  let listRepo: string | undefined;
+  let headRepositoryOwner = options.headRepositoryOwner;
+
+  if (!headRepositoryOwner) {
+    const repo = await getGitHubRepoView(options);
+    const forkOwner = repo?.owner?.login;
+    const parentOwner = repo?.parent?.owner?.login;
+    const parentName = repo?.parent?.name;
+    if (!forkOwner || !parentOwner || !parentName) {
+      return null;
+    }
+
+    listHeadRef = `${forkOwner}:${options.headRef}`;
+    listRepo = `${parentOwner}/${parentName}`;
+    headRepositoryOwner = forkOwner;
   }
 
-  const parentCandidates = await listCurrentPullRequestCandidates({
+  const candidates = await listCurrentPullRequestCandidates({
     cwd: options.cwd,
-    headRef: `${forkOwner}:${options.headRef}`,
+    headRef: listHeadRef,
     run: options.run,
-    repo: `${parentOwner}/${parentName}`,
+    repo: listRepo,
   });
-  const parentMatch = pickPullRequestCandidate({
-    candidates: parentCandidates,
+  const match = pickPullRequestCandidate({
+    candidates,
     headRef: options.headRef,
-    headRepositoryOwner: forkOwner,
+    headRepositoryOwner,
   });
-  return parentMatch?.status ?? null;
+  return match?.status ?? null;
 }
 
 async function tryCurrentPullRequestView(options: {

@@ -31,6 +31,7 @@ import {
   warmCheckoutShortstatInBackground,
 } from "./checkout-git.js";
 import {
+  GitHubCommandError,
   GitHubCliMissingError,
   type GitHubCurrentPullRequestStatus,
   type GitHubService,
@@ -1428,6 +1429,45 @@ const x = 1;
     });
   });
 
+  it("uses the tracked fork branch for PR worktree status lookup", async () => {
+    execSync("git checkout -b chethanuk/main", { cwd: repoDir });
+    execSync("git remote add origin https://github.com/getpaseo/paseo.git", { cwd: repoDir });
+    execSync("git remote add paseo-pr-345 git@github.com:chethanuk/paseo.git", { cwd: repoDir });
+    execSync("git config branch.chethanuk/main.remote paseo-pr-345", { cwd: repoDir });
+    execSync("git config branch.chethanuk/main.merge refs/heads/main", { cwd: repoDir });
+
+    const requestedTargets: Array<{ headRef: string; headRepositoryOwner?: string }> = [];
+    const github = createGitHubServiceForStatus(
+      createPullRequestStatus({
+        number: 345,
+        url: "https://github.com/getpaseo/paseo/pull/345",
+        headRefName: "main",
+      }),
+      {
+        onStatus: () => {},
+      },
+    );
+    github.getCurrentPullRequestStatus = async (options) => {
+      requestedTargets.push({
+        headRef: options.headRef,
+        ...(options.headRepositoryOwner
+          ? { headRepositoryOwner: options.headRepositoryOwner }
+          : {}),
+      });
+      return createPullRequestStatus({
+        number: 345,
+        url: "https://github.com/getpaseo/paseo/pull/345",
+        headRefName: options.headRef,
+      });
+    };
+
+    const status = await getPullRequestStatus(repoDir, github);
+
+    expect(requestedTargets).toEqual([{ headRef: "main", headRepositoryOwner: "chethanuk" }]);
+    expect(status.status?.number).toBe(345);
+    expect(status.status?.headRefName).toBe("main");
+  });
+
   it("returns closed-unmerged PR status without marking it as merged", async () => {
     execSync("git checkout -b feature", { cwd: repoDir });
     execSync("git remote add origin https://github.com/getpaseo/paseo.git", { cwd: repoDir });
@@ -1491,6 +1531,75 @@ const x = 1;
       const second = await getPullRequestStatus(repoDir, github);
       expect(first.status?.url).toContain("/pull/1");
       expect(second.status?.url).toContain("/pull/2");
+      expect(callCount).toBe(2);
+    } finally {
+      __resetPullRequestStatusCacheForTests();
+    }
+  });
+
+  it("keeps stale PR status when a refresh hits a transient GitHub error", async () => {
+    execSync("git checkout -b feature", { cwd: repoDir });
+    execSync("git remote add origin https://github.com/getpaseo/paseo.git", { cwd: repoDir });
+
+    __setPullRequestStatusCacheTtlForTests(50);
+    try {
+      let callCount = 0;
+      const github = createGitHubServiceForStatus(null);
+      github.getCurrentPullRequestStatus = async () => {
+        callCount += 1;
+        if (callCount === 1) {
+          return createPullRequestStatus({
+            url: "https://github.com/getpaseo/paseo/pull/123",
+          });
+        }
+        throw new GitHubCommandError({
+          args: ["pr", "view"],
+          cwd: repoDir,
+          exitCode: 1,
+          stderr: "could not resolve host: github.com",
+        });
+      };
+
+      const fresh = await getPullRequestStatus(repoDir, github);
+      await sleep(80);
+      const stale = await getPullRequestStatus(repoDir, github);
+
+      expect(stale).toEqual(fresh);
+      expect(stale.githubFeaturesEnabled).toBe(true);
+      expect(stale.status?.url).toContain("/pull/123");
+      expect(callCount).toBe(2);
+    } finally {
+      __resetPullRequestStatusCacheForTests();
+    }
+  });
+
+  it("clears stale PR status after a successful no-PR refresh", async () => {
+    execSync("git checkout -b feature", { cwd: repoDir });
+    execSync("git remote add origin https://github.com/getpaseo/paseo.git", { cwd: repoDir });
+
+    __setPullRequestStatusCacheTtlForTests(50);
+    try {
+      let callCount = 0;
+      const github = createGitHubServiceForStatus(null);
+      github.getCurrentPullRequestStatus = async () => {
+        callCount += 1;
+        if (callCount === 1) {
+          return createPullRequestStatus({
+            url: "https://github.com/getpaseo/paseo/pull/123",
+          });
+        }
+        return null;
+      };
+
+      const fresh = await getPullRequestStatus(repoDir, github);
+      await sleep(80);
+      const cleared = await getPullRequestStatus(repoDir, github);
+
+      expect(fresh.status?.url).toContain("/pull/123");
+      expect(cleared).toEqual({
+        githubFeaturesEnabled: true,
+        status: null,
+      });
       expect(callCount).toBe(2);
     } finally {
       __resetPullRequestStatusCacheForTests();
