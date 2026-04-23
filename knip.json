@@ -10,6 +10,10 @@
         "src/server/index.ts",
         "src/server/exports.ts",
         "src/utils/tool-call-parsers.ts",
+        "src/shared/**/*.ts",
+        "src/client/**/*.ts",
+        "src/server/agent/agent-sdk-types.ts",
+        "src/server/agent/provider-manifest.ts",
         "scripts/**/*.{ts,mts,mjs,cjs,js}",
         "src/**/*.test.ts",
         "src/**/*.test.tsx",
@@ -33,6 +37,9 @@
         "test-stubs/**/*.ts"
       ],
       "project": ["**/*.{ts,tsx,js,jsx}"],
+      "paths": {
+        "@server/*": ["../server/src/*"]
+      },
       "ignore": ["android/**", "ios/**", ".expo/**", "dist/**", "scripts/reset-project.js"]
     },
     "packages/cli": {
