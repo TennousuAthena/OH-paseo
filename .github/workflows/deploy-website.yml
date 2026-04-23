@@ -4,13 +4,14 @@ on:
   push:
     branches: [main]
     paths:
+      - 'CHANGELOG.md'
       - 'packages/website/**'
       - 'package.json'
       - 'package-lock.json'
       - 'patches/**'
       - '.github/workflows/deploy-website.yml'
   release:
-    types: [published, edited]
+    types: [published]
   workflow_dispatch:
 
 jobs:
