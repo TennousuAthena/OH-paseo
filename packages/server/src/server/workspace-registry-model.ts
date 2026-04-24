@@ -7,10 +7,10 @@ import type { PersistedWorkspaceRecord } from "./workspace-registry.js";
 
 export type PersistedProjectKind = "git" | "non_git";
 export type PersistedWorkspaceKind = "local_checkout" | "worktree" | "directory";
-export type DetectStaleWorkspacesInput = {
+export interface DetectStaleWorkspacesInput {
   activeWorkspaces: PersistedWorkspaceRecord[];
   checkDirectoryExists: (cwd: string) => Promise<boolean>;
-};
+}
 
 export function normalizeWorkspaceId(cwd: string): string {
   const trimmed = cwd.trim();
@@ -188,9 +188,14 @@ export async function detectStaleWorkspaces(
 ): Promise<Set<string>> {
   const staleWorkspaceIds = new Set<string>();
 
-  for (const workspace of input.activeWorkspaces) {
-    const dirExists = await input.checkDirectoryExists(workspace.cwd);
-    if (!dirExists) {
+  const existenceChecks = await Promise.all(
+    input.activeWorkspaces.map(async (workspace) => ({
+      workspace,
+      exists: await input.checkDirectoryExists(workspace.cwd),
+    })),
+  );
+  for (const { workspace, exists } of existenceChecks) {
+    if (!exists) {
       staleWorkspaceIds.add(workspace.workspaceId);
     }
   }

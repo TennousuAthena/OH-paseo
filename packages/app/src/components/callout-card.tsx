@@ -1,6 +1,6 @@
 import { X } from "lucide-react-native";
-import type { ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useCallback, useMemo, type ReactNode } from "react";
+import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 export type CalloutActionVariant = "primary" | "secondary";
@@ -43,7 +43,10 @@ export function CalloutCard({
   const hasHeader = title != null || icon != null;
   const hasDescription = description != null && description !== "";
 
-  const containerStyle = [styles.container, variant === "error" ? styles.containerError : null];
+  const containerStyle = useMemo(
+    () => [styles.container, variant === "error" ? styles.containerError : null],
+    [variant],
+  );
 
   return (
     <View style={containerStyle} testID={testID} accessibilityRole="alert">
@@ -80,19 +83,18 @@ export function CalloutCard({
           </View>
         ) : null}
 
-        {hasDescription ? (
-          typeof description === "string" ? (
-            <CalloutDescriptionText>{description}</CalloutDescriptionText>
-          ) : (
-            <View style={styles.descriptionSlot}>{description}</View>
-          )
+        {hasDescription && typeof description === "string" ? (
+          <CalloutDescriptionText>{description}</CalloutDescriptionText>
+        ) : null}
+        {hasDescription && typeof description !== "string" ? (
+          <View style={styles.descriptionSlot}>{description}</View>
         ) : null}
 
         {visibleActions.length > 0 ? (
           <View style={styles.actionRow} testID={testID ? `${testID}-actions` : undefined}>
             {visibleActions.map((action, index) => (
               <CalloutActionButton
-                key={`${action.label}-${index}`}
+                key={action.label}
                 action={action}
                 testID={action.testID ?? (testID ? `${testID}-action-${index}` : undefined)}
               />
@@ -106,26 +108,28 @@ export function CalloutCard({
 
 function CalloutActionButton({ action, testID }: { action: CalloutAction; testID?: string }) {
   const isPrimary = action.variant === "primary";
+  const labelStyle = useMemo(
+    () => [styles.actionLabel, isPrimary ? styles.actionLabelPrimary : styles.actionLabelSecondary],
+    [isPrimary],
+  );
+  const pressableStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.actionButton,
+      isPrimary ? styles.actionButtonPrimary : styles.actionButtonSecondary,
+      pressed ? styles.actionButtonPressed : null,
+      action.disabled ? styles.actionButtonDisabled : null,
+    ],
+    [action.disabled, isPrimary],
+  );
   return (
     <Pressable
       onPress={action.onPress}
       disabled={action.disabled}
       testID={testID}
       accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.actionButton,
-        isPrimary ? styles.actionButtonPrimary : styles.actionButtonSecondary,
-        pressed ? styles.actionButtonPressed : null,
-        action.disabled ? styles.actionButtonDisabled : null,
-      ]}
+      style={pressableStyle}
     >
-      <Text
-        style={[
-          styles.actionLabel,
-          isPrimary ? styles.actionLabelPrimary : styles.actionLabelSecondary,
-        ]}
-        numberOfLines={1}
-      >
+      <Text style={labelStyle} numberOfLines={1}>
         {action.label}
       </Text>
     </Pressable>

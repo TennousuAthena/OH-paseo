@@ -10,7 +10,7 @@ import { createRoot } from "react-dom/client";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 
 const { theme, startWorkspaceScriptMock } = vi.hoisted(() => {
-  const theme = {
+  const hoistedTheme = {
     spacing: { 1: 4, 1.5: 6, 2: 8, 3: 12 },
     borderWidth: { 1: 1 },
     borderRadius: { md: 6 },
@@ -30,7 +30,7 @@ const { theme, startWorkspaceScriptMock } = vi.hoisted(() => {
   };
 
   return {
-    theme,
+    theme: hoistedTheme,
     startWorkspaceScriptMock: vi.fn(async () => ({ terminalId: "terminal-script-1" })),
   };
 });
@@ -137,6 +137,8 @@ function script(
   };
 }
 
+const LIVE_TERMINAL_IDS: string[] = ["terminal-script-1"];
+
 function renderScripts(scripts: WorkspaceScriptPayload[]): {
   rerender: (nextScripts: WorkspaceScriptPayload[]) => Promise<void>;
   unmount: () => void;
@@ -158,7 +160,7 @@ function renderScripts(scripts: WorkspaceScriptPayload[]): {
           serverId="test-server"
           workspaceId="workspace-1"
           scripts={nextScripts}
-          liveTerminalIds={["terminal-script-1"]}
+          liveTerminalIds={LIVE_TERMINAL_IDS}
         />
       </QueryClientProvider>
     );

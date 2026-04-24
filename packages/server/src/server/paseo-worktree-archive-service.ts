@@ -11,7 +11,7 @@ import type { TerminalManager } from "../terminal/terminal-manager.js";
 
 type EmitSessionMessage = (message: SessionOutboundMessage) => void;
 
-export type ArchivePaseoWorktreeDependencies = {
+export interface ArchivePaseoWorktreeDependencies {
   paseoHome?: string;
   github: GitHubService;
   workspaceGitService: Pick<WorkspaceGitService, "getSnapshot">;
@@ -23,15 +23,15 @@ export type ArchivePaseoWorktreeDependencies = {
   isPathWithinRoot: (rootPath: string, candidatePath: string) => boolean;
   killTerminalsUnderPath: (rootPath: string) => Promise<void>;
   sessionLogger?: Logger;
-};
+}
 
-export type KillTerminalsUnderPathDependencies = {
+export interface KillTerminalsUnderPathDependencies {
   isPathWithinRoot: (rootPath: string, candidatePath: string) => boolean;
   killTrackedTerminal: (terminalId: string, options?: { emitExit: boolean }) => void;
   detachTerminalStream?: (terminalId: string, options: { emitExit: boolean }) => void;
   sessionLogger: Logger;
   terminalManager: TerminalManager | null;
-};
+}
 
 export async function archivePaseoWorktree(
   dependencies: ArchivePaseoWorktreeDependencies,
@@ -143,16 +143,18 @@ export async function archivePaseoWorktree(
     dependencies.github.invalidate({ cwd });
   }
 
-  for (const workspaceId of affectedWorkspaceIds) {
-    try {
-      await dependencies.archiveWorkspaceRecord(workspaceId);
-    } catch (error) {
-      dependencies.sessionLogger?.warn(
-        { err: error, workspaceId },
-        "Failed to archive workspace record; worktree FS already removed",
-      );
-    }
-  }
+  await Promise.all(
+    Array.from(affectedWorkspaceIds).map(async (workspaceId) => {
+      try {
+        await dependencies.archiveWorkspaceRecord(workspaceId);
+      } catch (error) {
+        dependencies.sessionLogger?.warn(
+          { err: error, workspaceId },
+          "Failed to archive workspace record; worktree FS already removed",
+        );
+      }
+    }),
+  );
 
   for (const agentId of removedAgents) {
     dependencies.emit({
@@ -179,21 +181,25 @@ export async function killTerminalsUnderPath(
   }
 
   const terminalIds: string[] = [];
-  const terminalDirectories = [...terminalManager.listDirectories()];
-  for (const terminalCwd of terminalDirectories) {
-    if (!dependencies.isPathWithinRoot(rootPath, terminalCwd)) {
-      continue;
-    }
-    try {
-      const terminals = await terminalManager.getTerminals(terminalCwd);
-      for (const terminal of terminals) {
-        terminalIds.push(terminal.id);
+  const relevantCwds = [...terminalManager.listDirectories()].filter((terminalCwd) =>
+    dependencies.isPathWithinRoot(rootPath, terminalCwd),
+  );
+  const terminalLists = await Promise.all(
+    relevantCwds.map(async (terminalCwd) => {
+      try {
+        return await terminalManager.getTerminals(terminalCwd);
+      } catch (error) {
+        dependencies.sessionLogger.warn(
+          { err: error, cwd: terminalCwd },
+          "Failed to enumerate worktree terminals during archive",
+        );
+        return [];
       }
-    } catch (error) {
-      dependencies.sessionLogger.warn(
-        { err: error, cwd: terminalCwd },
-        "Failed to enumerate worktree terminals during archive",
-      );
+    }),
+  );
+  for (const terminals of terminalLists) {
+    for (const terminal of terminals) {
+      terminalIds.push(terminal.id);
     }
   }
 

@@ -10,6 +10,8 @@ import { generateMessageId, type StreamItem } from "@/types/stream";
 import {
   createSessionAgentStreamReducerQueue,
   processTimelineResponse,
+  type ProcessTimelineResponseOutput,
+  type TimelineReducerSideEffect,
 } from "@/contexts/session-stream-reducers";
 import type {
   AgentAttachment,
@@ -24,12 +26,16 @@ import {
 } from "@server/shared/agent-attention-notification";
 import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 import type { DaemonClient } from "@server/client/daemon-client";
+import type { AgentSessionConfig } from "@server/server/agent/agent-sdk-types";
+import type { GitSetupOptions } from "@server/shared/messages";
+import type { AgentPermissionResponse } from "@server/server/agent/agent-sdk-types";
 import { getHostRuntimeStore, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useVoiceAudioEngineOptional, useVoiceRuntimeOptional } from "@/contexts/voice-context";
 import type { AudioPlaybackSource } from "@/voice/audio-engine-types";
 import {
   useSessionStore,
   type Agent,
+  type MessageEntry,
   type SessionState,
   type WorkspaceDescriptor,
   normalizeWorkspaceDescriptor,
@@ -112,12 +118,10 @@ function buildAudioPlaybackSource(chunks: BufferedAudioChunk[]): AudioPlaybackSo
   }
 
   const format = chunks[0]?.format ?? "pcm";
-  const mimeType =
-    format === "pcm"
-      ? "audio/pcm;rate=24000;bits=16"
-      : format === "mp3"
-        ? "audio/mpeg"
-        : `audio/${format}`;
+  let mimeType: string;
+  if (format === "pcm") mimeType = "audio/pcm;rate=24000;bits=16";
+  else if (format === "mp3") mimeType = "audio/mpeg";
+  else mimeType = `audio/${format}`;
 
   const bytes = output.slice();
   return {
@@ -165,21 +169,7 @@ const getLatestPermissionRequest = (
   return null;
 };
 
-type FileExplorerPayload = Extract<
-  SessionOutboundMessage,
-  { type: "file_explorer_response" }
->["payload"];
-
-type FileDownloadTokenPayload = Extract<
-  SessionOutboundMessage,
-  { type: "file_download_token_response" }
->["payload"];
-
 type AgentUpdatePayload = Extract<SessionOutboundMessage, { type: "agent_update" }>["payload"];
-type WorkspaceUpdatePayload = Extract<
-  SessionOutboundMessage,
-  { type: "workspace_update" }
->["payload"];
 type WorkspaceSetupProgressPayload = Extract<
   SessionOutboundMessage,
   { type: "workspace_setup_progress" }
@@ -220,11 +210,201 @@ export function deletePendingAgentUpdate(serverId: string, agentId: string): voi
 }
 
 export function clearPendingAgentUpdates(serverId: string): void {
-  for (const key of [...pendingAgentUpdates.keys()]) {
+  for (const key of Array.from(pendingAgentUpdates.keys())) {
     if (key.startsWith(`${serverId}:`)) {
       pendingAgentUpdates.delete(key);
     }
   }
+}
+
+type SessionStoreActions = ReturnType<typeof useSessionStore.getState>;
+type SetInitializingAgents = SessionStoreActions["setInitializingAgents"];
+type SetAgentStreamTail = SessionStoreActions["setAgentStreamTail"];
+type SetAgentStreamHead = SessionStoreActions["setAgentStreamHead"];
+type ClearAgentStreamHead = SessionStoreActions["clearAgentStreamHead"];
+type SetAgentTimelineCursor = SessionStoreActions["setAgentTimelineCursor"];
+type MarkAgentHistorySynchronized = SessionStoreActions["markAgentHistorySynchronized"];
+type SetAgentAuthoritativeHistoryApplied =
+  SessionStoreActions["setAgentAuthoritativeHistoryApplied"];
+
+function clearAgentInitializingFlag(
+  setInitializingAgents: SetInitializingAgents,
+  serverId: string,
+  agentId: string,
+): void {
+  setInitializingAgents(serverId, (prev) => {
+    if (prev.get(agentId) !== true) {
+      return prev;
+    }
+    const next = new Map(prev);
+    next.set(agentId, false);
+    return next;
+  });
+}
+
+function handleTimelineError(input: {
+  result: ProcessTimelineResponseOutput;
+  agentId: string;
+  initKey: string;
+  serverId: string;
+  setInitializingAgents: SetInitializingAgents;
+}): void {
+  const { result, agentId, initKey, serverId, setInitializingAgents } = input;
+  if (result.clearInitializing) {
+    clearAgentInitializingFlag(setInitializingAgents, serverId, agentId);
+  }
+  if (result.initResolution === "reject" && result.error) {
+    rejectInitDeferred(initKey, new Error(result.error));
+  }
+}
+
+function applyTimelineStreamPatches(input: {
+  result: ProcessTimelineResponseOutput;
+  agentId: string;
+  serverId: string;
+  currentTail: StreamItem[];
+  currentHead: StreamItem[];
+  setAgentStreamTail: SetAgentStreamTail;
+  setAgentStreamHead: SetAgentStreamHead;
+  clearAgentStreamHead: ClearAgentStreamHead;
+  setAgentTimelineCursor: SetAgentTimelineCursor;
+}): void {
+  const {
+    result,
+    agentId,
+    serverId,
+    currentTail,
+    currentHead,
+    setAgentStreamTail,
+    setAgentStreamHead,
+    clearAgentStreamHead,
+    setAgentTimelineCursor,
+  } = input;
+
+  if (result.tail !== currentTail) {
+    setAgentStreamTail(serverId, (prev) => {
+      const next = new Map(prev);
+      next.set(agentId, result.tail);
+      return next;
+    });
+  }
+
+  if (result.head !== currentHead) {
+    if (result.head.length === 0) {
+      clearAgentStreamHead(serverId, agentId);
+    } else {
+      setAgentStreamHead(serverId, (prev) => {
+        const next = new Map(prev);
+        next.set(agentId, result.head);
+        return next;
+      });
+    }
+  }
+
+  if (result.cursorChanged) {
+    setAgentTimelineCursor(serverId, (prev) => {
+      const current = prev.get(agentId);
+      if (!result.cursor) {
+        if (!current) {
+          return prev;
+        }
+        const next = new Map(prev);
+        next.delete(agentId);
+        return next;
+      }
+      if (
+        current &&
+        current.epoch === result.cursor.epoch &&
+        current.startSeq === result.cursor.startSeq &&
+        current.endSeq === result.cursor.endSeq
+      ) {
+        return prev;
+      }
+      const next = new Map(prev);
+      next.set(agentId, result.cursor);
+      return next;
+    });
+  }
+}
+
+function executeTimelineSideEffects(input: {
+  sideEffects: TimelineReducerSideEffect[];
+  agentId: string;
+  serverId: string;
+  requestCanonicalCatchUp: (agentId: string, cursor: { epoch: string; endSeq: number }) => void;
+  applyAgentUpdatePayload: (payload: AgentUpdatePayload) => void;
+}): void {
+  const { sideEffects, agentId, serverId, requestCanonicalCatchUp, applyAgentUpdatePayload } =
+    input;
+  for (const effect of sideEffects) {
+    if (effect.type === "catch_up") {
+      requestCanonicalCatchUp(agentId, effect.cursor);
+    } else if (effect.type === "flush_pending_updates") {
+      const deferredUpdate = flushPendingAgentUpdate(serverId, agentId);
+      if (deferredUpdate) {
+        applyAgentUpdatePayload(deferredUpdate);
+      }
+    }
+  }
+}
+
+function finalizeTimelineApplication(input: {
+  result: ProcessTimelineResponseOutput;
+  agentId: string;
+  initKey: string;
+  serverId: string;
+  shouldMarkAuthoritativeHistoryApplied: boolean;
+  setInitializingAgents: SetInitializingAgents;
+  setAgentAuthoritativeHistoryApplied: SetAgentAuthoritativeHistoryApplied;
+  markAgentHistorySynchronized: MarkAgentHistorySynchronized;
+}): void {
+  const {
+    result,
+    agentId,
+    initKey,
+    serverId,
+    shouldMarkAuthoritativeHistoryApplied,
+    setInitializingAgents,
+    setAgentAuthoritativeHistoryApplied,
+    markAgentHistorySynchronized,
+  } = input;
+
+  if (result.clearInitializing) {
+    clearAgentInitializingFlag(setInitializingAgents, serverId, agentId);
+  }
+  if (shouldMarkAuthoritativeHistoryApplied) {
+    setAgentAuthoritativeHistoryApplied(serverId, agentId, true);
+  }
+  if (result.initResolution === "resolve") {
+    resolveInitDeferred(initKey);
+  }
+  if (result.clearInitializing) {
+    markAgentHistorySynchronized(serverId, agentId);
+  }
+}
+
+function applyToolResultToMessages(
+  toolCallId: string,
+  result: unknown,
+): (prev: MessageEntry[]) => MessageEntry[] {
+  return (prev) =>
+    prev.map((msg) =>
+      msg.type === "tool_call" && msg.id === toolCallId
+        ? { ...msg, result, status: "completed" as const }
+        : msg,
+    );
+}
+
+function applyToolErrorToMessages(
+  toolCallId: string,
+  error: unknown,
+): (prev: MessageEntry[]) => MessageEntry[] {
+  return (prev) =>
+    prev.map((msg) =>
+      msg.type === "tool_call" && msg.id === toolCallId
+        ? { ...msg, error, status: "failed" as const }
+        : msg,
+    );
 }
 
 interface SessionProviderSharedProps {
@@ -310,7 +490,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       ) => Promise<void>)
     | null
   >(null);
-  const sessionStateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const _sessionStateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attentionNotifiedRef = useRef<Map<string, number>>(new Map());
   const appStateRef = useRef(AppState.currentState);
   const revalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -602,12 +782,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     }) => {
       const appState = appStateRef.current;
       const session = useSessionStore.getState().sessions[serverId];
-      const focusedAgentId = session?.focusedAgentId ?? null;
+      const attentionFocusedAgentId = session?.focusedAgentId ?? null;
       if (params.reason === "error") {
         return;
       }
       const isActivelyVisible = getIsAppActivelyVisible(appState);
-      const isAwayFromAgent = !isActivelyVisible || focusedAgentId !== params.agentId;
+      const isAwayFromAgent = !isActivelyVisible || attentionFocusedAgentId !== params.agentId;
       if (!isAwayFromAgent) {
         return;
       }
@@ -819,10 +999,13 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     },
     [
       applyAuthoritativeAgentSnapshot,
+      queryClient,
       serverId,
+      setAgentAuthoritativeHistoryApplied,
       setAgents,
-      setPendingPermissions,
       setAgentTimelineCursor,
+      setPendingPermissions,
+      setQueuedMessages,
     ],
   );
 
@@ -889,105 +1072,47 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         initRequestDirection: activeInitDeferred?.requestDirection ?? "tail",
       });
 
-      // Apply error path
       if (result.error) {
-        if (result.clearInitializing) {
-          setInitializingAgents(serverId, (prev) => {
-            if (prev.get(agentId) !== true) {
-              return prev;
-            }
-            const next = new Map(prev);
-            next.set(agentId, false);
-            return next;
-          });
-        }
-        if (result.initResolution === "reject") {
-          rejectInitDeferred(initKey, new Error(result.error));
-        }
+        handleTimelineError({
+          result,
+          agentId,
+          initKey,
+          serverId,
+          setInitializingAgents,
+        });
         return;
       }
 
-      // Apply tail patch
-      if (result.tail !== currentTail) {
-        setAgentStreamTail(serverId, (prev) => {
-          const next = new Map(prev);
-          next.set(agentId, result.tail);
-          return next;
-        });
-      }
+      applyTimelineStreamPatches({
+        result,
+        agentId,
+        serverId,
+        currentTail,
+        currentHead,
+        setAgentStreamTail,
+        setAgentStreamHead,
+        clearAgentStreamHead,
+        setAgentTimelineCursor,
+      });
 
-      // Apply head patch
-      if (result.head !== currentHead) {
-        if (result.head.length === 0) {
-          clearAgentStreamHead(serverId, agentId);
-        } else {
-          setAgentStreamHead(serverId, (prev) => {
-            const next = new Map(prev);
-            next.set(agentId, result.head);
-            return next;
-          });
-        }
-      }
+      executeTimelineSideEffects({
+        sideEffects: result.sideEffects,
+        agentId,
+        serverId,
+        requestCanonicalCatchUp,
+        applyAgentUpdatePayload,
+      });
 
-      // Apply cursor patch
-      if (result.cursorChanged) {
-        setAgentTimelineCursor(serverId, (prev) => {
-          const current = prev.get(agentId);
-          if (!result.cursor) {
-            if (!current) {
-              return prev;
-            }
-            const next = new Map(prev);
-            next.delete(agentId);
-            return next;
-          }
-          if (
-            current &&
-            current.epoch === result.cursor.epoch &&
-            current.startSeq === result.cursor.startSeq &&
-            current.endSeq === result.cursor.endSeq
-          ) {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.set(agentId, result.cursor);
-          return next;
-        });
-      }
-
-      // Execute side effects
-      for (const effect of result.sideEffects) {
-        if (effect.type === "catch_up") {
-          requestCanonicalCatchUp(agentId, effect.cursor);
-        } else if (effect.type === "flush_pending_updates") {
-          const deferredUpdate = flushPendingAgentUpdate(serverId, agentId);
-          if (deferredUpdate) {
-            applyAgentUpdatePayload(deferredUpdate);
-          }
-        }
-      }
-
-      // Apply init resolution
-      if (result.clearInitializing) {
-        setInitializingAgents(serverId, (prev) => {
-          if (prev.get(agentId) !== true) {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.set(agentId, false);
-          return next;
-        });
-      }
-
-      if (shouldMarkAuthoritativeHistoryApplied) {
-        setAgentAuthoritativeHistoryApplied(serverId, agentId, true);
-      }
-      if (result.initResolution === "resolve") {
-        resolveInitDeferred(initKey);
-      }
-      if (result.clearInitializing) {
-        markAgentHistorySynchronized(serverId, agentId);
-      }
+      finalizeTimelineApplication({
+        result,
+        agentId,
+        initKey,
+        serverId,
+        shouldMarkAuthoritativeHistoryApplied,
+        setInitializingAgents,
+        setAgentAuthoritativeHistoryApplied,
+        markAgentHistorySynchronized,
+      });
     },
     [
       applyAuthoritativeAgentSnapshot,
@@ -997,6 +1122,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       requestCanonicalCatchUp,
       serverId,
       setAgentAuthoritativeHistoryApplied,
+      setAgentStreamHead,
       setAgentStreamTail,
       setAgentTimelineCursor,
       setInitializingAgents,
@@ -1216,13 +1342,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       const shouldPlay =
         !payload.isVoiceMode || (voiceRuntime?.shouldPlayVoiceAudio(serverId) ?? false);
       const audioBlob = buildAudioPlaybackSource(bufferedChunks);
+      function logAudioPlayedError(error: unknown): void {
+        console.warn("[Session] Failed to confirm audio playback:", error);
+      }
       const confirmAudioPlayed = async () => {
         await Promise.all(
-          chunkIds.map((chunkId) =>
-            client.audioPlayed(chunkId).catch((error) => {
-              console.warn("[Session] Failed to confirm audio playback:", error);
-            }),
-          ),
+          chunkIds.map((chunkId) => client.audioPlayed(chunkId).catch(logAudioPlayedError)),
         );
       };
 
@@ -1288,13 +1413,8 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           result: unknown;
         };
 
-        setMessages(serverId, (prev) =>
-          prev.map((msg) =>
-            msg.type === "tool_call" && msg.id === toolCallId
-              ? { ...msg, result, status: "completed" as const }
-              : msg,
-          ),
-        );
+        const applyToolResult = applyToolResultToMessages(toolCallId, result);
+        setMessages(serverId, applyToolResult);
         return;
       }
 
@@ -1304,13 +1424,8 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           error: unknown;
         };
 
-        setMessages(serverId, (prev) =>
-          prev.map((msg) =>
-            msg.type === "tool_call" && msg.id === toolCallId
-              ? { ...msg, error, status: "failed" as const }
-              : msg,
-          ),
-        );
+        const applyToolError = applyToolErrorToMessages(toolCallId, error);
+        setMessages(serverId, applyToolError);
       }
 
       let activityType: "system" | "info" | "success" | "error" = "info";
@@ -1521,6 +1636,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     applyAgentUpdatePayload,
     applyWorkspaceSetupProgress,
     applyTimelineResponse,
+    updateSessionServerInfo,
     voiceRuntime,
     voiceAudioEngine,
   ]);
@@ -1583,7 +1699,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   // Keep the ref updated so the agent_update handler can call it
   sendAgentMessageRef.current = sendAgentMessage;
 
-  const cancelAgentRun = useCallback(
+  const _cancelAgentRun = useCallback(
     (agentId: string) => {
       if (!client) {
         console.warn("[Session] cancelAgent skipped: daemon unavailable");
@@ -1596,7 +1712,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     [client],
   );
 
-  const deleteAgent = useCallback(
+  const _deleteAgent = useCallback(
     (agentId: string) => {
       if (!client) {
         console.warn("[Session] deleteAgent skipped: daemon unavailable");
@@ -1609,7 +1725,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     [client],
   );
 
-  const archiveAgent = useCallback(
+  const _archiveAgent = useCallback(
     (agentId: string) => {
       if (!client) {
         console.warn("[Session] archiveAgent skipped: daemon unavailable");
@@ -1622,7 +1738,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     [client],
   );
 
-  const restartServer = useCallback(
+  const _restartServer = useCallback(
     (reason?: string) => {
       if (!client) {
         console.warn("[Session] restartServer skipped: daemon unavailable");
@@ -1635,7 +1751,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     [client],
   );
 
-  const createAgent = useCallback(
+  const _createAgent = useCallback(
     async ({
       config,
       initialPrompt,
@@ -1645,11 +1761,11 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       worktreeName,
       requestId,
     }: {
-      config: any;
+      config: AgentSessionConfig;
       initialPrompt: string;
       images?: AttachmentMetadata[];
       attachments?: AgentAttachment[];
-      git?: any;
+      git?: GitSetupOptions;
       worktreeName?: string;
       requestId?: string;
     }) => {
@@ -1677,7 +1793,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     [client],
   );
 
-  const setAgentMode = useCallback(
+  const _setAgentMode = useCallback(
     (agentId: string, modeId: string) => {
       if (!client) {
         console.warn("[Session] setAgentMode skipped: daemon unavailable");
@@ -1691,7 +1807,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     [client, toast],
   );
 
-  const setAgentModel = useCallback(
+  const _setAgentModel = useCallback(
     (agentId: string, modelId: string | null) => {
       if (!client) {
         console.warn("[Session] setAgentModel skipped: daemon unavailable");
@@ -1705,7 +1821,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     [client, toast],
   );
 
-  const setAgentThinkingOption = useCallback(
+  const _setAgentThinkingOption = useCallback(
     (agentId: string, thinkingOptionId: string | null) => {
       if (!client) {
         console.warn("[Session] setAgentThinkingOption skipped: daemon unavailable");
@@ -1719,8 +1835,8 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     [client, toast],
   );
 
-  const respondToPermission = useCallback(
-    (agentId: string, requestId: string, response: any) => {
+  const _respondToPermission = useCallback(
+    (agentId: string, requestId: string, response: AgentPermissionResponse) => {
       if (!client) {
         console.warn("[Session] respondToPermission skipped: daemon unavailable");
         return;

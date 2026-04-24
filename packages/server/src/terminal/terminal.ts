@@ -98,12 +98,12 @@ export interface CaptureTerminalLinesResult {
   totalLines: number;
 }
 
-type EnsureNodePtySpawnHelperExecutableOptions = {
+interface EnsureNodePtySpawnHelperExecutableOptions {
   packageRoot?: string;
   platform?: NodeJS.Platform;
   arch?: string;
   force?: boolean;
-};
+}
 
 function resolveNodePtyPackageRoot(): string | null {
   try {
@@ -305,7 +305,13 @@ function extractScrollback(terminal: TerminalType): TerminalCell[][] {
 }
 
 function extractCursorState(terminal: TerminalType): TerminalState["cursor"] {
-  const coreService = (terminal as any)._core?.coreService;
+  const coreService = (terminal as unknown as { _core?: { coreService?: Record<string, unknown> } })
+    ._core?.coreService as
+    | {
+        decPrivateModes?: { cursorStyle?: unknown; cursorBlink?: unknown };
+        isCursorHidden?: unknown;
+      }
+    | undefined;
   const cursorStyle = coreService?.decPrivateModes?.cursorStyle;
   const normalizedCursorStyle =
     cursorStyle === "block" || cursorStyle === "underline" || cursorStyle === "bar"
@@ -331,12 +337,14 @@ function normalizeProcessToken(token: string): string {
     return token;
   }
 
-  const quote =
-    token.startsWith('"') && token.endsWith('"')
-      ? '"'
-      : token.startsWith("'") && token.endsWith("'")
-        ? "'"
-        : "";
+  let quote: "'" | '"' | "";
+  if (token.startsWith('"') && token.endsWith('"')) {
+    quote = '"';
+  } else if (token.startsWith("'") && token.endsWith("'")) {
+    quote = "'";
+  } else {
+    quote = "";
+  }
   const rawToken = quote ? token.slice(1, -1) : token;
   if (rawToken.length === 0) {
     return token;
@@ -458,8 +466,15 @@ function extractLastOutputLines(terminal: TerminalType, limit: number): string[]
   return mergedLines.slice(-limit);
 }
 
+const ESC = String.fromCharCode(0x1b);
+const BEL = String.fromCharCode(0x07);
+const ANSI_SEQUENCE_PATTERN = new RegExp(
+  `${ESC}(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~]|\\].*?(?:${BEL}|${ESC}\\\\))`,
+  "g",
+);
+
 function stripAnsiSequences(input: string): string {
-  return input.replace(/\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\].*?(?:\x07|\x1b\\))/g, "");
+  return input.replace(ANSI_SEQUENCE_PATTERN, "");
 }
 
 function extractLastOutputLinesFromText(text: string, limit: number): string[] {
@@ -892,24 +907,31 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       return Promise.resolve(true);
     }
     return new Promise((resolve) => {
+      let pendingResolve: ((value: boolean) => void) | null = resolve;
+      const settle = (value: boolean) => {
+        if (!pendingResolve) return;
+        const fn = pendingResolve;
+        pendingResolve = null;
+        fn(value);
+      };
       const waiter = (): void => {
         clearTimeout(timer);
-        resolve(true);
+        settle(true);
       };
       const timer = setTimeout(() => {
         processExitWaiters.delete(waiter);
-        resolve(false);
+        settle(false);
       }, timeoutMs);
       processExitWaiters.add(waiter);
     });
   }
 
-  async function killAndWait(options?: {
+  async function killAndWait(killOptions?: {
     gracefulTimeoutMs?: number;
     forceTimeoutMs?: number;
   }): Promise<void> {
-    const gracefulTimeoutMs = options?.gracefulTimeoutMs ?? 2000;
-    const forceTimeoutMs = options?.forceTimeoutMs ?? 1000;
+    const gracefulTimeoutMs = killOptions?.gracefulTimeoutMs ?? 2000;
+    const forceTimeoutMs = killOptions?.forceTimeoutMs ?? 1000;
 
     if (processExited) {
       kill();

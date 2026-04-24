@@ -98,26 +98,10 @@ import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 
 polyfillCrypto();
 
-export type HostRuntimeBootstrapState = {
+export interface HostRuntimeBootstrapState {
   phase: "starting-daemon" | "connecting" | "online" | "error";
   error: string | null;
   retry: () => void;
-};
-
-function getRouteParamValue(value: string | string[] | undefined): string | undefined {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-  if (Array.isArray(value)) {
-    const firstValue = value[0];
-    if (typeof firstValue !== "string") {
-      return undefined;
-    }
-    const trimmed = firstValue.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-  return undefined;
 }
 
 const HostRuntimeBootstrapContext = createContext<HostRuntimeBootstrapState>({
@@ -191,6 +175,7 @@ function PushNotificationRouter() {
             return;
           }
           removeDesktopNotificationListener = unlisten;
+          return;
         });
       }
 
@@ -240,6 +225,7 @@ function PushNotificationRouter() {
       if (response) {
         openFromResponse(response);
       }
+      return;
     });
 
     return () => {
@@ -678,9 +664,10 @@ function OfferLinkListener({
       void upsertDaemonFromOfferUrl(url)
         .then((profile) => {
           if (cancelled) return;
-          const serverId = (profile as any)?.serverId;
+          const serverId = (profile as { serverId?: unknown } | null)?.serverId;
           if (typeof serverId !== "string" || !serverId) return;
           router.replace(buildHostRootRoute(serverId));
+          return;
         })
         .catch((error) => {
           if (cancelled) return;
@@ -752,6 +739,7 @@ function OpenProjectListener() {
         if (!disposed && pending) {
           maybeOpenProject(pending);
         }
+        return;
       })
       .catch(() => undefined);
 
@@ -769,6 +757,7 @@ function OpenProjectListener() {
           return;
         }
         unlisten = dispose;
+        return;
       })
       .catch(() => undefined);
 
@@ -834,19 +823,23 @@ function FaviconStatusSync() {
   return null;
 }
 
+const AGENT_SCREEN_OPTIONS = { gestureEnabled: false };
+
 function RootStack() {
   const storeReady = useStoreReady();
   const { theme } = useUnistyles();
+  const stackScreenOptions = useMemo(
+    () => ({
+      headerShown: false,
+      animation: "none" as const,
+      contentStyle: {
+        backgroundColor: theme.colors.surface0,
+      },
+    }),
+    [theme.colors.surface0],
+  );
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        animation: "none",
-        contentStyle: {
-          backgroundColor: theme.colors.surface0,
-        },
-      }}
-    >
+    <Stack screenOptions={stackScreenOptions}>
       <Stack.Screen name="index" />
       <Stack.Protected guard={storeReady}>
         <Stack.Screen name="welcome" />
@@ -862,7 +855,7 @@ function RootStack() {
         outside this route-level native-stack API.
       */}
       <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
-      <Stack.Screen name="h/[serverId]/agent/[agentId]" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="h/[serverId]/agent/[agentId]" options={AGENT_SCREEN_OPTIONS} />
       <Stack.Screen name="h/[serverId]/index" />
       <Stack.Screen name="h/[serverId]/sessions" />
       <Stack.Screen name="h/[serverId]/open-project" />
@@ -894,37 +887,59 @@ function NavigationActiveWorkspaceObserver() {
   return null;
 }
 
+function AppShell() {
+  return (
+    <SidebarAnimationProvider>
+      <HorizontalScrollProvider>
+        <OpenProjectListener />
+        <AppWithSidebar>
+          <RootStack />
+        </AppWithSidebar>
+      </HorizontalScrollProvider>
+    </SidebarAnimationProvider>
+  );
+}
+
+function RuntimeProviders({ children }: { children: ReactNode }) {
+  return (
+    <HostRuntimeBootstrapProvider>
+      <PushNotificationRouter />
+      <SidebarCalloutProvider>
+        <ToastProvider>
+          <ProvidersWrapper>{children}</ProvidersWrapper>
+        </ToastProvider>
+      </SidebarCalloutProvider>
+    </HostRuntimeBootstrapProvider>
+  );
+}
+
+function RootProviders({ children }: { children: ReactNode }) {
+  return (
+    <PortalProvider>
+      <SafeAreaProvider>
+        <KeyboardProvider>
+          <QueryProvider>{children}</QueryProvider>
+        </KeyboardProvider>
+      </SafeAreaProvider>
+    </PortalProvider>
+  );
+}
+
 export default function RootLayout() {
   const { theme } = useUnistyles();
+  const gestureRootStyle = useMemo(
+    () => ({ flex: 1, backgroundColor: theme.colors.surface0 }),
+    [theme.colors.surface0],
+  );
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>
+    <GestureHandlerRootView style={gestureRootStyle}>
       <NavigationActiveWorkspaceObserver />
-      <PortalProvider>
-        <SafeAreaProvider>
-          <KeyboardProvider>
-            <QueryProvider>
-              <HostRuntimeBootstrapProvider>
-                <PushNotificationRouter />
-                <SidebarCalloutProvider>
-                  <ToastProvider>
-                    <ProvidersWrapper>
-                      <SidebarAnimationProvider>
-                        <HorizontalScrollProvider>
-                          <OpenProjectListener />
-                          <AppWithSidebar>
-                            <RootStack />
-                          </AppWithSidebar>
-                        </HorizontalScrollProvider>
-                      </SidebarAnimationProvider>
-                    </ProvidersWrapper>
-                  </ToastProvider>
-                </SidebarCalloutProvider>
-              </HostRuntimeBootstrapProvider>
-            </QueryProvider>
-          </KeyboardProvider>
-        </SafeAreaProvider>
-      </PortalProvider>
+      <RootProviders>
+        <RuntimeProviders>
+          <AppShell />
+        </RuntimeProviders>
+      </RootProviders>
     </GestureHandlerRootView>
   );
 }

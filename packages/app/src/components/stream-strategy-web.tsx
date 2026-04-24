@@ -13,9 +13,9 @@ import { estimateStreamItemHeight } from "./agent-stream-web-virtualization";
 import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./stream-strategy";
 import { createStreamStrategy } from "./stream-strategy";
 
-type CreateWebStreamStrategyInput = {
+interface CreateWebStreamStrategyInput {
   isMobileBreakpoint: boolean;
-};
+}
 
 type ScrollBehaviorLike = "auto" | "smooth";
 
@@ -107,6 +107,12 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   } = props;
   const scrollContainerRef = useRef<HTMLElement | null>(null);
   const contentRef = useRef<HTMLElement | null>(null);
+  const handleScrollContainerRef = useCallback((node: HTMLElement | null) => {
+    scrollContainerRef.current = node;
+  }, []);
+  const handleContentRef = useCallback((node: HTMLElement | null) => {
+    contentRef.current = node;
+  }, []);
   const [followOutput, setFollowOutputr] = useState(true);
   const setFollowOutput = (value: boolean) => {
     setFollowOutputr(value);
@@ -178,7 +184,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     return () => {
       rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined;
     };
-  }, [rowVirtualizer]);
+  }, [rowVirtualizer, props.agentId]);
   const virtualRows = rowVirtualizer.getVirtualItems();
   const virtualTotalSize = rowVirtualizer.getTotalSize();
 
@@ -361,7 +367,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
           : null,
     });
     updateScrollMetrics();
-  }, [cancelPendingStickToBottom, updateScrollMetrics]);
+  }, [cancelPendingStickToBottom, updateScrollMetrics, props.agentId]);
 
   useLayoutEffect(() => {
     if (!isActivationReady) {
@@ -705,19 +711,12 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   return (
     <>
       <div
-        ref={(node) => {
-          scrollContainerRef.current = node;
-        }}
+        ref={handleScrollContainerRef}
         data-testid="agent-chat-scroll"
         id={`agent-chat-scroll-${shouldUseVirtualizer ? "web-dom-virtualized" : "web-dom-scroll"}`}
         style={scrollContainerStyle}
       >
-        <div
-          ref={(node) => {
-            contentRef.current = node;
-          }}
-          style={contentContainerStyle}
-        >
+        <div ref={handleContentRef} style={contentContainerStyle}>
           {shouldUseVirtualizer ? (
             <div style={virtualRowsContainerStyle}>
               {virtualRows.map((virtualRow) => {
@@ -744,7 +743,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
           ) : null}
           {mountedHistoryRows}
           {boundary.hasMountedHistory && boundary.hasLiveHead && boundary.historyToHeadGap > 0 ? (
-            <div style={{ height: boundary.historyToHeadGap, width: "100%" }} />
+            <HistoryToHeadSpacer height={boundary.historyToHeadGap} />
           ) : null}
           {liveHeadRows}
           {liveAuxiliary}
@@ -789,4 +788,13 @@ export function createWebStreamStrategy(input: CreateWebStreamStrategyInput): St
     },
     getBottomOffset: (metrics) => Math.max(0, metrics.contentHeight - metrics.viewportHeight),
   });
+}
+
+interface HistoryToHeadSpacerProps {
+  height: number;
+}
+
+function HistoryToHeadSpacer({ height }: HistoryToHeadSpacerProps) {
+  const spacerStyle = useMemo(() => ({ height, width: "100%" as const }), [height]);
+  return <div style={spacerStyle} />;
 }

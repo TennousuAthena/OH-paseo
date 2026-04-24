@@ -21,6 +21,7 @@ import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import {
   type AgentScreenAgent,
   type AgentScreenMissingState,
+  type AgentScreenViewState,
   useAgentScreenStateMachine,
 } from "@/hooks/use-agent-screen-state-machine";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
@@ -49,6 +50,114 @@ import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { mergePendingCreateImages } from "@/utils/pending-create-images";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
+
+interface ChatAgentStateShape {
+  serverId: string | null;
+  id: string | null;
+  status: Agent["status"] | null;
+  cwd: string | null;
+  lastError?: Agent["lastError"] | null;
+}
+
+interface ChatAgentSelectedState extends ChatAgentStateShape {
+  archivedAt: Date | null;
+  requiresAttention: boolean;
+  attentionReason: Agent["attentionReason"] | null;
+}
+
+function resolveChatAgentFromSession(
+  state: ReturnType<typeof useSessionStore.getState>,
+  serverId: string,
+  agentId: string | undefined,
+): Agent | null {
+  if (!agentId) return null;
+  const session = state.sessions[serverId];
+  return session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null;
+}
+
+const EMPTY_CHAT_AGENT_STATE: ChatAgentSelectedState = {
+  serverId: null,
+  id: null,
+  status: null,
+  cwd: null,
+  lastError: null,
+  archivedAt: null,
+  requiresAttention: false,
+  attentionReason: null,
+};
+
+function selectChatAgentState(
+  state: ReturnType<typeof useSessionStore.getState>,
+  serverId: string,
+  agentId: string | undefined,
+): ChatAgentSelectedState {
+  const agent = resolveChatAgentFromSession(state, serverId, agentId);
+  if (!agent) return EMPTY_CHAT_AGENT_STATE;
+  return {
+    serverId: agent.serverId,
+    id: agent.id,
+    status: agent.status,
+    cwd: agent.cwd,
+    lastError: agent.lastError ?? null,
+    archivedAt: agent.archivedAt ?? null,
+    requiresAttention: agent.requiresAttention ?? false,
+    attentionReason: agent.attentionReason ?? null,
+  };
+}
+
+function buildChatAgentFromState(
+  state: ChatAgentStateShape,
+  projectPlacement: Agent["projectPlacement"] | null,
+): AgentScreenAgent | null {
+  if (!state.serverId || !state.id || !state.status || !state.cwd) {
+    return null;
+  }
+  return {
+    serverId: state.serverId,
+    id: state.id,
+    status: state.status,
+    cwd: state.cwd,
+    lastError: state.lastError ?? null,
+    projectPlacement,
+  };
+}
+
+function renderChatAgentNonReadyView(args: {
+  viewState: AgentScreenViewState;
+  effectiveAgent: AgentScreenAgent | null;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}): React.ReactElement | null {
+  const { viewState, effectiveAgent, theme } = args;
+  if (viewState.tag === "not_found") {
+    return (
+      <View style={styles.container} testID="agent-not-found">
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Agent not found</Text>
+        </View>
+      </View>
+    );
+  }
+  if (viewState.tag === "error") {
+    return (
+      <View style={styles.container} testID="agent-load-error">
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Failed to load agent</Text>
+          <Text style={styles.statusText}>{viewState.message}</Text>
+        </View>
+      </View>
+    );
+  }
+  if (viewState.tag === "boot" || !effectiveAgent) {
+    return (
+      <View style={styles.container} testID="agent-loading">
+        <View style={styles.errorContainer}>
+          <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
+        </View>
+      </View>
+    );
+  }
+  return null;
+}
 
 function formatProviderLabel(provider: Agent["provider"]): string {
   if (!provider) {
@@ -311,7 +420,7 @@ function AgentPanelBody({
   onOpenWorkspaceFile?: (input: { filePath: string }) => void;
 }) {
   const { theme } = useUnistyles();
-  const { isArchivingAgent } = useArchiveAgent();
+  const { isArchivingAgent: _isArchivingAgent } = useArchiveAgent();
   const hasSession = useSessionStore((state) => Boolean(state.sessions[serverId]));
   const projectPlacement = useStoreWithEqualityFn(
     useSessionStore,
@@ -388,6 +497,7 @@ function AgentPanelBody({
 
         storeFetchedAgentDetail({ serverId, result });
         setLookupState({ tag: "idle" });
+        return;
       })
       .catch((error) => {
         if (attemptToken !== lookupAttemptTokenRef.current) {
@@ -445,8 +555,6 @@ function AgentPanelBody({
     );
   }
 
-  const isArchivingCurrentAgent = Boolean(agentId && isArchivingAgent({ serverId, agentId }));
-
   return (
     <ChatAgentContent
       serverId={serverId}
@@ -499,22 +607,7 @@ function ChatAgentContent({
   }, []);
 
   const agentState = useSessionStore(
-    useShallow((state) => {
-      const session = state.sessions[serverId];
-      const agent = agentId
-        ? (session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null)
-        : null;
-      return {
-        serverId: agent?.serverId ?? null,
-        id: agent?.id ?? null,
-        status: agent?.status ?? null,
-        cwd: agent?.cwd ?? null,
-        lastError: agent?.lastError ?? null,
-        archivedAt: agent?.archivedAt ?? null,
-        requiresAttention: agent?.requiresAttention ?? false,
-        attentionReason: agent?.attentionReason ?? null,
-      };
-    }),
+    useShallow((state) => selectChatAgentState(state, serverId, agentId)),
   );
   const projectPlacement = useStoreWithEqualityFn(
     useSessionStore,
@@ -675,25 +768,8 @@ function ChatAgentContent({
   const canFinalizePendingCreate = Boolean(authoritativeStatus) && !isAuthoritativeBootstrapping;
 
   const agent = useMemo<AgentScreenAgent | null>(
-    () =>
-      agentState.serverId && agentState.id && agentState.status && agentState.cwd
-        ? {
-            serverId: agentState.serverId,
-            id: agentState.id,
-            status: agentState.status,
-            cwd: agentState.cwd,
-            lastError: agentState.lastError ?? null,
-            projectPlacement,
-          }
-        : null,
-    [
-      agentState.serverId,
-      agentState.id,
-      agentState.status,
-      agentState.cwd,
-      agentState.lastError,
-      projectPlacement,
-    ],
+    () => buildChatAgentFromState(agentState, projectPlacement),
+    [agentState, projectPlacement],
   );
 
   const placeholderAgent: AgentScreenAgent | null = useMemo(() => {
@@ -836,6 +912,7 @@ function ChatAgentContent({
           return;
         }
         setMissingAgentState({ kind: "idle" });
+        return;
       })
       .catch((error) => {
         if (attemptToken !== initAttemptTokenRef.current) {
@@ -860,43 +937,25 @@ function ChatAgentContent({
     shouldUseOptimisticStream,
   ]);
 
-  if (viewState.tag === "not_found") {
-    return (
-      <View style={styles.container} testID="agent-not-found">
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Agent not found</Text>
-        </View>
-      </View>
-    );
-  }
+  const animatedContentStyle = useMemo(
+    () => [styles.content, animatedKeyboardStyle],
+    [animatedKeyboardStyle],
+  );
 
-  if (viewState.tag === "error") {
-    return (
-      <View style={styles.container} testID="agent-load-error">
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Failed to load agent</Text>
-          <Text style={styles.statusText}>{viewState.message}</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (viewState.tag === "boot" || !effectiveAgent) {
-    return (
-      <View style={styles.container} testID="agent-loading">
-        <View style={styles.errorContainer}>
-          <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
-        </View>
-      </View>
-    );
-  }
+  const nonReadyView = renderChatAgentNonReadyView({
+    viewState,
+    effectiveAgent,
+    theme,
+  });
+  if (nonReadyView) return nonReadyView;
+  invariant(effectiveAgent, "effectiveAgent is defined when the non-ready view is absent");
 
   return (
     <View style={styles.root}>
       <FileDropZone onFilesDropped={handleFilesDropped} disabled={isArchivingCurrentAgent}>
         <View style={styles.container}>
           <View style={styles.contentContainer}>
-            <ReanimatedAnimated.View style={[styles.content, animatedKeyboardStyle]}>
+            <ReanimatedAnimated.View style={animatedContentStyle}>
               <AgentStreamSection
                 streamViewRef={streamViewRef}
                 serverId={serverId}
@@ -1192,8 +1251,13 @@ function ActiveAgentComposer({
     initialCwd,
   });
 
+  const inputAreaStyle = useMemo(
+    () => [styles.inputAreaWrapper, { paddingBottom: insets.bottom }],
+    [insets.bottom],
+  );
+
   return (
-    <View style={[styles.inputAreaWrapper, { paddingBottom: insets.bottom }]}>
+    <View style={inputAreaStyle}>
       <Composer
         agentId={agentId}
         serverId={serverId}

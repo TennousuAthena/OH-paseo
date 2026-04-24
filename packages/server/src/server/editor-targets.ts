@@ -8,18 +8,18 @@ import type {
 } from "../shared/messages.js";
 import { findExecutable, quoteWindowsArgument, quoteWindowsCommand } from "../utils/executable.js";
 
-type EditorTargetDefinition = {
+interface EditorTargetDefinition {
   id: KnownEditorTargetId;
   label: string;
   command: string;
   platforms?: readonly NodeJS.Platform[];
   excludedPlatforms?: readonly NodeJS.Platform[];
-};
+}
 
-type ListAvailableEditorTargetsDependencies = {
+interface ListAvailableEditorTargetsDependencies {
   platform?: NodeJS.Platform;
   findExecutable?: (command: string) => string | null | Promise<string | null>;
-};
+}
 
 type OpenInEditorTargetDependencies = ListAvailableEditorTargetsDependencies & {
   existsSync?: typeof existsSync;
@@ -72,15 +72,16 @@ export async function listAvailableEditorTargets(
   const platform = dependencies.platform ?? process.platform;
   const findExecutableFn = dependencies.findExecutable ?? findExecutable;
 
+  const supportedTargets = EDITOR_TARGETS.filter((target) =>
+    isTargetSupportedOnPlatform(target, platform),
+  );
+  const executables = await Promise.all(
+    supportedTargets.map((target) => findExecutableFn(target.command)),
+  );
   const results: EditorTargetDescriptorPayload[] = [];
-  for (const target of EDITOR_TARGETS) {
-    if (!isTargetSupportedOnPlatform(target, platform)) {
-      continue;
-    }
-    const executable = await findExecutableFn(target.command);
-    if (!executable) {
-      continue;
-    }
+  for (let i = 0; i < supportedTargets.length; i += 1) {
+    if (!executables[i]) continue;
+    const target = supportedTargets[i]!;
     results.push({
       id: target.id,
       label: target.label,
@@ -89,10 +90,10 @@ export async function listAvailableEditorTargets(
   return results;
 }
 
-type Launch = {
+interface Launch {
   command: string;
   args: string[];
-};
+}
 
 async function resolveEditorLaunch(input: {
   editorId: EditorTargetId;

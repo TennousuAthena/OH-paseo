@@ -46,12 +46,12 @@ export interface ProviderDefinition extends AgentProviderDefinition {
   fetchModes: (options: ListModesOptions) => Promise<AgentMode[]>;
 }
 
-export type BuildProviderRegistryOptions = {
+export interface BuildProviderRegistryOptions {
   runtimeSettings?: AgentProviderRuntimeSettingsMap;
   providerOverrides?: Record<string, ProviderOverride>;
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
   isDev?: boolean;
-};
+}
 
 type ProviderClientFactory = (
   logger: Logger,
@@ -59,14 +59,14 @@ type ProviderClientFactory = (
   options?: Pick<BuildProviderRegistryOptions, "workspaceGitService">,
 ) => AgentClient;
 
-type ResolvedProvider = {
+interface ResolvedProvider {
   definition: AgentProviderDefinition;
   runtimeSettings?: ProviderRuntimeSettings;
   profileModels: ProviderProfileModel[];
   additionalModels: ProviderProfileModel[];
   enabled: boolean;
   createBaseClient: (logger: Logger) => AgentClient;
-};
+}
 
 const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
   claude: (logger, runtimeSettings) =>
@@ -271,12 +271,7 @@ function mergeModels(
   );
 
   return mergedModels.map((model) =>
-    additionalDefaultIds.has(model.id)
-      ? model
-      : {
-          ...model,
-          isDefault: false,
-        },
+    additionalDefaultIds.has(model.id) ? model : Object.assign({}, model, { isDefault: false }),
   );
 }
 
@@ -388,11 +383,10 @@ function createRegistryEntry(
         if (mode.icon && mode.colorTier) return mode;
         const definitionMode = resolved.definition.modes.find((d) => d.id === mode.id);
         if (!definitionMode) return mode;
-        return {
-          ...mode,
+        return Object.assign({}, mode, {
           icon: mode.icon ?? definitionMode.icon,
           colorTier: mode.colorTier ?? definitionMode.colorTier,
-        };
+        });
       });
     },
   };
@@ -533,7 +527,8 @@ export function getProviderIds(
 }
 
 // Deprecated: Use buildProviderRegistry instead
-export const PROVIDER_REGISTRY: Record<AgentProvider, ProviderDefinition> = null as any;
+export const PROVIDER_REGISTRY: Record<AgentProvider, ProviderDefinition> =
+  null as unknown as Record<AgentProvider, ProviderDefinition>;
 
 export function createAllClients(
   logger: Logger,

@@ -1,6 +1,7 @@
 import { watch, type FSWatcher } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import pLimit from "p-limit";
 import type pino from "pino";
 import type { CheckoutContext } from "../utils/checkout-git.js";
 import {
@@ -38,7 +39,11 @@ const WORKSPACE_GIT_CONSUMER_TTL_MS = 15_000;
 // Non-forced refresh triggers share this minimum gap to absorb watcher/self-heal bursts; force bypasses it.
 const WORKSPACE_GIT_INTERNAL_MIN_GAP_MS = 2_000;
 
-export type WorkspaceGitRuntimeSnapshot = {
+const linuxWatchReaddirConcurrency =
+  parseInt(process.env.PASEO_LINUX_WATCH_READDIR_CONCURRENCY ?? "16", 10) || 16;
+const linuxWatchReaddirLimit = pLimit(linuxWatchReaddirConcurrency);
+
+export interface WorkspaceGitRuntimeSnapshot {
   cwd: string;
   git: {
     isGit: boolean;
@@ -80,7 +85,7 @@ export type WorkspaceGitRuntimeSnapshot = {
     } | null;
     error: { message: string } | null;
   };
-};
+}
 
 export interface WorkspaceGitService {
   registerWorkspace(
@@ -136,9 +141,9 @@ export interface WorkspaceGitService {
 
 export type WorkspaceGitListener = (snapshot: WorkspaceGitRuntimeSnapshot) => void;
 
-export type WorkspaceGitSubscription = {
+export interface WorkspaceGitSubscription {
   unsubscribe: () => void;
-};
+}
 
 export type WorkspaceGitReadOptions =
   | {
@@ -279,6 +284,33 @@ interface WorkspaceGitAuxiliaryReadCacheEntry<T> {
   inFlight: Promise<T> | null;
 }
 
+function buildDefaultWorkspaceGitServiceDeps(): WorkspaceGitServiceDependencies {
+  return {
+    watch,
+    readdir,
+    getCheckoutStatus,
+    getCheckoutShortstat,
+    getCheckoutDiff,
+    getPullRequestStatus,
+    resolveBranchCheckout,
+    resolveRepositoryDefaultBranch,
+    listBranchSuggestions,
+    listPaseoWorktrees,
+    github: createGitHubService(),
+    resolveAbsoluteGitDir,
+    hasOriginRemote,
+    runGitFetch,
+    runGitCommand,
+    now: () => new Date(),
+  };
+}
+
+function resolveWorkspaceGitServiceDeps(
+  deps: Partial<WorkspaceGitServiceDependencies> | undefined,
+): WorkspaceGitServiceDependencies {
+  return { ...buildDefaultWorkspaceGitServiceDeps(), ...deps };
+}
+
 export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   private readonly logger: pino.Logger;
   private readonly paseoHome: string;
@@ -319,25 +351,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   constructor(options: WorkspaceGitServiceOptions) {
     this.logger = options.logger.child({ module: "workspace-git-service" });
     this.paseoHome = options.paseoHome;
-    this.deps = {
-      watch: options.deps?.watch ?? watch,
-      readdir: options.deps?.readdir ?? readdir,
-      getCheckoutStatus: options.deps?.getCheckoutStatus ?? getCheckoutStatus,
-      getCheckoutShortstat: options.deps?.getCheckoutShortstat ?? getCheckoutShortstat,
-      getCheckoutDiff: options.deps?.getCheckoutDiff ?? getCheckoutDiff,
-      getPullRequestStatus: options.deps?.getPullRequestStatus ?? getPullRequestStatus,
-      resolveBranchCheckout: options.deps?.resolveBranchCheckout ?? resolveBranchCheckout,
-      resolveRepositoryDefaultBranch:
-        options.deps?.resolveRepositoryDefaultBranch ?? resolveRepositoryDefaultBranch,
-      listBranchSuggestions: options.deps?.listBranchSuggestions ?? listBranchSuggestions,
-      listPaseoWorktrees: options.deps?.listPaseoWorktrees ?? listPaseoWorktrees,
-      github: options.deps?.github ?? createGitHubService(),
-      resolveAbsoluteGitDir: options.deps?.resolveAbsoluteGitDir ?? resolveAbsoluteGitDir,
-      hasOriginRemote: options.deps?.hasOriginRemote ?? hasOriginRemote,
-      runGitFetch: options.deps?.runGitFetch ?? runGitFetch,
-      runGitCommand: options.deps?.runGitCommand ?? runGitCommand,
-      now: options.deps?.now ?? (() => new Date()),
-    };
+    this.deps = resolveWorkspaceGitServiceDeps(options.deps);
   }
 
   registerWorkspace(
@@ -523,9 +537,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   ): Promise<WorkspaceGitMetadata> {
     const snapshot = await this.getSnapshot(cwd, options);
     const directoryName =
-      options?.directoryName ??
-      normalizeWorkspaceId(cwd).split(/[\\/]/).filter(Boolean).at(-1) ??
-      cwd;
+      options?.directoryName ?? normalizeWorkspaceId(cwd).split(/[\\/]/).findLast(Boolean) ?? cwd;
     return buildWorkspaceGitMetadataFromSnapshot({
       cwd: normalizeWorkspaceId(cwd),
       directoryName,
@@ -748,28 +760,24 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   }
 
   private async setupWorkspaceObservation(target: WorkspaceGitTarget): Promise<void> {
-    try {
-      const gitDir = await this.deps.resolveAbsoluteGitDir(target.cwd);
-      if (!this.isActiveObservedWorkspaceTarget(target)) {
-        return;
-      }
-      if (!gitDir) {
-        target.observationSetupComplete = true;
-        return;
-      }
+    const gitDir = await this.deps.resolveAbsoluteGitDir(target.cwd);
+    if (!this.isActiveObservedWorkspaceTarget(target)) {
+      return;
+    }
+    if (!gitDir) {
+      target.observationSetupComplete = true;
+      return;
+    }
 
-      const repoGitRoot = await this.resolveWorkspaceGitRefsRoot(gitDir);
-      if (!this.isActiveObservedWorkspaceTarget(target)) {
-        return;
-      }
-      target.repoGitRoot = repoGitRoot;
-      this.startWorkspaceWatchers(target, gitDir, repoGitRoot);
-      await this.ensureRepoTarget(target);
-      if (this.isActiveObservedWorkspaceTarget(target)) {
-        target.observationSetupComplete = true;
-      }
-    } catch (error) {
-      throw error;
+    const repoGitRoot = await this.resolveWorkspaceGitRefsRoot(gitDir);
+    if (!this.isActiveObservedWorkspaceTarget(target)) {
+      return;
+    }
+    target.repoGitRoot = repoGitRoot;
+    this.startWorkspaceWatchers(target, gitDir, repoGitRoot);
+    await this.ensureRepoTarget(target);
+    if (this.isActiveObservedWorkspaceTarget(target)) {
+      target.observationSetupComplete = true;
     }
   }
 
@@ -1155,28 +1163,34 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
   private async listLinuxWatchDirectories(rootPath: string): Promise<string[]> {
     const directories: string[] = [];
-    const pending = [rootPath];
+    let currentLevel: string[] = [rootPath];
 
-    while (pending.length > 0) {
-      const directory = pending.pop();
-      if (!directory) {
-        continue;
-      }
-      directories.push(directory);
-
-      let entries;
-      try {
-        entries = await this.deps.readdir(directory, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-
-      for (const entry of entries) {
-        if (!entry.isDirectory() || entry.name === ".git") {
-          continue;
+    while (currentLevel.length > 0) {
+      directories.push(...currentLevel);
+      const readResults = await Promise.all(
+        currentLevel.map((directory) =>
+          linuxWatchReaddirLimit(async () => {
+            try {
+              return await this.deps.readdir(directory, { withFileTypes: true });
+            } catch {
+              return null;
+            }
+          }),
+        ),
+      );
+      const nextLevel: string[] = [];
+      for (let i = 0; i < currentLevel.length; i += 1) {
+        const directory = currentLevel[i];
+        const entries = readResults[i];
+        if (!directory || !entries) continue;
+        for (const entry of entries) {
+          if (!entry.isDirectory() || entry.name === ".git") {
+            continue;
+          }
+          nextLevel.push(join(directory, entry.name));
         }
-        pending.push(join(directory, entry.name));
       }
+      currentLevel = nextLevel;
     }
 
     return directories;

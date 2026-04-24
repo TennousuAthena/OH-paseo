@@ -1,6 +1,13 @@
 import { AlertCircle, RotateCw, Search } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  type PressableStateCallbackType,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { AdaptiveModalSheet, AdaptiveTextInput } from "@/components/adaptive-modal-sheet";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -17,6 +24,58 @@ interface ProviderDiagnosticSheetProps {
   visible: boolean;
   onClose: () => void;
   serverId: string;
+}
+
+function ModelRow({ model, isFirst }: { model: AgentModelDefinition; isFirst: boolean }) {
+  const rowStyle = useMemo(
+    () => [sheetStyles.modelRow, !isFirst && sheetStyles.modelRowBorder],
+    [isFirst],
+  );
+  return (
+    <View style={rowStyle}>
+      <Text style={sheetStyles.modelLabel} numberOfLines={1}>
+        {model.label}
+      </Text>
+      <Text style={sheetStyles.modelId} numberOfLines={1} selectable>
+        {model.id}
+      </Text>
+    </View>
+  );
+}
+
+function DiagnosticCodeBlock(props: {
+  loading: boolean;
+  diagnostic: string | null;
+  foregroundMutedColor: string;
+}) {
+  if (props.loading && !props.diagnostic) {
+    return (
+      <View style={sheetStyles.codeBlockLoading}>
+        <ActivityIndicator size="small" color={props.foregroundMutedColor} />
+        <Text style={sheetStyles.mutedText}>Running diagnostic…</Text>
+      </View>
+    );
+  }
+  if (props.diagnostic) {
+    return (
+      <ScrollView
+        style={sheetStyles.codeScroll}
+        contentContainerStyle={sheetStyles.codeContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <Text style={sheetStyles.codeText} selectable>
+            {props.diagnostic}
+          </Text>
+        </ScrollView>
+      </ScrollView>
+    );
+  }
+  return (
+    <View style={sheetStyles.codeBlockLoading}>
+      <Text style={sheetStyles.mutedText}>No diagnostic available.</Text>
+    </View>
+  );
 }
 
 export function ProviderDiagnosticSheet({
@@ -51,8 +110,9 @@ export function ProviderDiagnosticSheet({
   }, [visible]);
   const fetchedAtLabel = useMemo(() => {
     if (!providerEntry?.fetchedAt) return null;
+    // clockTick is referenced so the label recomputes each timer tick.
+    void clockTick;
     return formatTimeAgo(new Date(providerEntry.fetchedAt));
-    // clockTick triggers re-computation on timer
   }, [providerEntry?.fetchedAt, clockTick]);
 
   const q = query.trim().toLowerCase();
@@ -81,6 +141,15 @@ export function ProviderDiagnosticSheet({
     [client, provider],
   );
 
+  const refreshButtonStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      sheetStyles.iconButton,
+      (Boolean(hovered) || pressed) && sheetStyles.iconButtonHovered,
+      refreshInFlight ? sheetStyles.disabled : null,
+    ],
+    [refreshInFlight],
+  );
+
   const handleRefresh = useCallback(() => {
     if (!provider) {
       return;
@@ -89,6 +158,35 @@ export function ProviderDiagnosticSheet({
       setDiagnostic(err instanceof Error ? err.message : "Failed to refresh provider");
     });
   }, [fetchDiagnostic, provider, refresh]);
+
+  const headerActions = useMemo(
+    () => (
+      <Pressable
+        onPress={handleRefresh}
+        disabled={refreshInFlight}
+        hitSlop={8}
+        style={refreshButtonStyle}
+        accessibilityRole="button"
+        accessibilityLabel={
+          refreshInFlight ? `Refreshing ${providerLabel}` : `Refresh ${providerLabel}`
+        }
+      >
+        {refreshInFlight ? (
+          <LoadingSpinner size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        ) : (
+          <RotateCw size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        )}
+      </Pressable>
+    ),
+    [
+      handleRefresh,
+      refreshInFlight,
+      refreshButtonStyle,
+      providerLabel,
+      theme.iconSize.sm,
+      theme.colors.foregroundMuted,
+    ],
+  );
 
   useEffect(() => {
     if (visible) {
@@ -132,14 +230,7 @@ export function ProviderDiagnosticSheet({
       );
     }
     return filteredModels.map((model: AgentModelDefinition, index) => (
-      <View key={model.id} style={[sheetStyles.modelRow, index > 0 && sheetStyles.modelRowBorder]}>
-        <Text style={sheetStyles.modelLabel} numberOfLines={1}>
-          {model.label}
-        </Text>
-        <Text style={sheetStyles.modelId} numberOfLines={1} selectable>
-          {model.id}
-        </Text>
-      </View>
+      <ModelRow key={model.id} model={model} isFirst={index === 0} />
     ));
   }
 
@@ -148,56 +239,18 @@ export function ProviderDiagnosticSheet({
       title={providerLabel}
       visible={visible}
       onClose={onClose}
-      snapPoints={["50%", "85%"]}
+      snapPoints={DIAGNOSTIC_SHEET_SNAP_POINTS}
       scrollable={false}
-      headerActions={
-        <Pressable
-          onPress={handleRefresh}
-          disabled={refreshInFlight}
-          hitSlop={8}
-          style={({ hovered, pressed }) => [
-            sheetStyles.iconButton,
-            (hovered || pressed) && sheetStyles.iconButtonHovered,
-            refreshInFlight ? sheetStyles.disabled : null,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={
-            refreshInFlight ? `Refreshing ${providerLabel}` : `Refresh ${providerLabel}`
-          }
-        >
-          {refreshInFlight ? (
-            <LoadingSpinner size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-          ) : (
-            <RotateCw size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-          )}
-        </Pressable>
-      }
+      headerActions={headerActions}
     >
       <View style={sheetStyles.section}>
         <Text style={sheetStyles.sectionTitle}>Diagnostic</Text>
         <View style={sheetStyles.codeBlock}>
-          {loading && !diagnostic ? (
-            <View style={sheetStyles.codeBlockLoading}>
-              <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-              <Text style={sheetStyles.mutedText}>Running diagnostic…</Text>
-            </View>
-          ) : diagnostic ? (
-            <ScrollView
-              style={sheetStyles.codeScroll}
-              contentContainerStyle={sheetStyles.codeContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <Text style={sheetStyles.codeText} selectable>
-                  {diagnostic}
-                </Text>
-              </ScrollView>
-            </ScrollView>
-          ) : (
-            <View style={sheetStyles.codeBlockLoading}>
-              <Text style={sheetStyles.mutedText}>No diagnostic available.</Text>
-            </View>
-          )}
+          <DiagnosticCodeBlock
+            loading={loading}
+            diagnostic={diagnostic}
+            foregroundMutedColor={theme.colors.foregroundMuted}
+          />
         </View>
       </View>
 
@@ -225,7 +278,7 @@ export function ProviderDiagnosticSheet({
               autoCapitalize="none"
               autoCorrect={false}
               // @ts-expect-error - outlineStyle is web-only
-              style={[sheetStyles.searchInput, isWeb && { outlineStyle: "none" }]}
+              style={DIAGNOSTIC_SEARCH_INPUT_STYLE}
             />
           </View>
         ) : null}
@@ -363,3 +416,6 @@ const sheetStyles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
 }));
+
+const DIAGNOSTIC_SHEET_SNAP_POINTS = ["50%", "85%"];
+const DIAGNOSTIC_SEARCH_INPUT_STYLE = [sheetStyles.searchInput, isWeb && { outlineStyle: "none" }];

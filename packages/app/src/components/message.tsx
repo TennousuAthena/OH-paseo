@@ -7,6 +7,7 @@ import {
   type LayoutChangeEvent,
   StyleProp,
   ViewStyle,
+  type TextStyle,
 } from "react-native";
 import * as React from "react";
 import {
@@ -23,7 +24,13 @@ import {
   cloneElement,
 } from "react";
 import type { ReactNode, ComponentType } from "react";
-import Markdown, { MarkdownIt, type RenderRules } from "react-native-markdown-display";
+import Markdown, {
+  MarkdownIt,
+  type ASTNode,
+  type RenderRules,
+} from "react-native-markdown-display";
+
+type MarkdownStyles = Record<string, TextStyle & ViewStyle & { [key: string]: unknown }>;
 import { useQuery } from "@tanstack/react-query";
 import MaskedView from "@react-native-masked-view/masked-view";
 import {
@@ -132,7 +139,7 @@ const MARKDOWN_ALLOWED_IMAGE_HANDLERS = [
 ] as const;
 const MARKDOWN_TOP_LEVEL_MAX_EXCEEDED_ITEM = <Text key="dotdotdot">...</Text>;
 
-type MarkdownWithStableRendererProps = {
+interface MarkdownWithStableRendererProps {
   children: ReactNode;
   style: ReturnType<typeof createMarkdownStyles>;
   rules: RenderRules;
@@ -140,7 +147,7 @@ type MarkdownWithStableRendererProps = {
   onLinkPress: (url: string) => boolean;
   allowedImageHandlers: readonly string[];
   topLevelMaxExceededItem: ReactNode;
-};
+}
 
 const MarkdownWithStableRenderer = Markdown as ComponentType<MarkdownWithStableRendererProps>;
 const WEB_TOOLCALL_SHIMMER_KEYFRAME_CSS = `
@@ -251,7 +258,10 @@ function canScrollInsideDetailFromTarget(
 function shouldStopDetailWheelPropagation(detailRoot: HTMLElement, event: WheelEvent): boolean {
   const startElement = getWheelEventElementTarget(event, detailRoot);
   const verticalDelta = event.deltaY;
-  const horizontalDelta = event.deltaX !== 0 ? event.deltaX : event.shiftKey ? event.deltaY : 0;
+  let horizontalDelta: number;
+  if (event.deltaX !== 0) horizontalDelta = event.deltaX;
+  else if (event.shiftKey) horizontalDelta = event.deltaY;
+  else horizontalDelta = 0;
 
   const hasVerticalIntent = Math.abs(verticalDelta) > SCROLL_EDGE_EPSILON;
   const hasHorizontalIntent = Math.abs(horizontalDelta) > SCROLL_EDGE_EPSILON;
@@ -352,16 +362,17 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
 
 function UserMessageAttachmentThumbnail({ image }: { image: UserMessageImageAttachment }) {
   const uri = useAttachmentPreviewUrl(image);
+  const imageSource = useMemo(() => ({ uri: uri ?? "" }), [uri]);
   if (!uri) {
     return <View style={userMessageStylesheet.imageThumbnailPlaceholder} />;
   }
-  return <Image source={{ uri }} style={userMessageStylesheet.imageThumbnail} />;
+  return <Image source={imageSource} style={userMessageStylesheet.imageThumbnail} />;
 }
 
 export const UserMessage = memo(function UserMessage({
   message,
   images = [],
-  timestamp,
+  timestamp: _timestamp,
   isFirstInGroup = true,
   isLastInGroup = true,
   disableOuterSpacing,
@@ -375,32 +386,50 @@ export const UserMessage = memo(function UserMessage({
   const hasImages = images.length > 0;
   const showCopyButton = hasText && (isCompact || messageHovered || copyButtonHovered);
 
+  const handleHoverIn = useCallback(() => setMessageHovered(true), []);
+  const handleHoverOut = useCallback(() => setMessageHovered(false), []);
+  const getMessageContent = useCallback(() => message, [message]);
+
+  const containerStyle = useMemo(
+    () => [
+      userMessageStylesheet.container,
+      !resolvedDisableOuterSpacing && [
+        isFirstInGroup && { marginTop: theme.spacing[4] },
+        isLastInGroup && { marginBottom: theme.spacing[4] },
+        !isFirstInGroup || !isLastInGroup ? { marginBottom: theme.spacing[1] } : undefined,
+      ],
+    ],
+    [resolvedDisableOuterSpacing, isFirstInGroup, isLastInGroup, theme.spacing],
+  );
+  const imagePreviewContainerStyle = useMemo(
+    () => [
+      userMessageStylesheet.imagePreviewContainer,
+      hasText ? userMessageStylesheet.imagePreviewSpacing : undefined,
+    ],
+    [hasText],
+  );
+  const copyButtonStyle = useMemo(
+    () => [
+      userMessageStylesheet.copyButton,
+      showCopyButton
+        ? userMessageStylesheet.copyButtonVisible
+        : userMessageStylesheet.copyButtonHidden,
+    ],
+    [showCopyButton],
+  );
+
   return (
-    <View
-      style={[
-        userMessageStylesheet.container,
-        !resolvedDisableOuterSpacing && [
-          isFirstInGroup && { marginTop: theme.spacing[4] },
-          isLastInGroup && { marginBottom: theme.spacing[4] },
-          !isFirstInGroup || !isLastInGroup ? { marginBottom: theme.spacing[1] } : undefined,
-        ],
-      ]}
-    >
+    <View style={containerStyle}>
       <Pressable
         style={userMessageStylesheet.content}
-        onHoverIn={() => setMessageHovered(true)}
-        onHoverOut={() => setMessageHovered(false)}
+        onHoverIn={handleHoverIn}
+        onHoverOut={handleHoverOut}
       >
         <View style={userMessageStylesheet.bubble}>
           {hasImages ? (
-            <View
-              style={[
-                userMessageStylesheet.imagePreviewContainer,
-                hasText ? userMessageStylesheet.imagePreviewSpacing : undefined,
-              ]}
-            >
-              {images.map((image, index) => (
-                <View key={`${image.id}-${index}`} style={userMessageStylesheet.imagePill}>
+            <View style={imagePreviewContainerStyle}>
+              {images.map((image) => (
+                <View key={image.id} style={userMessageStylesheet.imagePill}>
                   <UserMessageAttachmentThumbnail image={image} />
                 </View>
               ))}
@@ -414,13 +443,8 @@ export const UserMessage = memo(function UserMessage({
         </View>
         {hasText ? (
           <TurnCopyButton
-            getContent={() => message}
-            containerStyle={[
-              userMessageStylesheet.copyButton,
-              showCopyButton
-                ? userMessageStylesheet.copyButtonVisible
-                : userMessageStylesheet.copyButtonHidden,
-            ]}
+            getContent={getMessageContent}
+            containerStyle={copyButtonStyle}
             accessibilityLabel="Copy message"
             onHoverChange={setCopyButtonHovered}
           />
@@ -565,12 +589,17 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
     ],
     [aspectRatio],
   );
+  const frameStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [assistantMessageStylesheet.imageFrame, containerStyle],
+    [containerStyle],
+  );
+  const imageSource = useMemo(() => ({ uri }), [uri]);
 
   return (
-    <View style={[assistantMessageStylesheet.imageFrame, containerStyle]}>
+    <View style={frameStyle}>
       <View style={surfaceStyle}>
         <Image
-          source={{ uri }}
+          source={imageSource}
           style={assistantMessageStylesheet.image}
           resizeMode="contain"
           accessibilityLabel={alt}
@@ -671,6 +700,15 @@ function AssistantMarkdownImage({
   const directUri = resolution?.kind === "direct" && !dataImage ? resolution.uri : null;
   const resolvedUri = directUri ?? dataImageAssetUri ?? fileAssetUri ?? null;
 
+  const stateFrameStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [
+      assistantMessageStylesheet.imageFrame,
+      containerStyle,
+      assistantMessageStylesheet.imageState,
+    ],
+    [containerStyle],
+  );
+
   if (resolvedUri) {
     return (
       <AssistantMarkdownResolvedImage
@@ -686,34 +724,48 @@ function AssistantMarkdownImage({
 
   if (query.isLoading || dataImageQuery.isLoading) {
     return (
-      <View
-        style={[
-          assistantMessageStylesheet.imageFrame,
-          containerStyle,
-          assistantMessageStylesheet.imageState,
-        ]}
-      >
+      <View style={stateFrameStyle}>
         <ActivityIndicator size="small" />
       </View>
     );
   }
 
+  const errorText = resolveAssistantImageErrorText(query.error, dataImageQuery.error);
+
   return (
-    <View
-      style={[
-        assistantMessageStylesheet.imageFrame,
-        containerStyle,
-        assistantMessageStylesheet.imageState,
-      ]}
-    >
-      <Text style={assistantMessageStylesheet.imageErrorText}>
-        {query.error instanceof Error
-          ? query.error.message
-          : dataImageQuery.error instanceof Error
-            ? dataImageQuery.error.message
-            : "Unable to load image preview."}
-      </Text>
+    <View style={stateFrameStyle}>
+      <Text style={assistantMessageStylesheet.imageErrorText}>{errorText}</Text>
     </View>
+  );
+}
+
+function resolveAssistantImageErrorText(fileError: unknown, dataError: unknown): string {
+  if (fileError instanceof Error) return fileError.message;
+  if (dataError instanceof Error) return dataError.message;
+  return "Unable to load image preview.";
+}
+
+interface InlinePathChipProps {
+  content: string;
+  parsed: InlinePathTarget;
+  onPress: (target: InlinePathTarget) => void;
+}
+
+const INLINE_PATH_CHIP_STYLE = [
+  assistantMessageStylesheet.pathChip,
+  assistantMessageStylesheet.pathChipText,
+];
+
+function InlinePathChip({ content, parsed, onPress }: InlinePathChipProps) {
+  const handlePress = useCallback(() => onPress(parsed), [onPress, parsed]);
+  return (
+    <Text
+      onPress={handlePress}
+      selectable={isWeb ? undefined : false}
+      style={INLINE_PATH_CHIP_STYLE}
+    >
+      {content}
+    </Text>
   );
 }
 
@@ -724,14 +776,21 @@ function MarkdownLink({
   children,
 }: {
   href: string;
-  style: any;
+  style: StyleProp<TextStyle>;
   onPress: (url: string) => void;
   children: ReactNode;
 }) {
   const [hovered, setHovered] = useState(false);
+  const handlePress = useCallback(() => onPress(href), [onPress, href]);
+  const handleHoverIn = useCallback(() => setHovered(true), []);
+  const handleHoverOut = useCallback(() => setHovered(false), []);
+  const hoveredTextStyle = useMemo<StyleProp<TextStyle>>(
+    () => [style, hovered && { textDecorationLine: "underline" as const }],
+    [style, hovered],
+  );
   if (isNative) {
     return (
-      <Text accessibilityRole="link" onPress={() => onPress(href)} style={style}>
+      <Text accessibilityRole="link" onPress={handlePress} style={style}>
         {children}
       </Text>
     );
@@ -740,11 +799,11 @@ function MarkdownLink({
   return (
     <Pressable
       accessibilityRole="link"
-      onPress={() => onPress(href)}
-      onHoverIn={() => setHovered(true)}
-      onHoverOut={() => setHovered(false)}
+      onPress={handlePress}
+      onHoverIn={handleHoverIn}
+      onHoverOut={handleHoverOut}
     >
-      <Text style={[style, hovered && { textDecorationLine: "underline" }]}>{children}</Text>
+      <Text style={hoveredTextStyle}>{children}</Text>
     </Pressable>
   );
 }
@@ -848,12 +907,19 @@ export const TurnCopyButton = memo(function TurnCopyButton({
     };
   }, []);
 
+  const handleHoverIn = useCallback(() => onHoverChange?.(true), [onHoverChange]);
+  const handleHoverOut = useCallback(() => onHoverChange?.(false), [onHoverChange]);
+  const pressableStyle = useMemo(
+    () => [turnCopyButtonStylesheet.container, containerStyle],
+    [containerStyle],
+  );
+
   return (
     <Pressable
       onPress={handleCopy}
-      onHoverIn={() => onHoverChange?.(true)}
-      onHoverOut={() => onHoverChange?.(false)}
-      style={[turnCopyButtonStylesheet.container, containerStyle]}
+      onHoverIn={handleHoverIn}
+      onHoverOut={handleHoverOut}
+      style={pressableStyle}
       accessibilityRole="button"
       accessibilityLabel={
         copied ? (copiedAccessibilityLabel ?? "Copied") : (accessibilityLabel ?? "Copy turn")
@@ -1073,44 +1139,64 @@ const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer(
     [nativeShimmerPeakStyle, peakWidth, rowHeight],
   );
 
+  const maskElement = useMemo(
+    () => (
+      <View pointerEvents="none" style={nativeShimmerMaskStyle}>
+        <Text style={nativeLabelMaskStyle} numberOfLines={1}>
+          {label}
+        </Text>
+        {secondaryLabel ? (
+          <Text style={nativeSecondaryMaskStyle} numberOfLines={1}>
+            {secondaryLabel}
+          </Text>
+        ) : (
+          <View style={expandableBadgeStylesheet.spacer} />
+        )}
+      </View>
+    ),
+    [nativeShimmerMaskStyle, nativeLabelMaskStyle, nativeSecondaryMaskStyle, label, secondaryLabel],
+  );
+
   return (
     <View style={expandableBadgeStylesheet.shimmerOverlay} pointerEvents="none">
-      <MaskedView
-        pointerEvents="none"
-        style={nativeShimmerTrackStyle}
-        maskElement={
-          <View pointerEvents="none" style={nativeShimmerMaskStyle}>
-            <Text style={nativeLabelMaskStyle} numberOfLines={1}>
-              {label}
-            </Text>
-            {secondaryLabel ? (
-              <Text style={nativeSecondaryMaskStyle} numberOfLines={1}>
-                {secondaryLabel}
-              </Text>
-            ) : (
-              <View style={expandableBadgeStylesheet.spacer} />
-            )}
-          </View>
-        }
-      >
+      <MaskedView pointerEvents="none" style={nativeShimmerTrackStyle} maskElement={maskElement}>
         <View pointerEvents="none" style={nativeShimmerTrackStyle}>
           <Animated.View pointerEvents="none" style={nativeShimmerPeakCombinedStyle}>
-            <Svg width="100%" height="100%" preserveAspectRatio="none">
-              <Defs>
-                <SvgLinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-                  <Stop offset="0%" stopColor="#ffffff" stopOpacity={0} />
-                  <Stop offset="50%" stopColor="#ffffff" stopOpacity={1} />
-                  <Stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
-                </SvgLinearGradient>
-              </Defs>
-              <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
-            </Svg>
+            <NativeShimmerPeakSvg gradientId={gradientId} />
           </Animated.View>
         </View>
       </MaskedView>
     </View>
   );
 });
+
+function NativeShimmerPeakSvg({ gradientId }: { gradientId: string }) {
+  return (
+    <Svg width="100%" height="100%" preserveAspectRatio="none">
+      <Defs>
+        <SvgLinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+          <Stop offset="0%" stopColor="#ffffff" stopOpacity={0} />
+          <Stop offset="50%" stopColor="#ffffff" stopOpacity={1} />
+          <Stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
+    </Svg>
+  );
+}
+
+interface AssistantMessageBlockContainerProps {
+  marginBottom: number;
+  children: ReactNode;
+}
+
+function AssistantMessageBlockContainer({
+  marginBottom,
+  children,
+}: AssistantMessageBlockContainerProps) {
+  const style = useMemo(() => (marginBottom > 0 ? { marginBottom } : undefined), [marginBottom]);
+  return <View style={style}>{children}</View>;
+}
 
 interface MemoizedMarkdownBlockProps {
   text: string;
@@ -1141,9 +1227,76 @@ const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
   );
 });
 
+interface MarkdownInheritedTextProps {
+  inheritedStyles: TextStyle;
+  textStyle: TextStyle;
+  children: ReactNode;
+}
+
+function MarkdownInheritedText({
+  inheritedStyles,
+  textStyle,
+  children,
+}: MarkdownInheritedTextProps) {
+  const style = useMemo(() => [inheritedStyles, textStyle], [inheritedStyles, textStyle]);
+  return <Text style={style}>{children}</Text>;
+}
+
+interface MarkdownInheritedCodeLinkProps {
+  href: string;
+  inheritedStyles: TextStyle;
+  codeInlineStyle: TextStyle;
+  linkStyle: TextStyle;
+  onPress: (url: string) => boolean;
+  children: ReactNode;
+}
+
+function MarkdownInheritedCodeLink({
+  href,
+  inheritedStyles,
+  codeInlineStyle,
+  linkStyle,
+  onPress,
+  children,
+}: MarkdownInheritedCodeLinkProps) {
+  const style = useMemo(
+    () => [inheritedStyles, codeInlineStyle, linkStyle],
+    [inheritedStyles, codeInlineStyle, linkStyle],
+  );
+  return (
+    <MarkdownLink href={href} style={style} onPress={onPress}>
+      {children}
+    </MarkdownLink>
+  );
+}
+
+interface MarkdownListItemContentProps {
+  contentStyle: ViewStyle;
+  children: ReactNode;
+}
+
+const MARKDOWN_LIST_ITEM_CONTENT_FLEX: ViewStyle = { flex: 1, flexShrink: 1, minWidth: 0 };
+
+function MarkdownListItemContent({ contentStyle, children }: MarkdownListItemContentProps) {
+  const style = useMemo(() => [contentStyle, MARKDOWN_LIST_ITEM_CONTENT_FLEX], [contentStyle]);
+  return <View style={style}>{children}</View>;
+}
+
+interface MarkdownParagraphViewProps {
+  paragraphStyle: ViewStyle;
+  children: ReactNode;
+}
+
+const MARKDOWN_PARAGRAPH_RESET: ViewStyle = { marginBottom: 0 };
+
+function MarkdownParagraphView({ paragraphStyle, children }: MarkdownParagraphViewProps) {
+  const style = useMemo(() => [paragraphStyle, MARKDOWN_PARAGRAPH_RESET], [paragraphStyle]);
+  return <View style={style}>{children}</View>;
+}
+
 export const AssistantMessage = memo(function AssistantMessage({
   message,
-  timestamp,
+  timestamp: _timestamp,
   onInlinePathPress,
   workspaceRoot,
   serverId,
@@ -1190,107 +1343,140 @@ export const AssistantMessage = memo(function AssistantMessage({
   const markdownRules = useMemo<RenderRules>(() => {
     return {
       text: (
-        node: any,
+        node: ASTNode,
         _children: ReactNode[],
-        _parent: any,
-        styles: any,
-        inheritedStyles: any = {},
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+        inheritedStyles: TextStyle = {},
       ) => (
-        <Text key={node.key} style={[inheritedStyles, styles.text]}>
+        <MarkdownInheritedText
+          key={node.key}
+          inheritedStyles={inheritedStyles}
+          textStyle={styles.text}
+        >
           {node.content}
-        </Text>
+        </MarkdownInheritedText>
       ),
       textgroup: (
-        node: any,
+        node: ASTNode,
         children: ReactNode[],
-        _parent: any,
-        styles: any,
-        inheritedStyles: any = {},
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+        inheritedStyles: TextStyle = {},
       ) => (
-        <Text key={node.key} style={[inheritedStyles, styles.textgroup]}>
+        <MarkdownInheritedText
+          key={node.key}
+          inheritedStyles={inheritedStyles}
+          textStyle={styles.textgroup}
+        >
           {children}
-        </Text>
+        </MarkdownInheritedText>
       ),
       code_block: (
-        node: any,
+        node: ASTNode,
         _children: ReactNode[],
-        _parent: any,
-        styles: any,
-        inheritedStyles: any = {},
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+        inheritedStyles: TextStyle = {},
       ) => (
-        <Text key={node.key} style={[inheritedStyles, styles.code_block]}>
+        <MarkdownInheritedText
+          key={node.key}
+          inheritedStyles={inheritedStyles}
+          textStyle={styles.code_block}
+        >
           {node.content}
-        </Text>
+        </MarkdownInheritedText>
       ),
       fence: (
-        node: any,
+        node: ASTNode,
         _children: ReactNode[],
-        _parent: any,
-        styles: any,
-        inheritedStyles: any = {},
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+        inheritedStyles: TextStyle = {},
       ) => (
-        <Text key={node.key} style={[inheritedStyles, styles.fence]}>
+        <MarkdownInheritedText
+          key={node.key}
+          inheritedStyles={inheritedStyles}
+          textStyle={styles.fence}
+        >
           {node.content}
-        </Text>
+        </MarkdownInheritedText>
       ),
       code_inline: (
-        node: any,
+        node: ASTNode,
         _children: ReactNode[],
-        parent: any,
-        styles: any,
-        inheritedStyles: any = {},
+        parent: ASTNode[],
+        styles: MarkdownStyles,
+        inheritedStyles: TextStyle = {},
       ) => {
         const content = node.content ?? "";
-        const isLinkedInlineCode =
-          nodeHasParentType(parent, "link") ||
-          (!Array.isArray(parent) && typeof parent?.attributes?.href === "string");
+        const isLinkedInlineCode = nodeHasParentType(parent, "link");
         const parsed =
           onInlinePathPress && !isLinkedInlineCode ? parseInlinePathToken(content) : null;
 
-        if (parsed) {
+        if (parsed && onInlinePathPress) {
           return (
-            <Text
+            <InlinePathChip
               key={node.key}
-              onPress={() => parsed && onInlinePathPress?.(parsed)}
-              selectable={isWeb ? undefined : false}
-              style={[assistantMessageStylesheet.pathChip, assistantMessageStylesheet.pathChipText]}
-            >
-              {content}
-            </Text>
+              content={content}
+              parsed={parsed}
+              onPress={onInlinePathPress}
+            />
           );
         }
 
         const inlineCodeLinkUrl = getInlineCodeAutoLinkUrl(markdownParser, content);
         if (inlineCodeLinkUrl) {
           return (
-            <MarkdownLink
+            <MarkdownInheritedCodeLink
               key={node.key}
               href={inlineCodeLinkUrl}
-              style={[inheritedStyles, styles.code_inline, styles.link]}
+              inheritedStyles={inheritedStyles}
+              codeInlineStyle={styles.code_inline}
+              linkStyle={styles.link}
               onPress={handleLinkPress}
             >
               {content}
-            </MarkdownLink>
+            </MarkdownInheritedCodeLink>
           );
         }
 
         return (
-          <Text key={node.key} style={[inheritedStyles, styles.code_inline]}>
+          <MarkdownInheritedText
+            key={node.key}
+            inheritedStyles={inheritedStyles}
+            textStyle={styles.code_inline}
+          >
             {content}
-          </Text>
+          </MarkdownInheritedText>
         );
       },
-      bullet_list: (node: any, children: ReactNode[], _parent: any, styles: any) => (
+      bullet_list: (
+        node: ASTNode,
+        children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
         <View key={node.key} style={styles.bullet_list}>
           {children}
         </View>
       ),
-      ordered_list: (node: any, children: ReactNode[], _parent: any, styles: any) => (
+      ordered_list: (
+        node: ASTNode,
+        children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
         <View key={node.key} style={styles.ordered_list}>
           {children}
         </View>
       ),
-      list_item: (node: any, children: ReactNode[], parent: any, styles: any) => {
+      list_item: (
+        node: ASTNode,
+        children: ReactNode[],
+        parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => {
         const { isOrdered, marker } = getMarkdownListMarker(node, parent);
         const iconStyle = isOrdered ? styles.ordered_list_icon : styles.bullet_list_icon;
         const contentStyle = isOrdered ? styles.ordered_list_content : styles.bullet_list_content;
@@ -1298,39 +1484,54 @@ export const AssistantMessage = memo(function AssistantMessage({
         return (
           <View key={node.key} style={styles.list_item}>
             <Text style={iconStyle}>{marker}</Text>
-            <View style={[contentStyle, { flex: 1, flexShrink: 1, minWidth: 0 }]}>{children}</View>
+            <MarkdownListItemContent contentStyle={contentStyle}>
+              {children}
+            </MarkdownListItemContent>
           </View>
         );
       },
-      paragraph: (node: any, children: ReactNode[], _parent: any, styles: any) => (
-        <View key={node.key} style={[styles.paragraph, { marginBottom: 0 }]}>
+      paragraph: (
+        node: ASTNode,
+        children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <MarkdownParagraphView key={node.key} paragraphStyle={styles.paragraph}>
           {children}
-        </View>
+        </MarkdownParagraphView>
       ),
-      link: (node: any, children: ReactNode[], _parent: any, styles: any) => (
+      link: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
         <MarkdownLink
           key={node.key}
-          href={node.attributes?.href ?? ""}
+          href={typeof node.attributes?.href === "string" ? node.attributes.href : ""}
           style={styles.link}
           onPress={handleLinkPress}
         >
           {Children.map(children, (child) =>
             isValidElement(child)
               ? cloneElement(child, {
-                  style: [(child.props as any).style, { color: styles.link.color }],
-                } as any)
+                  style: [
+                    (child.props as { style?: StyleProp<TextStyle> }).style,
+                    { color: styles.link.color as string | undefined },
+                  ],
+                } as Partial<{ style: StyleProp<TextStyle> }>)
               : child,
           )}
         </MarkdownLink>
       ),
-      image: (node: any, _children: ReactNode[], parent: any, styles: any) => {
+      image: (
+        node: ASTNode,
+        _children: ReactNode[],
+        parent: ASTNode[],
+        _styles: MarkdownStyles,
+      ) => {
         const paragraphNode = Array.isArray(parent)
-          ? parent.find((ancestor: any) => ancestor?.type === "paragraph")
+          ? parent.find((ancestor) => ancestor?.type === "paragraph")
           : null;
         const paragraphChildren = Array.isArray(paragraphNode?.children)
           ? paragraphNode.children
           : [];
-        const imageIndex = paragraphChildren.findIndex((child: any) => child?.key === node.key);
+        const imageIndex = paragraphChildren.findIndex((child: ASTNode) => child?.key === node.key);
         const hasLeadingContent = imageIndex > 0;
 
         return (
@@ -1349,23 +1550,29 @@ export const AssistantMessage = memo(function AssistantMessage({
   }, [client, handleLinkPress, markdownParser, onInlinePathPress, serverId, workspaceRoot]);
 
   const blocks = useMemo(() => splitMarkdownBlocks(message), [message]);
+  const keyedBlocks = useMemo(
+    () => blocks.map((block, index) => ({ key: `${index}:${block.slice(0, 32)}`, block })),
+    [blocks],
+  );
+
+  const assistantContainerStyle = useMemo(
+    () => [
+      assistantMessageStylesheet.container,
+      (spacing === "compactTop" || spacing === "compactBoth") &&
+        assistantMessageStylesheet.containerCompactTop,
+      (spacing === "compactBottom" || spacing === "compactBoth") &&
+        assistantMessageStylesheet.containerCompactBottom,
+      !resolvedDisableOuterSpacing && assistantMessageStylesheet.containerSpacing,
+    ],
+    [spacing, resolvedDisableOuterSpacing],
+  );
 
   return (
-    <View
-      testID="assistant-message"
-      style={[
-        assistantMessageStylesheet.container,
-        (spacing === "compactTop" || spacing === "compactBoth") &&
-          assistantMessageStylesheet.containerCompactTop,
-        (spacing === "compactBottom" || spacing === "compactBoth") &&
-          assistantMessageStylesheet.containerCompactBottom,
-        !resolvedDisableOuterSpacing && assistantMessageStylesheet.containerSpacing,
-      ]}
-    >
-      {blocks.map((block, index) => (
-        <View
-          key={index}
-          style={index < blocks.length - 1 ? { marginBottom: theme.spacing[3] } : undefined}
+    <View testID="assistant-message" style={assistantContainerStyle}>
+      {keyedBlocks.map(({ key, block }, index) => (
+        <AssistantMessageBlockContainer
+          key={key}
+          marginBottom={index < keyedBlocks.length - 1 ? theme.spacing[3] : 0}
         >
           <MemoizedMarkdownBlock
             text={block}
@@ -1374,7 +1581,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             parser={markdownParser}
             onLinkPress={handleLinkPress}
           />
-        </View>
+        </AssistantMessageBlockContainer>
       ))}
     </View>
   );
@@ -1416,20 +1623,21 @@ const speakMessageStylesheet = StyleSheet.create((theme) => ({
 
 export const SpeakMessage = memo(function SpeakMessage({
   message,
-  timestamp,
+  timestamp: _timestamp,
   disableOuterSpacing,
 }: SpeakMessageProps) {
   const { theme } = useUnistyles();
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
+  const containerStyle = useMemo(
+    () => [
+      speakMessageStylesheet.container,
+      !resolvedDisableOuterSpacing && speakMessageStylesheet.containerSpacing,
+    ],
+    [resolvedDisableOuterSpacing],
+  );
 
   return (
-    <View
-      testID="speak-message"
-      style={[
-        speakMessageStylesheet.container,
-        !resolvedDisableOuterSpacing && speakMessageStylesheet.containerSpacing,
-      ]}
-    >
+    <View testID="speak-message" style={containerStyle}>
       <View style={speakMessageStylesheet.header}>
         <MicVocal size={14} color={theme.colors.foregroundMuted} />
         <Text style={speakMessageStylesheet.headerLabel}>Spoke</Text>
@@ -1526,7 +1734,7 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
 export const ActivityLog = memo(function ActivityLog({
   type,
   message,
-  timestamp,
+  timestamp: _timestamp,
   metadata,
   artifactId,
   artifactType,
@@ -1564,39 +1772,41 @@ export const ActivityLog = memo(function ActivityLog({
   const config = typeConfig[type];
   const IconComponent = config.Icon;
 
-  const handlePress = () => {
+  const handlePress = useCallback(() => {
     if (type === "artifact" && artifactId && onArtifactClick) {
       onArtifactClick(artifactId);
     } else if (metadata) {
-      setIsExpanded(!isExpanded);
+      setIsExpanded((prev) => !prev);
     }
-  };
+  }, [type, artifactId, onArtifactClick, metadata]);
 
   const displayMessage =
     type === "artifact" && artifactType && title ? `${artifactType}: ${title}` : message;
 
   const isInteractive = type === "artifact" || metadata;
+  const pressableStyle = useMemo(
+    () => [
+      activityLogStylesheet.pressable,
+      !resolvedDisableOuterSpacing && activityLogStylesheet.pressableSpacing,
+      config.bg,
+      isInteractive && activityLogStylesheet.pressableActive,
+    ],
+    [resolvedDisableOuterSpacing, config.bg, isInteractive],
+  );
+  const messageTextStyle = useMemo(
+    () => [activityLogStylesheet.messageText, { color: config.color }],
+    [config.color],
+  );
 
   return (
-    <Pressable
-      onPress={handlePress}
-      disabled={!isInteractive}
-      style={[
-        activityLogStylesheet.pressable,
-        !resolvedDisableOuterSpacing && activityLogStylesheet.pressableSpacing,
-        config.bg,
-        isInteractive && activityLogStylesheet.pressableActive,
-      ]}
-    >
+    <Pressable onPress={handlePress} disabled={!isInteractive} style={pressableStyle}>
       <View style={activityLogStylesheet.content}>
         <View style={activityLogStylesheet.row}>
           <View style={activityLogStylesheet.iconContainer}>
             <IconComponent size={16} color={config.color} />
           </View>
           <View style={activityLogStylesheet.textContainer}>
-            <Text style={[activityLogStylesheet.messageText, { color: config.color }]}>
-              {displayMessage}
-            </Text>
+            <Text style={messageTextStyle}>{displayMessage}</Text>
             {metadata && (
               <View style={activityLogStylesheet.detailsRow}>
                 <Text style={activityLogStylesheet.detailsText}>Details</Text>
@@ -1655,12 +1865,10 @@ export const CompactionMarker = memo(function CompactionMarker({
   status,
   preTokens,
 }: CompactionMarkerProps) {
-  const label =
-    status === "loading"
-      ? "Compacting..."
-      : preTokens
-        ? `Context compacted (${Math.round(preTokens / 1000)}K tokens)`
-        : "Context compacted";
+  let label: string;
+  if (status === "loading") label = "Compacting...";
+  else if (preTokens) label = `Context compacted (${Math.round(preTokens / 1000)}K tokens)`;
+  else label = "Context compacted";
 
   return (
     <View style={compactionStylesheet.container}>
@@ -1681,6 +1889,36 @@ export const CompactionMarker = memo(function CompactionMarker({
 interface TodoListCardProps {
   items: TodoEntry[];
   disableOuterSpacing?: boolean;
+}
+
+interface TodoListItemRowProps {
+  text: string;
+  completed: boolean;
+}
+
+function TodoListItemRow({ text, completed }: TodoListItemRowProps) {
+  const { theme: todoUnistylesTheme } = useUnistyles();
+  const badgeStyle = useMemo(
+    () => [
+      todoListCardStylesheet.radioBadge,
+      completed
+        ? todoListCardStylesheet.radioBadgeComplete
+        : todoListCardStylesheet.radioBadgeIncomplete,
+    ],
+    [completed],
+  );
+  const textStyle = useMemo(
+    () => [todoListCardStylesheet.itemText, completed && todoListCardStylesheet.itemTextCompleted],
+    [completed],
+  );
+  return (
+    <View style={todoListCardStylesheet.itemRow}>
+      <View style={badgeStyle}>
+        {completed ? <Check size={12} color={todoUnistylesTheme.colors.primaryForeground} /> : null}
+      </View>
+      <Text style={textStyle}>{text}</Text>
+    </View>
+  );
 }
 
 const todoListCardStylesheet = StyleSheet.create((theme) => ({
@@ -1728,7 +1966,7 @@ export const TodoListCard = memo(function TodoListCard({
   items,
   disableOuterSpacing,
 }: TodoListCardProps) {
-  const { theme: unistylesTheme } = useUnistyles();
+  const { theme: _unistylesTheme } = useUnistyles();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const nextTask = useMemo(() => items.find((item) => !item.completed)?.text, [items]);
@@ -1744,29 +1982,8 @@ export const TodoListCard = memo(function TodoListCard({
           {items.length === 0 ? (
             <Text style={todoListCardStylesheet.emptyText}>No tasks yet.</Text>
           ) : (
-            items.map((item, idx) => (
-              <View key={`${item.text}-${idx}`} style={todoListCardStylesheet.itemRow}>
-                <View
-                  style={[
-                    todoListCardStylesheet.radioBadge,
-                    item.completed
-                      ? todoListCardStylesheet.radioBadgeComplete
-                      : todoListCardStylesheet.radioBadgeIncomplete,
-                  ]}
-                >
-                  {item.completed ? (
-                    <Check size={12} color={unistylesTheme.colors.primaryForeground} />
-                  ) : null}
-                </View>
-                <Text
-                  style={[
-                    todoListCardStylesheet.itemText,
-                    item.completed && todoListCardStylesheet.itemTextCompleted,
-                  ]}
-                >
-                  {item.text}
-                </Text>
-              </View>
+            items.map((item) => (
+              <TodoListItemRow key={item.text} text={item.text} completed={item.completed} />
             ))
           )}
         </View>
@@ -1803,6 +2020,279 @@ interface ExpandableBadgeProps {
   testID?: string;
 }
 
+interface ExpandableBadgeSecondaryLabelProps {
+  secondaryLabel?: string;
+  secondaryLabelStyle: StyleProp<TextStyle>;
+  shouldMeasureWebShimmer: boolean;
+  onSecondaryLayout: (event: LayoutChangeEvent) => void;
+}
+
+function ExpandableBadgeSecondaryLabel({
+  secondaryLabel,
+  secondaryLabelStyle,
+  shouldMeasureWebShimmer,
+  onSecondaryLayout,
+}: ExpandableBadgeSecondaryLabelProps) {
+  if (!secondaryLabel) {
+    return <View style={expandableBadgeStylesheet.spacer} />;
+  }
+  return (
+    <Text
+      style={secondaryLabelStyle}
+      numberOfLines={1}
+      onLayout={shouldMeasureWebShimmer ? onSecondaryLayout : undefined}
+    >
+      {secondaryLabel}
+    </Text>
+  );
+}
+
+interface ExpandableBadgeWebShimmerOverlayProps {
+  label: string;
+  secondaryLabel?: string;
+  shimmerLabelTextStyle: StyleProp<TextStyle>;
+  shimmerSecondaryTextStyle: StyleProp<TextStyle>;
+}
+
+function ExpandableBadgeWebShimmerOverlay({
+  label,
+  secondaryLabel,
+  shimmerLabelTextStyle,
+  shimmerSecondaryTextStyle,
+}: ExpandableBadgeWebShimmerOverlayProps) {
+  return (
+    <View style={expandableBadgeStylesheet.shimmerOverlay} pointerEvents="none">
+      <Text style={shimmerLabelTextStyle} numberOfLines={1}>
+        {label}
+      </Text>
+      {secondaryLabel ? (
+        <Text style={shimmerSecondaryTextStyle} numberOfLines={1}>
+          {secondaryLabel}
+        </Text>
+      ) : (
+        <View style={expandableBadgeStylesheet.spacer} />
+      )}
+    </View>
+  );
+}
+
+interface ExpandableBadgeLabelRowProps {
+  label: string;
+  labelStyle: StyleProp<TextStyle>;
+  secondaryLabel?: string;
+  secondaryLabelStyle: StyleProp<TextStyle>;
+  shouldMeasureWebShimmer: boolean;
+  shouldMeasureNativeShimmer: boolean;
+  isWebShimmer: boolean;
+  isNativeShimmer: boolean;
+  shimmerLabelTextStyle: StyleProp<TextStyle>;
+  shimmerSecondaryTextStyle: StyleProp<TextStyle>;
+  labelRowWidth: number;
+  labelRowHeight: number;
+  nativeShimmerPeakWidth: number;
+  shimmerDuration: number;
+  nativeGradientId: string;
+  onLabelRowLayout: (event: LayoutChangeEvent) => void;
+  onLabelLayout: (event: LayoutChangeEvent) => void;
+  onSecondaryLayout: (event: LayoutChangeEvent) => void;
+}
+
+function ExpandableBadgeLabelRow({
+  label,
+  labelStyle,
+  secondaryLabel,
+  secondaryLabelStyle,
+  shouldMeasureWebShimmer,
+  shouldMeasureNativeShimmer,
+  isWebShimmer,
+  isNativeShimmer,
+  shimmerLabelTextStyle,
+  shimmerSecondaryTextStyle,
+  labelRowWidth,
+  labelRowHeight,
+  nativeShimmerPeakWidth,
+  shimmerDuration,
+  nativeGradientId,
+  onLabelRowLayout,
+  onLabelLayout,
+  onSecondaryLayout,
+}: ExpandableBadgeLabelRowProps) {
+  return (
+    <View
+      style={expandableBadgeStylesheet.labelRow}
+      onLayout={shouldMeasureNativeShimmer ? onLabelRowLayout : undefined}
+    >
+      <Text
+        style={labelStyle}
+        numberOfLines={1}
+        onLayout={shouldMeasureWebShimmer ? onLabelLayout : undefined}
+      >
+        {label}
+      </Text>
+      <ExpandableBadgeSecondaryLabel
+        secondaryLabel={secondaryLabel}
+        secondaryLabelStyle={secondaryLabelStyle}
+        shouldMeasureWebShimmer={shouldMeasureWebShimmer}
+        onSecondaryLayout={onSecondaryLayout}
+      />
+      {isWebShimmer ? (
+        <ExpandableBadgeWebShimmerOverlay
+          label={label}
+          secondaryLabel={secondaryLabel}
+          shimmerLabelTextStyle={shimmerLabelTextStyle}
+          shimmerSecondaryTextStyle={shimmerSecondaryTextStyle}
+        />
+      ) : null}
+      {isNativeShimmer ? (
+        <NativeExpandableBadgeShimmer
+          label={label}
+          secondaryLabel={secondaryLabel}
+          rowWidth={labelRowWidth}
+          rowHeight={labelRowHeight}
+          peakWidth={nativeShimmerPeakWidth}
+          durationSeconds={shimmerDuration}
+          gradientId={nativeGradientId}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function resolveExpandableBadgeIconColor({
+  isError,
+  isActive,
+  theme,
+}: {
+  isError: boolean;
+  isActive: boolean;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}): string {
+  if (isError) return theme.colors.destructive;
+  if (isActive) return theme.colors.foreground;
+  return theme.colors.mutedForeground;
+}
+
+function renderExpandableBadgeIcon({
+  isError,
+  iconColor,
+  icon,
+}: {
+  isError: boolean;
+  iconColor: string;
+  icon?: ComponentType<{ size?: number; color?: string }>;
+}): ReactNode {
+  if (isError) {
+    return <TriangleAlertIcon size={12} color={iconColor} opacity={0.8} />;
+  }
+  if (icon) {
+    const IconComponent = icon;
+    return <IconComponent size={12} color={iconColor} />;
+  }
+  return null;
+}
+
+function computeShimmerMetrics(input: {
+  label: string;
+  secondaryLabel: string | undefined;
+  isLoading: boolean;
+  labelRowWidth: number;
+  labelRowHeight: number;
+  labelOffsetX: number;
+  labelWidth: number;
+  secondaryOffsetX: number;
+  secondaryWidth: number;
+}) {
+  const totalShimmerChars = input.label.trim().length + (input.secondaryLabel?.trim().length ?? 0);
+  const shortTextDurationAdjustment = totalShimmerChars <= 12 ? 0.25 : 0;
+  const shimmerDuration = Math.max(
+    1,
+    Math.min(2.3, 1.25 + totalShimmerChars * 0.008 - shortTextDurationAdjustment),
+  );
+  const nativeShimmerPeakWidth = Math.max(
+    32,
+    Math.min(120, input.labelRowWidth > 0 ? input.labelRowWidth * 0.28 : 0),
+  );
+  const isWebShimmer = input.isLoading && isWeb;
+  const shouldMeasureWebShimmer = isWebShimmer;
+  const shouldMeasureNativeShimmer = input.isLoading && isNative;
+  const isNativeShimmer =
+    shouldMeasureNativeShimmer && input.labelRowWidth > 0 && input.labelRowHeight > 0;
+  const webShimmerSpanStartX = input.labelOffsetX;
+  const webShimmerSpanEndX = input.secondaryLabel
+    ? input.secondaryOffsetX + input.secondaryWidth
+    : input.labelOffsetX + input.labelWidth;
+  const webShimmerSpanWidth = Math.max(1, webShimmerSpanEndX - webShimmerSpanStartX);
+  const webShimmerPeakWidth = Math.max(42, Math.min(120, webShimmerSpanWidth * 0.22));
+  const webShimmerTrackStart = webShimmerSpanStartX - webShimmerPeakWidth;
+  const webShimmerTrackEnd = webShimmerSpanEndX;
+  return {
+    shimmerDuration,
+    nativeShimmerPeakWidth,
+    isWebShimmer,
+    shouldMeasureWebShimmer,
+    shouldMeasureNativeShimmer,
+    isNativeShimmer,
+    webShimmerPeakWidth,
+    webShimmerTrackStart,
+    webShimmerTrackEnd,
+  };
+}
+
+function useDetailWheelPropagationBlocker(input: {
+  detailWrapperRef: React.RefObject<View | null>;
+  enabled: boolean;
+  wheelInvestigationComponentId: string;
+}): void {
+  const { detailWrapperRef, enabled, wheelInvestigationComponentId } = input;
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    const node = detailWrapperRef.current as unknown as HTMLElement | null;
+    if (!node || typeof node.addEventListener !== "function") {
+      return;
+    }
+    const stopWheelPropagation = (event: WheelEvent) => {
+      if (shouldStopDetailWheelPropagation(node, event)) {
+        event.stopPropagation();
+      }
+    };
+    markScrollInvestigationEvent(wheelInvestigationComponentId, "wheelAttach");
+    node.addEventListener("wheel", stopWheelPropagation, { passive: true });
+    return () => {
+      markScrollInvestigationEvent(wheelInvestigationComponentId, "wheelDetach");
+      node.removeEventListener("wheel", stopWheelPropagation);
+    };
+  }, [detailWrapperRef, enabled, wheelInvestigationComponentId]);
+}
+
+const SHIMMER_GRADIENT =
+  "linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.45) 24%, #ffffff 40%, #ffffff 60%, rgba(255, 255, 255, 0.45) 76%, rgba(255, 255, 255, 0) 100%)";
+
+function buildShimmerTextStyle(input: {
+  isWebShimmer: boolean;
+  webShimmerPeakWidth: number;
+  shimmerDuration: number;
+  webShimmerTrackStart: number;
+  webShimmerTrackEnd: number;
+  offsetX: number;
+}): object | null {
+  if (!input.isWebShimmer) return null;
+  return {
+    opacity: 1,
+    color: "transparent",
+    backgroundImage: SHIMMER_GRADIENT,
+    backgroundSize: `${input.webShimmerPeakWidth}px 100%`,
+    backgroundRepeat: "no-repeat",
+    backgroundClip: "text",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    animation: `${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} ${input.shimmerDuration}s linear infinite`,
+    "--paseo-shimmer-start": `${input.webShimmerTrackStart - input.offsetX}px`,
+    "--paseo-shimmer-end": `${input.webShimmerTrackEnd - input.offsetX}px`,
+  };
+}
+
 const ExpandableBadge = memo(function ExpandableBadge({
   label,
   style,
@@ -1828,6 +2318,19 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const detailWrapperRef = useRef<View | null>(null);
   const wheelInvestigationComponentId = `ExpandableBadgeWheel:${testID ?? label}`;
 
+  const handleHoverIn = useCallback(() => setIsHovered(true), []);
+  const handleHoverOut = useCallback(() => {
+    setIsHovered(false);
+    setIsPressed(false);
+  }, []);
+  const handlePressIn = useCallback(() => setIsPressed(true), []);
+  const handlePressOut = useCallback(() => setIsPressed(false), []);
+  const handleDetailHoverIn = useCallback(() => onDetailHoverChange?.(true), [onDetailHoverChange]);
+  const handleDetailHoverOut = useCallback(
+    () => onDetailHoverChange?.(false),
+    [onDetailHoverChange],
+  );
+
   const nativeGradientIdRef = useRef(
     `shimmer-gradient-${Math.random().toString(36).substring(2, 9)}`,
   );
@@ -1838,28 +2341,27 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const [secondaryOffsetX, setSecondaryOffsetX] = useState(0);
   const [secondaryWidth, setSecondaryWidth] = useState(0);
 
-  const totalShimmerChars = label.trim().length + (secondaryLabel?.trim().length ?? 0);
-  const shortTextDurationAdjustment = totalShimmerChars <= 12 ? 0.25 : 0;
-  const shimmerDuration = Math.max(
-    1,
-    Math.min(2.3, 1.25 + totalShimmerChars * 0.008 - shortTextDurationAdjustment),
-  );
-  const nativeShimmerPeakWidth = Math.max(
-    32,
-    Math.min(120, labelRowWidth > 0 ? labelRowWidth * 0.28 : 0),
-  );
-  const isWebShimmer = isLoading && isWeb;
-  const shouldMeasureWebShimmer = isWebShimmer;
-  const shouldMeasureNativeShimmer = isLoading && isNative;
-  const isNativeShimmer = shouldMeasureNativeShimmer && labelRowWidth > 0 && labelRowHeight > 0;
-  const webShimmerSpanStartX = labelOffsetX;
-  const webShimmerSpanEndX = secondaryLabel
-    ? secondaryOffsetX + secondaryWidth
-    : labelOffsetX + labelWidth;
-  const webShimmerSpanWidth = Math.max(1, webShimmerSpanEndX - webShimmerSpanStartX);
-  const webShimmerPeakWidth = Math.max(42, Math.min(120, webShimmerSpanWidth * 0.22));
-  const webShimmerTrackStart = webShimmerSpanStartX - webShimmerPeakWidth;
-  const webShimmerTrackEnd = webShimmerSpanEndX;
+  const {
+    shimmerDuration,
+    nativeShimmerPeakWidth,
+    isWebShimmer,
+    shouldMeasureWebShimmer,
+    shouldMeasureNativeShimmer,
+    isNativeShimmer,
+    webShimmerPeakWidth,
+    webShimmerTrackStart,
+    webShimmerTrackEnd,
+  } = computeShimmerMetrics({
+    label,
+    secondaryLabel,
+    isLoading,
+    labelRowWidth,
+    labelRowHeight,
+    labelOffsetX,
+    labelWidth,
+    secondaryOffsetX,
+    secondaryWidth,
+  });
 
   const handleLabelRowLayout = useCallback(
     (event: LayoutChangeEvent) => {
@@ -1904,64 +2406,51 @@ const ExpandableBadge = memo(function ExpandableBadge({
     ensureWebToolCallShimmerKeyframes();
   }, [isWebShimmer]);
 
-  useEffect(() => {
-    if (isNative || !isExpanded || !hasDetailContent) {
-      return;
-    }
+  useDetailWheelPropagationBlocker({
+    detailWrapperRef,
+    enabled: !isNative && isExpanded && hasDetailContent,
+    wheelInvestigationComponentId,
+  });
 
-    const node = detailWrapperRef.current as unknown as HTMLElement | null;
-    if (!node || typeof node.addEventListener !== "function") {
-      return;
-    }
+  const shimmerLabelStyle = useMemo(
+    () =>
+      buildShimmerTextStyle({
+        isWebShimmer,
+        webShimmerPeakWidth,
+        shimmerDuration,
+        webShimmerTrackStart,
+        webShimmerTrackEnd,
+        offsetX: labelOffsetX,
+      }) as never,
+    [
+      isWebShimmer,
+      webShimmerPeakWidth,
+      shimmerDuration,
+      webShimmerTrackStart,
+      webShimmerTrackEnd,
+      labelOffsetX,
+    ],
+  );
 
-    const stopWheelPropagation = (event: WheelEvent) => {
-      if (shouldStopDetailWheelPropagation(node, event)) {
-        event.stopPropagation();
-      }
-    };
-
-    markScrollInvestigationEvent(wheelInvestigationComponentId, "wheelAttach");
-    node.addEventListener("wheel", stopWheelPropagation, { passive: true });
-    return () => {
-      markScrollInvestigationEvent(wheelInvestigationComponentId, "wheelDetach");
-      node.removeEventListener("wheel", stopWheelPropagation);
-    };
-  }, [hasDetailContent, isExpanded, wheelInvestigationComponentId]);
-
-  const shimmerGradient =
-    "linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.45) 24%, #ffffff 40%, #ffffff 60%, rgba(255, 255, 255, 0.45) 76%, rgba(255, 255, 255, 0) 100%)";
-
-  const shimmerLabelStyle = isWebShimmer
-    ? ({
-        opacity: 1,
-        color: "transparent",
-        backgroundImage: shimmerGradient,
-        backgroundSize: `${webShimmerPeakWidth}px 100%`,
-        backgroundRepeat: "no-repeat",
-        backgroundClip: "text",
-        WebkitBackgroundClip: "text",
-        WebkitTextFillColor: "transparent",
-        animation: `${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} ${shimmerDuration}s linear infinite`,
-        "--paseo-shimmer-start": `${webShimmerTrackStart - labelOffsetX}px`,
-        "--paseo-shimmer-end": `${webShimmerTrackEnd - labelOffsetX}px`,
-      } as never)
-    : null;
-
-  const shimmerSecondaryStyle = isWebShimmer
-    ? ({
-        opacity: 1,
-        color: "transparent",
-        backgroundImage: shimmerGradient,
-        backgroundSize: `${webShimmerPeakWidth}px 100%`,
-        backgroundRepeat: "no-repeat",
-        backgroundClip: "text",
-        WebkitBackgroundClip: "text",
-        WebkitTextFillColor: "transparent",
-        animation: `${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} ${shimmerDuration}s linear infinite`,
-        "--paseo-shimmer-start": `${webShimmerTrackStart - secondaryOffsetX}px`,
-        "--paseo-shimmer-end": `${webShimmerTrackEnd - secondaryOffsetX}px`,
-      } as never)
-    : null;
+  const shimmerSecondaryStyle = useMemo(
+    () =>
+      buildShimmerTextStyle({
+        isWebShimmer,
+        webShimmerPeakWidth,
+        shimmerDuration,
+        webShimmerTrackStart,
+        webShimmerTrackEnd,
+        offsetX: secondaryOffsetX,
+      }) as never,
+    [
+      isWebShimmer,
+      webShimmerPeakWidth,
+      shimmerDuration,
+      webShimmerTrackStart,
+      webShimmerTrackEnd,
+      secondaryOffsetX,
+    ],
+  );
 
   const containerStyle = useMemo(
     () => [
@@ -2035,90 +2524,50 @@ const ExpandableBadge = memo(function ExpandableBadge({
     [isExpanded],
   );
 
-  const IconComponent = icon;
-  const iconColor = isError
-    ? theme.colors.destructive
-    : isActive
-      ? theme.colors.foreground
-      : theme.colors.mutedForeground;
+  const iconColor = resolveExpandableBadgeIconColor({ isError, isActive, theme });
+  const iconNode = renderExpandableBadgeIcon({ isError, iconColor, icon });
 
-  let iconNode: ReactNode = null;
-  if (isError) {
-    iconNode = <TriangleAlertIcon size={12} color={iconColor} opacity={0.8} />;
-  } else if (IconComponent) {
-    iconNode = <IconComponent size={12} color={iconColor} />;
-  }
+  const pressHandlers = isInteractive
+    ? {
+        onPress: onToggle,
+        onHoverIn: handleHoverIn,
+        onHoverOut: handleHoverOut,
+        onPressIn: handlePressIn,
+        onPressOut: handlePressOut,
+        accessibilityRole: "button" as const,
+      }
+    : {};
 
   return (
     <View style={containerStyle} testID={testID}>
       <Pressable
-        onPress={isInteractive ? onToggle : undefined}
-        onHoverIn={isInteractive ? () => setIsHovered(true) : undefined}
-        onHoverOut={
-          isInteractive
-            ? () => {
-                setIsHovered(false);
-                setIsPressed(false);
-              }
-            : undefined
-        }
-        onPressIn={isInteractive ? () => setIsPressed(true) : undefined}
-        onPressOut={isInteractive ? () => setIsPressed(false) : undefined}
+        {...pressHandlers}
         disabled={!isInteractive}
-        accessibilityRole={isInteractive ? "button" : undefined}
         accessibilityState={accessibilityState}
         style={pressableStyle}
       >
         <View style={expandableBadgeStylesheet.headerRow}>
           <View style={expandableBadgeStylesheet.iconBadge}>{iconNode}</View>
-          <View
-            style={expandableBadgeStylesheet.labelRow}
-            onLayout={shouldMeasureNativeShimmer ? handleLabelRowLayout : undefined}
-          >
-            <Text
-              style={labelStyle}
-              numberOfLines={1}
-              onLayout={shouldMeasureWebShimmer ? handleLabelLayout : undefined}
-            >
-              {label}
-            </Text>
-            {secondaryLabel ? (
-              <Text
-                style={secondaryLabelStyle}
-                numberOfLines={1}
-                onLayout={shouldMeasureWebShimmer ? handleSecondaryLayout : undefined}
-              >
-                {secondaryLabel}
-              </Text>
-            ) : (
-              <View style={expandableBadgeStylesheet.spacer} />
-            )}
-            {isWebShimmer ? (
-              <View style={expandableBadgeStylesheet.shimmerOverlay} pointerEvents="none">
-                <Text style={shimmerLabelTextStyle} numberOfLines={1}>
-                  {label}
-                </Text>
-                {secondaryLabel ? (
-                  <Text style={shimmerSecondaryTextStyle} numberOfLines={1}>
-                    {secondaryLabel}
-                  </Text>
-                ) : (
-                  <View style={expandableBadgeStylesheet.spacer} />
-                )}
-              </View>
-            ) : null}
-            {isNativeShimmer ? (
-              <NativeExpandableBadgeShimmer
-                label={label}
-                secondaryLabel={secondaryLabel}
-                rowWidth={labelRowWidth}
-                rowHeight={labelRowHeight}
-                peakWidth={nativeShimmerPeakWidth}
-                durationSeconds={shimmerDuration}
-                gradientId={nativeGradientIdRef.current}
-              />
-            ) : null}
-          </View>
+          <ExpandableBadgeLabelRow
+            label={label}
+            labelStyle={labelStyle}
+            secondaryLabel={secondaryLabel}
+            secondaryLabelStyle={secondaryLabelStyle}
+            shouldMeasureWebShimmer={shouldMeasureWebShimmer}
+            shouldMeasureNativeShimmer={shouldMeasureNativeShimmer}
+            isWebShimmer={isWebShimmer}
+            isNativeShimmer={isNativeShimmer}
+            shimmerLabelTextStyle={shimmerLabelTextStyle}
+            shimmerSecondaryTextStyle={shimmerSecondaryTextStyle}
+            labelRowWidth={labelRowWidth}
+            labelRowHeight={labelRowHeight}
+            nativeShimmerPeakWidth={nativeShimmerPeakWidth}
+            shimmerDuration={shimmerDuration}
+            nativeGradientId={nativeGradientIdRef.current}
+            onLabelRowLayout={handleLabelRowLayout}
+            onLabelLayout={handleLabelLayout}
+            onSecondaryLayout={handleSecondaryLayout}
+          />
           {isInteractive && isHovered ? (
             <ChevronRight size={14} color={theme.colors.foreground} style={chevronStyle} />
           ) : null}
@@ -2128,8 +2577,8 @@ const ExpandableBadge = memo(function ExpandableBadge({
         <Pressable
           ref={detailWrapperRef}
           style={expandableBadgeStylesheet.detailWrapper}
-          onHoverIn={() => onDetailHoverChange?.(true)}
-          onHoverOut={() => onDetailHoverChange?.(false)}
+          onHoverIn={handleDetailHoverIn}
+          onHoverOut={handleDetailHoverOut}
         >
           {detailContent}
         </Pressable>
@@ -2204,11 +2653,15 @@ export const ToolCall = memo(function ToolCall({
     return undefined;
   }, [detail, args, result]);
 
-  const displayDetail = effectiveDetail ?? {
-    type: "unknown",
-    input: null,
-    output: null,
-  };
+  const displayDetail = useMemo<ToolCallDetail>(
+    () =>
+      effectiveDetail ?? {
+        type: "unknown",
+        input: null,
+        output: null,
+      },
+    [effectiveDetail],
+  );
 
   const displayModel = useMemo(
     () =>

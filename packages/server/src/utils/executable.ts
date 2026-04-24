@@ -42,19 +42,20 @@ export function isWindowsCommandScript(executablePath: string): boolean {
 
 async function probeExecutable(executablePath: string): Promise<boolean> {
   return await new Promise((resolve) => {
-    let settled = false;
+    let pendingResolve: ((result: boolean) => void) | null = resolve;
     let started = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const settle = (result: boolean) => {
-      if (settled) {
+      if (!pendingResolve) {
         return;
       }
-      settled = true;
+      const fn = pendingResolve;
+      pendingResolve = null;
       if (timer) {
         clearTimeout(timer);
       }
-      resolve(result);
+      fn(result);
     };
 
     let child: ChildProcess;
@@ -121,13 +122,9 @@ export async function findExecutable(name: string): Promise<string | null> {
   }
 
   const candidates = await enumerateCandidates(trimmed);
-  for (const candidate of candidates) {
-    if (await probeExecutable(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
+  const probeResults = await Promise.all(candidates.map((candidate) => probeExecutable(candidate)));
+  const firstMatch = probeResults.findIndex((result) => result);
+  return firstMatch === -1 ? null : candidates[firstMatch];
 }
 
 export async function isCommandAvailable(command: string): Promise<boolean> {

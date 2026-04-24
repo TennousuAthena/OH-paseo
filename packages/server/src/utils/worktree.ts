@@ -47,22 +47,23 @@ export interface WorktreeConfig {
   worktreePath: string;
 }
 
-export type WorktreeRuntimeEnv = {
+export interface WorktreeRuntimeEnv {
+  [key: string]: string;
   PASEO_SOURCE_CHECKOUT_PATH: string;
   PASEO_ROOT_PATH: string;
   PASEO_WORKTREE_PATH: string;
   PASEO_BRANCH_NAME: string;
   PASEO_WORKTREE_PORT: string;
-};
+}
 
-export type WorktreeSetupCommandResult = {
+export interface WorktreeSetupCommandResult {
   command: string;
   cwd: string;
   stdout: string;
   stderr: string;
   exitCode: number | null;
   durationMs: number;
-};
+}
 
 export type WorktreeSetupCommandProgressEvent =
   | {
@@ -145,12 +146,12 @@ export interface PaseoWorktreeInfo {
   head?: string;
 }
 
-export type PaseoWorktreeOwnership = {
+export interface PaseoWorktreeOwnership {
   allowed: boolean;
   repoRoot?: string;
   worktreeRoot?: string;
   worktreePath?: string;
-};
+}
 
 export type WorktreeSource =
   | { kind: "branch-off"; baseBranch: string; newBranchName: string }
@@ -378,13 +379,14 @@ async function execSetupCommand(
       exitCode: 0,
       durationMs: Date.now() - startedAt,
     };
-  } catch (error: any) {
+  } catch (error) {
+    const execErr = error as { stdout?: string; stderr?: string; code?: unknown } | undefined;
     return {
       command,
       cwd: options.cwd,
-      stdout: error?.stdout ?? "",
-      stderr: error?.stderr ?? (error instanceof Error ? error.message : String(error)),
-      exitCode: typeof error?.code === "number" ? error.code : null,
+      stdout: execErr?.stdout ?? "",
+      stderr: execErr?.stderr ?? (error instanceof Error ? error.message : String(error)),
+      exitCode: typeof execErr?.code === "number" ? execErr.code : null,
       durationMs: Date.now() - startedAt,
     };
   }
@@ -398,7 +400,7 @@ async function execSetupCommandStreamed(options: {
   total: number;
   onEvent?: (event: WorktreeSetupCommandProgressEvent) => void;
 }): Promise<WorktreeSetupCommandResult> {
-  return new Promise((resolve) => {
+  return new Promise((resolvePromise) => {
     const startedAt = Date.now();
     const stdoutChunks: string[] = [];
     const stderrChunks: string[] = [];
@@ -449,7 +451,7 @@ async function execSetupCommandStreamed(options: {
         stdout: result.stdout,
         stderr: result.stderr,
       });
-      resolve(result);
+      resolvePromise(result);
     };
 
     options.onEvent?.({
@@ -512,7 +514,7 @@ async function execSetupCommandStreamed(options: {
 }
 
 async function getAvailablePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolvePromise, reject) => {
     const server = net.createServer();
     server.once("error", reject);
     server.listen(0, () => {
@@ -526,22 +528,24 @@ async function getAvailablePort(): Promise<number> {
           reject(error);
           return;
         }
-        resolve(address.port);
+        resolvePromise(address.port);
       });
     });
   });
 }
 
 async function assertPortAvailable(port: number): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
+  await new Promise<void>((resolvePromise, reject) => {
     const server = net.createServer();
     server.once("error", (error: NodeJS.ErrnoException) => {
-      const message =
-        error?.code === "EADDRINUSE"
-          ? `Persisted worktree port ${port} is already in use`
-          : error instanceof Error
-            ? error.message
-            : String(error);
+      let message: string;
+      if (error?.code === "EADDRINUSE") {
+        message = `Persisted worktree port ${port} is already in use`;
+      } else if (error instanceof Error) {
+        message = error.message;
+      } else {
+        message = String(error);
+      }
       reject(new Error(message));
     });
     server.listen(port, () => {
@@ -550,7 +554,7 @@ async function assertPortAvailable(port: number): Promise<void> {
           reject(error);
           return;
         }
-        resolve();
+        resolvePromise();
       });
     });
   });
@@ -1000,12 +1004,11 @@ export async function listPaseoWorktrees({
 
   const rootPrefix = normalizePathForOwnership(worktreesRoot) + sep;
   return parseWorktreeList(stdout)
-    .map((entry) => ({ ...entry, path: normalizePathForOwnership(entry.path) }))
+    .map((entry) => Object.assign({}, entry, { path: normalizePathForOwnership(entry.path) }))
     .filter((entry) => entry.path.startsWith(rootPrefix))
-    .map((entry) => ({
-      ...entry,
-      createdAt: resolveWorktreeCreatedAtIso(entry.path),
-    }));
+    .map((entry) =>
+      Object.assign({}, entry, { createdAt: resolveWorktreeCreatedAtIso(entry.path) }),
+    );
 }
 
 export async function resolveExistingWorktreeForSlug({
@@ -1180,7 +1183,7 @@ async function removeDirectoryWithRetries(path: string): Promise<void> {
   let lastError: unknown = null;
   for (const delay of delaysMs) {
     if (delay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, delay));
     }
     try {
       await rm(path, { recursive: true, force: true });

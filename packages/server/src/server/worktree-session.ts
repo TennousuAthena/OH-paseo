@@ -62,7 +62,7 @@ export interface NormalizedGitOptions {
 
 type EmitSessionMessage = (message: SessionOutboundMessage) => void;
 
-type BuildAgentSessionConfigDependencies = {
+interface BuildAgentSessionConfigDependencies {
   paseoHome?: string;
   sessionLogger: Logger;
   workspaceGitService?: WorkspaceGitService;
@@ -79,9 +79,9 @@ type BuildAgentSessionConfigDependencies = {
     newBranchName: string;
   }) => Promise<void>;
   github?: Pick<GitHubService, "invalidate">;
-};
+}
 
-type CreatePaseoWorktreeInBackgroundDependencies = {
+interface CreatePaseoWorktreeInBackgroundDependencies {
   paseoHome?: string;
   emitWorkspaceUpdateForCwd: (cwd: string, options?: { dedupeGitState?: boolean }) => Promise<void>;
   cacheWorkspaceSetupSnapshot: (workspaceId: string, snapshot: WorkspaceSetupSnapshot) => void;
@@ -94,14 +94,14 @@ type CreatePaseoWorktreeInBackgroundDependencies = {
   getDaemonTcpPort: (() => number | null) | null;
   getDaemonTcpHost: (() => string | null) | null;
   onScriptsChanged: ((workspaceId: string, workspaceDirectory: string) => void) | null;
-};
+}
 
-type HandleWorkspaceSetupStatusRequestDependencies = {
+interface HandleWorkspaceSetupStatusRequestDependencies {
   emit: EmitSessionMessage;
   workspaceSetupSnapshots: ReadonlyMap<string, WorkspaceSetupSnapshot>;
-};
+}
 
-type HandleCreatePaseoWorktreeRequestDependencies = {
+interface HandleCreatePaseoWorktreeRequestDependencies {
   paseoHome?: string;
   describeWorkspaceRecord: (
     result: CreatePaseoWorktreeResult,
@@ -119,7 +119,7 @@ type HandleCreatePaseoWorktreeRequestDependencies = {
     slug: string;
     worktreePath: string;
   }) => Promise<void>;
-};
+}
 
 export async function buildAgentSessionConfig(
   dependencies: BuildAgentSessionConfigDependencies,
@@ -205,6 +205,36 @@ export async function buildAgentSessionConfig(
   };
 }
 
+interface ValidateNormalizedGitOptionsInput {
+  baseBranch: string | undefined;
+  createNewBranch: boolean;
+  normalizedBranchName: string | undefined;
+  normalizedWorktreeSlug: string | undefined;
+}
+
+function validateNormalizedGitOptions(input: ValidateNormalizedGitOptionsInput): void {
+  if (input.baseBranch) {
+    assertSafeGitRef(input.baseBranch, "base branch");
+  }
+
+  if (input.createNewBranch) {
+    if (!input.normalizedBranchName) {
+      throw new Error("New branch name is required");
+    }
+    const validation = validateBranchSlug(input.normalizedBranchName);
+    if (!validation.valid) {
+      throw new Error(`Invalid branch name: ${validation.error}`);
+    }
+  }
+
+  if (input.normalizedWorktreeSlug) {
+    const validation = validateBranchSlug(input.normalizedWorktreeSlug);
+    if (!validation.valid) {
+      throw new Error(`Invalid worktree name: ${validation.error}`);
+    }
+  }
+}
+
 export function normalizeGitOptions(
   gitOptions?: GitSetupOptions,
   legacyWorktreeName?: string,
@@ -244,26 +274,12 @@ export function normalizeGitOptions(
     return null;
   }
 
-  if (baseBranch) {
-    assertSafeGitRef(baseBranch, "base branch");
-  }
-
-  if (createNewBranch) {
-    if (!normalizedBranchName) {
-      throw new Error("New branch name is required");
-    }
-    const validation = validateBranchSlug(normalizedBranchName);
-    if (!validation.valid) {
-      throw new Error(`Invalid branch name: ${validation.error}`);
-    }
-  }
-
-  if (normalizedWorktreeSlug) {
-    const validation = validateBranchSlug(normalizedWorktreeSlug);
-    if (!validation.valid) {
-      throw new Error(`Invalid worktree name: ${validation.error}`);
-    }
-  }
+  validateNormalizedGitOptions({
+    baseBranch,
+    createNewBranch,
+    normalizedBranchName,
+    normalizedWorktreeSlug,
+  });
 
   return {
     baseBranch,

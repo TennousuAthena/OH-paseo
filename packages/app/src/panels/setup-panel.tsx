@@ -1,13 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ChevronRight, CircleAlert, SquareTerminal } from "lucide-react-native";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  type PressableStateCallbackType,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import invariant from "tiny-invariant";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Fonts } from "@/constants/theme";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
-import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
+import {
+  useWorkspaceSetupStore,
+  type WorkspaceSetupSnapshot,
+} from "@/stores/workspace-setup-store";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 
 function useSetupPanelDescriptor(
@@ -88,6 +98,58 @@ function processCarriageReturns(text: string): string {
     .join("\n");
 }
 
+type SetupCommand = WorkspaceSetupSnapshot["detail"]["commands"][number];
+
+const EMPTY_COMMANDS: SetupCommand[] = [];
+
+function resolveAutoExpandIndex(commands: { index: number; status: string }[]): number | null {
+  const running = commands.find((c) => c.status === "running");
+  if (running) return running.index;
+  if (commands.length > 0) return commands[commands.length - 1].index;
+  return null;
+}
+
+function resolveSetupStatusLabel(status: string | undefined): string {
+  if (status === "running") return "Running";
+  if (status === "completed") return "Completed";
+  if (status === "failed") return "Failed";
+  return "Waiting for setup output";
+}
+
+function resolveCommandLog(
+  command: SetupCommand,
+  autoExpandIndex: number | null,
+  log: string,
+): string {
+  if ("log" in command && typeof command.log === "string") {
+    return command.log;
+  }
+  if (command.index === autoExpandIndex) return log;
+  return "";
+}
+
+interface BuildCommandRowPropsArgs {
+  command: SetupCommand;
+  autoExpandIndex: number | null;
+  log: string;
+  expandedIndices: Set<number>;
+  manuallyCollapsed: Set<number>;
+  snapshotError: string | null | undefined;
+}
+
+function buildCommandRowState(args: BuildCommandRowPropsArgs) {
+  const { command, autoExpandIndex, log, expandedIndices, manuallyCollapsed, snapshotError } = args;
+  const isExpanded = expandedIndices.has(command.index);
+  const hasError = command.status === "failed" && Boolean(snapshotError);
+  const commandLog = resolveCommandLog(command, autoExpandIndex, log);
+  const hasLog = commandLog.trim().length > 0;
+  const isExpandable = command.status !== "running" || hasLog || hasError;
+  const isAutoExpanded = command.index === autoExpandIndex && !manuallyCollapsed.has(command.index);
+  const showDetail = isExpanded || isAutoExpanded;
+  const processedLog = hasLog ? processCarriageReturns(commandLog) : "";
+  return { hasError, hasLog, isExpandable, isAutoExpanded, showDetail, processedLog };
+}
+
 function SetupPanel() {
   const { theme } = useUnistyles();
   const { serverId, target } = usePaneContext();
@@ -115,13 +177,14 @@ function SetupPanel() {
             payload: { workspaceId: response.workspaceId, ...response.snapshot },
           });
         }
+        return;
       })
       .catch(() => {
         // Server may not support this yet — ignore
       });
   }, [client, snapshot, serverId, target.workspaceId, upsertProgress]);
 
-  const commands = snapshot?.detail.commands ?? [];
+  const commands = snapshot?.detail.commands ?? EMPTY_COMMANDS;
   const log = snapshot?.detail.log ?? "";
   const hasNoSetupCommands =
     snapshot?.status === "completed" && commands.length === 0 && log.trim().length === 0;
@@ -143,31 +206,17 @@ function SetupPanel() {
         next.add(index);
         // If the user re-expands, remove from manually collapsed
         setManuallyCollapsed((mc) => {
-          const next = new Set(mc);
-          next.delete(index);
-          return next;
+          const updated = new Set(mc);
+          updated.delete(index);
+          return updated;
         });
       }
       return next;
     });
   }, []);
 
-  // Determine which command should auto-expand (running or last completed).
-  const autoExpandIndex = (() => {
-    const running = commands.find((c) => c.status === "running");
-    if (running) return running.index;
-    if (commands.length > 0) return commands[commands.length - 1].index;
-    return null;
-  })();
-
-  const statusLabel =
-    snapshot?.status === "running"
-      ? "Running"
-      : snapshot?.status === "completed"
-        ? "Completed"
-        : snapshot?.status === "failed"
-          ? "Failed"
-          : "Waiting for setup output";
+  const autoExpandIndex = resolveAutoExpandIndex(commands);
+  const statusLabel = resolveSetupStatusLabel(snapshot?.status);
 
   return (
     <ScrollView
@@ -185,7 +234,8 @@ function SetupPanel() {
           <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
           <Text style={styles.waitingText}>Setting up workspace...</Text>
         </View>
-      ) : hasNoSetupCommands ? (
+      ) : null}
+      {!isWaiting && hasNoSetupCommands ? (
         <View style={styles.emptyContainer}>
           <Text
             style={styles.emptyText}
@@ -195,126 +245,140 @@ function SetupPanel() {
             No setup commands ran for this workspace.
           </Text>
         </View>
-      ) : (
+      ) : null}
+      {!isWaiting && !hasNoSetupCommands ? (
         <View style={styles.commandList}>
           {commands.map((command) => {
-            const isExpanded = expandedIndices.has(command.index);
-            const hasError = command.status === "failed" && snapshot?.error;
-
-            // Per-command log: use command.log if available, fall back to detail.log for the auto-expand target
-            const commandLog = (() => {
-              if ("log" in command && typeof command.log === "string") {
-                return command.log;
-              }
-              // Fallback: show detail.log on the auto-expand target command
-              if (command.index === autoExpandIndex) return log;
-              return "";
-            })();
-            const hasLog = commandLog.trim().length > 0;
-
-            // All non-running commands are expandable (completed/failed)
-            const isExpandable = command.status !== "running" || hasLog || !!hasError;
-
-            // Auto-expand the active command unless the user manually collapsed it
-            const isAutoExpanded =
-              command.index === autoExpandIndex && !manuallyCollapsed.has(command.index);
-            const showDetail = isExpanded || isAutoExpanded;
-
-            const processedLog = hasLog ? processCarriageReturns(commandLog) : "";
+            const rowState = buildCommandRowState({
+              command,
+              autoExpandIndex,
+              log,
+              expandedIndices,
+              manuallyCollapsed,
+              snapshotError: snapshot?.error,
+            });
 
             return (
-              <View key={`${command.index}:${command.command}`} style={styles.commandItem}>
-                <Pressable
-                  onPress={() => toggleExpanded(command.index, isAutoExpanded)}
-                  style={({ pressed }) => [
-                    styles.commandRow,
-                    showDetail && styles.commandRowExpanded,
-                    pressed && styles.commandRowPressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: showDetail }}
-                >
-                  <View style={styles.commandStatusIcon}>
-                    <CommandStatusIcon status={command.status} />
-                  </View>
-                  <Text style={styles.commandText} numberOfLines={1}>
-                    {command.command}
-                  </Text>
-                  {command.durationMs != null ? (
-                    <Text style={styles.commandDuration}>{formatDuration(command.durationMs)}</Text>
-                  ) : null}
-                  <ChevronRight
-                    size={14}
-                    color={theme.colors.foregroundMuted}
-                    style={[styles.chevron, showDetail && styles.chevronExpanded]}
-                  />
-                </Pressable>
-                {showDetail ? (
-                  <View style={styles.commandDetail}>
-                    {hasLog ? (
-                      <ScrollView
-                        style={styles.logScroll}
-                        contentContainerStyle={styles.logScrollContent}
-                        horizontal={false}
-                        showsVerticalScrollIndicator
-                        testID="workspace-setup-log"
-                        accessible
-                        accessibilityLabel="Workspace setup log"
-                      >
-                        <Text selectable style={styles.logText}>
-                          {processedLog}
-                        </Text>
-                      </ScrollView>
-                    ) : (
-                      <View
-                        style={styles.logScrollContent}
-                        testID="workspace-setup-log"
-                        accessible
-                        accessibilityLabel="Workspace setup log"
-                      >
-                        <Text style={styles.emptyLogText}>No output</Text>
-                      </View>
-                    )}
-                    {hasError ? (
-                      <View style={styles.errorCard}>
-                        <Text selectable style={styles.errorText}>
-                          {snapshot.error}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
+              <SetupCommandRow
+                key={`${command.index}:${command.command}`}
+                command={command}
+                showDetail={rowState.showDetail}
+                isAutoExpanded={rowState.isAutoExpanded}
+                isExpandable={rowState.isExpandable}
+                hasLog={rowState.hasLog}
+                hasError={rowState.hasError}
+                processedLog={rowState.processedLog}
+                errorMessage={snapshot?.error ?? null}
+                foregroundMutedColor={theme.colors.foregroundMuted}
+                onToggle={toggleExpanded}
+              />
             );
           })}
 
-          {/* If there's log but no commands yet, or log without a target command, show standalone */}
-          {commands.length === 0 && log.trim().length > 0 ? (
+          <StandaloneLogView commands={commands} log={log} />
+          <TopLevelSetupError snapshotError={snapshot?.error ?? null} commands={commands} />
+        </View>
+      ) : null}
+    </ScrollView>
+  );
+}
+
+interface SetupCommandRowProps {
+  command: SetupCommand;
+  showDetail: boolean;
+  isAutoExpanded: boolean;
+  isExpandable: boolean;
+  hasLog: boolean;
+  hasError: boolean;
+  processedLog: string;
+  errorMessage: string | null;
+  foregroundMutedColor: string;
+  onToggle: (index: number, isAutoExpanded: boolean) => void;
+}
+
+function SetupCommandRow({
+  command,
+  showDetail,
+  isAutoExpanded,
+  isExpandable,
+  hasLog,
+  hasError,
+  processedLog,
+  errorMessage,
+  foregroundMutedColor,
+  onToggle,
+}: SetupCommandRowProps) {
+  const handlePress = useCallback(() => {
+    if (!isExpandable) return;
+    onToggle(command.index, isAutoExpanded);
+  }, [command.index, isAutoExpanded, isExpandable, onToggle]);
+
+  const pressableStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.commandRow,
+      showDetail && styles.commandRowExpanded,
+      pressed && styles.commandRowPressed,
+    ],
+    [showDetail],
+  );
+
+  const accessibilityState = useMemo(() => ({ expanded: showDetail }), [showDetail]);
+
+  return (
+    <View style={styles.commandItem}>
+      <Pressable
+        onPress={handlePress}
+        style={pressableStyle}
+        accessibilityRole="button"
+        accessibilityState={accessibilityState}
+      >
+        <View style={styles.commandStatusIcon}>
+          <CommandStatusIcon status={command.status} />
+        </View>
+        <Text style={styles.commandText} numberOfLines={1}>
+          {command.command}
+        </Text>
+        {command.durationMs != null ? (
+          <Text style={styles.commandDuration}>{formatDuration(command.durationMs)}</Text>
+        ) : null}
+        <SetupCommandChevron showDetail={showDetail} color={foregroundMutedColor} />
+      </Pressable>
+      {showDetail ? (
+        <View style={styles.commandDetail}>
+          {hasLog ? (
             <ScrollView
               style={styles.logScroll}
               contentContainerStyle={styles.logScrollContent}
+              horizontal={false}
               showsVerticalScrollIndicator
               testID="workspace-setup-log"
               accessible
               accessibilityLabel="Workspace setup log"
             >
               <Text selectable style={styles.logText}>
-                {log}
+                {processedLog}
               </Text>
             </ScrollView>
-          ) : null}
-
-          {/* Show error at top level if no commands failed but there's a setup error */}
-          {snapshot?.error && !commands.some((c) => c.status === "failed") ? (
+          ) : (
+            <View
+              style={styles.logScrollContent}
+              testID="workspace-setup-log"
+              accessible
+              accessibilityLabel="Workspace setup log"
+            >
+              <Text style={styles.emptyLogText}>No output</Text>
+            </View>
+          )}
+          {hasError && errorMessage ? (
             <View style={styles.errorCard}>
               <Text selectable style={styles.errorText}>
-                {snapshot.error}
+                {errorMessage}
               </Text>
             </View>
           ) : null}
         </View>
-      )}
-    </ScrollView>
+      ) : null}
+    </View>
   );
 }
 
@@ -323,6 +387,50 @@ export const setupPanelRegistration: PanelRegistration<"setup"> = {
   component: SetupPanel,
   useDescriptor: useSetupPanelDescriptor,
 };
+
+function SetupCommandChevron({ showDetail, color }: { showDetail: boolean; color: string }) {
+  const chevronStyle = useMemo(
+    () => [styles.chevron, showDetail && styles.chevronExpanded],
+    [showDetail],
+  );
+  return <ChevronRight size={14} color={color} style={chevronStyle} />;
+}
+
+function StandaloneLogView({ commands, log }: { commands: SetupCommand[]; log: string }) {
+  if (commands.length !== 0 || log.trim().length === 0) return null;
+  return (
+    <ScrollView
+      style={styles.logScroll}
+      contentContainerStyle={styles.logScrollContent}
+      showsVerticalScrollIndicator
+      testID="workspace-setup-log"
+      accessible
+      accessibilityLabel="Workspace setup log"
+    >
+      <Text selectable style={styles.logText}>
+        {log}
+      </Text>
+    </ScrollView>
+  );
+}
+
+function TopLevelSetupError({
+  snapshotError,
+  commands,
+}: {
+  snapshotError: string | null;
+  commands: SetupCommand[];
+}) {
+  if (!snapshotError) return null;
+  if (commands.some((c) => c.status === "failed")) return null;
+  return (
+    <View style={styles.errorCard}>
+      <Text selectable style={styles.errorText}>
+        {snapshotError}
+      </Text>
+    </View>
+  );
+}
 
 const styles = StyleSheet.create((theme) => ({
   container: {

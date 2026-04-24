@@ -17,15 +17,15 @@ interface ActivateWorkspaceSelectionOptions {
   historyMode?: "push" | "replace";
 }
 
-type NavigationRouteParams = {
+interface NavigationRouteParams {
   serverId?: string | string[];
   workspaceId?: string | string[];
-};
+}
 
-type NavigationRouteLike = {
+interface NavigationRouteLike {
   params?: NavigationRouteParams | null;
   path?: string | null;
-};
+}
 
 type NavigationWorkspaceRouteState =
   | { kind: "workspace"; selection: ActiveWorkspaceSelection }
@@ -250,7 +250,10 @@ export function useIsNavigationProjectActive(input: {
 }): boolean {
   const enabled = input.enabled !== false;
   const workspaceIdsKey = input.workspaceIds.join("\0");
-  const workspaceIdSet = useMemo(() => new Set(input.workspaceIds), [workspaceIdsKey]);
+  const workspaceIdSet = useMemo(() => {
+    void workspaceIdsKey;
+    return new Set(input.workspaceIds);
+  }, [input.workspaceIds, workspaceIdsKey]);
 
   return useSyncExternalStoreWithSelector(
     subscribe,

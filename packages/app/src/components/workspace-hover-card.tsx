@@ -1,10 +1,12 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PropsWithChildren,
   type ReactElement,
+  type ReactNode,
 } from "react";
 import { Dimensions, Platform, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
@@ -80,10 +82,10 @@ export function WorkspaceHoverCard({
   prHint,
   isDragging,
   children,
-}: PropsWithChildren<WorkspaceHoverCardProps>): ReactElement {
+}: PropsWithChildren<WorkspaceHoverCardProps>): ReactNode {
   // Desktop-only: skip on non-web platforms
   if (Platform.OS !== "web") {
-    return <>{children}</>;
+    return children;
   }
 
   return (
@@ -219,6 +221,7 @@ function WorkspaceHoverCardContent({
     measureElement(triggerRef.current).then((rect) => {
       if (cancelled) return;
       setTriggerRect(rect);
+      return;
     });
 
     return () => {
@@ -248,6 +251,19 @@ function WorkspaceHoverCardContent({
     [],
   );
 
+  const cardStyle = useMemo(
+    () => [
+      styles.card,
+      {
+        width: HOVER_CARD_WIDTH,
+        position: "absolute" as const,
+        top: position?.y ?? -9999,
+        left: position?.x ?? -9999,
+      },
+    ],
+    [position?.x, position?.y],
+  );
+
   return (
     <Portal hostName={bottomSheetInternal?.hostName}>
       <View pointerEvents="box-none" style={styles.portalOverlay}>
@@ -260,15 +276,7 @@ function WorkspaceHoverCardContent({
           accessibilityRole="menu"
           accessibilityLabel="Workspace scripts"
           testID="workspace-hover-card"
-          style={[
-            styles.card,
-            {
-              width: HOVER_CARD_WIDTH,
-              position: "absolute",
-              top: position?.y ?? -9999,
-              left: position?.x ?? -9999,
-            },
-          ]}
+          style={cardStyle}
         >
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle} numberOfLines={1} testID="hover-card-workspace-name">
@@ -289,62 +297,100 @@ function WorkspaceHoverCardContent({
           {prHint?.checks && prHint.checks.length > 0 ? (
             <>
               <View style={styles.separator} />
-              <Pressable
-                style={({ hovered }) => [styles.checksSummaryRow, hovered && styles.listRowHovered]}
-                onPress={() => void openExternalUrl(`${prHint.url}/checks`)}
-              >
-                {({ hovered }) => {
-                  const checks = prHint.checks!;
-                  const failed = checks.filter((c) => c.status === "failure").length;
-                  const pending = checks.filter((c) => c.status === "pending").length;
-
-                  let badgeColor: string;
-                  let badgeLabel: string;
-
-                  if (failed > 0) {
-                    badgeColor = theme.colors.palette.red[500];
-                    badgeLabel = `${failed} failed`;
-                  } else if (pending > 0) {
-                    badgeColor = theme.colors.palette.amber[500];
-                    badgeLabel = `${pending} running`;
-                  } else {
-                    badgeColor = theme.colors.palette.green[500];
-                    badgeLabel = `${checks.length} passed`;
-                  }
-
-                  const iconColor = hovered
-                    ? theme.colors.foreground
-                    : theme.colors.foregroundMuted;
-                  return (
-                    <>
-                      {hovered ? (
-                        <ExternalLink size={12} color={iconColor} />
-                      ) : (
-                        <GitHubIcon size={12} color={iconColor} />
-                      )}
-                      <Text
-                        style={[
-                          styles.checksSummaryLabel,
-                          hovered && styles.checksSummaryLabelHovered,
-                        ]}
-                      >
-                        Checks
-                      </Text>
-                      <View style={styles.checksSummaryCounts}>
-                        <View style={[styles.checksDot, { backgroundColor: badgeColor }]} />
-                        <Text style={[styles.checksStatusText, { color: badgeColor }]}>
-                          {badgeLabel}
-                        </Text>
-                      </View>
-                    </>
-                  );
-                }}
-              </Pressable>
+              <ChecksSummaryPressable checks={prHint.checks} url={prHint.url} theme={theme} />
             </>
           ) : null}
         </Animated.View>
       </View>
     </Portal>
+  );
+}
+
+function ChecksSummaryContent({
+  checks,
+  theme,
+  hovered,
+}: {
+  checks: NonNullable<PrHint["checks"]>;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+  hovered: boolean;
+}) {
+  const failed = checks.filter((c) => c.status === "failure").length;
+  const pending = checks.filter((c) => c.status === "pending").length;
+
+  let badgeColor: string;
+  let badgeLabel: string;
+
+  if (failed > 0) {
+    badgeColor = theme.colors.palette.red[500];
+    badgeLabel = `${failed} failed`;
+  } else if (pending > 0) {
+    badgeColor = theme.colors.palette.amber[500];
+    badgeLabel = `${pending} running`;
+  } else {
+    badgeColor = theme.colors.palette.green[500];
+    badgeLabel = `${checks.length} passed`;
+  }
+
+  const iconColor = hovered ? theme.colors.foreground : theme.colors.foregroundMuted;
+  const labelStyle = useMemo(
+    () => [styles.checksSummaryLabel, hovered && styles.checksSummaryLabelHovered],
+    [hovered],
+  );
+  const dotStyle = useMemo(() => [styles.checksDot, { backgroundColor: badgeColor }], [badgeColor]);
+  const statusTextStyle = useMemo(
+    () => [styles.checksStatusText, { color: badgeColor }],
+    [badgeColor],
+  );
+
+  return (
+    <>
+      {hovered ? (
+        <ExternalLink size={12} color={iconColor} />
+      ) : (
+        <GitHubIcon size={12} color={iconColor} />
+      )}
+      <Text style={labelStyle}>Checks</Text>
+      <View style={styles.checksSummaryCounts}>
+        <View style={dotStyle} />
+        <Text style={statusTextStyle}>{badgeLabel}</Text>
+      </View>
+    </>
+  );
+}
+
+function ChecksSummaryPressable({
+  checks,
+  url,
+  theme,
+}: {
+  checks: NonNullable<PrHint["checks"]>;
+  url: string;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}) {
+  const handlePress = useCallback(() => {
+    void openExternalUrl(`${url}/checks`);
+  }, [url]);
+
+  const pressableStyle = useCallback(
+    ({ hovered }: { pressed: boolean; hovered?: boolean }) => [
+      styles.checksSummaryRow,
+      Boolean(hovered) && styles.listRowHovered,
+    ],
+    [],
+  );
+
+  const renderChildren = useCallback(
+    ({ hovered }: { pressed: boolean; hovered?: boolean }) => (
+      <ChecksSummaryContent checks={checks} theme={theme} hovered={Boolean(hovered)} />
+    ),
+    [checks, theme],
+  );
+
+  return (
+    <Pressable style={pressableStyle} onPress={handlePress}>
+      {renderChildren}
+    </Pressable>
   );
 }
 

@@ -18,6 +18,9 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type PressableStateCallbackType,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -142,12 +145,11 @@ export const LeftSidebar = memo(function LeftSidebar({
   const activeHostStatus = activeServerId
     ? (activeHostSnapshot?.connectionStatus ?? "connecting")
     : "idle";
-  const activeHostStatusColor =
-    activeHostStatus === "online"
-      ? theme.colors.palette.green[400]
-      : activeHostStatus === "connecting"
-        ? theme.colors.palette.amber[500]
-        : theme.colors.palette.red[500];
+  let activeHostStatusColor: string;
+  if (activeHostStatus === "online") activeHostStatusColor = theme.colors.palette.green[400];
+  else if (activeHostStatus === "connecting")
+    activeHostStatusColor = theme.colors.palette.amber[500];
+  else activeHostStatusColor = theme.colors.palette.red[500];
   const hostOptions = useMemo(
     () =>
       daemons.map((daemon) => ({
@@ -288,6 +290,44 @@ export const LeftSidebar = memo(function LeftSidebar({
   );
 });
 
+interface HostPickerTriggerProps {
+  triggerRef: React.Ref<View>;
+  setIsHostPickerOpen: Dispatch<SetStateAction<boolean>>;
+  hostOptionsEmpty: boolean;
+  hostStatusDotStyle: StyleProp<ViewStyle>;
+  activeHostLabel: string;
+}
+
+function HostPickerTrigger({
+  triggerRef,
+  setIsHostPickerOpen,
+  hostOptionsEmpty,
+  hostStatusDotStyle,
+  activeHostLabel,
+}: HostPickerTriggerProps) {
+  const pressableStyle = useCallback(
+    ({ hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.hostTrigger,
+      Boolean(hovered) && styles.hostTriggerHovered,
+    ],
+    [],
+  );
+  const handlePress = useCallback(() => setIsHostPickerOpen(true), [setIsHostPickerOpen]);
+  return (
+    <Pressable
+      ref={triggerRef}
+      style={pressableStyle}
+      onPress={handlePress}
+      disabled={hostOptionsEmpty}
+    >
+      <View style={hostStatusDotStyle} />
+      <Text style={styles.hostTriggerText} numberOfLines={1}>
+        {activeHostLabel}
+      </Text>
+    </Pressable>
+  );
+}
+
 function HostSwitchOption({
   serverId,
   label,
@@ -312,6 +352,131 @@ function HostSwitchOption({
       active={active}
       onPress={onPress}
     />
+  );
+}
+
+function FooterIconButton({
+  onPress,
+  testID,
+  accessibilityLabel,
+  icon: Icon,
+  theme,
+}: {
+  onPress: () => void;
+  testID: string;
+  accessibilityLabel: string;
+  icon: typeof Plus;
+  theme: SidebarTheme;
+}) {
+  return (
+    <Pressable
+      style={styles.footerIconButton}
+      testID={testID}
+      nativeID={testID}
+      collapsable={false}
+      accessible
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
+      onPress={onPress}
+    >
+      {({ hovered }) => (
+        <Icon
+          size={theme.iconSize.md}
+          color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+        />
+      )}
+    </Pressable>
+  );
+}
+
+function AddProjectTooltipContent({
+  newAgentKeys,
+}: {
+  newAgentKeys: ReturnType<typeof useShortcutKeys>;
+}) {
+  return (
+    <View style={styles.tooltipRow}>
+      <Text style={styles.tooltipText}>Add project</Text>
+      {newAgentKeys ? <Shortcut chord={newAgentKeys} /> : null}
+    </View>
+  );
+}
+
+function SidebarFooter({
+  theme,
+  activeServerId,
+  activeHostLabel,
+  hostStatusDotStyle,
+  hostOptions,
+  hostTriggerRef,
+  isHostPickerOpen,
+  setIsHostPickerOpen,
+  handleHostSelect,
+  renderHostOption,
+  handleOpenProject,
+  handleSettings,
+}: {
+  theme: SidebarTheme;
+  activeServerId: string | null;
+  activeHostLabel: string;
+  hostStatusDotStyle: StyleProp<ViewStyle>;
+  hostOptions: ComboboxOption[];
+  hostTriggerRef: RefObject<View | null>;
+  isHostPickerOpen: boolean;
+  setIsHostPickerOpen: Dispatch<SetStateAction<boolean>>;
+  handleHostSelect: (nextServerId: string) => void;
+  renderHostOption: SidebarSharedProps["renderHostOption"];
+  handleOpenProject: () => void;
+  handleSettings: () => void;
+}) {
+  const newAgentKeys = useShortcutKeys("new-agent");
+  return (
+    <View style={styles.sidebarFooter}>
+      <View style={styles.footerHostSlot}>
+        <HostPickerTrigger
+          triggerRef={hostTriggerRef}
+          setIsHostPickerOpen={setIsHostPickerOpen}
+          hostOptionsEmpty={hostOptions.length === 0}
+          hostStatusDotStyle={hostStatusDotStyle}
+          activeHostLabel={activeHostLabel}
+        />
+      </View>
+      <View style={styles.footerIconRow}>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <FooterIconButton
+              onPress={handleOpenProject}
+              testID="sidebar-add-project"
+              accessibilityLabel="Add project"
+              icon={Plus}
+              theme={theme}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <AddProjectTooltipContent newAgentKeys={newAgentKeys} />
+          </TooltipContent>
+        </Tooltip>
+        <FooterIconButton
+          onPress={handleSettings}
+          testID="sidebar-settings"
+          accessibilityLabel="Settings"
+          icon={Settings}
+          theme={theme}
+        />
+      </View>
+      <Combobox
+        options={hostOptions}
+        value={activeServerId ?? ""}
+        onSelect={handleHostSelect}
+        renderOption={renderHostOption}
+        searchable={false}
+        title="Switch host"
+        searchPlaceholder="Search hosts..."
+        open={isHostPickerOpen}
+        onOpenChange={setIsHostPickerOpen}
+        anchorRef={hostTriggerRef}
+      />
+    </View>
   );
 }
 
@@ -342,7 +507,6 @@ function MobileSidebar({
   closeToAgent,
   handleViewMoreNavigate,
 }: MobileSidebarProps) {
-  const newAgentKeys = useShortcutKeys("new-agent");
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
   const {
@@ -482,22 +646,31 @@ function MobileSidebar({
     pointerEvents: backdropOpacity.value > 0.01 ? "auto" : "none",
   }));
 
-  const overlayPointerEvents = isWeb ? (isOpen ? "auto" : "none") : "box-none";
+  let overlayPointerEvents: "auto" | "none" | "box-none";
+  if (!isWeb) overlayPointerEvents = "box-none";
+  else if (isOpen) overlayPointerEvents = "auto";
+  else overlayPointerEvents = "none";
+
+  const backdropStyle = useMemo(
+    () => [staticStyles.backdrop, backdropAnimatedStyle],
+    [backdropAnimatedStyle],
+  );
+  const mobileSidebarStyle = useMemo(
+    () => [
+      staticStyles.mobileSidebar,
+      mobileSidebarInsetStyle,
+      sidebarAnimatedStyle,
+      { backgroundColor: theme.colors.surfaceSidebar },
+    ],
+    [mobileSidebarInsetStyle, sidebarAnimatedStyle, theme.colors.surfaceSidebar],
+  );
 
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents={overlayPointerEvents}>
-      <Animated.View style={[staticStyles.backdrop, backdropAnimatedStyle]} />
+      <Animated.View style={backdropStyle} />
 
       <GestureDetector gesture={closeGesture} touchAction="pan-y">
-        <Animated.View
-          style={[
-            staticStyles.mobileSidebar,
-            mobileSidebarInsetStyle,
-            sidebarAnimatedStyle,
-            { backgroundColor: theme.colors.surfaceSidebar },
-          ]}
-          pointerEvents="auto"
-        >
+        <Animated.View style={mobileSidebarStyle} pointerEvents="auto">
           <View style={styles.sidebarContent} pointerEvents="auto">
             <SidebarHeaderRow
               icon={MessagesSquare}
@@ -524,82 +697,20 @@ function MobileSidebar({
               />
             )}
 
-            <View style={styles.sidebarFooter}>
-              <View style={styles.footerHostSlot}>
-                <Pressable
-                  ref={hostTriggerRef}
-                  style={({ hovered = false }) => [
-                    styles.hostTrigger,
-                    hovered && styles.hostTriggerHovered,
-                  ]}
-                  onPress={() => setIsHostPickerOpen(true)}
-                  disabled={hostOptions.length === 0}
-                >
-                  <View style={hostStatusDotStyle} />
-                  <Text style={styles.hostTriggerText} numberOfLines={1}>
-                    {activeHostLabel}
-                  </Text>
-                </Pressable>
-              </View>
-              <View style={styles.footerIconRow}>
-                <Tooltip delayDuration={300}>
-                  <TooltipTrigger asChild>
-                    <Pressable
-                      style={styles.footerIconButton}
-                      testID="sidebar-add-project"
-                      nativeID="sidebar-add-project"
-                      collapsable={false}
-                      accessible
-                      accessibilityLabel="Add project"
-                      accessibilityRole="button"
-                      onPress={handleOpenProject}
-                    >
-                      {({ hovered }) => (
-                        <Plus
-                          size={theme.iconSize.md}
-                          color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                        />
-                      )}
-                    </Pressable>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" align="center" offset={8}>
-                    <View style={styles.tooltipRow}>
-                      <Text style={styles.tooltipText}>Add project</Text>
-                      {newAgentKeys ? <Shortcut chord={newAgentKeys} /> : null}
-                    </View>
-                  </TooltipContent>
-                </Tooltip>
-                <Pressable
-                  style={styles.footerIconButton}
-                  testID="sidebar-settings"
-                  nativeID="sidebar-settings"
-                  collapsable={false}
-                  accessible
-                  accessibilityLabel="Settings"
-                  accessibilityRole="button"
-                  onPress={handleSettings}
-                >
-                  {({ hovered }) => (
-                    <Settings
-                      size={theme.iconSize.md}
-                      color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                    />
-                  )}
-                </Pressable>
-              </View>
-              <Combobox
-                options={hostOptions}
-                value={activeServerId ?? ""}
-                onSelect={handleHostSelect}
-                renderOption={renderHostOption}
-                searchable={false}
-                title="Switch host"
-                searchPlaceholder="Search hosts..."
-                open={isHostPickerOpen}
-                onOpenChange={setIsHostPickerOpen}
-                anchorRef={hostTriggerRef}
-              />
-            </View>
+            <SidebarFooter
+              theme={theme}
+              activeServerId={activeServerId}
+              activeHostLabel={activeHostLabel}
+              hostStatusDotStyle={hostStatusDotStyle}
+              hostOptions={hostOptions}
+              hostTriggerRef={hostTriggerRef}
+              isHostPickerOpen={isHostPickerOpen}
+              setIsHostPickerOpen={setIsHostPickerOpen}
+              handleHostSelect={handleHostSelect}
+              renderHostOption={renderHostOption}
+              handleOpenProject={handleOpenProject}
+              handleSettings={handleSettings}
+            />
           </View>
         </Animated.View>
       </GestureDetector>
@@ -632,7 +743,6 @@ function DesktopSidebar({
   isOpen,
   handleViewMore,
 }: DesktopSidebarProps) {
-  const newAgentKeys = useShortcutKeys("new-agent");
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
   const padding = useWindowControlsPadding("sidebar");
@@ -679,18 +789,27 @@ function DesktopSidebar({
     width: resizeWidth.value,
   }));
 
+  const paddingTopSpacerStyle = useMemo(() => ({ height: padding.top }), [padding.top]);
+  const desktopSidebarStyle = useMemo(
+    () => [staticStyles.desktopSidebar, resizeAnimatedStyle, { paddingTop: insetsTop }],
+    [resizeAnimatedStyle, insetsTop],
+  );
+  const desktopSidebarBorderStyle = useMemo(() => [styles.desktopSidebarBorder, { flex: 1 }], []);
+  const resizeHandleStyle = useMemo(
+    () => [styles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)],
+    [],
+  );
+
   if (!isOpen) {
     return null;
   }
 
   return (
-    <Animated.View
-      style={[staticStyles.desktopSidebar, resizeAnimatedStyle, { paddingTop: insetsTop }]}
-    >
-      <View style={[styles.desktopSidebarBorder, { flex: 1 }]}>
+    <Animated.View style={desktopSidebarStyle}>
+      <View style={desktopSidebarBorderStyle}>
         <View style={styles.sidebarDragArea}>
           <TitlebarDragRegion />
-          {padding.top > 0 ? <View style={{ height: padding.top }} /> : null}
+          {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
           <SidebarHeaderRow
             icon={MessagesSquare}
             label="Sessions"
@@ -717,86 +836,24 @@ function DesktopSidebar({
 
         <SidebarCalloutSlot />
 
-        <View style={styles.sidebarFooter}>
-          <View style={styles.footerHostSlot}>
-            <Pressable
-              ref={hostTriggerRef}
-              style={({ hovered = false }) => [
-                styles.hostTrigger,
-                hovered && styles.hostTriggerHovered,
-              ]}
-              onPress={() => setIsHostPickerOpen(true)}
-              disabled={hostOptions.length === 0}
-            >
-              <View style={hostStatusDotStyle} />
-              <Text style={styles.hostTriggerText} numberOfLines={1}>
-                {activeHostLabel}
-              </Text>
-            </Pressable>
-          </View>
-          <View style={styles.footerIconRow}>
-            <Tooltip delayDuration={300}>
-              <TooltipTrigger asChild>
-                <Pressable
-                  style={styles.footerIconButton}
-                  testID="sidebar-add-project"
-                  nativeID="sidebar-add-project"
-                  collapsable={false}
-                  accessible
-                  accessibilityLabel="Add project"
-                  accessibilityRole="button"
-                  onPress={handleOpenProject}
-                >
-                  {({ hovered }) => (
-                    <Plus
-                      size={theme.iconSize.md}
-                      color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                    />
-                  )}
-                </Pressable>
-              </TooltipTrigger>
-              <TooltipContent side="top" align="center" offset={8}>
-                <View style={styles.tooltipRow}>
-                  <Text style={styles.tooltipText}>Add project</Text>
-                  {newAgentKeys ? <Shortcut chord={newAgentKeys} /> : null}
-                </View>
-              </TooltipContent>
-            </Tooltip>
-            <Pressable
-              style={styles.footerIconButton}
-              testID="sidebar-settings"
-              nativeID="sidebar-settings"
-              collapsable={false}
-              accessible
-              accessibilityLabel="Settings"
-              accessibilityRole="button"
-              onPress={handleSettings}
-            >
-              {({ hovered }) => (
-                <Settings
-                  size={theme.iconSize.md}
-                  color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                />
-              )}
-            </Pressable>
-          </View>
-          <Combobox
-            options={hostOptions}
-            value={activeServerId ?? ""}
-            onSelect={handleHostSelect}
-            renderOption={renderHostOption}
-            searchable={false}
-            title="Switch host"
-            searchPlaceholder="Search hosts..."
-            open={isHostPickerOpen}
-            onOpenChange={setIsHostPickerOpen}
-            anchorRef={hostTriggerRef}
-          />
-        </View>
+        <SidebarFooter
+          theme={theme}
+          activeServerId={activeServerId}
+          activeHostLabel={activeHostLabel}
+          hostStatusDotStyle={hostStatusDotStyle}
+          hostOptions={hostOptions}
+          hostTriggerRef={hostTriggerRef}
+          isHostPickerOpen={isHostPickerOpen}
+          setIsHostPickerOpen={setIsHostPickerOpen}
+          handleHostSelect={handleHostSelect}
+          renderHostOption={renderHostOption}
+          handleOpenProject={handleOpenProject}
+          handleSettings={handleSettings}
+        />
 
         {/* Resize handle - absolutely positioned over right border */}
         <GestureDetector gesture={resizeGesture}>
-          <View style={[styles.resizeHandle, isWeb && ({ cursor: "col-resize" } as any)]} />
+          <View style={resizeHandleStyle} />
         </GestureDetector>
       </View>
     </Animated.View>

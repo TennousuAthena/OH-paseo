@@ -57,6 +57,21 @@ vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
 import { CalloutCard } from "./callout-card";
 
+type CalloutCardActions = React.ComponentProps<typeof CalloutCard>["actions"];
+
+function buildSingleAction(onPress: () => void): CalloutCardActions {
+  return [{ label: "Undo", onPress }];
+}
+
+function buildTwoActions(onWhatsNew: () => void, onInstall: () => void): CalloutCardActions {
+  return [
+    { label: "What's new", onPress: onWhatsNew },
+    { label: "Install & restart", onPress: onInstall, variant: "primary" },
+  ];
+}
+
+const calloutTitleIcon = <span data-testid="callout-title-icon" />;
+
 describe("CalloutCard", () => {
   let root: Root | null = null;
   let container: HTMLElement | null = null;
@@ -91,9 +106,7 @@ describe("CalloutCard", () => {
 
   it("renders an icon next to the title", () => {
     act(() => {
-      root?.render(
-        <CalloutCard title="Update available" icon={<span data-testid="callout-title-icon" />} />,
-      );
+      root?.render(<CalloutCard title="Update available" icon={calloutTitleIcon} />);
     });
 
     expect(container?.querySelector('[data-testid="callout-title-icon"]')).not.toBeNull();
@@ -101,14 +114,9 @@ describe("CalloutCard", () => {
 
   it("renders one action when one is provided", () => {
     const onPress = vi.fn();
+    const actions = buildSingleAction(onPress);
     act(() => {
-      root?.render(
-        <CalloutCard
-          description="Saved."
-          actions={[{ label: "Undo", onPress }]}
-          testID="callout"
-        />,
-      );
+      root?.render(<CalloutCard description="Saved." actions={actions} testID="callout" />);
     });
 
     const button = container?.querySelector(
@@ -119,15 +127,13 @@ describe("CalloutCard", () => {
   });
 
   it("renders up to two actions", () => {
+    const actions = buildTwoActions(vi.fn(), vi.fn());
     act(() => {
       root?.render(
         <CalloutCard
           title="Update available"
           description="v1 ready."
-          actions={[
-            { label: "What's new", onPress: vi.fn() },
-            { label: "Install & restart", onPress: vi.fn(), variant: "primary" },
-          ]}
+          actions={actions}
           testID="callout"
         />,
       );

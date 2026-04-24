@@ -8,20 +8,20 @@ import {
   sherpaPlatformPackageName,
 } from "./sherpa-runtime-env.js";
 
-export type SherpaOnnxNodeModule = {
-  OfflineRecognizer: new (config: any) => any;
-  OnlineRecognizer?: new (config: any) => any;
-  OfflineTts?: new (config: any) => any;
-  Vad?: new (config: any, bufferSizeInSeconds: number) => any;
-  CircularBuffer?: new (capacity: number) => any;
-};
+export interface SherpaOnnxNodeModule {
+  OfflineRecognizer: new (config: unknown) => unknown;
+  OnlineRecognizer?: new (config: unknown) => unknown;
+  OfflineTts?: new (config: unknown) => unknown;
+  Vad?: new (config: unknown, bufferSizeInSeconds: number) => unknown;
+  CircularBuffer?: new (capacity: number) => unknown;
+}
 
 let cached: SherpaOnnxNodeModule | null = null;
 
-type LoadAttempt = {
+interface LoadAttempt {
   target: string;
   error: unknown;
-};
+}
 
 function appendAttempt(attempts: LoadAttempt[], target: string, error: unknown): void {
   attempts.push({ target, error });

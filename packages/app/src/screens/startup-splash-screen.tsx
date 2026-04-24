@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -12,16 +12,24 @@ import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { isWeb } from "@/constants/platform";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 
-type StartupSplashScreenProps = {
+interface StartupSplashScreenProps {
   bootstrapState?: {
     phase: "starting-daemon" | "connecting" | "online" | "error";
     error: string | null;
     retry: () => void;
   };
-};
+}
 
 const GITHUB_ISSUE_URL = "https://github.com/getpaseo/paseo/issues/new";
 const DOCS_URL = "https://paseo.sh/docs";
+
+function openGithubIssue(): void {
+  void openExternalUrl(GITHUB_ISSUE_URL);
+}
+
+function openDocs(): void {
+  void openExternalUrl(DOCS_URL);
+}
 
 const styles = StyleSheet.create((theme) => ({
   container: {
@@ -161,9 +169,19 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
+const TITLE_ERROR_STYLE = [styles.title, styles.titleError];
+
 export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps) {
   const { theme } = useUnistyles();
   const webScrollbarStyle = useWebScrollbarStyle();
+  const errorScrollViewStyle = useMemo(
+    () => [styles.errorScrollView, webScrollbarStyle],
+    [webScrollbarStyle],
+  );
+  const logsScrollStyle = useMemo(
+    () => [styles.logsScroll, webScrollbarStyle],
+    [webScrollbarStyle],
+  );
   const [daemonLogs, setDaemonLogs] = useState<DesktopDaemonLogs | null>(null);
   const [logsError, setLogsError] = useState<string | null>(null);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
@@ -190,6 +208,7 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
           return;
         }
         setDaemonLogs(logs);
+        return;
       })
       .catch((error) => {
         if (isCancelled) {
@@ -210,22 +229,22 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
     };
   }, [isError]);
 
-  const progressSteps =
-    phase === "starting-daemon"
-      ? [{ key: "starting-daemon", label: "Starting local server...", status: "active" as const }]
-      : phase === "connecting"
-        ? [
-            { key: "starting-daemon", label: "Started local server", status: "complete" as const },
-            {
-              key: "connecting",
-              label: "Connecting to local server...",
-              status: "active" as const,
-            },
-          ]
-        : [
-            { key: "starting-daemon", label: "Started local server", status: "complete" as const },
-            { key: "connecting", label: "Connected to local server", status: "complete" as const },
-          ];
+  let progressSteps: { key: string; label: string; status: "active" | "complete" }[];
+  if (phase === "starting-daemon") {
+    progressSteps = [
+      { key: "starting-daemon", label: "Starting local server...", status: "active" },
+    ];
+  } else if (phase === "connecting") {
+    progressSteps = [
+      { key: "starting-daemon", label: "Started local server", status: "complete" },
+      { key: "connecting", label: "Connecting to local server...", status: "active" },
+    ];
+  } else {
+    progressSteps = [
+      { key: "starting-daemon", label: "Started local server", status: "complete" },
+      { key: "connecting", label: "Connected to local server", status: "complete" },
+    ];
+  }
 
   const logsText = useMemo(() => {
     if (isLoadingLogs) {
@@ -240,12 +259,29 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
     return "No daemon logs available.";
   }, [daemonLogs?.contents, isLoadingLogs, logsError]);
 
-  const handleCopyLogs = () => {
+  const handleCopyLogs = useCallback(() => {
     const payload = daemonLogs?.logPath
       ? `${daemonLogs.logPath}\n\n${daemonLogs.contents}`
       : logsText;
     void Clipboard.setStringAsync(payload);
-  };
+  }, [daemonLogs?.logPath, daemonLogs?.contents, logsText]);
+
+  const copyIcon = useMemo(
+    () => <Copy size={16} color={theme.colors.foreground} />,
+    [theme.colors.foreground],
+  );
+  const warningIcon = useMemo(
+    () => <TriangleAlert size={16} color={theme.colors.foreground} />,
+    [theme.colors.foreground],
+  );
+  const bookIcon = useMemo(
+    () => <BookOpen size={16} color={theme.colors.foreground} />,
+    [theme.colors.foreground],
+  );
+  const retryIcon = useMemo(
+    () => <RotateCw size={16} color={theme.colors.palette.white} />,
+    [theme.colors.palette.white],
+  );
 
   if (isSimpleSplash) {
     return (
@@ -285,14 +321,14 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
     <View style={styles.errorScreen}>
       <TitlebarDragRegion />
       <ScrollView
-        style={[styles.errorScrollView, webScrollbarStyle]}
+        style={errorScrollViewStyle}
         contentContainerStyle={styles.errorScrollContent}
         showsVerticalScrollIndicator
       >
         <View style={styles.errorContent}>
           <View style={styles.errorHeader}>
             <PaseoLogo size={64} />
-            <Text style={[styles.title, styles.titleError]}>Something went wrong</Text>
+            <Text style={TITLE_ERROR_STYLE}>Something went wrong</Text>
           </View>
 
           <Text style={styles.errorDescription}>
@@ -306,7 +342,7 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
 
           <View style={styles.logsContainer}>
             <ScrollView
-              style={[styles.logsScroll, webScrollbarStyle]}
+              style={logsScrollStyle}
               contentContainerStyle={styles.logsContent}
               showsVerticalScrollIndicator
             >
@@ -317,32 +353,16 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
           </View>
 
           <View style={styles.actionRow}>
-            <Button
-              variant="secondary"
-              leftIcon={<Copy size={16} color={theme.colors.foreground} />}
-              onPress={handleCopyLogs}
-            >
+            <Button variant="secondary" leftIcon={copyIcon} onPress={handleCopyLogs}>
               Copy logs
             </Button>
-            <Button
-              variant="outline"
-              leftIcon={<TriangleAlert size={16} color={theme.colors.foreground} />}
-              onPress={() => void openExternalUrl(GITHUB_ISSUE_URL)}
-            >
+            <Button variant="outline" leftIcon={warningIcon} onPress={openGithubIssue}>
               Open GitHub issue
             </Button>
-            <Button
-              variant="outline"
-              leftIcon={<BookOpen size={16} color={theme.colors.foreground} />}
-              onPress={() => void openExternalUrl(DOCS_URL)}
-            >
+            <Button variant="outline" leftIcon={bookIcon} onPress={openDocs}>
               Docs
             </Button>
-            <Button
-              variant="default"
-              leftIcon={<RotateCw size={16} color={theme.colors.palette.white} />}
-              onPress={bootstrapState.retry}
-            >
+            <Button variant="default" leftIcon={retryIcon} onPress={bootstrapState.retry}>
               Retry
             </Button>
           </View>

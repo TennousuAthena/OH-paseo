@@ -18,14 +18,14 @@ import {
 } from "@/utils/terminal-keys";
 import { renderTerminalSnapshotToAnsi } from "./terminal-snapshot";
 
-export type TerminalEmulatorRuntimeMountInput = {
+export interface TerminalEmulatorRuntimeMountInput {
   root: HTMLDivElement;
   host: HTMLDivElement;
   initialSnapshot: TerminalState | null;
   theme: ITheme;
-};
+}
 
-export type TerminalEmulatorRuntimeCallbacks = {
+export interface TerminalEmulatorRuntimeCallbacks {
   onInput?: (data: string) => Promise<void> | void;
   onResize?: (input: { rows: number; cols: number }) => Promise<void> | void;
   onTerminalKey?: (input: {
@@ -37,9 +37,9 @@ export type TerminalEmulatorRuntimeCallbacks = {
   }) => Promise<void> | void;
   onPendingModifiersConsumed?: () => Promise<void> | void;
   onOpenExternalUrl?: (url: string) => Promise<void> | void;
-};
+}
 
-type TerminalEmulatorRuntimeDisposables = {
+interface TerminalEmulatorRuntimeDisposables {
   disposeInput: () => void;
   disconnectResizeObserver: () => void;
   removeWindowResize: () => void;
@@ -55,16 +55,16 @@ type TerminalEmulatorRuntimeDisposables = {
   disposeFitAddon: () => void;
   disposeWebglAddon: () => void;
   disposeTerminal: () => void;
-};
+}
 
-type TerminalOutputOperation = {
+interface TerminalOutputOperation {
   type: "write" | "clear" | "snapshot";
   text: string;
   rows?: number;
   cols?: number;
   suppressInput?: boolean;
   onCommitted?: () => void;
-};
+}
 
 declare global {
   interface Window {
@@ -75,7 +75,7 @@ declare global {
 const isMac =
   typeof navigator !== "undefined" &&
   (/Macintosh|Mac OS/i.test(navigator.userAgent ?? "") ||
-    /Mac/i.test((navigator as any).platform ?? ""));
+    /Mac/i.test((navigator as Navigator & { platform?: string }).platform ?? ""));
 
 const DEFAULT_TOUCH_SCROLL_LINE_HEIGHT_PX = 18;
 const FIT_TIMEOUT_DELAYS_MS = [0, 16, 48, 120, 250, 500, 1_000, 2_000];
@@ -303,6 +303,7 @@ export class TerminalEmulatorRuntime {
             if (text) {
               terminal.paste(text);
             }
+            return;
           });
           return false;
         }
@@ -393,6 +394,7 @@ export class TerminalEmulatorRuntime {
     void fontSet?.ready
       .then(() => {
         fitAndEmitResize(true);
+        return;
       })
       .catch(() => {
         // no-op
