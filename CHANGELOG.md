@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.63-beta.1 - 2026-04-24
+
+### Improved
+
+- Archiving a worktree is instant instead of waiting for the backend to confirm.
+- Terminal sessions recover cleanly after rendering hiccups.
+- Agent timelines and git diff lists no longer jump around while loading or streaming.
+
+### Fixed
+
+- File links with line numbers (like `foo.ts:42`) open correctly from assistant messages.
+
 ## 0.1.62 - 2026-04-23
 
 ### Added
