@@ -141,13 +141,32 @@ function createTestDeps(): TestDeps {
 }
 
 function createProviderDefinition(overrides: Partial<ProviderDefinition>): ProviderDefinition {
+  const provider = (overrides.id ?? "claude") as AgentProvider;
   return {
-    id: "claude",
+    id: provider,
     label: "Claude",
     description: "Test provider",
     defaultModeId: "default",
     modes: [],
-    createClient: vi.fn() as ProviderDefinition["createClient"],
+    createClient: vi.fn(() => ({
+      provider,
+      capabilities: {
+        supportsStreaming: false,
+        supportsSessionPersistence: false,
+        supportsDynamicModes: false,
+        supportsMcpServers: false,
+        supportsReasoningStream: false,
+        supportsToolInvocations: false,
+      },
+      createSession: async () => {
+        throw new Error("createSession is not used by this MCP provider test");
+      },
+      resumeSession: async () => {
+        throw new Error("resumeSession is not used by this MCP provider test");
+      },
+      listModels: vi.fn().mockResolvedValue([]),
+      isAvailable: vi.fn().mockResolvedValue(true),
+    })),
     fetchModels: vi.fn().mockResolvedValue([]),
     fetchModes: vi.fn().mockResolvedValue([]),
     ...overrides,
@@ -913,7 +932,7 @@ describe("create_agent MCP tool", () => {
 describe("create_schedule MCP tool", () => {
   const logger = createTestLogger();
 
-  it("preserves default new-agent schedule behavior without requiring provider", async () => {
+  it("requires provider for new-agent schedules", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const create = vi.fn(async (input: CreateScheduleInput) => createStoredSchedule(input));
     const server = await createAgentMcpServer({
@@ -924,31 +943,14 @@ describe("create_schedule MCP tool", () => {
     });
     const tool = registeredTool(server, "create_schedule");
 
-    const response = await tool.callback({
-      prompt: "say hello",
-      every: "5m",
-      name: "Default schedule",
-    });
-
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({
+    await expect(
+      tool.callback({
         prompt: "say hello",
-        target: {
-          type: "new-agent",
-          config: {
-            provider: "claude",
-            cwd: process.cwd(),
-          },
-        },
+        every: "5m",
+        name: "Default schedule",
       }),
-    );
-    expect(response.structuredContent.target).toEqual({
-      type: "new-agent",
-      config: {
-        provider: "claude",
-        cwd: process.cwd(),
-      },
-    });
+    ).rejects.toThrow("provider is required when target is new-agent");
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("keeps create_schedule provider overrides compatible with provider and provider/model forms", async () => {
@@ -1035,11 +1037,13 @@ describe("provider listing MCP tool", () => {
         {
           id: "claude",
           label: "Claude",
+          status: "available",
           modes: [{ id: "default", label: "Default", description: "Built-in mode" }],
         },
         {
           id: "zai",
           label: "ZAI",
+          status: "available",
           modes: [{ id: "default", label: "Default", description: "Custom mode" }],
         },
       ],

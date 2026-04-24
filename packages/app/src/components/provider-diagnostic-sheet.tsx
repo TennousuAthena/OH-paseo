@@ -1,4 +1,4 @@
-import { AlertCircle, RotateCw, Search } from "lucide-react-native";
+import { AlertCircle, Plus, RotateCw, Search, Trash2 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,11 +13,13 @@ import { AdaptiveModalSheet, AdaptiveTextInput } from "@/components/adaptive-mod
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { isWeb } from "@/constants/platform";
 import { Fonts } from "@/constants/theme";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
 import { formatTimeAgo } from "@/utils/time";
 import type { AgentModelDefinition, AgentProvider } from "@server/server/agent/agent-sdk-types";
+import type { ProviderProfileModel } from "@server/server/agent/provider-launch-config";
 
 interface ProviderDiagnosticSheetProps {
   provider: string;
@@ -39,6 +41,182 @@ function ModelRow({ model, isFirst }: { model: AgentModelDefinition; isFirst: bo
       <Text style={sheetStyles.modelId} numberOfLines={1} selectable>
         {model.id}
       </Text>
+    </View>
+  );
+}
+
+function AdditionalModelRow(props: {
+  model: ProviderProfileModel;
+  isFirst: boolean;
+  deleting: boolean;
+  onDelete: (modelId: string) => void;
+}) {
+  const { theme } = useUnistyles();
+  const { model, isFirst, deleting, onDelete } = props;
+  const rowStyle = useMemo(
+    () => [sheetStyles.additionalModelRow, !isFirst && sheetStyles.modelRowBorder],
+    [isFirst],
+  );
+  const handleDelete = useCallback(() => onDelete(model.id), [model.id, onDelete]);
+  const deleteButtonStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      sheetStyles.iconButton,
+      (Boolean(hovered) || pressed) && sheetStyles.iconButtonHovered,
+      deleting ? sheetStyles.disabled : null,
+    ],
+    [deleting],
+  );
+
+  return (
+    <View style={rowStyle}>
+      <View style={sheetStyles.additionalModelText}>
+        <Text style={sheetStyles.modelLabel} numberOfLines={1}>
+          {model.label}
+        </Text>
+        <Text style={sheetStyles.modelId} numberOfLines={1} selectable>
+          {model.id}
+        </Text>
+      </View>
+      <Pressable
+        onPress={handleDelete}
+        disabled={deleting}
+        hitSlop={8}
+        style={deleteButtonStyle}
+        accessibilityRole="button"
+        accessibilityLabel={`Remove ${model.id}`}
+      >
+        <Trash2 size={theme.iconSize.sm} color={theme.colors.destructive} />
+      </Pressable>
+    </View>
+  );
+}
+
+function AdditionalModelsEditor(props: {
+  provider: string;
+  serverId: string;
+  refresh: (providers?: AgentProvider[]) => Promise<void>;
+}) {
+  const { provider, serverId, refresh } = props;
+  const { theme } = useUnistyles();
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  const [input, setInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deletingModelId, setDeletingModelId] = useState<string | null>(null);
+  const providerConfig = config?.providers?.[provider];
+  const additionalModels = useMemo(
+    () => providerConfig?.additionalModels ?? [],
+    [providerConfig?.additionalModels],
+  );
+  const trimmedInput = input.trim();
+  const canAdd =
+    trimmedInput.length > 0 && !additionalModels.some((model) => model.id === trimmedInput);
+
+  const patchAdditionalModels = useCallback(
+    async (nextModels: ProviderProfileModel[]) => {
+      await patchConfig({
+        providers: {
+          [provider]: {
+            additionalModels: nextModels,
+          },
+        },
+      });
+      await refresh([provider as AgentProvider]);
+    },
+    [patchConfig, provider, refresh],
+  );
+
+  const handleAdd = useCallback(() => {
+    if (!canAdd) {
+      return;
+    }
+
+    setError(null);
+    setSaving(true);
+    void patchAdditionalModels([
+      ...additionalModels,
+      {
+        id: trimmedInput,
+        label: trimmedInput,
+      },
+    ])
+      .then(() => setInput(""))
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to save model");
+      })
+      .finally(() => setSaving(false));
+  }, [additionalModels, canAdd, patchAdditionalModels, trimmedInput]);
+
+  const handleDelete = useCallback(
+    (modelId: string) => {
+      setError(null);
+      setDeletingModelId(modelId);
+      void patchAdditionalModels(additionalModels.filter((model) => model.id !== modelId))
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : "Failed to delete model");
+        })
+        .finally(() => {
+          setDeletingModelId((current) => (current === modelId ? null : current));
+        });
+    },
+    [additionalModels, patchAdditionalModels],
+  );
+
+  const addButtonStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      sheetStyles.addModelButton,
+      (Boolean(hovered) || pressed) && sheetStyles.addModelButtonHovered,
+      !canAdd || saving ? sheetStyles.disabled : null,
+    ],
+    [canAdd, saving],
+  );
+
+  return (
+    <View style={sheetStyles.section}>
+      <Text style={sheetStyles.sectionTitle}>Additional Models</Text>
+      <View style={sheetStyles.addModelRow}>
+        <View style={sheetStyles.addModelInputContainer}>
+          <AdaptiveTextInput
+            value={input}
+            onChangeText={setInput}
+            onSubmitEditing={handleAdd}
+            placeholder="Model ID"
+            placeholderTextColor={theme.colors.foregroundMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="done"
+            // @ts-expect-error - outlineStyle is web-only
+            style={DIAGNOSTIC_ADD_MODEL_INPUT_STYLE}
+          />
+        </View>
+        <Pressable
+          onPress={handleAdd}
+          disabled={!canAdd || saving}
+          style={addButtonStyle}
+          accessibilityRole="button"
+          accessibilityLabel="Add model"
+        >
+          {saving ? (
+            <LoadingSpinner size={theme.iconSize.sm} color={theme.colors.accentForeground} />
+          ) : (
+            <Plus size={theme.iconSize.sm} color={theme.colors.accentForeground} />
+          )}
+        </Pressable>
+      </View>
+      {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
+      {additionalModels.length > 0 ? (
+        <View style={sheetStyles.additionalModelsList}>
+          {additionalModels.map((model, index) => (
+            <AdditionalModelRow
+              key={model.id}
+              model={model}
+              isFirst={index === 0}
+              deleting={deletingModelId === model.id}
+              onDelete={handleDelete}
+            />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -255,6 +433,8 @@ export function ProviderDiagnosticSheet({
       </View>
 
       <View style={sheetStyles.modelsSection}>
+        <AdditionalModelsEditor provider={provider} serverId={serverId} refresh={refresh} />
+
         <View style={sheetStyles.modelsHeader}>
           <Text style={sheetStyles.sectionTitle}>Models</Text>
           <View style={sheetStyles.modelsHeaderMeta}>
@@ -307,6 +487,10 @@ const sheetStyles = StyleSheet.create((theme) => ({
   mutedText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
+  },
+  errorText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.destructive,
   },
   iconButton: {
     width: 30,
@@ -380,6 +564,50 @@ const sheetStyles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing[3],
   },
+  addModelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  addModelInputContainer: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing[3],
+  },
+  addModelInput: {
+    paddingVertical: theme.spacing[2],
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  addModelButton: {
+    width: 34,
+    height: 34,
+    borderRadius: theme.borderRadius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.accent,
+  },
+  addModelButtonHovered: {
+    backgroundColor: theme.colors.accentBright,
+  },
+  additionalModelsList: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  additionalModelRow: {
+    minHeight: 48,
+    paddingVertical: theme.spacing[2],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
+  additionalModelText: {
+    flex: 1,
+    minWidth: 0,
+  },
   searchInput: {
     flex: 1,
     paddingVertical: theme.spacing[2],
@@ -419,3 +647,7 @@ const sheetStyles = StyleSheet.create((theme) => ({
 
 const DIAGNOSTIC_SHEET_SNAP_POINTS = ["50%", "85%"];
 const DIAGNOSTIC_SEARCH_INPUT_STYLE = [sheetStyles.searchInput, isWeb && { outlineStyle: "none" }];
+const DIAGNOSTIC_ADD_MODEL_INPUT_STYLE = [
+  sheetStyles.addModelInput,
+  isWeb && { outlineStyle: "none" },
+];

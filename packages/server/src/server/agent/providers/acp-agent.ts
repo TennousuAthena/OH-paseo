@@ -113,6 +113,13 @@ const COPILOT_AUTOPILOT_MODE = "https://agentclientprotocol.com/protocol/session
 // NO_BROWSER is honored by Gemini CLI; other ACP agents ignore it.
 const PROBE_ENV: Record<string, string> = { NO_BROWSER: "true" };
 
+function summarizeMalformedACPStdoutError(error: unknown): { type: string; message: string } {
+  return {
+    type: error instanceof Error ? error.name : typeof error,
+    message: "ACP stdout line was not valid JSON",
+  };
+}
+
 export function createLoggedNdJsonStream(
   output: WritableStream<Uint8Array>,
   input: ReadableStream<Uint8Array>,
@@ -151,7 +158,7 @@ export function createLoggedNdJsonStream(
             } catch (error) {
               options.logger.warn(
                 {
-                  err: error,
+                  err: summarizeMalformedACPStdoutError(error),
                   provider: options.provider,
                 },
                 "ACP agent emitted non-JSON stdout; ignoring line",
@@ -696,7 +703,6 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private sessionId: string | null = null;
   private currentMode: string | null = null;
   private availableModes: AgentMode[];
-  private availableModels: AgentModelDefinition[] = [];
   private currentModel: string | null = null;
   private thinkingOptionId: string | null = null;
   private currentTitle: string | null = null;
@@ -1063,11 +1069,6 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     if (!modelId) {
       this.currentModel = null;
       return;
-    }
-
-    const modelExists = this.availableModels.some((model) => model.id === modelId);
-    if (!modelExists && this.availableModels.length > 0) {
-      throw new Error(`Unknown ${this.provider} model '${modelId}'`);
     }
 
     if ("unstable_setSessionModel" in this.connection) {
@@ -1467,7 +1468,6 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
     const modeInfo = deriveModesFromACP(this.defaultModes, transformed.modes, this.configOptions);
     this.availableModes = modeInfo.modes;
-    this.availableModels = this.deriveAvailableModels(transformed.models);
     this.currentMode = modeInfo.currentModeId ?? this.currentMode;
 
     this.currentModel =
@@ -1598,22 +1598,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.configOptions = update.configOptions;
     const modeInfo = deriveModesFromACP(this.defaultModes, null, this.configOptions);
     this.availableModes = modeInfo.modes;
-    this.availableModels = this.deriveAvailableModels(null);
     this.currentMode = modeInfo.currentModeId ?? this.currentMode;
     this.currentModel = deriveCurrentConfigValue(this.configOptions, "model") ?? this.currentModel;
     this.thinkingOptionId =
       deriveCurrentConfigValue(this.configOptions, "thought_level") ?? this.thinkingOptionId;
-  }
-
-  private deriveAvailableModels(
-    models: SessionModelState | null | undefined,
-  ): AgentModelDefinition[] {
-    const availableModels = deriveModelDefinitionsFromACP(
-      this.provider,
-      models,
-      this.configOptions,
-    );
-    return this.modelTransformer ? this.modelTransformer(availableModels) : availableModels;
   }
 
   private handleSessionInfoUpdate(update: SessionInfoUpdate): void {

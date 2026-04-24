@@ -7,16 +7,14 @@ import type {
   AgentMode,
   AgentPermissionRequest,
   AgentPersistenceHandle,
+  AgentProvider,
   AgentSessionConfig,
   AgentRuntimeInfo,
   AgentUsage,
 } from "./agent-sdk-types.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type { JsonValue } from "../json-utils.js";
-import type { Logger } from "pino";
-import { buildProviderRegistry } from "./provider-registry.js";
-import { coerceAgentProvider, toAgentPersistenceHandle } from "../persistence-hooks.js";
-
+import { isStoredAgentProviderAvailable, toAgentPersistenceHandle } from "../persistence-hooks.js";
 export type { ManagedAgent };
 
 interface ProjectionOptions {
@@ -143,15 +141,11 @@ export function toAgentPayload(
   return payload;
 }
 
-function buildStoredRuntimeInfo(
-  record: StoredAgentRecord,
-  providerRegistry: ReturnType<typeof buildProviderRegistry>,
-  logger: Logger,
-): AgentRuntimeInfo | undefined {
+function buildStoredRuntimeInfo(record: StoredAgentRecord): AgentRuntimeInfo | undefined {
   if (!record.runtimeInfo) return undefined;
   const ri = record.runtimeInfo;
   const runtimeInfo: AgentRuntimeInfo = {
-    provider: coerceAgentProvider(logger, providerRegistry, ri.provider, record.id),
+    provider: ri.provider,
     sessionId: ri.sessionId,
   };
   if (Object.prototype.hasOwnProperty.call(ri, "model")) {
@@ -169,10 +163,19 @@ function buildStoredRuntimeInfo(
   return runtimeInfo;
 }
 
+function buildStoredPersistenceHandle(
+  record: StoredAgentRecord,
+  validProviders: Iterable<AgentProvider>,
+): AgentPersistenceHandle | null {
+  if (!isStoredAgentProviderAvailable(record, validProviders)) {
+    return null;
+  }
+  return toAgentPersistenceHandle(validProviders, record.persistence);
+}
+
 export function buildStoredAgentPayload(
   record: StoredAgentRecord,
-  providerRegistry: ReturnType<typeof buildProviderRegistry>,
-  logger: Logger,
+  validProviders: Iterable<AgentProvider>,
 ): AgentSnapshotPayload {
   const defaultCapabilities = {
     supportsStreaming: false,
@@ -187,12 +190,13 @@ export function buildStoredAgentPayload(
   const updatedAt = new Date(resolveStoredAgentPayloadUpdatedAt(record));
   const lastUserMessageAt = record.lastUserMessageAt ? new Date(record.lastUserMessageAt) : null;
 
-  const provider = coerceAgentProvider(logger, providerRegistry, record.provider, record.id);
-  const runtimeInfo = buildStoredRuntimeInfo(record, providerRegistry, logger);
+  const runtimeInfo = buildStoredRuntimeInfo(record);
+  const providerAvailable = isStoredAgentProviderAvailable(record, validProviders);
+  const persistence = buildStoredPersistenceHandle(record, validProviders);
 
   return {
     id: record.id,
-    provider,
+    provider: record.provider,
     cwd: record.cwd,
     model: record.config?.model ?? null,
     thinkingOptionId: record.config?.thinkingOptionId ?? null,
@@ -209,13 +213,14 @@ export function buildStoredAgentPayload(
     currentModeId: record.lastModeId ?? null,
     availableModes: [],
     pendingPermissions: [],
-    persistence: toAgentPersistenceHandle(logger, providerRegistry, record.persistence),
+    persistence,
     title: record.title ?? record.config?.title ?? null,
     requiresAttention: record.requiresAttention ?? false,
     attentionReason: record.attentionReason ?? null,
     attentionTimestamp: record.attentionTimestamp ?? null,
     archivedAt: record.archivedAt ?? null,
     labels: normalizeLabels(record.labels),
+    ...(providerAvailable ? {} : { providerUnavailable: true }),
   };
 }
 
@@ -238,6 +243,7 @@ export function toAgentListItemPayload(agent: AgentSnapshotPayload): AgentListIt
     attentionReason: agent.attentionReason ?? null,
     attentionTimestamp: agent.attentionTimestamp ?? null,
     labels: agent.labels,
+    ...(agent.providerUnavailable ? { providerUnavailable: true } : {}),
   };
 }
 

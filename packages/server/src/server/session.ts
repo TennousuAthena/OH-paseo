@@ -68,6 +68,7 @@ import {
 import {
   buildConfigOverrides,
   extractTimestamps,
+  isStoredAgentProviderAvailable,
   toAgentPersistenceHandle,
 } from "./persistence-hooks.js";
 import { ensureAgentLoaded } from "./agent/agent-loading.js";
@@ -81,6 +82,7 @@ import type { ScriptHealthState } from "./script-health-monitor.js";
 import { spawnWorkspaceScript } from "./worktree-bootstrap.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { DaemonConfigStore } from "./daemon-config-store.js";
+import { applyMutableProviderConfigToOverrides } from "./daemon-config-store.js";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 
 import { buildProviderRegistry } from "./agent/provider-registry.js";
@@ -801,7 +803,6 @@ export class Session {
   private readonly mcpBaseUrl: string | null;
   private readonly downloadTokenStore: DownloadTokenStore;
   private readonly pushTokenStore: PushTokenStore;
-  private readonly providerRegistry: ReturnType<typeof buildProviderRegistry>;
   private unsubscribeAgentEvents: (() => void) | null = null;
   private agentUpdatesSubscription: AgentUpdatesSubscriptionState | null = null;
   private workspaceUpdatesSubscription: WorkspaceUpdatesSubscriptionState | null = null;
@@ -947,12 +948,6 @@ export class Session {
     this.providerOverrides = providerOverrides;
     this.isDev = isDev === true;
     this.abortController = new AbortController();
-    this.providerRegistry = buildProviderRegistry(this.sessionLogger, {
-      runtimeSettings: this.agentProviderRuntimeSettings,
-      providerOverrides: this.providerOverrides,
-      workspaceGitService: this.workspaceGitService,
-      isDev: this.isDev,
-    });
 
     this.initializePerSessionManagers({ tts, stt, dictation });
 
@@ -1360,8 +1355,27 @@ export class Session {
     return payload;
   }
 
-  private buildStoredAgentPayload(record: StoredAgentRecord): AgentSnapshotPayload {
-    return buildStoredAgentPayload(record, this.providerRegistry, this.sessionLogger);
+  private getProviderRegistry(): ReturnType<typeof buildProviderRegistry> {
+    return buildProviderRegistry(this.sessionLogger, {
+      runtimeSettings: this.agentProviderRuntimeSettings,
+      providerOverrides: applyMutableProviderConfigToOverrides(
+        this.providerOverrides,
+        this.daemonConfigStore.get().providers,
+      ),
+      workspaceGitService: this.workspaceGitService,
+      isDev: this.isDev,
+    });
+  }
+
+  private getRegisteredProviderIds(): AgentProvider[] {
+    return Object.keys(this.getProviderRegistry()) as AgentProvider[];
+  }
+
+  private buildStoredAgentPayload(
+    record: StoredAgentRecord,
+    registeredProviderIds = this.getRegisteredProviderIds(),
+  ): AgentSnapshotPayload {
+    return buildStoredAgentPayload(record, registeredProviderIds);
   }
 
   private isProviderVisibleToClient(provider: string): boolean {
@@ -3082,11 +3096,13 @@ export class Session {
         if (!record) {
           throw new Error(`Agent not found: ${agentId}`);
         }
-        const handle = toAgentPersistenceHandle(
-          this.sessionLogger,
-          this.providerRegistry,
-          record.persistence,
-        );
+        const providerRegistry = this.getProviderRegistry();
+        if (
+          !isStoredAgentProviderAvailable(record, Object.keys(providerRegistry) as AgentProvider[])
+        ) {
+          throw new Error(`Agent ${agentId} references unavailable provider '${record.provider}'`);
+        }
+        const handle = toAgentPersistenceHandle(providerRegistry, record.persistence);
         if (!handle) {
           throw new Error(`Agent ${agentId} cannot be refreshed because it lacks persistence`);
         }
@@ -3183,7 +3199,7 @@ export class Session {
 
     if (!manager) {
       try {
-        const models = await this.providerRegistry[msg.provider].fetchModels({
+        const models = await this.getProviderRegistry()[msg.provider].fetchModels({
           cwd,
           force: false,
         });
@@ -3315,7 +3331,7 @@ export class Session {
     }
 
     try {
-      const modes = await this.providerRegistry[msg.provider].fetchModes({
+      const modes = await this.getProviderRegistry()[msg.provider].fetchModes({
         cwd,
         force: false,
       });
@@ -3497,7 +3513,7 @@ export class Session {
     msg: Extract<SessionInboundMessage, { type: "provider_diagnostic_request" }>,
   ): Promise<void> {
     try {
-      const client = this.providerRegistry[msg.provider].createClient(this.sessionLogger);
+      const client = this.getProviderRegistry()[msg.provider].createClient(this.sessionLogger);
       const diagnostic = client.getDiagnostic
         ? (await client.getDiagnostic()).diagnostic
         : "No diagnostic available for this provider.";
@@ -5334,6 +5350,7 @@ export class Session {
    */
   private async listAgentPayloads(filter?: {
     labels?: Record<string, string>;
+    includeUnavailablePersisted?: boolean;
   }): Promise<AgentSnapshotPayload[]> {
     // Get live agents with session modes
     const agentSnapshots = this.agentManager.listAgents();
@@ -5345,9 +5362,15 @@ export class Session {
     // (excluding internal agents which are for ephemeral system tasks)
     const registryRecords = await this.agentStorage.list();
     const liveIds = new Set(agentSnapshots.map((a) => a.id));
+    const registeredProviderIds = this.getRegisteredProviderIds();
     const persistedAgents = registryRecords
       .filter((record) => !liveIds.has(record.id) && !record.internal)
-      .map((record) => this.buildStoredAgentPayload(record));
+      .filter(
+        (record) =>
+          filter?.includeUnavailablePersisted === true ||
+          isStoredAgentProviderAvailable(record, registeredProviderIds),
+      )
+      .map((record) => this.buildStoredAgentPayload(record, registeredProviderIds));
 
     let agents = [...liveAgents, ...persistedAgents];
 
@@ -5710,6 +5733,7 @@ export class Session {
 
     let agents = await this.listAgentPayloads({
       labels: filter?.labels,
+      includeUnavailablePersisted: request.type === "fetch_agent_history_request",
     });
     const activePlacementsByCwd =
       scope === "active" ? await this.buildActiveProjectPlacementsByWorkspaceCwd() : null;

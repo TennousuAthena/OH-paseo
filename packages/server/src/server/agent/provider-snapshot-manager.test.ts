@@ -1047,6 +1047,49 @@ describe("ProviderSnapshotManager", () => {
     manager.destroy();
   });
 
+  test("replaceRegistry removes providers that were disabled at runtime", async () => {
+    const { registry } = createRegistry([
+      createMockProvider({
+        provider: "codex",
+        fetchModels: async () => [createModel("codex", "gpt-5.2")],
+      }),
+      createMockProvider({
+        provider: "claude",
+        fetchModels: async () => [createModel("claude", "sonnet")],
+      }),
+    ]);
+    const manager = new ProviderSnapshotManager(registry, createTestLogger());
+    const listener = vi.fn<(entries: ProviderSnapshotEntry[], cwd: string) => void>();
+    manager.on("change", listener);
+
+    manager.getSnapshot(projectCwd);
+
+    await vi.waitFor(() => {
+      expect(getProviderEntry(manager.getSnapshot(projectCwd), "claude")?.status).toBe("ready");
+      expect(getProviderEntry(manager.getSnapshot(projectCwd), "codex")?.status).toBe("ready");
+    });
+
+    const { registry: nextRegistry } = createRegistry([
+      createMockProvider({
+        provider: "codex",
+        fetchModels: async () => [createModel("codex", "gpt-5.2")],
+      }),
+    ]);
+    manager.replaceRegistry(nextRegistry);
+
+    expect(manager.getSnapshot(projectCwd).map((entry) => entry.provider)).toEqual(["codex"]);
+    expect(listener).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: "codex",
+        }),
+      ]),
+      homedir(),
+    );
+
+    manager.destroy();
+  });
+
   test("snapshot includes user-defined providers from the registry", async () => {
     const { registry } = createRegistry([
       createMockProvider({ provider: "claude" }),

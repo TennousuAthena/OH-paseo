@@ -787,7 +787,13 @@ function findModelInRegistry(
   parsedReference: PiModelReference,
 ): Model<Api> | undefined {
   if (parsedReference.provider) {
-    return registry.find(parsedReference.provider, parsedReference.id);
+    return (
+      registry.find(parsedReference.provider, parsedReference.id) ??
+      createProviderModelFallback(registry, {
+        provider: parsedReference.provider,
+        id: parsedReference.id,
+      })
+    );
   }
 
   return registry.getAll().find((entry) => {
@@ -796,6 +802,32 @@ function findModelInRegistry(
     }
     return `${entry.provider}/${entry.id}` === parsedReference.id;
   });
+}
+
+function createProviderModelFallback(
+  registry: PiDirectModelRegistry,
+  parsedReference: { provider: string; id: string },
+): Model<Api> | undefined {
+  const providerDefault = registry
+    .getAll()
+    .find((model) => model.provider === parsedReference.provider);
+  if (!providerDefault) {
+    return undefined;
+  }
+
+  return {
+    id: parsedReference.id,
+    name: parsedReference.id,
+    api: providerDefault.api,
+    provider: parsedReference.provider,
+    baseUrl: providerDefault.baseUrl,
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128000,
+    maxTokens: 16384,
+    compat: providerDefault.compat,
+  };
 }
 
 export class PiDirectAgentSession implements AgentSession {

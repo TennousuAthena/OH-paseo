@@ -1,13 +1,10 @@
-import type { Logger } from "pino";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
-import { buildConfigOverrides, buildSessionConfig } from "./persistence-hooks.js";
-
-const testLogger = {
-  child: () => testLogger,
-  error: vi.fn(),
-  warn: vi.fn(),
-} as unknown as Logger;
+import {
+  buildConfigOverrides,
+  buildSessionConfig,
+  toAgentPersistenceHandle,
+} from "./persistence-hooks.js";
 
 function createRecord(overrides?: Partial<StoredAgentRecord>): StoredAgentRecord {
   const now = new Date().toISOString();
@@ -127,12 +124,16 @@ describe("persistence hooks", () => {
     expect(
       buildSessionConfig(record, {
         validProviders: ["claude", "codex"],
-        logger: testLogger,
       }),
     ).toBeNull();
-    expect(testLogger.warn).toHaveBeenCalledWith(
-      { agentId: "agent-missing-provider", provider: "zai" },
-      "Skipping persisted agent with unknown provider 'zai'",
-    );
+  });
+
+  test("toAgentPersistenceHandle rejects handles for unavailable providers", () => {
+    const handle = toAgentPersistenceHandle(["claude", "codex"], {
+      provider: "gemini",
+      sessionId: "session-123",
+    });
+
+    expect(handle).toBeNull();
   });
 });

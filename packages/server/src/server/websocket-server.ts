@@ -13,6 +13,7 @@ import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
+import { applyMutableProviderConfigToOverrides } from "./daemon-config-store.js";
 import {
   type ServerInfoStatusPayload,
   type SessionOutboundMessage,
@@ -492,6 +493,17 @@ export class VoiceAssistantWebSocketServer {
         this.publishSpeechReadiness(snapshot);
       }) ?? null;
     this.unsubscribeDaemonConfigChange = this.daemonConfigStore.onChange((config) => {
+      this.providerOverrides = applyMutableProviderConfigToOverrides(
+        this.providerOverrides,
+        config.providers,
+      );
+      this.providerSnapshotManager.replaceRegistry(
+        buildProviderRegistry(providerSnapshotLogger, {
+          runtimeSettings: this.agentProviderRuntimeSettings,
+          providerOverrides: this.providerOverrides,
+          isDev: this.isDev,
+        }),
+      );
       this.broadcastDaemonConfigChanged(config);
     });
 

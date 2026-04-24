@@ -225,6 +225,15 @@ export async function createPaseoDaemon(
     config.paseoHome,
     {
       mcp: { injectIntoAgents: config.mcpInjectIntoAgents ?? true },
+      providers: Object.fromEntries(
+        Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => [
+          providerId,
+          {
+            ...(override.enabled !== undefined ? { enabled: override.enabled } : {}),
+            ...(override.additionalModels ? { additionalModels: override.additionalModels } : {}),
+          },
+        ]),
+      ),
     },
     logger,
   );

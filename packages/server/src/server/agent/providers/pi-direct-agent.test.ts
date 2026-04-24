@@ -38,6 +38,7 @@ function createPiSession(prompt: () => Promise<void>): PiDirectSessionAdapter {
     abort: vi.fn(),
     dispose: vi.fn(),
     getSessionStats: vi.fn(() => ({})),
+    setModel: vi.fn(),
     setThinkingLevel: vi.fn(),
   };
 }
@@ -47,7 +48,13 @@ function createPiModel(provider: string, id: string): Model<Api> {
     provider,
     id,
     name: id,
+    api: "openai-completions",
+    baseUrl: "https://example.invalid/v1",
     reasoning: true,
+    input: ["text"],
+    cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 200000,
+    maxTokens: 8192,
   } as Model<Api>;
 }
 
@@ -75,6 +82,37 @@ describe("PiDirectAgentSession", () => {
         reason: "Request was aborted.",
       },
     ]);
+  });
+
+  test("setModel creates a minimal model for new ids under a known provider", async () => {
+    const sdkSession = createPiSession(async () => undefined);
+    const session = new PiDirectAgentSession(
+      sdkSession,
+      {
+        find: vi.fn(() => undefined),
+        getAll: vi.fn(() => [createPiModel("openrouter", "known-model")]),
+      },
+      {
+        provider: "pi",
+        cwd: "/tmp/paseo-pi-test",
+      },
+    );
+
+    await session.setModel("openrouter/blabal");
+
+    expect(sdkSession.setModel).toHaveBeenCalledWith({
+      id: "blabal",
+      name: "blabal",
+      api: "openai-completions",
+      provider: "openrouter",
+      baseUrl: "https://example.invalid/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 16384,
+      compat: undefined,
+    });
   });
 });
 

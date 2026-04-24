@@ -51,6 +51,22 @@ import {
 // Mutable daemon config schemas (shared between server store and client)
 // ---------------------------------------------------------------------------
 
+const MutableDaemonProviderModelSchema = z
+  .object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    description: z.string().optional(),
+    isDefault: z.boolean().optional(),
+  })
+  .passthrough();
+
+const MutableDaemonProviderConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    additionalModels: z.array(MutableDaemonProviderModelSchema).optional(),
+  })
+  .passthrough();
+
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -58,12 +74,16 @@ export const MutableDaemonConfigSchema = z
         injectIntoAgents: z.boolean(),
       })
       .passthrough(),
+    providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
   })
   .passthrough();
 
 export const MutableDaemonConfigPatchSchema = z
   .object({
     mcp: MutableDaemonConfigSchema.shape.mcp.partial().optional(),
+    providers: z
+      .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
+      .optional(),
   })
   .partial()
   .passthrough();
@@ -578,6 +598,7 @@ export const AgentSnapshotPayloadSchema = z.object({
   attentionReason: z.enum(["finished", "error", "permission"]).nullable().optional(),
   attentionTimestamp: z.string().nullable().optional(),
   archivedAt: z.string().nullable().optional(),
+  providerUnavailable: z.boolean().optional(),
 });
 
 export type AgentSnapshotPayload = z.infer<typeof AgentSnapshotPayloadSchema>;
@@ -600,6 +621,7 @@ export const AgentListItemPayloadSchema = z.object({
   attentionReason: z.enum(["finished", "error", "permission"]).nullable().optional(),
   attentionTimestamp: z.string().nullable().optional(),
   labels: z.record(z.string(), z.string()).default({}),
+  providerUnavailable: z.boolean().optional(),
 });
 
 export type AgentListItemPayload = z.infer<typeof AgentListItemPayloadSchema>;

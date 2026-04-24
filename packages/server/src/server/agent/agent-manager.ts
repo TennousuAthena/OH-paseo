@@ -61,6 +61,10 @@ interface TimeoutOptions {
   onLateError?: (error: unknown) => void;
 }
 
+function formatProviderList(providers: readonly string[]): string {
+  return providers.length > 0 ? providers.join(", ") : "none";
+}
+
 export { AGENT_LIFECYCLE_STATUSES, type AgentLifecycleStatus };
 export type {
   AgentTimelineCursor,
@@ -716,13 +720,9 @@ export class AgentManager {
           };
     const normalizedConfig = await this.normalizeConfig(injectedConfig);
     const launchContext = this.buildLaunchContext(resolvedAgentId);
-    const client = this.requireClient(normalizedConfig.provider);
-    const available = await client.isAvailable();
-    if (!available) {
-      throw new Error(
-        `Provider '${normalizedConfig.provider}' is not available. Please ensure the CLI is installed.`,
-      );
-    }
+    const client = await this.requireAvailableClient({
+      provider: normalizedConfig.provider,
+    });
     const session = await client.createSession(normalizedConfig, launchContext);
     return this.registerSession(session, normalizedConfig, resolvedAgentId, {
       labels: options?.labels,
@@ -3077,6 +3077,37 @@ export class AgentManager {
         PASEO_AGENT_ID: agentId,
       },
     };
+  }
+
+  private async requireAvailableClient(options: { provider: AgentProvider }): Promise<AgentClient> {
+    const client = this.clients.get(options.provider);
+    if (!client) {
+      const configuredProviders = Array.from(this.clients.keys());
+      throw new Error(
+        `Unknown provider '${options.provider}'. Configured providers: ${formatProviderList(
+          configuredProviders,
+        )}.`,
+      );
+    }
+
+    let unavailableReason: string | null = null;
+    try {
+      const available = await client.isAvailable();
+      if (available) {
+        return client;
+      }
+    } catch (error) {
+      unavailableReason = error instanceof Error ? error.message : String(error);
+    }
+
+    const availableProviders = (await this.listProviderAvailability())
+      .filter((entry) => entry.available)
+      .map((entry) => entry.provider);
+    const providerList = formatProviderList(availableProviders);
+    const reason = unavailableReason ? ` Reason: ${unavailableReason}.` : "";
+    throw new Error(
+      `Provider '${options.provider}' is not available.${reason} Available providers: ${providerList}. Use one of those providers, or install/configure '${options.provider}'.`,
+    );
   }
 
   private requireClient(provider: AgentProvider): AgentClient {

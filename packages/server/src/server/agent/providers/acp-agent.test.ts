@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import type { PromptResponse, SessionUpdate } from "@agentclientprotocol/sdk";
+import type { PromptResponse, SessionConfigOption, SessionUpdate } from "@agentclientprotocol/sdk";
 
 import {
   ACPAgentClient,
@@ -19,6 +19,18 @@ interface ACPSessionInternals {
   connection: { prompt: (...args: unknown[]) => Promise<PromptResponse> };
   activeForegroundTurnId: string | null;
   translateSessionUpdate(update: SessionUpdate): unknown;
+}
+
+interface ACPModelSelectionInternals {
+  sessionId: string | null;
+  connection: {
+    setSessionConfigOption: (input: {
+      sessionId: string;
+      configId: string;
+      value: string;
+    }) => Promise<void>;
+  };
+  configOptions: SessionConfigOption[];
 }
 
 function createSession(): ACPAgentSession {
@@ -43,6 +55,32 @@ function createSession(): ACPAgentSession {
     },
   );
 }
+
+test("ACP setModel forwards model ids that are absent from the advertised catalog", async () => {
+  const session = createSession();
+  const setSessionConfigOption = vi.fn(async () => undefined);
+  const internals = session as unknown as ACPModelSelectionInternals;
+  internals.sessionId = "session-1";
+  internals.connection = { setSessionConfigOption };
+  internals.configOptions = [
+    {
+      id: "model-option",
+      name: "Model",
+      category: "model",
+      type: "select",
+      currentValue: "sonnet",
+      options: [{ value: "sonnet", name: "Sonnet" }],
+    },
+  ];
+
+  await session.setModel("new-provider-model");
+
+  expect(setSessionConfigOption).toHaveBeenCalledWith({
+    sessionId: "session-1",
+    configId: "model-option",
+    value: "new-provider-model",
+  });
+});
 
 describe("createLoggedNdJsonStream", () => {
   test("routes malformed ACP stdout through the provider logger instead of console.error", async () => {
@@ -71,6 +109,10 @@ describe("createLoggedNdJsonStream", () => {
     expect(parsed.value).toEqual({ jsonrpc: "2.0", method: "ok", params: {} });
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({
+        err: {
+          type: "SyntaxError",
+          message: "ACP stdout line was not valid JSON",
+        },
         provider: "gemini",
       }),
       "ACP agent emitted non-JSON stdout; ignoring line",
@@ -81,6 +123,39 @@ describe("createLoggedNdJsonStream", () => {
     await writer.close();
     reader.releaseLock();
     consoleError.mockRestore();
+  });
+
+  test("does not log terminal control sequences from malformed ACP stdout", async () => {
+    const input = new TransformStream<Uint8Array, Uint8Array>();
+    const output = new TransformStream<Uint8Array, Uint8Array>();
+    const logger = {
+      warn: vi.fn(),
+    };
+
+    const stream = createLoggedNdJsonStream(output.writable, input.readable, {
+      logger: logger as unknown as ReturnType<typeof createTestLogger>,
+      provider: "gemini",
+    });
+    const reader = stream.readable.getReader();
+    const writer = input.writable.getWriter();
+
+    await writer.write(new TextEncoder().encode('\u001b[1G\u001b[0JEn\n{"ok":true}\n'));
+
+    const parsed = await reader.read();
+
+    expect(parsed.value).toEqual({ ok: true });
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("\u001b");
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("[1G");
+    expect(logger.warn.mock.calls[0]?.[0]).toEqual({
+      err: {
+        type: "SyntaxError",
+        message: "ACP stdout line was not valid JSON",
+      },
+      provider: "gemini",
+    });
+
+    await writer.close();
+    reader.releaseLock();
   });
 });
 

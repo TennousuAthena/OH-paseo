@@ -22,6 +22,7 @@ import {
 import { curateAgentActivity } from "./activity-curator.js";
 import type { AgentStorage } from "./agent-storage.js";
 import { ensureAgentLoaded } from "./agent-loading.js";
+import { isStoredAgentProviderAvailable } from "../persistence-hooks.js";
 import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
@@ -159,6 +160,15 @@ function resolveAgentListActivityTime(agent: AgentListItemPayload): number {
   );
 }
 
+function resolveRegisteredProviderIds(
+  agentManager: AgentManager,
+  providerRegistry: Record<AgentProvider, ProviderDefinition> | null | undefined,
+): AgentProvider[] {
+  return providerRegistry
+    ? (Object.keys(providerRegistry) as AgentProvider[])
+    : agentManager.getRegisteredProviderIds();
+}
+
 function compareAgentListItems(a: AgentListItemPayload, b: AgentListItemPayload): number {
   const attentionDelta =
     Number(b.requiresAttention ?? false) - Number(a.requiresAttention ?? false);
@@ -289,13 +299,6 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     version: "2.0.0",
   });
 
-  const requireProviderRegistry = (): Record<AgentProvider, ProviderDefinition> => {
-    if (!providerRegistry) {
-      throw new Error("Provider registry is required to load stored agent records");
-    }
-    return providerRegistry;
-  };
-
   const resolveCallerAgent = () => {
     if (!callerAgentId) {
       return null;
@@ -389,6 +392,10 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   };
 
   const resolveNewAgentScheduleTarget = (params?: { provider?: string; cwd?: string }) => {
+    if (!params?.provider?.trim()) {
+      throw new Error("provider is required when target is new-agent");
+    }
+
     const callerAgent = resolveCallerAgent();
     if (callerAgent) {
       return {
@@ -399,7 +406,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
 
     const resolvedProviderModel = resolveScheduleProviderAndModel({
       provider: params?.provider,
-      defaultProvider: "claude",
+      defaultProvider: params.provider as AgentProvider,
     });
     return {
       type: "new-agent" as const,
@@ -675,7 +682,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     {
       title: "Create agent",
       description:
-        "Create an agent tied to a working directory. Requires provider/model, for example codex/gpt-5.4. Optionally run an initial prompt immediately or create a git worktree for the agent.",
+        "Create an agent tied to a working directory. Requires provider/model, for example codex/gpt-5.4. Do not guess; call list_providers and list_models first if uncertain. Optionally run an initial prompt immediately or create a git worktree for the agent.",
       inputSchema: createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
@@ -1052,8 +1059,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
 
       const structuredSnapshot = buildStoredAgentPayload(
         record,
-        requireProviderRegistry(),
-        childLogger,
+        resolveRegisteredProviderIds(agentManager, providerRegistry),
       );
       return {
         content: [],
@@ -1100,10 +1106,15 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       );
       const liveIds = new Set(liveSnapshots.map((snapshot) => snapshot.id));
       const storedRecords = await agentStorage.list();
+      const registeredProviderIds = resolveRegisteredProviderIds(agentManager, providerRegistry);
       const storedAgents = storedRecords
         .filter((record) => !record.internal && !liveIds.has(record.id))
         .filter((record) => includeArchived || !record.archivedAt)
-        .map((record) => buildStoredAgentPayload(record, requireProviderRegistry(), childLogger));
+        .filter(
+          (record) =>
+            includeArchived || isStoredAgentProviderAvailable(record, registeredProviderIds),
+        )
+        .map((record) => buildStoredAgentPayload(record, registeredProviderIds));
       const agents = [...liveAgents, ...storedAgents]
         .map(toAgentListItemPayload)
         .filter((agent) => !requestedCwd || isSameOrDescendantPath(requestedCwd, agent.cwd))
@@ -1631,26 +1642,49 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     "list_providers",
     {
       title: "List providers",
-      description: "List available agent providers and their modes.",
+      description: "List configured agent providers, availability, and their modes.",
       inputSchema: {},
       outputSchema: {
         providers: z.array(ProviderSummarySchema),
       },
     },
-    async () => ({
-      content: [],
-      structuredContent: ensureValidJson({
-        providers: Object.values(providerRegistry ?? {}).map((provider) => ({
-          id: provider.id,
-          label: provider.label,
-          modes: provider.modes.map((mode) => ({
-            id: mode.id,
-            label: mode.label,
-            ...(mode.description ? { description: mode.description } : {}),
-          })),
-        })),
-      }),
-    }),
+    async () => {
+      const providers = await Promise.all(
+        Object.values(providerRegistry ?? {}).map(async (provider) => {
+          let status = "unknown";
+          let error: string | undefined;
+          try {
+            status = (await provider.createClient(childLogger).isAvailable())
+              ? "available"
+              : "unavailable";
+          } catch (availabilityError) {
+            status = "unavailable";
+            error =
+              availabilityError instanceof Error
+                ? availabilityError.message
+                : String(availabilityError);
+          }
+          const summary = {
+            id: provider.id,
+            label: provider.label,
+            status,
+            modes: provider.modes.map((mode) => ({
+              id: mode.id,
+              label: mode.label,
+              ...(mode.description ? { description: mode.description } : {}),
+            })),
+          };
+          if (error) {
+            return Object.assign(summary, { error });
+          }
+          return summary;
+        }),
+      );
+      return {
+        content: [],
+        structuredContent: ensureValidJson({ providers }),
+      };
+    },
   );
 
   server.registerTool(

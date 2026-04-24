@@ -221,7 +221,13 @@ function createSessionForTest(options?: {
     checkoutDiffManager: checkoutDiffManager as unknown as SessionOptions["checkoutDiffManager"],
     github: github as unknown as SessionOptions["github"],
     workspaceGitService: workspaceGitService as unknown as SessionOptions["workspaceGitService"],
-    daemonConfigStore: {} as unknown as SessionOptions["daemonConfigStore"],
+    daemonConfigStore: {
+      get: vi.fn(() => ({
+        mcp: { injectIntoAgents: false },
+        providers: {},
+      })),
+      onChange: vi.fn(() => () => {}),
+    } as unknown as SessionOptions["daemonConfigStore"],
     stt: null,
     tts: null,
     terminalManager: (options?.terminalManager ?? null) as SessionOptions["terminalManager"],
@@ -357,12 +363,12 @@ describe("session provider refresh cwd routing", () => {
     const session = createSessionForTest({ messages });
     const fetchModels = vi.fn(async () => []);
     const fetchModes = vi.fn(async () => []);
-    (session as unknown as { providerRegistry: unknown }).providerRegistry = {
+    (session as unknown as { getProviderRegistry: () => unknown }).getProviderRegistry = () => ({
       codex: {
         fetchModels,
         fetchModes,
       },
-    };
+    });
 
     await session.handleMessage({
       type: "list_provider_models_request",

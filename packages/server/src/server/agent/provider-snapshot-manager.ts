@@ -39,12 +39,14 @@ export class ProviderSnapshotManager {
   private readonly ttlMs: number;
   private readonly refreshTimeoutMs: number;
   private readonly now: () => number;
+  private providerRegistry: Record<AgentProvider, ProviderDefinition>;
 
   constructor(
-    private readonly providerRegistry: Record<AgentProvider, ProviderDefinition>,
+    providerRegistry: Record<AgentProvider, ProviderDefinition>,
     private readonly logger: Logger,
     options: ProviderSnapshotManagerOptions = {},
   ) {
+    this.providerRegistry = providerRegistry;
     this.ttlMs = options.ttlMs ?? DEFAULT_SNAPSHOT_TTL_MS;
     this.refreshTimeoutMs = options.refreshTimeoutMs ?? DEFAULT_REFRESH_TIMEOUT_MS;
     this.now = options.now ?? Date.now;
@@ -142,6 +144,18 @@ export class ProviderSnapshotManager {
     this.snapshots.clear();
     this.lastCheckedAts.clear();
     this.providerLoads.clear();
+  }
+
+  replaceRegistry(providerRegistry: Record<AgentProvider, ProviderDefinition>): void {
+    this.providerRegistry = providerRegistry;
+
+    for (const cwd of this.snapshots.keys()) {
+      this.providerLoads.delete(cwd);
+      this.lastCheckedAts.delete(cwd);
+      this.snapshots.set(cwd, this.createLoadingEntries());
+      this.emitChange(cwd);
+      void this.warmUp(cwd);
+    }
   }
 
   private createLoadingEntries(): Map<AgentProvider, ProviderSnapshotEntry> {

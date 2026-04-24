@@ -13,8 +13,6 @@ interface LoggerLike {
   warn(...args: unknown[]): void;
 }
 
-const DEFAULT_AGENT_PROVIDER = "claude";
-
 function getLogger(logger: LoggerLike): LoggerLike {
   return logger.child({ module: "persistence" });
 }
@@ -24,7 +22,6 @@ type AgentManagerStateSource = Pick<AgentManager, "subscribe">;
 
 interface BuildSessionConfigOptions {
   validProviders?: Iterable<AgentProvider>;
-  logger?: LoggerLike;
 }
 
 type RegisteredProviders = ReturnType<typeof buildProviderRegistry> | Iterable<AgentProvider>;
@@ -85,10 +82,6 @@ export function buildSessionConfig(
   const validProviders = options?.validProviders;
   const isValidProvider = validProviders ? new Set(validProviders).has(record.provider) : true;
   if (!isValidProvider) {
-    options?.logger?.warn(
-      { agentId: record.id, provider: record.provider },
-      `Skipping persisted agent with unknown provider '${record.provider}'`,
-    );
     return null;
   }
   const overrides = buildConfigOverrides(record);
@@ -104,6 +97,13 @@ export function buildSessionConfig(
     systemPrompt: overrides.systemPrompt,
     mcpServers: overrides.mcpServers,
   };
+}
+
+export function isStoredAgentProviderAvailable(
+  record: StoredAgentRecord,
+  validProviders?: Iterable<AgentProvider>,
+): boolean {
+  return buildSessionConfig(record, { validProviders }) !== null;
 }
 
 export function extractTimestamps(record: StoredAgentRecord): {
@@ -134,24 +134,7 @@ export function isRegisteredProvider(
   return hasRegisteredProvider(providerRegistry, value);
 }
 
-export function coerceAgentProvider(
-  logger: LoggerLike,
-  providerRegistry: ReturnType<typeof buildProviderRegistry>,
-  value: string,
-  agentId?: string,
-): AgentProvider {
-  if (isRegisteredProvider(providerRegistry, value)) {
-    return value;
-  }
-  logger.warn(
-    { value, agentId, defaultProvider: DEFAULT_AGENT_PROVIDER },
-    `Unknown provider '${value}' for agent ${agentId ?? "unknown"}; defaulting to '${DEFAULT_AGENT_PROVIDER}'`,
-  );
-  return DEFAULT_AGENT_PROVIDER;
-}
-
 export function toAgentPersistenceHandle(
-  logger: LoggerLike,
   registeredProviders: RegisteredProviders,
   handle: StoredAgentRecord["persistence"],
 ): AgentPersistenceHandle | null {
@@ -160,11 +143,9 @@ export function toAgentPersistenceHandle(
   }
   const provider = handle.provider;
   if (!hasRegisteredProvider(registeredProviders, provider)) {
-    logger.warn({ provider }, `Ignoring persistence handle with unknown provider '${provider}'`);
     return null;
   }
   if (!handle.sessionId) {
-    logger.warn("Ignoring persistence handle missing sessionId");
     return null;
   }
   return {

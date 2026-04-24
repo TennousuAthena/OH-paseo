@@ -78,6 +78,11 @@ class TestAgentClient implements AgentClient {
         id: "gpt-5.4-mini",
         label: "GPT-5.4 Mini",
       },
+      {
+        provider: "codex",
+        id: "gpt-5.2-codex",
+        label: "GPT-5.2 Codex",
+      },
     ];
   }
 
@@ -785,6 +790,86 @@ test("createAgent fails when cwd does not exist", async () => {
       cwd: join(workdir, "does-not-exist"),
     }),
   ).rejects.toThrow("Working directory does not exist");
+});
+
+test("createAgent reports configured providers when provider is unknown", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const manager = new AgentManager({
+    clients: {
+      codex: new TestAgentClient(),
+    },
+    registry: storage,
+    logger,
+  });
+
+  await expect(
+    manager.createAgent({
+      provider: "missing-provider",
+      cwd: workdir,
+    }),
+  ).rejects.toThrow("Unknown provider 'missing-provider'. Configured providers: codex.");
+});
+
+test("createAgent reports available providers when selected provider is unavailable", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+
+  class UnavailableCodexClient extends TestAgentClient {
+    override async isAvailable(): Promise<boolean> {
+      return false;
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: {
+      codex: new UnavailableCodexClient(),
+      claude: new TestAgentClient(),
+    },
+    registry: storage,
+    logger,
+  });
+
+  await expect(
+    manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    }),
+  ).rejects.toThrow(
+    "Provider 'codex' is not available. Available providers: claude. Use one of those providers, or install/configure 'codex'.",
+  );
+});
+
+test("createAgent passes explicit model strings through to the provider", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  class CaptureModelClient extends TestAgentClient {
+    lastConfig: AgentSessionConfig | null = null;
+
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      this.lastConfig = config;
+      return new TestAgentSession(config);
+    }
+  }
+  const client = new CaptureModelClient();
+  const manager = new AgentManager({
+    clients: {
+      codex: client,
+    },
+    registry: storage,
+    logger,
+  });
+
+  await manager.createAgent({
+    provider: "codex",
+    cwd: workdir,
+    model: "not-a-real-model",
+  });
+
+  expect(client.lastConfig?.model).toBe("not-a-real-model");
 });
 
 test("resumeAgentFromPersistence keeps metadata config, applies overrides, and passes launch env", async () => {
