@@ -20,6 +20,7 @@ import {
   type NativeSyntheticEvent,
   type NativeScrollEvent,
   type PressableStateCallbackType,
+  type FlatListProps,
   type StyleProp,
   type ViewStyle,
   TextStyle,
@@ -616,7 +617,7 @@ function DiffFileBody({
   file: ParsedDiffFile;
   layout: "unified" | "split";
   wrapLines: boolean;
-  onBodyHeightChange?: (path: string, height: number) => void;
+  onBodyHeightChange?: (file: ParsedDiffFile, height: number) => void;
   testID?: string;
 }) {
   const [scrollViewWidth, setScrollViewWidth] = useState(0);
@@ -625,9 +626,9 @@ function DiffFileBody({
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       setBodyWidth(event.nativeEvent.layout.width);
-      onBodyHeightChange?.(file.path, event.nativeEvent.layout.height);
+      onBodyHeightChange?.(file, event.nativeEvent.layout.height);
     },
-    [file.path, onBodyHeightChange],
+    [file, onBodyHeightChange],
   );
 
   const availableWidth = bodyWidth > 0 ? bodyWidth : scrollViewWidth;
@@ -899,6 +900,25 @@ function DiffFilesToolbar({
 type DiffFlatItem =
   | { type: "header"; file: ParsedDiffFile; fileIndex: number; isExpanded: boolean }
   | { type: "body"; file: ParsedDiffFile; fileIndex: number };
+type DiffFlatItemLayoutGetter = NonNullable<FlatListProps<DiffFlatItem>["getItemLayout"]>;
+
+function getUnifiedDiffLineCount(file: ParsedDiffFile): number {
+  let lineCount = 0;
+  for (const hunk of file.hunks) {
+    lineCount += hunk.lines.length;
+  }
+  return lineCount;
+}
+
+function getDiffContentLength(file: ParsedDiffFile): number {
+  let contentLength = 0;
+  for (const hunk of file.hunks) {
+    for (const line of hunk.lines) {
+      contentLength += line.content.length;
+    }
+  }
+  return contentLength;
+}
 
 function computeBranchLabel(currentBranch: string | null | undefined, notGit: boolean): string {
   if (currentBranch && currentBranch !== "HEAD") {
@@ -936,6 +956,7 @@ interface DiffBodyContentProps {
   stickyHeaderIndices: number[];
   renderFlatItem: ({ item }: { item: DiffFlatItem }) => ReactElement;
   flatKeyExtractor: (item: DiffFlatItem) => string;
+  getFlatItemLayout: DiffFlatItemLayoutGetter;
   flatExtraData: unknown;
   diffListRef: RefObject<FlatList<DiffFlatItem> | null>;
   handleDiffListLayout: (event: LayoutChangeEvent) => void;
@@ -957,6 +978,7 @@ function DiffBodyContent({
   stickyHeaderIndices,
   renderFlatItem,
   flatKeyExtractor,
+  getFlatItemLayout,
   flatExtraData,
   diffListRef,
   handleDiffListLayout,
@@ -1014,6 +1036,7 @@ function DiffBodyContent({
       data={flatItems}
       renderItem={renderFlatItem}
       keyExtractor={flatKeyExtractor}
+      getItemLayout={getFlatItemLayout}
       stickyHeaderIndices={stickyHeaderIndices}
       extraData={flatExtraData}
       style={styles.scrollView}
@@ -1596,8 +1619,12 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
   const diffListScrollOffsetRef = useRef(0);
   const diffListViewportHeightRef = useRef(0);
   const headerHeightByPathRef = useRef<Record<string, number>>({});
-  const bodyHeightByPathRef = useRef<Record<string, number>>({});
+  const bodyHeightByKeyRef = useRef<Record<string, number>>({});
   const defaultHeaderHeightRef = useRef<number>(44);
+  const [heightVersion, setHeightVersion] = useState(0);
+  const diffBodyLineHeight = theme.lineHeight.diff;
+  const diffBodyChromeHeight = theme.borderWidth[1] * 2;
+  const statusBodyHeightEstimate = diffBodyChromeHeight + theme.spacing[4] * 2 + diffBodyLineHeight;
   const shipDefaultStorageKey = useMemo(() => {
     if (!gitStatus?.repoRoot) {
       return null;
@@ -1654,20 +1681,76 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
     return { flatItems: items, stickyHeaderIndices: stickyIndices };
   }, [expandedPaths, files]);
 
+  const getBodyHeightKey = useCallback(
+    (file: ParsedDiffFile): string => {
+      if (file.status === "too_large" || file.status === "binary") {
+        return `${effectiveLayout}:${wrapLines ? "wrap" : "scroll"}:${file.path}:${file.status}`;
+      }
+
+      return [
+        effectiveLayout,
+        wrapLines ? "wrap" : "scroll",
+        file.path,
+        file.status ?? "ok",
+        file.additions,
+        file.deletions,
+        file.hunks.length,
+        getUnifiedDiffLineCount(file),
+        getDiffContentLength(file),
+      ].join(":");
+    },
+    [effectiveLayout, wrapLines],
+  );
+
+  const estimateBodyHeight = useCallback(
+    (file: ParsedDiffFile): number => {
+      if (file.status === "too_large" || file.status === "binary") {
+        return statusBodyHeightEstimate;
+      }
+
+      const lineCount =
+        effectiveLayout === "split"
+          ? buildSplitDiffRows(file).length
+          : getUnifiedDiffLineCount(file);
+      return diffBodyChromeHeight + lineCount * diffBodyLineHeight;
+    },
+    [diffBodyChromeHeight, diffBodyLineHeight, effectiveLayout, statusBodyHeightEstimate],
+  );
+
   const handleHeaderHeightChange = useCallback((path: string, height: number) => {
     if (!Number.isFinite(height) || height <= 0) {
       return;
     }
-    headerHeightByPathRef.current[path] = height;
-    defaultHeaderHeightRef.current = height;
-  }, []);
-
-  const handleBodyHeightChange = useCallback((path: string, height: number) => {
-    if (!Number.isFinite(height) || height < 0) {
+    const previousHeight = headerHeightByPathRef.current[path];
+    if (
+      previousHeight !== undefined &&
+      Math.abs(previousHeight - height) <= DIFF_HEIGHT_CHANGE_EPSILON
+    ) {
       return;
     }
-    bodyHeightByPathRef.current[path] = height;
+    headerHeightByPathRef.current[path] = height;
+    defaultHeaderHeightRef.current = height;
+    setHeightVersion((version) => version + 1);
   }, []);
+
+  const handleBodyHeightChange = useCallback(
+    (file: ParsedDiffFile, height: number) => {
+      if (!Number.isFinite(height) || height < 0) {
+        return;
+      }
+      const heightKey = getBodyHeightKey(file);
+      const previousHeight = bodyHeightByKeyRef.current[heightKey];
+      if (
+        previousHeight !== undefined &&
+        Math.abs(previousHeight - height) <= DIFF_HEIGHT_CHANGE_EPSILON
+      ) {
+        return;
+      }
+      bodyHeightByKeyRef.current[heightKey] = height;
+      setHeightVersion((version) => version + 1);
+    },
+    [getBodyHeightKey],
+  );
 
   const handleDiffListScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -1699,12 +1782,13 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
         }
         offset += headerHeightByPathRef.current[file.path] ?? defaultHeaderHeight;
         if (expandedPaths.has(file.path)) {
-          offset += bodyHeightByPathRef.current[file.path] ?? 0;
+          const bodyHeightKey = getBodyHeightKey(file);
+          offset += bodyHeightByKeyRef.current[bodyHeightKey] ?? estimateBodyHeight(file);
         }
       }
       return Math.max(0, offset);
     },
-    [expandedPaths, files],
+    [estimateBodyHeight, expandedPaths, files, getBodyHeightKey],
   );
 
   const handleToggleExpanded = useCallback(
@@ -1909,9 +1993,38 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
     [],
   );
 
+  const getFlatItemHeight = useCallback(
+    (item: DiffFlatItem): number => {
+      if (item.type === "header") {
+        return headerHeightByPathRef.current[item.file.path] ?? defaultHeaderHeightRef.current;
+      }
+
+      const bodyHeightKey = getBodyHeightKey(item.file);
+      return bodyHeightByKeyRef.current[bodyHeightKey] ?? estimateBodyHeight(item.file);
+    },
+    [estimateBodyHeight, getBodyHeightKey],
+  );
+
+  const getFlatItemLayout = useCallback<DiffFlatItemLayoutGetter>(
+    (_data, index) => {
+      let offset = 0;
+      for (let itemIndex = 0; itemIndex < index; itemIndex += 1) {
+        const item = flatItems[itemIndex];
+        if (item) {
+          offset += getFlatItemHeight(item);
+        }
+      }
+
+      const item = flatItems[index];
+      const length = item ? getFlatItemHeight(item) : 0;
+      return { length, offset, index };
+    },
+    [flatItems, getFlatItemHeight],
+  );
+
   const flatExtraData = useMemo(
-    () => ({ expandedPathsArray, effectiveLayout, wrapLines }),
-    [expandedPathsArray, effectiveLayout, wrapLines],
+    () => ({ expandedPathsArray, effectiveLayout, heightVersion, wrapLines }),
+    [expandedPathsArray, effectiveLayout, heightVersion, wrapLines],
   );
 
   const hasChanges = files.length > 0;
@@ -1988,6 +2101,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
       stickyHeaderIndices={stickyHeaderIndices}
       renderFlatItem={renderFlatItem}
       flatKeyExtractor={flatKeyExtractor}
+      getFlatItemLayout={getFlatItemLayout}
       flatExtraData={flatExtraData}
       diffListRef={diffListRef}
       handleDiffListLayout={handleDiffListLayout}
@@ -2599,3 +2713,4 @@ const HEADER_LINE_TEXT_STYLE = [styles.diffLineText, styles.headerLineText];
 const FILE_SECTION_BODY_STYLE = [styles.fileSectionBodyContainer, styles.fileSectionBorder];
 const DIFF_CONTENT_SPLIT_ROW_STYLE = [styles.diffContent, styles.splitRow];
 const DIFF_CONTENT_ROW_STYLE = [styles.diffContent, styles.diffContentRow];
+const DIFF_HEIGHT_CHANGE_EPSILON = 0.5;
