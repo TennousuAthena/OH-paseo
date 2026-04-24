@@ -36,6 +36,7 @@ npm run dev                          # Start daemon + Expo in Tmux
 npm run cli -- ls -a -g              # List all agents
 npm run cli -- daemon status         # Check daemon status
 npm run typecheck                    # Always run after changes
+npm run lint                         # Always run after changes
 npm run format                       # Auto-format with Biome
 npm run format:check                 # Check formatting without writing
 ```
@@ -53,7 +54,7 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full setup, build sync requir
   - If you must run a broad suite, pipe output to a file and read it afterward: `npx vitest run <file> --bail=1 > /tmp/test-output.txt 2>&1` then read the file.
   - Never re-run a test suite that another agent already ran and reported green — trust the result.
   - For full suite verification, push to CI and check GitHub Actions instead.
-- **Always run typecheck after every change.**
+- **Always run typecheck and lint after every change.**
 - **Run `npm run format` before committing.** This repo uses Biome for formatting. Do not manually fix formatting — let the formatter handle it.
 - **NEVER make breaking changes to WebSocket or message schemas.** The primary compatibility path is old mobile app clients talking to newly updated daemons. Users update desktop and daemon first, then keep running the old app for a while. Every schema change MUST be backward-compatible for old clients against new daemons:
   - New fields: always `.optional()` with a sensible default or `.transform()` fallback.
