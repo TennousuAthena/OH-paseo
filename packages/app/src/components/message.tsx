@@ -29,8 +29,6 @@ import Markdown, {
   type ASTNode,
   type RenderRules,
 } from "react-native-markdown-display";
-
-type MarkdownStyles = Record<string, TextStyle & ViewStyle & { [key: string]: unknown }>;
 import { useQuery } from "@tanstack/react-query";
 import MaskedView from "@react-native-masked-view/masked-view";
 import {
@@ -83,13 +81,13 @@ import {
   getAssistantImageMetadata,
   setAssistantImageMetadata,
 } from "@/utils/assistant-image-metadata";
+import { setAssistantMarkdownBlockHeight } from "@/utils/assistant-message-height-estimate";
 import { resolveAssistantImageSource } from "@/utils/assistant-image-source";
 import {
   createPreviewAttachmentId,
   getFileNameFromPath,
   parseImageDataUrl,
 } from "@/attachments/utils";
-export type { InlinePathTarget } from "@/utils/inline-path";
 import { PlanCard } from "./plan-card";
 import { useToolCallSheet } from "./tool-call-sheet";
 import { ToolCallDetailsContent } from "./tool-call-details";
@@ -97,6 +95,9 @@ import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-ur
 import { persistAttachmentFromBase64, persistAttachmentFromDataUrl } from "@/attachments/service";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { isWeb, isNative } from "@/constants/platform";
+export type { InlinePathTarget } from "@/utils/inline-path";
+
+type MarkdownStyles = Record<string, TextStyle & ViewStyle & { [key: string]: unknown }>;
 
 interface UserMessageProps {
   message: string;
@@ -1186,16 +1187,29 @@ function NativeShimmerPeakSvg({ gradientId }: { gradientId: string }) {
 }
 
 interface AssistantMessageBlockContainerProps {
+  block: string;
   marginBottom: number;
   children: ReactNode;
 }
 
 function AssistantMessageBlockContainer({
+  block,
   marginBottom,
   children,
 }: AssistantMessageBlockContainerProps) {
   const style = useMemo(() => (marginBottom > 0 ? { marginBottom } : undefined), [marginBottom]);
-  return <View style={style}>{children}</View>;
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { width, height } = event.nativeEvent.layout;
+      setAssistantMarkdownBlockHeight({ block, width, height });
+    },
+    [block],
+  );
+  return (
+    <View style={style} onLayout={isWeb ? handleLayout : undefined}>
+      {children}
+    </View>
+  );
 }
 
 interface MemoizedMarkdownBlockProps {
@@ -1572,6 +1586,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       {keyedBlocks.map(({ key, block }, index) => (
         <AssistantMessageBlockContainer
           key={key}
+          block={block}
           marginBottom={index < keyedBlocks.length - 1 ? theme.spacing[3] : 0}
         >
           <MemoizedMarkdownBlock
