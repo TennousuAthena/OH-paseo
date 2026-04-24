@@ -5,12 +5,7 @@ import type { Logger } from "pino";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import {
-  buildProjectPlacementForCwd,
-  deriveWorkspaceId,
-  deriveProjectKind,
-  deriveProjectRootPath,
-  deriveWorkspaceDisplayName,
-  deriveWorkspaceKind,
+  classifyDirectoryForProjectMembership,
   normalizeWorkspaceId,
 } from "./workspace-registry-model.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
@@ -73,40 +68,38 @@ export async function bootstrapWorkspaceRegistries(options: {
   const recordsByWorkspaceId = new Map<
     string,
     {
-      placement: Awaited<ReturnType<typeof buildProjectPlacementForCwd>>;
+      membership: Awaited<ReturnType<typeof classifyDirectoryForProjectMembership>>;
       records: StoredAgentRecord[];
     }
   >();
   const placements = await Promise.all(
     activeRecords.map(async (record) => {
       const normalizedCwd = normalizeWorkspaceId(record.cwd);
-      const placement = await buildProjectPlacementForCwd({
+      const membership = await classifyDirectoryForProjectMembership({
         cwd: normalizedCwd,
         workspaceGitService: options.workspaceGitService,
       });
-      const workspaceId = deriveWorkspaceId(normalizedCwd, placement.checkout);
-      return { record, placement, workspaceId };
+      return { record, membership, workspaceId: membership.workspaceId };
     }),
   );
-  for (const { record, placement, workspaceId } of placements) {
-    const existing = recordsByWorkspaceId.get(workspaceId) ?? { placement, records: [] };
+  for (const { record, membership, workspaceId } of placements) {
+    const existing = recordsByWorkspaceId.get(workspaceId) ?? { membership, records: [] };
     existing.records.push(record);
     recordsByWorkspaceId.set(workspaceId, existing);
   }
 
   const projectRanges = new Map<string, { createdAt: string | null; updatedAt: string | null }>();
-  type Placement = Awaited<ReturnType<typeof buildProjectPlacementForCwd>>;
   const workspaceUpsertInputs: {
     workspaceId: string;
-    placement: Placement;
+    membership: Awaited<ReturnType<typeof classifyDirectoryForProjectMembership>>;
     workspaceCwd: string;
     createdAt: string;
     updatedAt: string;
   }[] = [];
 
   for (const [workspaceId, entry] of recordsByWorkspaceId.entries()) {
-    const { placement, records: workspaceRecords } = entry;
-    const workspaceCwd = placement.checkout.cwd;
+    const { membership, records: workspaceRecords } = entry;
+    const workspaceCwd = membership.checkout.cwd;
     let workspaceCreatedAt: string | null = null;
     let workspaceUpdatedAt: string | null = null;
     for (const record of workspaceRecords) {
@@ -117,21 +110,21 @@ export async function bootstrapWorkspaceRegistries(options: {
     const createdAt = workspaceCreatedAt ?? new Date().toISOString();
     const updatedAt = workspaceUpdatedAt ?? createdAt;
 
-    const existingProjectRange = projectRanges.get(placement.projectKey) ?? {
+    const existingProjectRange = projectRanges.get(membership.projectKey) ?? {
       createdAt: null,
       updatedAt: null,
     };
     existingProjectRange.createdAt = minIsoDate(existingProjectRange.createdAt, createdAt);
     existingProjectRange.updatedAt = maxIsoDate(existingProjectRange.updatedAt, updatedAt);
-    projectRanges.set(placement.projectKey, existingProjectRange);
+    projectRanges.set(membership.projectKey, existingProjectRange);
 
-    workspaceUpsertInputs.push({ workspaceId, placement, workspaceCwd, createdAt, updatedAt });
+    workspaceUpsertInputs.push({ workspaceId, membership, workspaceCwd, createdAt, updatedAt });
   }
 
   await Promise.all(
     workspaceUpsertInputs.flatMap(
-      ({ workspaceId, placement, workspaceCwd, createdAt, updatedAt }) => {
-        const projectRange = projectRanges.get(placement.projectKey) ?? {
+      ({ workspaceId, membership, workspaceCwd, createdAt, updatedAt }) => {
+        const projectRange = projectRanges.get(membership.projectKey) ?? {
           createdAt: null,
           updatedAt: null,
         };
@@ -139,26 +132,20 @@ export async function bootstrapWorkspaceRegistries(options: {
           options.workspaceRegistry.upsert(
             createPersistedWorkspaceRecord({
               workspaceId,
-              projectId: placement.projectKey,
+              projectId: membership.projectKey,
               cwd: workspaceCwd,
-              kind: deriveWorkspaceKind(placement.checkout),
-              displayName: deriveWorkspaceDisplayName({
-                cwd: workspaceCwd,
-                checkout: placement.checkout,
-              }),
+              kind: membership.workspaceKind,
+              displayName: membership.workspaceDisplayName,
               createdAt,
               updatedAt,
             }),
           ),
           options.projectRegistry.upsert(
             createPersistedProjectRecord({
-              projectId: placement.projectKey,
-              rootPath: deriveProjectRootPath({
-                cwd: workspaceCwd,
-                checkout: placement.checkout,
-              }),
-              kind: deriveProjectKind(placement.checkout),
-              displayName: placement.projectName,
+              projectId: membership.projectKey,
+              rootPath: membership.projectRootPath,
+              kind: membership.projectKind,
+              displayName: membership.projectName,
               createdAt: projectRange.createdAt ?? createdAt,
               updatedAt: projectRange.updatedAt ?? updatedAt,
             }),

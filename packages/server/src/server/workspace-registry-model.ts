@@ -7,6 +7,19 @@ import type { PersistedWorkspaceRecord } from "./workspace-registry.js";
 
 export type PersistedProjectKind = "git" | "non_git";
 export type PersistedWorkspaceKind = "local_checkout" | "worktree" | "directory";
+
+export interface DirectoryProjectMembership {
+  cwd: string;
+  checkout: ProjectCheckoutLitePayload;
+  workspaceId: string;
+  workspaceKind: PersistedWorkspaceKind;
+  workspaceDisplayName: string;
+  projectKey: string;
+  projectName: string;
+  projectRootPath: string;
+  projectKind: PersistedProjectKind;
+}
+
 export interface DetectStaleWorkspacesInput {
   activeWorkspaces: PersistedWorkspaceRecord[];
   checkDirectoryExists: (cwd: string) => Promise<boolean>;
@@ -75,7 +88,6 @@ function deriveRemoteProjectKey(remoteUrl: string | null): string | null {
 export function deriveProjectGroupingKey(options: {
   cwd: string;
   remoteUrl: string | null;
-  isPaseoOwnedWorktree: boolean;
   mainRepoRoot: string | null;
 }): string {
   const remoteKey = deriveRemoteProjectKey(options.remoteUrl);
@@ -84,7 +96,7 @@ export function deriveProjectGroupingKey(options: {
   }
 
   const mainRepoRoot = options.mainRepoRoot?.trim();
-  if (options.isPaseoOwnedWorktree && mainRepoRoot) {
+  if (mainRepoRoot) {
     return mainRepoRoot;
   }
 
@@ -122,7 +134,7 @@ export function deriveProjectRootPath(input: {
   cwd: string;
   checkout: ProjectCheckoutLitePayload;
 }): string {
-  if (input.checkout.isGit && input.checkout.isPaseoOwnedWorktree) {
+  if (input.checkout.isGit && input.checkout.mainRepoRoot) {
     return input.checkout.mainRepoRoot;
   }
   return input.cwd;
@@ -136,7 +148,7 @@ export function deriveWorkspaceKind(checkout: ProjectCheckoutLitePayload): Persi
   if (!checkout.isGit) {
     return "directory";
   }
-  return checkout.isPaseoOwnedWorktree ? "worktree" : "local_checkout";
+  return checkout.mainRepoRoot ? "worktree" : "local_checkout";
 }
 
 export function checkoutLiteFromGitSnapshot(
@@ -179,7 +191,7 @@ export function checkoutLiteFromGitSnapshot(
     remoteUrl: git.remoteUrl,
     worktreeRoot: git.repoRoot ?? cwd,
     isPaseoOwnedWorktree: false,
-    mainRepoRoot: null,
+    mainRepoRoot: git.mainRepoRoot,
   };
 }
 
@@ -207,6 +219,18 @@ export async function buildProjectPlacementForCwd(input: {
   cwd: string;
   workspaceGitService: WorkspaceGitService;
 }): Promise<ProjectPlacementPayload> {
+  const membership = await classifyDirectoryForProjectMembership(input);
+  return {
+    projectKey: membership.projectKey,
+    projectName: membership.projectName,
+    checkout: membership.checkout,
+  };
+}
+
+export async function classifyDirectoryForProjectMembership(input: {
+  cwd: string;
+  workspaceGitService: WorkspaceGitService;
+}): Promise<DirectoryProjectMembership> {
   const normalizedCwd = normalizeWorkspaceId(input.cwd);
   const checkout = await input.workspaceGitService
     .getSnapshot(normalizedCwd)
@@ -229,13 +253,24 @@ export async function buildProjectPlacementForCwd(input: {
   const projectKey = deriveProjectGroupingKey({
     cwd: checkout.worktreeRoot ?? normalizedCwd,
     remoteUrl: checkout.remoteUrl,
-    isPaseoOwnedWorktree: checkout.isPaseoOwnedWorktree,
     mainRepoRoot: checkout.mainRepoRoot,
   });
 
   return {
+    cwd: normalizedCwd,
+    checkout,
+    workspaceId: deriveWorkspaceId(normalizedCwd, checkout),
+    workspaceKind: deriveWorkspaceKind(checkout),
+    workspaceDisplayName: deriveWorkspaceDisplayName({
+      cwd: normalizedCwd,
+      checkout,
+    }),
     projectKey,
     projectName: deriveProjectGroupingName(projectKey),
-    checkout,
+    projectRootPath: deriveProjectRootPath({
+      cwd: normalizedCwd,
+      checkout,
+    }),
+    projectKind: deriveProjectKind(checkout),
   };
 }

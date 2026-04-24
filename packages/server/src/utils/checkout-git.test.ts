@@ -854,6 +854,18 @@ const x = 1;
     expect(status.mainRepoRoot).toBe(mainCheckoutDir);
   });
 
+  it("detects plain git worktrees from git alone", async () => {
+    const worktreeDir = join(tempDir, "plain-git-worktree");
+    execSync(`git worktree add -b feature/plain ${worktreeDir} main`, { cwd: repoDir });
+
+    const status = await getCheckoutStatus(worktreeDir, { paseoHome });
+    expect(status.isGit).toBe(true);
+    expect(status.repoRoot).toBe(worktreeDir);
+    expect(status.isPaseoOwnedWorktree).toBe(false);
+    expect(status.mainRepoRoot).toBe(repoDir);
+    expect(status.currentBranch).toBe("feature/plain");
+  });
+
   it("merges the current branch into base from a worktree checkout", async () => {
     const worktree = await createLegacyWorktreeForTest({
       branchName: "main",
@@ -1770,23 +1782,50 @@ const x = 1;
     ).toThrow();
   });
 
-  it("throws if Paseo worktree base metadata is missing", async () => {
+  it("falls back to the repository default branch for base-dependent operations when metadata is missing", async () => {
     const worktree = await createLegacyWorktreeForTest({
-      branchName: "main",
+      branchName: "feature-default-base",
       cwd: repoDir,
       baseBranch: "main",
       worktreeSlug: "missing-metadata",
       paseoHome,
     });
 
+    writeFileSync(join(worktree.worktreePath, "feature.txt"), "feature\n");
+    execSync("git add feature.txt", { cwd: worktree.worktreePath });
+    execSync("git -c commit.gpgsign=false commit -m 'feature commit'", {
+      cwd: worktree.worktreePath,
+    });
+
     const metadataPath = getPaseoWorktreeMetadataPath(worktree.worktreePath);
     rmSync(metadataPath, { force: true });
 
-    await expect(getCheckoutStatus(worktree.worktreePath, { paseoHome })).rejects.toThrow(/base/i);
-    await expect(
-      getCheckoutDiff(worktree.worktreePath, { mode: "base" }, { paseoHome }),
-    ).rejects.toThrow(/base/i);
-    await expect(mergeToBase(worktree.worktreePath, {}, { paseoHome })).rejects.toThrow(/base/i);
+    const baseDiff = await getCheckoutDiff(worktree.worktreePath, { mode: "base" }, { paseoHome });
+    expect(baseDiff.diff).toContain("feature.txt");
+
+    const shortstat = await getCheckoutShortstat(worktree.worktreePath, { paseoHome });
+    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
+  });
+
+  it("falls back to plain git checkout status when Paseo worktree metadata is missing", async () => {
+    const worktree = await createLegacyWorktreeForTest({
+      branchName: "feature",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "missing-metadata-status-fallback",
+      paseoHome,
+    });
+
+    const metadataPath = getPaseoWorktreeMetadataPath(worktree.worktreePath);
+    rmSync(metadataPath, { force: true });
+
+    const status = await getCheckoutStatus(worktree.worktreePath, { paseoHome });
+    expect(status.isGit).toBe(true);
+    expect(status.currentBranch).toBe("feature");
+    expect(status.repoRoot).toBe(worktree.worktreePath);
+    expect(status.isPaseoOwnedWorktree).toBe(true);
+    expect(status.mainRepoRoot).toBe(repoDir);
+    expect(status.baseRef).toBe("main");
   });
 
   describe("parseWorktreeList", () => {

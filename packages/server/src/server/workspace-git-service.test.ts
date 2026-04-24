@@ -284,6 +284,37 @@ describe("WorkspaceGitServiceImpl", () => {
     service.dispose();
   });
 
+  test("getSnapshot keeps plain git classification when shortstat lookup fails", async () => {
+    const getCheckoutShortstat = vi.fn(async () => {
+      throw new Error(
+        "Missing Paseo worktree base metadata: /tmp/repo/.git/worktrees/feature/paseo/worktree.json",
+      );
+    });
+    const service = createService({
+      getCheckoutStatus: vi.fn(async (cwd: string) =>
+        createCheckoutStatus(cwd, {
+          repoRoot: cwd,
+          currentBranch: "feature/worktree",
+          isPaseoOwnedWorktree: false,
+          mainRepoRoot: "/tmp/main-repo",
+        }),
+      ),
+      getCheckoutShortstat,
+    });
+
+    await expect(service.getSnapshot("/tmp/repo")).resolves.toEqual(
+      createSnapshot("/tmp/repo", {
+        git: {
+          repoRoot: "/tmp/repo",
+          currentBranch: "feature/worktree",
+          isPaseoOwnedWorktree: false,
+          mainRepoRoot: "/tmp/main-repo",
+          diffStat: null,
+        },
+      }),
+    );
+  });
+
   test("non-forced GitHub refresh does not emit when pull request state is unchanged", async () => {
     let nowMs = Date.parse("2026-04-12T00:00:00.000Z");
     const getPullRequestStatus = vi.fn(async () => createPullRequestStatusResult());

@@ -1520,7 +1520,7 @@ async function loadWorkspaceGitRuntimeSnapshot(
   }
 
   const [diffStat, github] = await Promise.all([
-    deps.getCheckoutShortstat(cwd, context, { force: options?.force }),
+    deps.getCheckoutShortstat(cwd, context, { force: options?.force }).catch(() => null),
     loadGitHubSnapshot({
       cwd,
       remoteUrl: checkoutStatus.remoteUrl,
@@ -1536,7 +1536,7 @@ async function loadWorkspaceGitRuntimeSnapshot(
     git: {
       isGit: true,
       repoRoot: checkoutStatus.repoRoot,
-      mainRepoRoot: checkoutStatus.isPaseoOwnedWorktree ? checkoutStatus.mainRepoRoot : null,
+      mainRepoRoot: checkoutStatus.mainRepoRoot,
       currentBranch: checkoutStatus.currentBranch,
       remoteUrl: checkoutStatus.remoteUrl,
       isPaseoOwnedWorktree: checkoutStatus.isPaseoOwnedWorktree,

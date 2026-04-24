@@ -1994,7 +1994,7 @@ export const ProjectCheckoutLiteGitNonPaseoPayloadSchema = z
     remoteUrl: z.string().nullable(),
     worktreeRoot: z.string().optional(),
     isPaseoOwnedWorktree: z.literal(false),
-    mainRepoRoot: z.null(),
+    mainRepoRoot: z.string().nullable(),
   })
   .transform((value) => ({
     ...value,
@@ -2489,6 +2489,7 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
   isGit: z.literal(true),
   isPaseoOwnedWorktree: z.literal(false),
   repoRoot: z.string(),
+  mainRepoRoot: z.string().nullable(),
   currentBranch: z.string().nullable(),
   isDirty: z.boolean(),
   baseRef: z.string().nullable(),

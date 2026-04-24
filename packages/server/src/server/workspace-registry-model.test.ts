@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 
 import {
+  classifyDirectoryForProjectMembership,
+  deriveProjectRootPath,
+  deriveWorkspaceKind,
   deriveWorkspaceId,
   detectStaleWorkspaces,
   normalizeWorkspaceId,
@@ -102,5 +105,80 @@ describe("deriveWorkspaceId", () => {
         mainRepoRoot: null,
       }),
     ).toBe(normalizeWorkspaceId("/tmp/repo/scratch"));
+  });
+});
+
+describe("git worktree grouping", () => {
+  test("classifies plain git worktrees for project membership from git facts", async () => {
+    const membership = await classifyDirectoryForProjectMembership({
+      cwd: "/tmp/repo-feature",
+      workspaceGitService: {
+        getSnapshot: async () => ({
+          cwd: "/tmp/repo-feature",
+          git: {
+            isGit: true,
+            repoRoot: "/tmp/repo-feature",
+            mainRepoRoot: "/tmp/repo",
+            currentBranch: "feature/plain",
+            remoteUrl: "https://github.com/acme/repo.git",
+            isPaseoOwnedWorktree: false,
+            isDirty: false,
+            baseRef: null,
+            aheadBehind: null,
+            aheadOfOrigin: null,
+            behindOfOrigin: null,
+            hasRemote: true,
+            diffStat: null,
+          },
+          github: {
+            featuresEnabled: false,
+            pullRequest: null,
+            error: null,
+          },
+        }),
+      } as never,
+    });
+
+    expect(membership).toMatchObject({
+      cwd: "/tmp/repo-feature",
+      workspaceId: "/tmp/repo-feature",
+      workspaceKind: "worktree",
+      workspaceDisplayName: "feature/plain",
+      projectKey: "remote:github.com/acme/repo",
+      projectName: "acme/repo",
+      projectRootPath: "/tmp/repo",
+      projectKind: "git",
+    });
+  });
+
+  test("uses mainRepoRoot as the project root for plain git worktrees", () => {
+    expect(
+      deriveProjectRootPath({
+        cwd: "/tmp/repo-feature",
+        checkout: {
+          cwd: "/tmp/repo-feature",
+          isGit: true,
+          currentBranch: "feature/plain",
+          remoteUrl: "https://github.com/acme/repo.git",
+          worktreeRoot: "/tmp/repo-feature",
+          isPaseoOwnedWorktree: false,
+          mainRepoRoot: "/tmp/repo",
+        },
+      }),
+    ).toBe("/tmp/repo");
+  });
+
+  test("classifies plain git worktrees as workspaces of kind worktree", () => {
+    expect(
+      deriveWorkspaceKind({
+        cwd: "/tmp/repo-feature",
+        isGit: true,
+        currentBranch: "feature/plain",
+        remoteUrl: "https://github.com/acme/repo.git",
+        worktreeRoot: "/tmp/repo-feature",
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: "/tmp/repo",
+      }),
+    ).toBe("worktree");
   });
 });

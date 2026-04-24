@@ -1160,6 +1160,10 @@ test("close_items_request continues after an archive failure", async () => {
         dispose: () => {},
       } as unknown as SessionOptions["checkoutDiffManager"],
       workspaceGitService: createNoopWorkspaceGitService(),
+      daemonConfigStore: {
+        get: () => ({ mcp: { injectIntoAgents: false }, providers: {} }),
+        onChange: () => () => {},
+      } as unknown as SessionOptions["daemonConfigStore"],
       mcpBaseUrl: null,
       stt: null,
       tts: null,
@@ -2088,6 +2092,426 @@ test("open_project_request registers a workspace before any agent exists", async
     | undefined;
   expect(response?.payload.error).toBeNull();
   expect(response?.payload.workspace?.id).toBe("/tmp/repo");
+});
+
+test("open_project_request does not match a new child directory to an existing parent workspace", async () => {
+  const emitted: Array<{ type: string; payload: unknown }> = [];
+  const session = createSessionForWorkspaceTests();
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const home = "/Users/moboudra";
+  const worktree = "/Users/moboudra/.paseo/worktrees/project-config-lifecycle-textarea";
+
+  projects.set(
+    home,
+    createPersistedProjectRecord({
+      projectId: home,
+      rootPath: home,
+      kind: "non_git",
+      displayName: "moboudra",
+      createdAt: "2026-04-24T09:00:00.000Z",
+      updatedAt: "2026-04-24T09:00:00.000Z",
+    }),
+  );
+  workspaces.set(
+    home,
+    createPersistedWorkspaceRecord({
+      workspaceId: home,
+      projectId: home,
+      cwd: home,
+      kind: "directory",
+      displayName: "moboudra",
+      createdAt: "2026-04-24T09:00:00.000Z",
+      updatedAt: "2026-04-24T09:00:00.000Z",
+    }),
+  );
+
+  session.emit = (message) => emitted.push(message as { type: string; payload: unknown });
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    workspaces.get(workspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+  await session.handleMessage({
+    type: "open_project_request",
+    cwd: worktree,
+    requestId: "req-open-worktree-under-home",
+  });
+
+  const response = emitted.find((message) => message.type === "open_project_response") as
+    | { payload: { error: unknown; workspace?: { id: string; workspaceDirectory: string } } }
+    | undefined;
+  expect(response?.payload.error).toBeNull();
+  expect(response?.payload.workspace?.id).toBe(worktree);
+  expect(response?.payload.workspace?.workspaceDirectory).toBe(worktree);
+  expect(workspaces.get(worktree)).toBeTruthy();
+});
+
+test("open_project_request does not unarchive an archived parent workspace for a new child directory", async () => {
+  const emitted: Array<{ type: string; payload: unknown }> = [];
+  const session = createSessionForWorkspaceTests();
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const home = "/Users/moboudra";
+  const worktree = "/Users/moboudra/.paseo/worktrees/project-config-lifecycle-textarea";
+  const archivedAt = "2026-04-24T08:00:00.000Z";
+
+  projects.set(
+    home,
+    createPersistedProjectRecord({
+      projectId: home,
+      rootPath: home,
+      kind: "non_git",
+      displayName: "moboudra",
+      createdAt: "2026-04-24T07:00:00.000Z",
+      updatedAt: archivedAt,
+      archivedAt,
+    }),
+  );
+  workspaces.set(
+    home,
+    createPersistedWorkspaceRecord({
+      workspaceId: home,
+      projectId: home,
+      cwd: home,
+      kind: "directory",
+      displayName: "moboudra",
+      createdAt: "2026-04-24T07:00:00.000Z",
+      updatedAt: archivedAt,
+      archivedAt,
+    }),
+  );
+
+  session.emit = (message) => emitted.push(message as { type: string; payload: unknown });
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    workspaces.get(workspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+  await session.handleMessage({
+    type: "open_project_request",
+    cwd: worktree,
+    requestId: "req-open-worktree-under-archived-home",
+  });
+
+  const response = emitted.find((message) => message.type === "open_project_response") as
+    | { payload: { error: unknown; workspace?: { id: string; workspaceDirectory: string } } }
+    | undefined;
+  expect(response?.payload.error).toBeNull();
+  expect(response?.payload.workspace?.id).toBe(worktree);
+  expect(response?.payload.workspace?.workspaceDirectory).toBe(worktree);
+  expect(workspaces.get(home)?.archivedAt).toBe(archivedAt);
+  expect(projects.get(home)?.archivedAt).toBe(archivedAt);
+});
+
+test("open_project_request reclassifies an archived directory workspace when git metadata becomes available", async () => {
+  const emitted: Array<{ type: string; payload: unknown }> = [];
+  const session = createSessionForWorkspaceTests();
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const cwd = "/Users/moboudra/.paseo/worktrees/orchestrate/desktop-daemon-settings";
+  const repoRoot = "/Users/moboudra/dev/paseo";
+  const remoteProjectId = "remote:github.com/getpaseo/paseo";
+  const archivedAt = "2026-04-24T09:48:36.168Z";
+
+  projects.set(
+    cwd,
+    createPersistedProjectRecord({
+      projectId: cwd,
+      rootPath: cwd,
+      kind: "non_git",
+      displayName: "desktop-daemon-settings",
+      createdAt: "2026-04-24T09:46:43.146Z",
+      updatedAt: archivedAt,
+      archivedAt,
+    }),
+  );
+  workspaces.set(
+    cwd,
+    createPersistedWorkspaceRecord({
+      workspaceId: cwd,
+      projectId: cwd,
+      cwd,
+      kind: "directory",
+      displayName: "desktop-daemon-settings",
+      createdAt: "2026-04-24T09:46:43.146Z",
+      updatedAt: archivedAt,
+      archivedAt,
+    }),
+  );
+
+  session.emit = (message) => emitted.push(message as { type: string; payload: unknown });
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    workspaces.get(workspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceGitService.getSnapshot = async () =>
+    createWorkspaceRuntimeSnapshot(cwd, {
+      git: {
+        isGit: true,
+        repoRoot: cwd,
+        currentBranch: "feature/desktop-daemon-settings",
+        remoteUrl: "git@github.com:getpaseo/paseo.git",
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: repoRoot,
+      },
+    });
+
+  await session.handleMessage({
+    type: "open_project_request",
+    cwd,
+    requestId: "req-open-archived-directory-now-git",
+  });
+
+  const response = emitted.find((message) => message.type === "open_project_response") as
+    | {
+        payload: {
+          error: unknown;
+          workspace?: {
+            id: string;
+            projectId: string;
+            workspaceKind: string;
+          };
+        };
+      }
+    | undefined;
+
+  expect(response?.payload.error).toBeNull();
+  expect(response?.payload.workspace?.projectId).toBe(remoteProjectId);
+  expect(response?.payload.workspace?.workspaceKind).toBe("worktree");
+  expect(projects.get(remoteProjectId)?.kind).toBe("git");
+  expect(workspaces.get(cwd)?.projectId).toBe(remoteProjectId);
+  expect(workspaces.get(cwd)?.kind).toBe("worktree");
+  expect(workspaces.get(cwd)?.displayName).toBe("feature/desktop-daemon-settings");
+});
+
+test("open_project_request reclassifies an active directory workspace when git metadata becomes available", async () => {
+  const emitted: Array<{ type: string; payload: unknown }> = [];
+  const session = createSessionForWorkspaceTests();
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const cwd = "/Users/moboudra/.paseo/worktrees/orchestrate/desktop-daemon-settings";
+  const repoRoot = "/Users/moboudra/dev/paseo";
+
+  projects.set(
+    cwd,
+    createPersistedProjectRecord({
+      projectId: cwd,
+      rootPath: cwd,
+      kind: "non_git",
+      displayName: "desktop-daemon-settings",
+      createdAt: "2026-04-24T09:46:43.146Z",
+      updatedAt: "2026-04-24T09:46:43.146Z",
+    }),
+  );
+  projects.set(
+    repoRoot,
+    createPersistedProjectRecord({
+      projectId: repoRoot,
+      rootPath: repoRoot,
+      kind: "git",
+      displayName: "paseo",
+      createdAt: "2026-04-24T09:40:00.000Z",
+      updatedAt: "2026-04-24T09:40:00.000Z",
+    }),
+  );
+  workspaces.set(
+    cwd,
+    createPersistedWorkspaceRecord({
+      workspaceId: cwd,
+      projectId: cwd,
+      cwd,
+      kind: "directory",
+      displayName: "desktop-daemon-settings",
+      createdAt: "2026-04-24T09:46:43.146Z",
+      updatedAt: "2026-04-24T09:46:43.146Z",
+    }),
+  );
+  workspaces.set(
+    repoRoot,
+    createPersistedWorkspaceRecord({
+      workspaceId: repoRoot,
+      projectId: repoRoot,
+      cwd: repoRoot,
+      kind: "local_checkout",
+      displayName: "main",
+      createdAt: "2026-04-24T09:40:00.000Z",
+      updatedAt: "2026-04-24T09:40:00.000Z",
+    }),
+  );
+
+  session.emit = (message) => emitted.push(message as { type: string; payload: unknown });
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    workspaces.get(workspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceGitService.getSnapshot = async (requestedCwd: string) =>
+    createWorkspaceRuntimeSnapshot(requestedCwd, {
+      git: {
+        isGit: true,
+        repoRoot: requestedCwd,
+        currentBranch: requestedCwd === repoRoot ? "main" : "feature/desktop-daemon-settings",
+        remoteUrl: "git@github.com:getpaseo/paseo.git",
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: requestedCwd === repoRoot ? null : repoRoot,
+      },
+    });
+
+  await session.handleMessage({
+    type: "open_project_request",
+    cwd,
+    requestId: "req-open-active-directory-now-git",
+  });
+
+  const response = emitted.find((message) => message.type === "open_project_response") as
+    | {
+        payload: {
+          error: unknown;
+          workspace?: {
+            id: string;
+            projectId: string;
+            workspaceKind: string;
+          };
+        };
+      }
+    | undefined;
+
+  expect(response?.payload.error).toBeNull();
+  expect(response?.payload.workspace?.projectId).toBe(repoRoot);
+  expect(response?.payload.workspace?.workspaceKind).toBe("worktree");
+  expect(workspaces.get(cwd)?.projectId).toBe(repoRoot);
+  expect(workspaces.get(cwd)?.kind).toBe("worktree");
+  expect(workspaces.get(cwd)?.displayName).toBe("feature/desktop-daemon-settings");
+});
+
+test("open_project_request groups a plain git worktree under an existing repo project", async () => {
+  const emitted: Array<{ type: string; payload: unknown }> = [];
+  const session = createSessionForWorkspaceTests();
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const cwd = "/Users/moboudra/.paseo/worktrees/orchestrate/desktop-daemon-settings";
+  const repoRoot = "/Users/moboudra/dev/paseo";
+
+  projects.set(
+    repoRoot,
+    createPersistedProjectRecord({
+      projectId: repoRoot,
+      rootPath: repoRoot,
+      kind: "git",
+      displayName: "paseo",
+      createdAt: "2026-04-24T09:46:43.146Z",
+      updatedAt: "2026-04-24T09:46:43.146Z",
+    }),
+  );
+  workspaces.set(
+    repoRoot,
+    createPersistedWorkspaceRecord({
+      workspaceId: repoRoot,
+      projectId: repoRoot,
+      cwd: repoRoot,
+      kind: "local_checkout",
+      displayName: "main",
+      createdAt: "2026-04-24T09:46:43.146Z",
+      updatedAt: "2026-04-24T09:46:43.146Z",
+    }),
+  );
+
+  session.emit = (message) => emitted.push(message as { type: string; payload: unknown });
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    workspaces.get(workspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceGitService.getSnapshot = async (requestedCwd: string) =>
+    createWorkspaceRuntimeSnapshot(requestedCwd, {
+      git: {
+        isGit: true,
+        repoRoot: requestedCwd,
+        currentBranch: requestedCwd === repoRoot ? "main" : "feature/desktop-daemon-settings",
+        remoteUrl: "git@github.com:getpaseo/paseo.git",
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: requestedCwd === repoRoot ? null : repoRoot,
+      },
+    });
+
+  await session.handleMessage({
+    type: "open_project_request",
+    cwd,
+    requestId: "req-open-plain-git-worktree",
+  });
+
+  const response = emitted.find((message) => message.type === "open_project_response") as
+    | {
+        payload: {
+          error: unknown;
+          workspace?: {
+            id: string;
+            projectId: string;
+            workspaceKind: string;
+          };
+        };
+      }
+    | undefined;
+
+  expect(response?.payload.error).toBeNull();
+  expect(response?.payload.workspace?.projectId).toBe(repoRoot);
+  expect(response?.payload.workspace?.workspaceKind).toBe("worktree");
+  expect(workspaces.get(cwd)?.projectId).toBe(repoRoot);
+  expect(workspaces.get(cwd)?.kind).toBe("worktree");
 });
 
 test("open_project_request unarchives an existing archived workspace and project", async () => {

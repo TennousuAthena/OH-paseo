@@ -17,7 +17,7 @@ import {
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import { runGitCommand } from "./run-git-command.js";
 import { isPaseoOwnedWorktreeCwd } from "./worktree.js";
-import { requirePaseoWorktreeBaseRefName } from "./worktree-metadata.js";
+import { readPaseoWorktreeMetadata } from "./worktree-metadata.js";
 const READ_ONLY_GIT_ENV: NodeJS.ProcessEnv = {
   ...process.env,
   GIT_OPTIONAL_LOCKS: "0",
@@ -643,6 +643,7 @@ export interface CheckoutStatus {
 export interface CheckoutStatusGitNonPaseo {
   isGit: true;
   repoRoot: string;
+  mainRepoRoot: string | null;
   currentBranch: string | null;
   isDirty: boolean;
   baseRef: string | null;
@@ -878,28 +879,67 @@ export async function renameCurrentBranch(
   return { previousBranch, currentBranch };
 }
 
-type ConfiguredBaseRefForCwd =
-  | { baseRef: null; isPaseoOwnedWorktree: false }
-  | { baseRef: string; isPaseoOwnedWorktree: true };
+type PaseoWorktreeForCwd =
+  | { isPaseoOwnedWorktree: false }
+  | { isPaseoOwnedWorktree: true; worktreeRoot: string };
 
-async function getConfiguredBaseRefForCwd(
+async function getPaseoWorktreeForCwd(
   cwd: string,
   context?: CheckoutContext,
-): Promise<ConfiguredBaseRefForCwd> {
+): Promise<PaseoWorktreeForCwd> {
   // Fast-path reject: non-worktree paths do not need expensive ownership checks.
   if (!/[\\/]worktrees[\\/]/.test(cwd)) {
-    return { baseRef: null, isPaseoOwnedWorktree: false };
+    return { isPaseoOwnedWorktree: false };
   }
 
   const ownership = await isPaseoOwnedWorktreeCwd(cwd, { paseoHome: context?.paseoHome });
   if (!ownership.allowed) {
-    return { baseRef: null, isPaseoOwnedWorktree: false };
+    return { isPaseoOwnedWorktree: false };
   }
 
-  const worktreeRoot = (await getWorktreeRoot(cwd)) ?? cwd;
   return {
-    baseRef: requirePaseoWorktreeBaseRefName(worktreeRoot),
     isPaseoOwnedWorktree: true,
+    worktreeRoot: (await getWorktreeRoot(cwd)) ?? cwd,
+  };
+}
+
+function readPaseoWorktreeBaseRef(worktreeRoot: string): string | null {
+  return readPaseoWorktreeMetadata(worktreeRoot)?.baseRefName ?? null;
+}
+
+async function getStoredBaseRefForCwd(
+  cwd: string,
+  context?: CheckoutContext,
+): Promise<string | null> {
+  const paseoWorktree = await getPaseoWorktreeForCwd(cwd, context);
+  if (!paseoWorktree.isPaseoOwnedWorktree) {
+    return null;
+  }
+
+  return readPaseoWorktreeBaseRef(paseoWorktree.worktreeRoot);
+}
+
+async function getResolvedBaseRefForCwd(
+  cwd: string,
+  context?: CheckoutContext,
+): Promise<string | null> {
+  const { resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
+  return resolvedBaseRef;
+}
+
+interface BaseRefResolution {
+  storedBaseRef: string | null;
+  resolvedBaseRef: string | null;
+}
+
+async function resolveBaseRefForCwd(
+  cwd: string,
+  context?: CheckoutContext,
+): Promise<BaseRefResolution> {
+  const storedBaseRef = await getStoredBaseRefForCwd(cwd, context);
+  return {
+    storedBaseRef,
+    resolvedBaseRef: storedBaseRef ?? (await resolveBaseRef(cwd)),
   };
 }
 
@@ -1225,7 +1265,7 @@ interface CheckoutInspectionContext {
   worktreeRoot: string;
   currentBranch: string | null;
   remoteUrl: string | null;
-  configured: ConfiguredBaseRefForCwd;
+  paseoWorktree: PaseoWorktreeForCwd;
 }
 
 async function inspectCheckoutContext(
@@ -1238,17 +1278,17 @@ async function inspectCheckoutContext(
       return null;
     }
 
-    const [currentBranch, remoteUrl, configured] = await Promise.all([
+    const [currentBranch, remoteUrl, paseoWorktree] = await Promise.all([
       getCurrentBranch(cwd),
       getOriginRemoteUrl(cwd),
-      getConfiguredBaseRefForCwd(cwd, context),
+      getPaseoWorktreeForCwd(cwd, context),
     ]);
 
     return {
       worktreeRoot: root,
       currentBranch,
       remoteUrl,
-      configured,
+      paseoWorktree,
     };
   } catch (error) {
     if (isGitError(error)) {
@@ -1380,25 +1420,25 @@ export async function getCheckoutStatus(
   const worktreeRoot = inspected.worktreeRoot;
   const currentBranch = inspected.currentBranch;
   const remoteUrl = inspected.remoteUrl;
-  const configured = inspected.configured;
+  const paseoWorktree = inspected.paseoWorktree;
   const isDirty = await isWorkingTreeDirty(cwd);
   const hasRemote = remoteUrl !== null;
-  const baseRef = configured.baseRef ?? (await resolveBaseRef(cwd));
+  const { resolvedBaseRef: baseRef } = await resolveBaseRefForCwd(cwd, context);
+  const mainRepoRoot = await getMainRepoRoot(cwd).catch(() => null);
   const [aheadBehind, aheadOfOrigin, behindOfOrigin] = await Promise.all([
     baseRef && currentBranch ? getAheadBehind(cwd, baseRef, currentBranch) : Promise.resolve(null),
     hasRemote && currentBranch ? getAheadOfOrigin(cwd, currentBranch) : Promise.resolve(null),
     hasRemote && currentBranch ? getBehindOfOrigin(cwd, currentBranch) : Promise.resolve(null),
   ]);
 
-  if (configured.isPaseoOwnedWorktree) {
-    const mainRepoRoot = await getMainRepoRoot(cwd);
+  if (paseoWorktree.isPaseoOwnedWorktree && baseRef) {
     return {
       isGit: true,
       repoRoot: worktreeRoot,
-      mainRepoRoot,
+      mainRepoRoot: mainRepoRoot ?? worktreeRoot,
       currentBranch,
       isDirty,
-      baseRef: configured.baseRef,
+      baseRef,
       aheadBehind,
       aheadOfOrigin,
       behindOfOrigin,
@@ -1411,6 +1451,8 @@ export async function getCheckoutStatus(
   return {
     isGit: true,
     repoRoot: worktreeRoot,
+    mainRepoRoot:
+      mainRepoRoot && resolve(mainRepoRoot) !== resolve(worktreeRoot) ? mainRepoRoot : null,
     currentBranch,
     isDirty,
     baseRef,
@@ -1462,8 +1504,7 @@ async function getCheckoutShortstatUncached(
     return null;
   }
 
-  const configured = await getConfiguredBaseRefForCwd(cwd, context);
-  const localBaseRef = configured.baseRef ?? (await resolveBaseRef(cwd));
+  const localBaseRef = await getResolvedBaseRefForCwd(cwd, context);
   const currentBranch = await getCurrentBranch(cwd);
 
   let comparisonRef: string;
@@ -1739,12 +1780,12 @@ async function resolveCheckoutDiffRefs(
   if (compare.mode === "uncommitted") {
     return { baseRef: "HEAD", includeUntracked: true };
   }
-  const configured = await getConfiguredBaseRefForCwd(cwd, context);
-  const baseRef = configured.baseRef ?? compare.baseRef ?? (await resolveBaseRef(cwd));
+  const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
+  const baseRef = compare.baseRef ?? resolvedBaseRef;
   if (!baseRef) {
     return null;
   }
-  if (configured.isPaseoOwnedWorktree && compare.baseRef && compare.baseRef !== baseRef) {
+  if (storedBaseRef && compare.baseRef && compare.baseRef !== storedBaseRef) {
     throw new Error(`Base ref mismatch: expected ${baseRef}, got ${compare.baseRef}`);
   }
   const bestBaseRef = await resolveBestComparisonBaseRef(cwd, baseRef);
@@ -1983,12 +2024,12 @@ export async function mergeToBase(
 ): Promise<string> {
   await requireGitRepo(cwd);
   const currentBranch = await getCurrentBranch(cwd);
-  const configured = await getConfiguredBaseRefForCwd(cwd, context);
-  const baseRef = configured.baseRef ?? options.baseRef ?? (await resolveBaseRef(cwd));
+  const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
+  const baseRef = options.baseRef ?? resolvedBaseRef;
   if (!baseRef) {
     throw new Error("Unable to determine base branch for merge");
   }
-  if (configured.isPaseoOwnedWorktree && options.baseRef && options.baseRef !== baseRef) {
+  if (storedBaseRef && options.baseRef && options.baseRef !== storedBaseRef) {
     throw new Error(`Base ref mismatch: expected ${baseRef}, got ${options.baseRef}`);
   }
   if (!currentBranch) {
@@ -2059,12 +2100,12 @@ export async function mergeFromBase(
     throw new Error("Unable to determine current branch for merge");
   }
 
-  const configured = await getConfiguredBaseRefForCwd(cwd, context);
-  const baseRef = configured.baseRef ?? options.baseRef ?? (await resolveBaseRef(cwd));
+  const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
+  const baseRef = options.baseRef ?? resolvedBaseRef;
   if (!baseRef) {
     throw new Error("Unable to determine base branch for merge");
   }
-  if (configured.isPaseoOwnedWorktree && options.baseRef && options.baseRef !== baseRef) {
+  if (storedBaseRef && options.baseRef && options.baseRef !== storedBaseRef) {
     throw new Error(`Base ref mismatch: expected ${baseRef}, got ${options.baseRef}`);
   }
 
@@ -2238,6 +2279,7 @@ export async function createPullRequest(
   options: CreatePullRequestOptions,
   github: GitHubService = createGitHubService(),
   workspaceGitService: GitHubRepoRemoteUrlResolver,
+  context?: CheckoutContext,
 ): Promise<{ url: string; number: number }> {
   await requireGitRepo(cwd);
   const repo = await resolveGitHubRepo(cwd, { workspaceGitService });
@@ -2246,8 +2288,8 @@ export async function createPullRequest(
   }
 
   const head = options.head ?? (await getCurrentBranch(cwd));
-  const configured = await getConfiguredBaseRefForCwd(cwd);
-  const base = configured.baseRef ?? options.base ?? (await resolveBaseRef(cwd));
+  const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
+  const base = options.base ?? resolvedBaseRef;
   if (!head) {
     throw new Error("Unable to determine head branch for PR");
   }
@@ -2255,7 +2297,7 @@ export async function createPullRequest(
     throw new Error("Unable to determine base branch for PR");
   }
   const normalizedBase = normalizeLocalBranchRefName(base);
-  if (configured.isPaseoOwnedWorktree && options.base && options.base !== base) {
+  if (storedBaseRef && options.base && options.base !== storedBaseRef) {
     throw new Error(`Base ref mismatch: expected ${base}, got ${options.base}`);
   }
 
