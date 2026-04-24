@@ -584,7 +584,9 @@ const DiffFileHeader = memo(function DiffFileHeader({
         onPress={toggleExpanded}
       >
         <View style={styles.fileHeaderLeft}>
-          <Text style={styles.fileName}>{file.path.split("/").pop()}</Text>
+          <Text style={styles.fileName} numberOfLines={1}>
+            {file.path.split("/").pop()}
+          </Text>
           <Text style={styles.fileDir} numberOfLines={1}>
             {file.path.includes("/") ? ` ${file.path.slice(0, file.path.lastIndexOf("/"))}` : ""}
           </Text>
@@ -2504,11 +2506,11 @@ const styles = StyleSheet.create((theme) => ({
   fileHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingLeft: theme.spacing[3],
     paddingRight: theme.spacing[2],
     paddingVertical: theme.spacing[2],
     gap: theme.spacing[1],
+    minWidth: 0,
     zIndex: 2,
     elevation: 2,
   },
@@ -2532,13 +2534,15 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
   },
   fileDir: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
     flex: 1,
+    minWidth: 0,
   },
   newBadge: {
     backgroundColor: "rgba(46, 160, 67, 0.2)",
