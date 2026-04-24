@@ -3,12 +3,7 @@ import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 import type { Agent } from "@/stores/session-store";
 import { useSessionStore } from "@/stores/session-store";
 import type { StreamItem } from "@/types/stream";
-import {
-  applyStreamEvent,
-  flushHeadToTail,
-  hydrateStreamState,
-  reduceStreamUpdate,
-} from "@/types/stream";
+import { applyStreamEvent, hydrateStreamState, reduceStreamUpdate } from "@/types/stream";
 import {
   classifySessionTimelineSeq,
   type SessionTimelineSeqDecision,
@@ -206,16 +201,25 @@ function applyTimelineIncrementalPath(args: {
   });
 
   if (acceptedUnits.length > 0) {
-    const baseTail =
-      currentHead.length > 0 ? flushHeadToTail(currentTail, currentHead) : currentTail;
     if (currentHead.length > 0) {
-      nextHead = [];
+      for (const { event, timestamp } of acceptedUnits) {
+        const applied = applyStreamEvent({
+          tail: nextTail,
+          head: nextHead,
+          event,
+          timestamp,
+          source: "canonical",
+        });
+        nextTail = applied.tail;
+        nextHead = applied.head;
+      }
+    } else {
+      nextTail = acceptedUnits.reduce<StreamItem[]>(
+        (state, { event, timestamp }) =>
+          reduceStreamUpdate(state, event, timestamp, { source: "canonical" }),
+        currentTail,
+      );
     }
-    nextTail = acceptedUnits.reduce<StreamItem[]>(
-      (state, { event, timestamp }) =>
-        reduceStreamUpdate(state, event, timestamp, { source: "canonical" }),
-      baseTail,
-    );
   }
 
   if (

@@ -67,6 +67,23 @@ function makeStreamReducerEvent(
   };
 }
 
+function makeAssistantItem(text: string, id = `assistant-${text.length}`): StreamItem {
+  return {
+    kind: "assistant_message",
+    id,
+    text,
+    timestamp: new Date(1000),
+  };
+}
+
+function getAssistantTexts(items: StreamItem[]): string[] {
+  return items
+    .filter((item): item is Extract<StreamItem, { kind: "assistant_message" }> => {
+      return item.kind === "assistant_message";
+    })
+    .map((item) => item.text);
+}
+
 const baseTimelineInput: ProcessTimelineResponseInput = {
   payload: {
     agentId: "agent-1",
@@ -261,6 +278,34 @@ describe("processTimelineResponse", () => {
       endSeq: 5,
     });
     expect(result.error).toBe(null);
+  });
+
+  it("keeps an active assistant head live when an incremental fetch accepts same-turn assistant text", () => {
+    const existingCursor: TimelineCursor = {
+      epoch: "epoch-1",
+      startSeq: 1,
+      endSeq: 2,
+    };
+    const currentHead = [makeAssistantItem("This is a par")];
+
+    const result = processTimelineResponse({
+      ...baseTimelineInput,
+      currentHead,
+      currentCursor: existingCursor,
+      payload: {
+        ...baseTimelineInput.payload,
+        epoch: "epoch-1",
+        entries: [makeTimelineEntry(3, "agraph")],
+      },
+    });
+
+    expect(getAssistantTexts(result.tail)).toEqual([]);
+    expect(getAssistantTexts(result.head)).toEqual(["This is a paragraph"]);
+    expect(result.cursor).toEqual({
+      epoch: "epoch-1",
+      startSeq: 1,
+      endSeq: 3,
+    });
   });
 
   it("detects gap and emits catch-up side effect", () => {
@@ -966,6 +1011,59 @@ describe("createAgentStreamReducerQueue", () => {
 
     expect(commits).toEqual(["agent-1:queued"]);
     expect(scheduler.size).toBe(0);
+  });
+
+  it("keeps a live paragraph in one assistant item when canonical fetch interleaves with queued stream chunks", () => {
+    const scheduler = createManualScheduler();
+    let currentTail: StreamItem[] = [];
+    let currentHead: StreamItem[] = [];
+    let currentCursor: TimelineCursor | undefined;
+
+    const queue = createAgentStreamReducerQueue({
+      getSnapshot: () => ({
+        currentTail,
+        currentHead,
+        currentCursor,
+        currentAgent: null,
+      }),
+      commit: (_agentId, result) => {
+        currentTail = result.tail;
+        currentHead = result.head;
+        currentCursor = result.cursor ?? undefined;
+      },
+      handleSideEffects: () => {},
+      scheduleFlush: scheduler.schedule,
+      cancelFlush: scheduler.cancel,
+    });
+
+    queue.enqueue("agent-1", makeStreamReducerEvent(makeTimelineEvent("This is a par"), 2));
+    queue.flushAgent("agent-1");
+
+    const timelineResult = processTimelineResponse({
+      ...baseTimelineInput,
+      currentTail,
+      currentHead,
+      currentCursor,
+      payload: {
+        ...baseTimelineInput.payload,
+        epoch: "epoch-1",
+        entries: [makeTimelineEntry(3, "agraph")],
+      },
+    });
+    currentTail = timelineResult.tail;
+    currentHead = timelineResult.head;
+    currentCursor = timelineResult.cursor ?? undefined;
+
+    queue.enqueue("agent-1", makeStreamReducerEvent(makeTimelineEvent(" continues."), 4));
+    queue.flushAgent("agent-1");
+
+    expect(getAssistantTexts(currentTail)).toEqual([]);
+    expect(getAssistantTexts(currentHead)).toEqual(["This is a paragraph continues."]);
+    expect(currentCursor).toEqual({
+      epoch: "epoch-1",
+      startSeq: 2,
+      endSeq: 4,
+    });
   });
 
   it("flushes queued events synchronously before disposal", () => {
