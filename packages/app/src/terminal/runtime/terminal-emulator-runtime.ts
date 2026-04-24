@@ -237,11 +237,14 @@ export class TerminalEmulatorRuntime {
       }
     });
 
-    // Suppress terminal query responses — the server-side headless xterm handles these.
-    // Without this, xterm.js generates DA/CPR responses via onData that feed back
-    // to the PTY as visible text.
-    terminal.parser.registerCsiHandler({ final: "c" }, () => true);
+    // Suppress cursor/status query responses whose async browser replies can race
+    // with foreground app exit and feed back to the shell as visible text. DA is
+    // intentionally left to xterm so attached TUIs can identify the terminal.
+    terminal.parser.registerCsiHandler({ final: "n" }, () => true);
+    terminal.parser.registerCsiHandler({ prefix: "?", final: "n" }, () => true);
     terminal.parser.registerCsiHandler({ final: "R" }, () => true);
+    terminal.parser.registerCsiHandler({ intermediates: "$", final: "p" }, () => true);
+    terminal.parser.registerCsiHandler({ prefix: "?", intermediates: "$", final: "p" }, () => true);
 
     const restoreDocumentStyles = this.applyDocumentBoundsStyles({
       root: input.root,

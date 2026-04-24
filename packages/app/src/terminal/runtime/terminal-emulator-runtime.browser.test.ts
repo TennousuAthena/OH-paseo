@@ -24,6 +24,7 @@ interface MountedTerminal {
   host: HTMLDivElement;
   root: HTMLDivElement;
   runtime: TerminalEmulatorRuntime;
+  inputs: string[];
   sizes: TerminalSize[];
 }
 
@@ -65,9 +66,13 @@ function createTerminalHost(input: { width: number; height: number }): MountedTe
   document.body.appendChild(root);
 
   const sizes: TerminalSize[] = [];
+  const inputs: string[] = [];
   const runtime = new TerminalEmulatorRuntime();
   runtime.setCallbacks({
     callbacks: {
+      onInput: (data) => {
+        inputs.push(data);
+      },
       onResize: (size) => {
         sizes.push(size);
       },
@@ -84,7 +89,7 @@ function createTerminalHost(input: { width: number; height: number }): MountedTe
     },
   });
 
-  const mounted = { host, root, runtime, sizes };
+  const mounted = { host, root, runtime, inputs, sizes };
   mountedTerminals.push(mounted);
   return mounted;
 }
@@ -155,6 +160,22 @@ describe("terminal emulator runtime in a real browser", () => {
 
     await waitFor({ predicate: () => refreshCalls.length > 0 });
     expect(refreshCalls.at(-1)).toEqual([0, terminal.rows - 1]);
+  });
+
+  it("suppresses non-identity terminal query responses as PTY input", async () => {
+    await page.viewport(900, 600);
+    const mounted = createTerminalHost({ width: 720, height: 360 });
+
+    await waitFor({ predicate: () => mounted.sizes.length > 0 });
+
+    const querySequences = ["\x1b[5n", "\x1b[6n", "\x1b[?6n", "\x1b[1$p", "\x1b[?1$p"];
+
+    for (const sequence of querySequences) {
+      mounted.runtime.write({ text: sequence });
+    }
+    await nextFrame();
+
+    expect(mounted.inputs).toEqual([]);
   });
 
   it("replays snapshots without synchronously resetting the visible terminal", async () => {

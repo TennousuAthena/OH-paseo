@@ -978,6 +978,23 @@ describe("subscribe", () => {
 
     expect(messages.length).toBe(0);
   });
+
+  it("does not answer terminal identity queries from the headless snapshot parser", async () => {
+    const session = trackSession(
+      await createTerminal({
+        cwd: "/tmp",
+        shell: "/bin/sh",
+        env: { PS1: "$ " },
+      }),
+    );
+
+    await waitForLines(session, ["$"]);
+
+    session.send({ type: "input", data: "printf '\\033[c'; echo after-da\r" });
+    await waitForState(session, (state) => getLines(state).join("\n").includes("after-da"));
+
+    expect(getLines(session.getState()).join("\n")).not.toContain("62;4;22c");
+  });
 });
 
 describe("stream snapshots", () => {
