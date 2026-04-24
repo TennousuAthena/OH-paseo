@@ -148,6 +148,30 @@ export function parseFileProtocolUrl(value: string): InlinePathTarget | null {
   };
 }
 
+function parseAssistantInlinePathLink(
+  value: string,
+  options: AssistantHrefParseOptions,
+): InlinePathTarget | null {
+  const inlinePathTarget = parseInlinePathToken(value);
+  if (!inlinePathTarget) {
+    return null;
+  }
+
+  const normalizedPath = normalizePathToken(inlinePathTarget.path);
+  if (!normalizedPath || !isAbsolutePath(normalizedPath)) {
+    return null;
+  }
+
+  if (!isAllowedAbsolutePath(normalizedPath, options.workspaceRoot)) {
+    return null;
+  }
+
+  return {
+    ...inlinePathTarget,
+    path: normalizedPath,
+  };
+}
+
 export function parseAssistantFileLink(
   value: string,
   options: AssistantHrefParseOptions = {},
@@ -166,19 +190,11 @@ export function parseAssistantFileLink(
     return null;
   }
 
-  const inlinePathTarget = parseInlinePathToken(trimmed);
+  const inlinePathTarget = parseAssistantInlinePathLink(trimmed, {
+    workspaceRoot: options.workspaceRoot,
+  });
   if (inlinePathTarget) {
-    const normalizedPath = normalizePathToken(inlinePathTarget.path);
-    if (
-      normalizedPath &&
-      isAbsolutePath(normalizedPath) &&
-      isAllowedAbsolutePath(normalizedPath, options.workspaceRoot)
-    ) {
-      return {
-        ...inlinePathTarget,
-        path: normalizedPath,
-      };
-    }
+    return inlinePathTarget;
   }
 
   const windowsPathMatch = trimmed.match(/^([A-Za-z]:[\\/][^?#]*)(#[^?]+)?$/);
