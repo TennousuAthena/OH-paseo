@@ -86,20 +86,20 @@ export function formatDurationMs(durationMs: number): string {
 function resolveScheduleTarget(args: {
   targetValue: string | undefined;
   hasExplicitProviderSelection: boolean;
-  newAgentTarget: ScheduleTarget;
+  createNewAgentTarget: () => ScheduleTarget;
 }): ScheduleTarget {
-  const { targetValue, hasExplicitProviderSelection, newAgentTarget } = args;
+  const { targetValue, hasExplicitProviderSelection, createNewAgentTarget } = args;
   const currentAgentId = process.env.PASEO_AGENT_ID?.trim();
 
   if (!targetValue) {
     if (currentAgentId && !hasExplicitProviderSelection) {
       return { type: "self", agentId: currentAgentId };
     }
-    return newAgentTarget;
+    return createNewAgentTarget();
   }
 
   if (targetValue === "new-agent") {
-    return newAgentTarget;
+    return createNewAgentTarget();
   }
 
   if (hasExplicitProviderSelection) {
@@ -155,22 +155,23 @@ export function parseScheduleCreateInput(options: {
 
   const targetValue = options.target?.trim();
   const hasExplicitProviderSelection = options.provider !== undefined;
-  const resolvedProviderModel = resolveProviderAndModel({
-    provider: options.provider,
-    defaultProvider: "claude",
-  });
-  const newAgentTarget: ScheduleTarget = {
-    type: "new-agent",
-    config: {
-      provider: resolvedProviderModel.provider,
-      cwd: process.cwd(),
-      ...(resolvedProviderModel.model ? { model: resolvedProviderModel.model } : {}),
-    },
+  const createNewAgentTarget = (): ScheduleTarget => {
+    const resolvedProviderModel = resolveProviderAndModel({
+      provider: options.provider,
+    });
+    return {
+      type: "new-agent",
+      config: {
+        provider: resolvedProviderModel.provider,
+        cwd: process.cwd(),
+        ...(resolvedProviderModel.model ? { model: resolvedProviderModel.model } : {}),
+      },
+    };
   };
   const target = resolveScheduleTarget({
     targetValue,
     hasExplicitProviderSelection,
-    newAgentTarget,
+    createNewAgentTarget,
   });
 
   const maxRuns =

@@ -30,7 +30,6 @@ export function addRunOptions(cmd: Command): Command {
     .option(
       "--provider <provider>",
       "Agent provider, or provider/model (e.g. codex or codex/gpt-5.4)",
-      "claude",
     )
     .option(
       "--model <model>",
