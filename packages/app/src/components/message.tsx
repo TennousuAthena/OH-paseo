@@ -1244,15 +1244,20 @@ const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
 interface MarkdownInheritedTextProps {
   inheritedStyles: TextStyle;
   textStyle: TextStyle;
+  style?: StyleProp<TextStyle>;
   children: ReactNode;
 }
 
 function MarkdownInheritedText({
   inheritedStyles,
   textStyle,
+  style: overrideStyle,
   children,
 }: MarkdownInheritedTextProps) {
-  const style = useMemo(() => [inheritedStyles, textStyle], [inheritedStyles, textStyle]);
+  const style = useMemo(
+    () => [inheritedStyles, textStyle, overrideStyle],
+    [inheritedStyles, textStyle, overrideStyle],
+  );
   return <Text style={style}>{children}</Text>;
 }
 
