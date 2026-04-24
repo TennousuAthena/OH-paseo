@@ -164,7 +164,10 @@ export function TerminalPane({
   const isConnected = useHostRuntimeIsConnected(serverId);
 
   const scopeKey = useMemo(() => terminalScopeKey({ serverId, cwd }), [serverId, cwd]);
-  const lastReportedSizeRef = useRef<{ rows: number; cols: number } | null>(null);
+  // Keep the latest measured size for whichever client currently owns the pane,
+  // but only dedupe resizes that this specific client has already pushed.
+  const measuredTerminalSizeRef = useRef<{ rows: number; cols: number } | null>(null);
+  const lastSentTerminalSizeRef = useRef<{ rows: number; cols: number } | null>(null);
   const streamControllerRef = useRef<TerminalStreamController | null>(null);
   const workspaceTerminalSession = useMemo(
     () => getWorkspaceTerminalSession({ scopeKey }),
@@ -210,7 +213,7 @@ export function TerminalPane({
 
   useEffect(() => {
     if (isPaneFocused && isWorkspaceFocused && isAppVisible && terminalId) {
-      lastReportedSizeRef.current = null;
+      lastSentTerminalSizeRef.current = null;
       requestTerminalReflow();
     }
   }, [isAppVisible, isPaneFocused, isWorkspaceFocused, requestTerminalReflow, terminalId]);
@@ -296,7 +299,8 @@ export function TerminalPane({
   }, [client, isConnected, isWorkspaceFocused, workspaceTerminalSession.snapshots]);
 
   useEffect(() => {
-    lastReportedSizeRef.current = null;
+    measuredTerminalSizeRef.current = null;
+    lastSentTerminalSizeRef.current = null;
   }, [scopeKey]);
 
   const handleStreamControllerStatus = useCallback((status: TerminalStreamControllerStatus) => {
@@ -316,7 +320,7 @@ export function TerminalPane({
 
     const controller = new TerminalStreamController({
       client,
-      getPreferredSize: () => lastReportedSizeRef.current,
+      getPreferredSize: () => measuredTerminalSizeRef.current,
       onOutput: ({ terminalId: outputTerminalId, text }) => {
         if (!isWorkspaceFocused || terminalIdRef.current !== outputTerminalId) {
           return;
@@ -532,24 +536,25 @@ export function TerminalPane({
 
   const handleTerminalResize = useStableEvent((input: { rows: number; cols: number }) => {
     const { rows, cols } = input;
-    if (
-      !client ||
-      !terminalId ||
-      !isPaneFocused ||
-      !isWorkspaceFocused ||
-      !isAppVisible ||
-      rows <= 0 ||
-      cols <= 0
-    ) {
+    if (rows <= 0 || cols <= 0) {
       return;
     }
     const normalizedRows = Math.floor(rows);
     const normalizedCols = Math.floor(cols);
-    const previous = lastReportedSizeRef.current;
-    if (previous && previous.rows === normalizedRows && previous.cols === normalizedCols) {
+    const nextSize = { rows: normalizedRows, cols: normalizedCols };
+    measuredTerminalSizeRef.current = nextSize;
+    if (!client || !terminalId || !isPaneFocused || !isWorkspaceFocused || !isAppVisible) {
       return;
     }
-    lastReportedSizeRef.current = { rows: normalizedRows, cols: normalizedCols };
+    const previousSent = lastSentTerminalSizeRef.current;
+    if (
+      previousSent &&
+      previousSent.rows === normalizedRows &&
+      previousSent.cols === normalizedCols
+    ) {
+      return;
+    }
+    lastSentTerminalSizeRef.current = nextSize;
     client.sendTerminalInput(terminalId, {
       type: "resize",
       rows: normalizedRows,
