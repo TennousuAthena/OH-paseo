@@ -46,6 +46,7 @@
     "typecheck:daemon": "npm run typecheck --workspace=@getpaseo/relay && npm run typecheck --workspace=@getpaseo/server && npm run typecheck --workspace=@getpaseo/cli",
     "test": "npm run test --workspaces --if-present",
     "format": "oxfmt .",
+    "format:files": "oxfmt",
     "format:check": "oxfmt --check .",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",

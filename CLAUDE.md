@@ -56,6 +56,9 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full setup, build sync requir
   - For full suite verification, push to CI and check GitHub Actions instead.
 - **Always run typecheck and lint after every change.**
 - **Run `npm run format` before committing.** This repo uses Biome for formatting. Do not manually fix formatting — let the formatter handle it.
+- **Always use npm scripts for linting and formatting.** Do not run tools directly with `npx eslint`, `npx oxfmt`, `npx oxlint`, or package-local binaries. For targeted checks, pass file paths through the npm script:
+  - `npm run lint -- packages/app/src/components/message.tsx`
+  - `npm run format:files -- CLAUDE.md packages/app/src/components/message.tsx`
 - **NEVER make breaking changes to WebSocket or message schemas.** The primary compatibility path is old mobile app clients talking to newly updated daemons. Users update desktop and daemon first, then keep running the old app for a while. Every schema change MUST be backward-compatible for old clients against new daemons:
   - New fields: always `.optional()` with a sensible default or `.transform()` fallback.
   - Never change a field from optional to required.
