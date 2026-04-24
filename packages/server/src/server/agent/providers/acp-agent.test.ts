@@ -72,10 +72,10 @@ describe("createLoggedNdJsonStream", () => {
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: "gemini",
-        linePreview: "Please visit the following URL to authorize the application:",
       }),
       "ACP agent emitted non-JSON stdout; ignoring line",
     );
+    expect(logger.warn.mock.calls[0]?.[0]).not.toHaveProperty("linePreview");
     expect(consoleError).not.toHaveBeenCalled();
 
     await writer.close();

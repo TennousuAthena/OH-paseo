@@ -153,8 +153,6 @@ export function createLoggedNdJsonStream(
                 {
                   err: error,
                   provider: options.provider,
-                  linePreview:
-                    trimmedLine.length > 500 ? `${trimmedLine.slice(0, 500)}...` : trimmedLine,
                 },
                 "ACP agent emitted non-JSON stdout; ignoring line",
               );

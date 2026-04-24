@@ -148,9 +148,6 @@ export function migrateProviderSettings(
     const nextEntry: ProviderOverride = {};
     const command = parsedOld.data.command;
     if (command?.mode === "append") {
-      console.warn(
-        `[Config] Skipping legacy agents.providers.${providerId}.command append mode during provider override migration because it cannot be auto-migrated.`,
-      );
       continue;
     }
     if (command?.mode === "replace") {
