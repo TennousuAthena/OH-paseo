@@ -1,7 +1,8 @@
 import * as pty from "node-pty";
 import xterm, { type Terminal as TerminalType } from "@xterm/headless";
 import { randomUUID } from "crypto";
-import { chmodSync, existsSync, statSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -85,6 +86,7 @@ export interface CreateTerminalOptions {
 interface BuildTerminalEnvironmentInput {
   shell: string;
   env: Record<string, string>;
+  zshShellIntegrationDir?: string;
 }
 
 export interface CaptureTerminalLinesOptions {
@@ -182,6 +184,33 @@ export function resolveZshShellIntegrationDir(): string {
   return fileURLToPath(new URL("./shell-integration/zsh", import.meta.url));
 }
 
+function resolveExternalProcessPath(filePath: string): string {
+  return filePath.replace(/\.asar(?=\/|$)/, ".asar.unpacked");
+}
+
+function resolveZshShellIntegrationRuntimeDir(): string {
+  let username = "unknown";
+  try {
+    username = userInfo().username || username;
+  } catch {
+    // keep fallback
+  }
+  return join(tmpdir(), `${username}-paseo-zsh`);
+}
+
+function prepareZshShellIntegrationRuntimeDir(sourceDir = resolveZshShellIntegrationDir()): string {
+  const readableSourceDir = resolveExternalProcessPath(sourceDir);
+  const runtimeDir = resolveZshShellIntegrationRuntimeDir();
+  mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
+  chmodSync(runtimeDir, 0o700);
+  copyFileSync(join(readableSourceDir, ".zshenv"), join(runtimeDir, ".zshenv"));
+  copyFileSync(
+    join(readableSourceDir, "paseo-integration.zsh"),
+    join(runtimeDir, "paseo-integration.zsh"),
+  );
+  return runtimeDir;
+}
+
 export function buildTerminalEnvironment(
   input: BuildTerminalEnvironmentInput,
 ): Record<string, string> {
@@ -199,7 +228,7 @@ export function buildTerminalEnvironment(
   return {
     ...baseEnv,
     PASEO_ZSH_ZDOTDIR: originalZdotdir,
-    ZDOTDIR: resolveZshShellIntegrationDir(),
+    ZDOTDIR: prepareZshShellIntegrationRuntimeDir(input.zshShellIntegrationDir),
   };
 }
 

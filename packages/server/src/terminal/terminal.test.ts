@@ -11,6 +11,7 @@ import {
 } from "./terminal.js";
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
@@ -18,6 +19,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -208,7 +210,9 @@ describe("createTerminal", () => {
 
     expect(resolvedEnv.TERM).toBe("xterm-256color");
     expect(resolvedEnv.PASEO_ZSH_ZDOTDIR).toBe("/tmp/paseo-zdotdir");
-    expect(resolvedEnv.ZDOTDIR).toBe(resolveZshShellIntegrationDir());
+    expect(resolvedEnv.ZDOTDIR).not.toBe("/tmp/paseo-zdotdir");
+    expect(existsSync(join(resolvedEnv.ZDOTDIR, ".zshenv"))).toBe(true);
+    expect(existsSync(join(resolvedEnv.ZDOTDIR, "paseo-integration.zsh"))).toBe(true);
   });
 
   it("uses custom name when provided", async () => {
@@ -586,6 +590,58 @@ describe("terminal title", () => {
 
     await waitForTitle(session, (title) => title === "sleep 1");
     await waitForTitle(session, (title) => title === "~/dev/faro", 4000);
+  });
+
+  it.skipIf(!hasZsh)("loads the user's zsh prompt when the integration dir is packaged", () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "terminal-zsh-packaged-home-"));
+    temporaryDirs.push(homeDir);
+    writeFileSync(join(homeDir, ".zshrc"), "PS1='PASEO_CUSTOM_PROMPT> '\n");
+
+    const fakeAppRoot = join(homeDir, "Paseo.app", "Contents", "Resources");
+    const inaccessiblePackagedIntegrationDir = join(
+      fakeAppRoot,
+      "app.asar",
+      "node_modules",
+      "@getpaseo",
+      "server",
+      "dist",
+      "server",
+      "terminal",
+      "shell-integration",
+      "zsh",
+    );
+    const unpackedIntegrationDir = join(
+      fakeAppRoot,
+      "app.asar.unpacked",
+      "node_modules",
+      "@getpaseo",
+      "server",
+      "dist",
+      "server",
+      "terminal",
+      "shell-integration",
+      "zsh",
+    );
+    mkdirSync(unpackedIntegrationDir, { recursive: true });
+    cpSync(resolveZshShellIntegrationDir(), unpackedIntegrationDir, { recursive: true });
+    writeFileSync(join(fakeAppRoot, "app.asar"), "asar archive placeholder");
+
+    const env = buildTerminalEnvironment({
+      shell: "/bin/zsh",
+      env: {
+        HOME: homeDir,
+      },
+      zshShellIntegrationDir: inaccessiblePackagedIntegrationDir,
+    });
+
+    const result = spawnSync("/bin/zsh", ["-i", "-c", "print -r -- ${PROMPT}"], {
+      cwd: homeDir,
+      env,
+      encoding: "utf8",
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.split(/\r?\n/)).toContain("PASEO_CUSTOM_PROMPT> ");
   });
 
   it.skipIf(!hasZsh)("emits zsh shell integration command completion", async () => {
