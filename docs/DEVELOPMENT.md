@@ -62,6 +62,18 @@ Pass either a DB directory or a `paseo.sqlite` file to `--db`. The script opens 
 
 ## paseo.json service scripts
 
+`worktree.setup` and `worktree.teardown` accept either a multiline shell script or an array
+of commands. Both run sequentially.
+
+```json
+{
+  "worktree": {
+    "setup": "npm ci\ncp \"$PASEO_SOURCE_CHECKOUT_PATH/.env\" .env\nnpm run db:migrate",
+    "teardown": "npm run db:drop || true"
+  }
+}
+```
+
 Every `scripts` entry with `"type": "service"` receives these environment variables:
 
 | Variable                    | Value                                                                                                                     |

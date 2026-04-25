@@ -64,8 +64,8 @@ function Worktrees() {
         <Code>
           <pre className="text-white/80">{`{
   "worktree": {
-    "setup":    ["npm ci"],
-    "teardown": ["rm -rf .cache"]
+    "setup":    "npm ci",
+    "teardown": "rm -rf .cache"
   },
   "scripts": {
     "test": { "command": "npm test" },
@@ -88,17 +88,15 @@ function Worktrees() {
         <Code>
           <pre className="text-white/80">{`{
   "worktree": {
-    "setup": [
-      "npm ci",
-      "cp \\"$PASEO_SOURCE_CHECKOUT_PATH/.env\\" .env",
-      "npm run db:migrate"
-    ],
-    "teardown": [
-      "npm run db:drop || true"
-    ]
+    "setup": "npm ci\\ncp \\"$PASEO_SOURCE_CHECKOUT_PATH/.env\\" .env\\nnpm run db:migrate",
+    "teardown": "npm run db:drop || true"
   }
 }`}</pre>
         </Code>
+        <p className="text-white/60 leading-relaxed">
+          Both fields accept a multiline shell script or an array of commands; commands run
+          sequentially either way.
+        </p>
         <p className="text-white/60 leading-relaxed">
           Commands run with the worktree as <code className="font-mono">cwd</code>. Use{" "}
           <code className="font-mono">$PASEO_SOURCE_CHECKOUT_PATH</code> to reach files in the

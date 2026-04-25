@@ -7,6 +7,7 @@ import net from "node:net";
 import { createHash } from "node:crypto";
 import * as pty from "node-pty";
 import stripAnsi from "strip-ansi";
+import { z } from "zod";
 import { buildStringCommandShellInvocation } from "./string-command-shell.js";
 import {
   normalizeBaseRefName,
@@ -19,22 +20,6 @@ import { runGitCommand } from "./run-git-command.js";
 import { resolvePaseoHome } from "../server/paseo-home.js";
 import { ensureNodePtySpawnHelperExecutableForCurrentPlatform } from "../terminal/terminal.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
-
-interface PaseoConfig {
-  worktree?: {
-    setup?: string[];
-    teardown?: string[];
-    terminals?: WorktreeTerminalConfig[];
-  };
-  scripts?: Record<
-    string,
-    {
-      type?: unknown;
-      command?: unknown;
-      port?: unknown;
-    }
-  >;
-}
 
 const execFileAsync = promisify(execFile);
 const READ_ONLY_GIT_ENV: NodeJS.ProcessEnv = {
@@ -98,6 +83,49 @@ export interface WorktreeTerminalConfig {
   name?: string;
   command: string;
 }
+
+function normalizeLifecycleCommands(commands: unknown): string[] {
+  if (typeof commands === "string") {
+    return commands.trim().length > 0 ? [commands] : [];
+  }
+  if (!Array.isArray(commands)) {
+    return [];
+  }
+  return commands.filter((command): command is string => {
+    return typeof command === "string" && command.trim().length > 0;
+  });
+}
+
+const LifecycleCommandsSchema = z.unknown().transform(normalizeLifecycleCommands);
+
+const WorktreeConfigSchema = z
+  .object({
+    setup: LifecycleCommandsSchema,
+    teardown: LifecycleCommandsSchema,
+    terminals: z.unknown().optional(),
+  })
+  .passthrough()
+  .catch({ setup: [], teardown: [] });
+
+const ScriptEntrySchema = z
+  .object({
+    type: z.unknown(),
+    command: z.unknown(),
+    port: z.unknown(),
+  })
+  .partial()
+  .passthrough()
+  .catch({});
+
+const PaseoConfigSchema = z
+  .object({
+    worktree: WorktreeConfigSchema.optional(),
+    scripts: z.record(z.string(), ScriptEntrySchema).optional().catch({}),
+  })
+  .passthrough()
+  .catch({});
+
+type PaseoConfig = z.infer<typeof PaseoConfigSchema>;
 
 export interface PlainScriptConfig {
   type?: undefined;
@@ -207,7 +235,7 @@ function readPaseoConfig(repoRoot: string): PaseoConfig | null {
     return null;
   }
   try {
-    return JSON.parse(readFileSync(paseoConfigPath, "utf8"));
+    return PaseoConfigSchema.parse(JSON.parse(readFileSync(paseoConfigPath, "utf8")));
   } catch {
     throw new Error(`Failed to parse paseo.json`);
   }
@@ -215,20 +243,12 @@ function readPaseoConfig(repoRoot: string): PaseoConfig | null {
 
 export function getWorktreeSetupCommands(repoRoot: string): string[] {
   const config = readPaseoConfig(repoRoot);
-  const setupCommands = config?.worktree?.setup;
-  if (!setupCommands || setupCommands.length === 0) {
-    return [];
-  }
-  return setupCommands.filter((cmd) => typeof cmd === "string" && cmd.trim().length > 0);
+  return config?.worktree?.setup ?? [];
 }
 
 export function getWorktreeTeardownCommands(repoRoot: string): string[] {
   const config = readPaseoConfig(repoRoot);
-  const teardownCommands = config?.worktree?.teardown;
-  if (!teardownCommands || teardownCommands.length === 0) {
-    return [];
-  }
-  return teardownCommands.filter((cmd) => typeof cmd === "string" && cmd.trim().length > 0);
+  return config?.worktree?.teardown ?? [];
 }
 
 export function getWorktreeTerminalSpecs(repoRoot: string): WorktreeTerminalConfig[] {
