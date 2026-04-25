@@ -41,6 +41,7 @@ export type { AgentProviderDefinition };
 export { AGENT_PROVIDER_DEFINITIONS, getAgentProviderDefinition };
 
 export interface ProviderDefinition extends AgentProviderDefinition {
+  enabled: boolean;
   createClient: (logger: Logger) => AgentClient;
   fetchModels: (options: ListModelsOptions) => Promise<AgentModelDefinition[]>;
   fetchModes: (options: ListModesOptions) => Promise<AgentMode[]>;
@@ -364,10 +365,9 @@ function createRegistryEntry(
 
   return {
     ...resolved.definition,
-    createClient: (providerLogger: Logger) => {
-      const inner = resolved.createBaseClient(providerLogger);
-      return inner.provider === provider ? inner : wrapClientProvider(provider, inner);
-    },
+    enabled: resolved.enabled,
+    createClient: (providerLogger: Logger) =>
+      createResolvedProviderClient(providerLogger, provider, resolved),
     fetchModels: async (options: ListModelsOptions) =>
       mergeModels(
         provider,
@@ -390,6 +390,15 @@ function createRegistryEntry(
       });
     },
   };
+}
+
+function createResolvedProviderClient(
+  logger: Logger,
+  provider: AgentProvider,
+  resolved: ResolvedProvider,
+): AgentClient {
+  const inner = resolved.createBaseClient(logger);
+  return inner.provider === provider ? inner : wrapClientProvider(provider, inner);
 }
 
 function buildResolvedBuiltinProviders(
@@ -514,9 +523,10 @@ export function buildProviderRegistry(
   addDerivedProviders(resolvedProviders, providerOverrides);
 
   return Object.fromEntries(
-    [...resolvedProviders.entries()]
-      .filter(([, resolved]) => resolved.enabled)
-      .map(([provider, resolved]) => [provider, createRegistryEntry(logger, provider, resolved)]),
+    [...resolvedProviders.entries()].map(([provider, resolved]) => [
+      provider,
+      createRegistryEntry(logger, provider, resolved),
+    ]),
   ) as Record<AgentProvider, ProviderDefinition>;
 }
 
@@ -534,7 +544,13 @@ export function createAllClients(
   logger: Logger,
   options?: BuildProviderRegistryOptions,
 ): Record<AgentProvider, AgentClient> {
-  const registry = buildProviderRegistry(logger, options);
+  return createClientsFromRegistry(buildProviderRegistry(logger, options), logger);
+}
+
+export function createClientsFromRegistry(
+  registry: Record<AgentProvider, ProviderDefinition>,
+  logger: Logger,
+): Record<AgentProvider, AgentClient> {
   return Object.fromEntries(
     Object.entries(registry).map(([provider, definition]) => [
       provider,

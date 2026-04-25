@@ -52,6 +52,7 @@ export type {
   AgentCapabilityFlags,
   AgentPermissionRequest,
   AgentTimelineItem,
+  ProviderSnapshotEntry,
 } from "./agent/agent-sdk-types.js";
 
 // Agent activity curator for CLI logs

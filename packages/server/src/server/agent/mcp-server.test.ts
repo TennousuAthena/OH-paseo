@@ -146,6 +146,7 @@ function createProviderDefinition(overrides: Partial<ProviderDefinition>): Provi
     id: provider,
     label: "Claude",
     description: "Test provider",
+    enabled: true,
     defaultModeId: "default",
     modes: [],
     createClient: vi.fn(() => ({
@@ -1037,6 +1038,8 @@ describe("provider listing MCP tool", () => {
         {
           id: "claude",
           label: "Claude",
+          description: "Test provider",
+          enabled: true,
           status: "available",
           modes: [{ id: "default", label: "Default", description: "Built-in mode" }],
         },
@@ -1044,10 +1047,115 @@ describe("provider listing MCP tool", () => {
           id: "zai",
           label: "ZAI",
           status: "available",
+          description: "Custom Claude profile",
+          enabled: true,
           modes: [{ id: "default", label: "Default", description: "Custom mode" }],
         },
       ],
     });
+  });
+
+  it("returns disabled providers with metadata without checking availability", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const baseProvider = createProviderDefinition({ id: "codex" });
+    const client = baseProvider.createClient(logger);
+    const isAvailable = vi.fn().mockResolvedValue(true);
+    const createClient = vi.fn(() => ({ ...client, isAvailable }));
+    const providerRegistry = {
+      codex: createProviderDefinition({
+        id: "codex",
+        label: "Codex",
+        description: "OpenAI coding agent",
+        enabled: false,
+        modes: [{ id: "read-only", label: "Read Only", description: "No edits" }],
+        createClient,
+      }),
+    };
+
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerRegistry,
+      logger,
+    });
+    const tool = registeredTool(server, "list_providers");
+    const response = await tool.callback({});
+
+    expect(response.structuredContent).toEqual({
+      providers: [
+        {
+          id: "codex",
+          label: "Codex",
+          description: "OpenAI coding agent",
+          enabled: false,
+          status: "unavailable",
+          modes: [{ id: "read-only", label: "Read Only", description: "No edits" }],
+        },
+      ],
+    });
+    expect(createClient).not.toHaveBeenCalled();
+    expect(isAvailable).not.toHaveBeenCalled();
+  });
+
+  it("checks availability for enabled providers", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const baseProvider = createProviderDefinition({ id: "claude" });
+    const client = baseProvider.createClient(logger);
+    const isAvailable = vi.fn().mockResolvedValue(true);
+    const providerRegistry = {
+      claude: createProviderDefinition({
+        createClient: vi.fn(() => ({ ...client, isAvailable })),
+      }),
+    };
+
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerRegistry,
+      logger,
+    });
+    const tool = registeredTool(server, "list_providers");
+
+    await tool.callback({});
+
+    expect(providerRegistry.claude.createClient).toHaveBeenCalledTimes(1);
+    expect(isAvailable).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("model listing MCP tool", () => {
+  const logger = createTestLogger();
+
+  it("rejects disabled providers without fetching models", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const fetchModels = vi.fn().mockResolvedValue([
+      {
+        provider: "codex",
+        id: "gpt-5.4",
+        label: "GPT-5.4",
+      },
+    ]);
+    const providerRegistry = {
+      codex: createProviderDefinition({
+        id: "codex",
+        label: "Codex",
+        enabled: false,
+        fetchModels,
+      }),
+    };
+
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerRegistry,
+      logger,
+    });
+    const tool = registeredTool(server, "list_models");
+
+    await expect(tool.callback({ provider: "codex" })).rejects.toThrow(
+      "Provider 'codex' is disabled",
+    );
+    expect(fetchModels).not.toHaveBeenCalled();
   });
 });
 

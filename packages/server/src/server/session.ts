@@ -3195,6 +3195,25 @@ export class Session {
     );
   }
 
+  private emitProviderDisabledResponse(
+    kind: "models" | "modes",
+    provider: AgentProvider,
+    requestId: string,
+    fetchedAt: string,
+  ): void {
+    const payload = {
+      provider,
+      error: `Provider ${provider} is disabled`,
+      fetchedAt,
+      requestId,
+    };
+    if (kind === "models") {
+      this.emit({ type: "list_provider_models_response", payload });
+    } else {
+      this.emit({ type: "list_provider_modes_response", payload });
+    }
+  }
+
   private async handleListProviderModelsRequest(
     msg: Extract<SessionInboundMessage, { type: "list_provider_models_request" }>,
   ): Promise<void> {
@@ -3204,7 +3223,13 @@ export class Session {
 
     if (!manager) {
       try {
-        const models = await this.getProviderRegistry()[msg.provider].fetchModels({
+        const definition = this.getProviderRegistry()[msg.provider];
+        if (!definition.enabled) {
+          this.emitProviderDisabledResponse("models", msg.provider, msg.requestId, fetchedAt);
+          return;
+        }
+
+        const models = await definition.fetchModels({
           cwd,
           force: false,
         });
@@ -3248,6 +3273,11 @@ export class Session {
           requestId: msg.requestId,
         },
       });
+      return;
+    }
+
+    if (!entry.enabled) {
+      this.emitProviderDisabledResponse("models", msg.provider, msg.requestId, fetchedAt);
       return;
     }
 
@@ -3304,6 +3334,11 @@ export class Session {
         return;
       }
 
+      if (!entry.enabled) {
+        this.emitProviderDisabledResponse("modes", msg.provider, msg.requestId, fetchedAt);
+        return;
+      }
+
       if (entry.status === "ready") {
         this.emit({
           type: "list_provider_modes_response",
@@ -3336,7 +3371,13 @@ export class Session {
     }
 
     try {
-      const modes = await this.getProviderRegistry()[msg.provider].fetchModes({
+      const definition = this.getProviderRegistry()[msg.provider];
+      if (!definition.enabled) {
+        this.emitProviderDisabledResponse("modes", msg.provider, msg.requestId, fetchedAt);
+        return;
+      }
+
+      const modes = await definition.fetchModes({
         cwd,
         force: false,
       });
@@ -3380,6 +3421,9 @@ export class Session {
       manager.getSnapshot(cwd).find((candidate) => candidate.provider === provider);
 
     let entry = findEntry();
+    if (entry && !entry.enabled) {
+      return entry;
+    }
     if (!entry || entry.status === "loading") {
       // Awaits the in-flight warmup (deduped per-cwd) so old clients still get
       // a resolved answer rather than a loading placeholder.

@@ -87,6 +87,37 @@ const TEST_CAPABILITIES = {
   supportsToolInvocations: false,
 } as const;
 
+function createTestProviderDefinition(overrides?: Partial<ProviderDefinition>): ProviderDefinition {
+  return {
+    id: "codex",
+    label: "Codex",
+    description: "Codex test provider",
+    enabled: true,
+    defaultModeId: null,
+    modes: [],
+    createClient: () =>
+      ({
+        provider: "codex",
+        capabilities: TEST_CAPABILITIES,
+        async createSession() {
+          throw new Error("not implemented");
+        },
+        async resumeSession() {
+          throw new Error("not implemented");
+        },
+        async listModels() {
+          return [];
+        },
+        async isAvailable() {
+          return true;
+        },
+      }) satisfies AgentClient,
+    fetchModels: async () => [],
+    fetchModes: async () => [],
+    ...overrides,
+  };
+}
+
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -364,10 +395,10 @@ describe("session provider refresh cwd routing", () => {
     const fetchModels = vi.fn(async () => []);
     const fetchModes = vi.fn(async () => []);
     (session as unknown as { getProviderRegistry: () => unknown }).getProviderRegistry = () => ({
-      codex: {
+      codex: createTestProviderDefinition({
         fetchModels,
         fetchModes,
-      },
+      }),
     });
 
     await session.handleMessage({
@@ -385,6 +416,123 @@ describe("session provider refresh cwd routing", () => {
     expect(fetchModes).toHaveBeenCalledWith({ cwd: homedir(), force: false });
   });
 
+  test("legacy model list request treats disabled snapshot entries as unavailable without warming", async () => {
+    const messages: unknown[] = [];
+    const providerSnapshotManager = createProviderSnapshotManagerStub();
+    providerSnapshotManager.getSnapshot = vi.fn(() => [
+      {
+        provider: "codex",
+        status: "loading",
+        enabled: false,
+      },
+    ]);
+    const session = createSessionForTest({ messages, providerSnapshotManager });
+
+    await session.handleMessage({
+      type: "list_provider_models_request",
+      provider: "codex",
+      requestId: "models-disabled",
+    });
+
+    expect(providerSnapshotManager.warmUpSnapshotForCwd).not.toHaveBeenCalled();
+    expect(messages).toContainEqual({
+      type: "list_provider_models_response",
+      payload: {
+        provider: "codex",
+        error: "Provider codex is disabled",
+        fetchedAt: expect.any(String),
+        requestId: "models-disabled",
+      },
+    });
+  });
+
+  test("legacy mode list request treats disabled snapshot entries as unavailable without warming", async () => {
+    const messages: unknown[] = [];
+    const providerSnapshotManager = createProviderSnapshotManagerStub();
+    providerSnapshotManager.getSnapshot = vi.fn(() => [
+      {
+        provider: "codex",
+        status: "loading",
+        enabled: false,
+      },
+    ]);
+    const session = createSessionForTest({ messages, providerSnapshotManager });
+
+    await session.handleMessage({
+      type: "list_provider_modes_request",
+      provider: "codex",
+      requestId: "modes-disabled",
+    });
+
+    expect(providerSnapshotManager.warmUpSnapshotForCwd).not.toHaveBeenCalled();
+    expect(messages).toContainEqual({
+      type: "list_provider_modes_response",
+      payload: {
+        provider: "codex",
+        error: "Provider codex is disabled",
+        fetchedAt: expect.any(String),
+        requestId: "modes-disabled",
+      },
+    });
+  });
+
+  test("legacy model and mode list fallback treats disabled registry definitions as unavailable without fetching", async () => {
+    const messages: unknown[] = [];
+    const session = createSessionForTest({ messages });
+    const fetchModels = vi.fn(async () => [
+      {
+        provider: "codex" as const,
+        id: "should-not-fetch",
+        label: "Should not fetch",
+      },
+    ]);
+    const fetchModes = vi.fn(async () => [
+      {
+        id: "should-not-fetch",
+        label: "Should not fetch",
+      },
+    ]);
+    (session as unknown as { getProviderRegistry: () => unknown }).getProviderRegistry = () => ({
+      codex: createTestProviderDefinition({
+        enabled: false,
+        fetchModels,
+        fetchModes,
+      }),
+    });
+
+    await session.handleMessage({
+      type: "list_provider_models_request",
+      provider: "codex",
+      requestId: "fallback-models-disabled",
+    });
+    await session.handleMessage({
+      type: "list_provider_modes_request",
+      provider: "codex",
+      requestId: "fallback-modes-disabled",
+    });
+
+    expect(fetchModels).not.toHaveBeenCalled();
+    expect(fetchModes).not.toHaveBeenCalled();
+    expect(messages).toContainEqual({
+      type: "list_provider_models_response",
+      payload: {
+        provider: "codex",
+        error: "Provider codex is disabled",
+        fetchedAt: expect.any(String),
+        requestId: "fallback-models-disabled",
+      },
+    });
+    expect(messages).toContainEqual({
+      type: "list_provider_modes_response",
+      payload: {
+        provider: "codex",
+        error: "Provider codex is disabled",
+        fetchedAt: expect.any(String),
+        requestId: "fallback-modes-disabled",
+      },
+    });
+  });
+
   test("legacy model list request without cwd awaits loading snapshot without forced discovery", async () => {
     const messages: unknown[] = [];
     const models = deferred<AgentModelDefinition[]>();
@@ -395,12 +543,7 @@ describe("session provider refresh cwd routing", () => {
       },
     );
     const fetchModes = vi.fn(async (_options: ListModesOptions): Promise<AgentMode[]> => []);
-    const providerDefinition: ProviderDefinition = {
-      id: "codex",
-      label: "Codex",
-      description: "Codex test provider",
-      defaultModeId: null,
-      modes: [],
+    const providerDefinition = createTestProviderDefinition({
       createClient: () =>
         ({
           provider: "codex",
@@ -420,7 +563,7 @@ describe("session provider refresh cwd routing", () => {
         }) satisfies AgentClient,
       fetchModels,
       fetchModes,
-    };
+    });
     const providerSnapshotManager = new ProviderSnapshotManager(
       { codex: providerDefinition },
       pino({ level: "silent" }),
@@ -930,6 +1073,7 @@ describe("session checkout status handling", () => {
         cwd: "/tmp/service-worktree",
         isGit: true,
         repoRoot: "/tmp/service-worktree",
+        mainRepoRoot: null,
         currentBranch: "feature/service",
         isDirty: true,
         baseRef: "main",

@@ -396,7 +396,7 @@ function buildProviderDefinitionMapForStatuses(args: {
 
   const matchingProviders = new Set(
     args.snapshotEntries
-      .filter((entry) => args.statuses.has(entry.status))
+      .filter((entry) => args.statuses.has(entry.status) && entry.enabled !== false)
       .map((entry) => entry.provider),
   );
 

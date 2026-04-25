@@ -3019,7 +3019,7 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private appendUserContentArrayEvents(
-    content: ClaudeContentChunk[],
+    content: ReadonlyArray<unknown>,
     messageId: string | undefined,
     events: AgentStreamEvent[],
   ): void {
@@ -3507,7 +3507,7 @@ class ClaudeAgentSession implements AgentSession {
   // NOTE: convertClaudeHistoryEntry uses extractUserMessageText directly instead of this function
   // for user entries. Both paths must produce equivalent user_message items.
   private mapBlocksToTimeline(
-    content: string | ClaudeContentChunk[],
+    content: string | ReadonlyArray<unknown>,
     options?: {
       textMessageType?: "assistant_message" | "user_message";
       suppressAssistantText?: boolean;
@@ -3537,6 +3537,9 @@ class ClaudeAgentSession implements AgentSession {
     // User SDK entries can arrive as multiple text blocks, but Paseo treats them as one message.
     const userTextParts: string[] = [];
     for (const block of content) {
+      if (!isClaudeContentChunk(block)) {
+        continue;
+      }
       this.mapBlockToTimeline(block, {
         items,
         userTextParts,

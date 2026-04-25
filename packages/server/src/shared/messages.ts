@@ -98,7 +98,6 @@ import type {
   AgentPermissionRequest,
   AgentPermissionResponse,
   AgentPersistenceHandle,
-  ProviderSnapshotEntry,
   ProviderStatus,
   AgentRuntimeInfo,
   AgentTimelineItem,
@@ -169,9 +168,10 @@ const AgentModelDefinitionSchema: z.ZodType<AgentModelDefinition> = z.object({
   defaultThinkingOptionId: z.string().optional(),
 });
 
-const ProviderSnapshotEntrySchema: z.ZodType<ProviderSnapshotEntry> = z.object({
+export const ProviderSnapshotEntrySchema = z.object({
   provider: AgentProviderSchema,
   status: ProviderStatusSchema,
+  enabled: z.boolean().optional().default(true),
   error: z.string().optional(),
   models: z.array(AgentModelDefinitionSchema).optional(),
   modes: z.array(AgentModeSchema).optional(),

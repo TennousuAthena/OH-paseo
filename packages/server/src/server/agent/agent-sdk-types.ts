@@ -74,6 +74,7 @@ export interface AgentSelectOption {
 export interface ProviderSnapshotEntry {
   provider: AgentProvider;
   status: ProviderStatus;
+  enabled: boolean;
   error?: string;
   models?: AgentModelDefinition[];
   modes?: AgentMode[];

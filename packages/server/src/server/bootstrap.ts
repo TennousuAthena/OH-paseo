@@ -101,7 +101,7 @@ import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import {
   buildProviderRegistry,
-  createAllClients,
+  createClientsFromRegistry,
   shutdownProviders,
 } from "./agent/provider-registry.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
@@ -434,24 +434,20 @@ export async function createPaseoDaemon(
       github,
     },
   });
-  const agentManager = new AgentManager({
-    clients: {
-      ...createAllClients(logger, {
-        runtimeSettings: config.agentProviderSettings,
-        providerOverrides: config.providerOverrides,
-        workspaceGitService,
-        isDev: config.isDev === true,
-      }),
-      ...config.agentClients,
-    },
-    registry: agentStorage,
-    logger,
-  });
   const providerRegistry = buildProviderRegistry(logger, {
     runtimeSettings: config.agentProviderSettings,
     providerOverrides: config.providerOverrides,
     workspaceGitService,
     isDev: config.isDev === true,
+  });
+  const agentManager = new AgentManager({
+    clients: {
+      ...createClientsFromRegistry(providerRegistry, logger),
+      ...config.agentClients,
+    },
+    providerDefinitions: providerRegistry,
+    registry: agentStorage,
+    logger,
   });
 
   const detachAgentStoragePersistence = attachAgentStoragePersistence(

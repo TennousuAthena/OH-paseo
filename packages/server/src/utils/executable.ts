@@ -44,7 +44,7 @@ async function probeExecutable(executablePath: string): Promise<boolean> {
   return await new Promise((resolve) => {
     let pendingResolve: ((result: boolean) => void) | null = resolve;
     let started = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timer: NodeJS.Timeout | undefined;
 
     const settle = (result: boolean) => {
       if (!pendingResolve) {
@@ -78,8 +78,8 @@ async function probeExecutable(executablePath: string): Promise<boolean> {
         return;
       }
       settle(false);
-    }, PROBE_TIMEOUT_MS);
-    timer.unref?.();
+    }, PROBE_TIMEOUT_MS) as unknown as NodeJS.Timeout;
+    timer.unref();
 
     child.once("spawn", () => {
       started = true;

@@ -36,7 +36,7 @@ import type {
   ProviderOverride,
 } from "./agent/provider-launch-config.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
-import { buildProviderRegistry } from "./agent/provider-registry.js";
+import { buildProviderRegistry, createClientsFromRegistry } from "./agent/provider-registry.js";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 import { buildWorkspaceGitMetadataFromSnapshot } from "./workspace-git-metadata.js";
 import { PushTokenStore } from "./push/token-store.js";
@@ -497,13 +497,14 @@ export class VoiceAssistantWebSocketServer {
         this.providerOverrides,
         config.providers,
       );
-      this.providerSnapshotManager.replaceRegistry(
-        buildProviderRegistry(providerSnapshotLogger, {
-          runtimeSettings: this.agentProviderRuntimeSettings,
-          providerOverrides: this.providerOverrides,
-          isDev: this.isDev,
-        }),
-      );
+      const registry = buildProviderRegistry(providerSnapshotLogger, {
+        runtimeSettings: this.agentProviderRuntimeSettings,
+        providerOverrides: this.providerOverrides,
+        isDev: this.isDev,
+      });
+      const clients = createClientsFromRegistry(registry, providerSnapshotLogger);
+      this.providerSnapshotManager.replaceRegistry(registry);
+      this.agentManager.updateProviderRegistry({ providerDefinitions: registry, clients });
       this.broadcastDaemonConfigChanged(config);
     });
 

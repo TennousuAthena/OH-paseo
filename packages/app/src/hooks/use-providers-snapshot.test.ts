@@ -101,6 +101,7 @@ function codexEntry(
   return {
     provider: "codex",
     status,
+    enabled: true,
     ...(models ? { models } : {}),
   };
 }

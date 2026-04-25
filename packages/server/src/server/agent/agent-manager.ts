@@ -113,8 +113,15 @@ interface AgentManagerRescueTimeouts {
   interruptSessionMs?: number;
 }
 
+interface ProviderEnabledFlag {
+  enabled: boolean;
+}
+type ProviderEnabledMap = Partial<Record<AgentProvider, ProviderEnabledFlag>>;
+type ProviderClientMap = Partial<Record<AgentProvider, AgentClient>>;
+
 export interface AgentManagerOptions {
-  clients?: Partial<Record<AgentProvider, AgentClient>>;
+  clients?: ProviderClientMap;
+  providerDefinitions?: ProviderEnabledMap;
   idFactory?: () => string;
   registry?: AgentStorage;
   onAgentAttention?: AgentAttentionCallback;
@@ -387,6 +394,7 @@ function buildExplicitTimelineSeedForRegister(
 
 export class AgentManager {
   private readonly clients = new Map<AgentProvider, AgentClient>();
+  private readonly providerEnabled = new Map<AgentProvider, boolean>();
   private readonly agents = new Map<string, LiveManagedAgent>();
   private readonly timelineStore = new InMemoryAgentTimelineStore();
   private readonly agentsAwaitingInitialSnapshotPersist = new Set<string>();
@@ -425,17 +433,30 @@ export class AgentManager {
         this.notifyForegroundTurnWaiters(agentId, event);
       },
     });
-    if (options?.clients) {
-      for (const [provider, client] of Object.entries(options.clients)) {
-        if (client) {
-          this.registerClient(provider as AgentProvider, client);
-        }
-      }
-    }
+    this.updateProviderRegistry({
+      providerDefinitions: options.providerDefinitions ?? {},
+      clients: options.clients ?? {},
+    });
   }
 
   registerClient(provider: AgentProvider, client: AgentClient): void {
     this.clients.set(provider, client);
+  }
+
+  updateProviderRegistry(input: {
+    providerDefinitions: ProviderEnabledMap;
+    clients: ProviderClientMap;
+  }): void {
+    for (const [provider, definition] of Object.entries(input.providerDefinitions)) {
+      if (definition) {
+        this.providerEnabled.set(provider, definition.enabled);
+      }
+    }
+    for (const [provider, client] of Object.entries(input.clients)) {
+      if (client) {
+        this.clients.set(provider, client);
+      }
+    }
   }
 
   getRegisteredProviderIds(): AgentProvider[] {
@@ -718,6 +739,7 @@ export class AgentManager {
               ...config.mcpServers,
             },
           };
+    this.requireEnabledProvider(injectedConfig.provider);
     const normalizedConfig = await this.normalizeConfig(injectedConfig);
     const launchContext = this.buildLaunchContext(resolvedAgentId);
     const client = await this.requireAvailableClient({
@@ -3082,7 +3104,7 @@ export class AgentManager {
   private async requireAvailableClient(options: { provider: AgentProvider }): Promise<AgentClient> {
     const client = this.clients.get(options.provider);
     if (!client) {
-      const configuredProviders = Array.from(this.clients.keys());
+      const configuredProviders = this.getConfiguredProviderIds();
       throw new Error(
         `Unknown provider '${options.provider}'. Configured providers: ${formatProviderList(
           configuredProviders,
@@ -3108,6 +3130,16 @@ export class AgentManager {
     throw new Error(
       `Provider '${options.provider}' is not available.${reason} Available providers: ${providerList}. Use one of those providers, or install/configure '${options.provider}'.`,
     );
+  }
+
+  private requireEnabledProvider(provider: AgentProvider): void {
+    if (this.providerEnabled.get(provider) === false) {
+      throw new Error(`Provider '${provider}' is disabled`);
+    }
+  }
+
+  private getConfiguredProviderIds(): AgentProvider[] {
+    return Array.from(new Set([...this.providerEnabled.keys(), ...this.clients.keys()]));
   }
 
   private requireClient(provider: AgentProvider): AgentClient {

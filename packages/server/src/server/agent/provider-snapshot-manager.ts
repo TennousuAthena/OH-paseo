@@ -165,6 +165,7 @@ export class ProviderSnapshotManager {
       entries.set(provider, {
         provider,
         status: "loading",
+        enabled: definition?.enabled ?? true,
         label: definition?.label,
         description: definition?.description,
         defaultModeId: definition?.defaultModeId ?? null,
@@ -242,8 +243,27 @@ export class ProviderSnapshotManager {
   }): Promise<void> {
     const { cwd, provider, definition, load, force } = options;
     const snapshot = this.getOrCreateSnapshot(options.cwd);
+    const base = {
+      provider,
+      label: definition.label,
+      description: definition.description,
+      defaultModeId: definition.defaultModeId,
+    };
+    const setEntry = (entry: ProviderSnapshotEntry) => {
+      if (!this.isCurrentProviderLoad(cwd, provider, load)) {
+        return false;
+      }
+      snapshot.set(provider, entry);
+      this.emitChange(cwd);
+      return true;
+    };
 
     try {
+      if (!definition.enabled) {
+        setEntry({ ...base, status: "unavailable", enabled: false });
+        return;
+      }
+
       const client = definition.createClient(this.logger);
       const available = await withTimeout(
         client.isAvailable(),
@@ -251,17 +271,7 @@ export class ProviderSnapshotManager {
         `Timed out checking ${definition.label} availability after ${this.refreshTimeoutMs}ms`,
       );
       if (!available) {
-        if (!this.isCurrentProviderLoad(cwd, provider, load)) {
-          return;
-        }
-        snapshot.set(provider, {
-          provider,
-          status: "unavailable",
-          label: definition.label,
-          description: definition.description,
-          defaultModeId: definition.defaultModeId,
-        });
-        this.emitChange(cwd);
+        setEntry({ ...base, status: "unavailable", enabled: true });
         return;
       }
 
@@ -274,34 +284,24 @@ export class ProviderSnapshotManager {
         `Timed out refreshing ${definition.label} after ${this.refreshTimeoutMs}ms`,
       );
 
-      if (!this.isCurrentProviderLoad(cwd, provider, load)) {
-        return;
-      }
-      snapshot.set(provider, {
-        provider,
+      setEntry({
+        ...base,
         status: "ready",
+        enabled: true,
         models,
         modes,
         fetchedAt: new Date().toISOString(),
-        label: definition.label,
-        description: definition.description,
-        defaultModeId: definition.defaultModeId,
       });
-      this.emitChange(cwd);
     } catch (error) {
-      if (!this.isCurrentProviderLoad(cwd, provider, load)) {
-        return;
-      }
-      snapshot.set(provider, {
-        provider,
+      const emitted = setEntry({
+        ...base,
         status: "error",
+        enabled: true,
         error: toErrorMessage(error),
-        label: definition.label,
-        description: definition.description,
-        defaultModeId: definition.defaultModeId,
       });
-      this.logger.warn({ err: error, provider, cwd }, "Failed to refresh provider snapshot");
-      this.emitChange(cwd);
+      if (emitted) {
+        this.logger.warn({ err: error, provider, cwd }, "Failed to refresh provider snapshot");
+      }
     }
   }
 

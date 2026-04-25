@@ -11,6 +11,7 @@ import type {
   AgentClient,
   AgentFeature,
   AgentLaunchContext,
+  AgentProvider,
   AgentPersistenceHandle,
   AgentRunResult,
   AgentSession,
@@ -18,6 +19,7 @@ import type {
   AgentStreamEvent,
   AgentTimelineItem,
 } from "./agent-sdk-types.js";
+import type { ProviderDefinition } from "./provider-registry.js";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -840,6 +842,119 @@ test("createAgent reports available providers when selected provider is unavaila
   ).rejects.toThrow(
     "Provider 'codex' is not available. Available providers: claude. Use one of those providers, or install/configure 'codex'.",
   );
+});
+
+test("createAgent rejects a disabled provider without creating a session", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+
+  class DisabledCodexClient extends TestAgentClient {
+    createSessionCalls = 0;
+
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      this.createSessionCalls += 1;
+      return await super.createSession(config);
+    }
+  }
+
+  const disabledClient = new DisabledCodexClient();
+  const providerDefinitions = {
+    codex: {
+      enabled: false,
+    },
+  } satisfies Partial<Record<AgentProvider, Pick<ProviderDefinition, "enabled">>>;
+  const manager = new AgentManager({
+    clients: {
+      codex: disabledClient,
+    },
+    providerDefinitions,
+    registry: storage,
+    logger,
+  });
+
+  await expect(
+    manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    }),
+  ).rejects.toThrow("Provider 'codex' is disabled");
+  expect(disabledClient.createSessionCalls).toBe(0);
+  expect(await storage.list()).toHaveLength(0);
+});
+
+test("updateProviderRegistry re-enables a previously disabled provider", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const client = new TestAgentClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    providerDefinitions: {
+      codex: { enabled: false },
+    },
+    registry: storage,
+    logger,
+  });
+
+  await expect(manager.createAgent({ provider: "codex", cwd: workdir })).rejects.toThrow(
+    "Provider 'codex' is disabled",
+  );
+
+  manager.updateProviderRegistry({
+    providerDefinitions: { codex: { enabled: true } },
+    clients: { codex: client },
+  });
+
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir });
+  expect(snapshot.config.provider).toBe("codex");
+});
+
+test("updateProviderRegistry disables a previously enabled provider", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const client = new TestAgentClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    providerDefinitions: {
+      codex: { enabled: true },
+    },
+    registry: storage,
+    logger,
+  });
+
+  manager.updateProviderRegistry({
+    providerDefinitions: { codex: { enabled: false } },
+    clients: { codex: client },
+  });
+
+  await expect(manager.createAgent({ provider: "codex", cwd: workdir })).rejects.toThrow(
+    "Provider 'codex' is disabled",
+  );
+});
+
+test("updateProviderRegistry registers a previously unknown provider", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const manager = new AgentManager({
+    clients: {},
+    providerDefinitions: {},
+    registry: storage,
+    logger,
+  });
+
+  expect(manager.getRegisteredProviderIds()).not.toContain("codex");
+
+  manager.updateProviderRegistry({
+    providerDefinitions: { codex: { enabled: true } },
+    clients: { codex: new TestAgentClient() },
+  });
+
+  expect(manager.getRegisteredProviderIds()).toContain("codex");
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir });
+  expect(snapshot.config.provider).toBe("codex");
 });
 
 test("createAgent passes explicit model strings through to the provider", async () => {

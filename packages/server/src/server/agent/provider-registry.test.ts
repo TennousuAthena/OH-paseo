@@ -317,7 +317,11 @@ vi.mock("./providers/generic-acp-agent.js", () => ({
   },
 }));
 
-import { AGENT_PROVIDER_DEFINITIONS, buildProviderRegistry } from "./provider-registry.js";
+import {
+  AGENT_PROVIDER_DEFINITIONS,
+  buildProviderRegistry,
+  createAllClients,
+} from "./provider-registry.js";
 
 const logger = createTestLogger();
 
@@ -458,7 +462,7 @@ test("custom provider without label throws", () => {
   ).toThrowError("Custom provider 'zai' requires a label");
 });
 
-test("enabled: false excludes provider from registry", () => {
+test("enabled: false keeps provider metadata in registry", () => {
   const registry = buildProviderRegistry(logger, {
     providerOverrides: {
       claude: {
@@ -467,7 +471,31 @@ test("enabled: false excludes provider from registry", () => {
     },
   });
 
-  expect(registry.claude).toBeUndefined();
+  expect(registry.claude).toMatchObject({
+    id: "claude",
+    label: "Claude",
+    description: "Anthropic's multi-tool assistant with MCP support, streaming, and deep reasoning",
+    defaultModeId: "default",
+    enabled: false,
+  });
+  expect(registry.claude.modes).toEqual(
+    AGENT_PROVIDER_DEFINITIONS.find((definition) => definition.id === "claude")?.modes,
+  );
+  expect(registry.codex.enabled).toBe(true);
+});
+
+test("enabled: false still produces a client (enabled gate is enforced elsewhere)", () => {
+  const clients = createAllClients(logger, {
+    providerOverrides: {
+      claude: {
+        enabled: false,
+      },
+    },
+  });
+
+  expect(clients.claude).toBeDefined();
+  expect(mockState.constructorArgs.claude.length).toBeGreaterThan(0);
+  expect(clients.codex).toBeDefined();
 });
 
 test("provider override command can be PATH-resolved and still report available", async () => {

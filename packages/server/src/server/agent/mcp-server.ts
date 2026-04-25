@@ -169,6 +169,43 @@ function resolveRegisteredProviderIds(
     : agentManager.getRegisteredProviderIds();
 }
 
+interface ProviderSummary {
+  id: AgentProvider;
+  label: string;
+  description: string;
+  enabled: boolean;
+  modes: ProviderDefinition["modes"];
+  status: string;
+  error?: string;
+}
+
+async function resolveProviderSummary(
+  provider: ProviderDefinition,
+  logger: Logger,
+): Promise<ProviderSummary> {
+  const base = {
+    id: provider.id,
+    label: provider.label,
+    description: provider.description,
+    modes: provider.modes,
+  };
+  if (!provider.enabled) {
+    return { ...base, enabled: false, status: "unavailable" };
+  }
+  try {
+    const available = await provider.createClient(logger).isAvailable();
+    return { ...base, enabled: true, status: available ? "available" : "unavailable" };
+  } catch (availabilityError) {
+    return {
+      ...base,
+      enabled: true,
+      status: "unavailable",
+      error:
+        availabilityError instanceof Error ? availabilityError.message : String(availabilityError),
+    };
+  }
+}
+
 function compareAgentListItems(a: AgentListItemPayload, b: AgentListItemPayload): number {
   const attentionDelta =
     Number(b.requiresAttention ?? false) - Number(a.requiresAttention ?? false);
@@ -1650,35 +1687,9 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     },
     async () => {
       const providers = await Promise.all(
-        Object.values(providerRegistry ?? {}).map(async (provider) => {
-          let status = "unknown";
-          let error: string | undefined;
-          try {
-            status = (await provider.createClient(childLogger).isAvailable())
-              ? "available"
-              : "unavailable";
-          } catch (availabilityError) {
-            status = "unavailable";
-            error =
-              availabilityError instanceof Error
-                ? availabilityError.message
-                : String(availabilityError);
-          }
-          const summary = {
-            id: provider.id,
-            label: provider.label,
-            status,
-            modes: provider.modes.map((mode) => ({
-              id: mode.id,
-              label: mode.label,
-              ...(mode.description ? { description: mode.description } : {}),
-            })),
-          };
-          if (error) {
-            return Object.assign(summary, { error });
-          }
-          return summary;
-        }),
+        Object.values(providerRegistry ?? {}).map((provider) =>
+          resolveProviderSummary(provider, childLogger),
+        ),
       );
       return {
         content: [],
@@ -1708,6 +1719,9 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       const definition = providerRegistry[provider];
       if (!definition) {
         throw new Error(`Provider ${provider} is not configured`);
+      }
+      if (!definition.enabled) {
+        throw new Error(`Provider '${provider}' is disabled`);
       }
 
       const models = await definition.fetchModels({ cwd: resolveSnapshotCwd(), force: false });
