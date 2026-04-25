@@ -33,7 +33,13 @@ import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
 import { ScreenTitle } from "@/components/headers/screen-title";
 import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
 import { SettingsSection } from "@/screens/settings/settings-section";
-import { useAppSettings, type AppSettings, type SendBehavior } from "@/hooks/use-settings";
+import {
+  useAppSettings,
+  useSettings,
+  type AppSettings,
+  type SendBehavior,
+  type Settings as EffectiveSettings,
+} from "@/hooks/use-settings";
 import { THEME_SWATCHES } from "@/styles/theme";
 import { getHostRuntimeStore, isHostRuntimeConnected, useHosts } from "@/runtime/host-runtime";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
@@ -354,7 +360,7 @@ function getUpdateButtonLabel(
 }
 
 function DesktopAppUpdateRow() {
-  const { settings, updateSettings } = useAppSettings();
+  const { settings, updateSettings } = useSettings();
   const {
     isDesktopApp,
     statusText,
@@ -384,7 +390,7 @@ function DesktopAppUpdateRow() {
   }, [checkForUpdates, isDesktopApp]);
 
   const handleReleaseChannelChange = useCallback(
-    (releaseChannel: AppSettings["releaseChannel"]) => {
+    (releaseChannel: EffectiveSettings["releaseChannel"]) => {
       void updateSettings({ releaseChannel });
     },
     [updateSettings],

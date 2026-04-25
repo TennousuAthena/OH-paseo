@@ -48,6 +48,7 @@ import {
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
 import { ToastProvider } from "@/contexts/toast-context";
 import { VoiceProvider } from "@/contexts/voice-context";
+import { initializeHostRuntime } from "@/app/host-runtime-bootstrap";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { updateDesktopWindowControls } from "@/desktop/electron/window";
@@ -179,19 +180,18 @@ function PushNotificationRouter() {
         });
       }
 
-      const target = globalThis as unknown as EventTarget;
       const openFromWebClick = (event: Event) => {
         const customEvent = event as CustomEvent<WebNotificationClickDetail>;
         event.preventDefault();
         openNotification(customEvent.detail?.data);
       };
 
-      target.addEventListener(WEB_NOTIFICATION_CLICK_EVENT, openFromWebClick as EventListener);
+      window.addEventListener(WEB_NOTIFICATION_CLICK_EVENT, openFromWebClick as EventListener);
 
       return () => {
         cancelled = true;
         removeDesktopNotificationListener?.();
-        target.removeEventListener(WEB_NOTIFICATION_CLICK_EVENT, openFromWebClick as EventListener);
+        window.removeEventListener(WEB_NOTIFICATION_CLICK_EVENT, openFromWebClick as EventListener);
       };
     }
 
@@ -278,93 +278,45 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    let cancelAnyOnline: (() => void) | null = null;
+    let cancelInitialization: (() => void) | null = null;
     const shouldManageDesktop = shouldUseDesktopDaemon();
     const store = getHostRuntimeStore();
 
-    const init = async () => {
-      const settings = await loadSettingsFromStorage();
-      const isDesktopManaged = shouldManageDesktop && settings.manageBuiltInDaemon;
-      await store.loadFromStorage();
-      if (isDesktopManaged) {
-        setPhase("starting-daemon");
-        setError(null);
-
-        let raceSettled = false;
-
-        const anyOnline = store.waitForAnyConnectionOnline();
-        cancelAnyOnline = anyOnline.cancel;
-
-        const bootstrapPromise = (async (): Promise<
-          { type: "online" } | { type: "error"; error: string }
-        > => {
-          try {
-            const bootstrapResult = await store.bootstrapDesktop();
-            if (!bootstrapResult.ok) {
-              return { type: "error", error: bootstrapResult.error };
-            }
-            if (!cancelled && !raceSettled) {
-              setPhase("connecting");
-            }
-            await store.addConnectionFromListenAndWaitForOnline({
-              listenAddress: bootstrapResult.listenAddress,
-              serverId: bootstrapResult.serverId,
-              hostname: bootstrapResult.hostname,
-            });
-            return { type: "online" };
-          } catch (err) {
-            return {
-              type: "error",
-              error: err instanceof Error ? err.message : String(err),
-            };
-          }
-        })();
-
-        const result = await Promise.race([
-          anyOnline.promise.then((): { type: "online" } => ({ type: "online" })),
-          bootstrapPromise,
-        ]);
-
-        raceSettled = true;
-        anyOnline.cancel();
-
-        if (!cancelled) {
-          if (result.type === "online") {
-            setPhase("online");
-            setError(null);
-          } else {
-            setPhase("error");
-            setError(result.error);
-          }
+    void initializeHostRuntime({
+      shouldManageDesktop,
+      loadSettings: loadSettingsFromStorage,
+      store,
+      setPhase,
+      setError,
+      isCancelled: () => cancelled,
+    })
+      .then((cleanup) => {
+        if (cancelled) {
+          cleanup();
+          return cleanup;
         }
-      } else {
-        setPhase("connecting");
-        setError(null);
-        await store.bootstrap({ manageBuiltInDaemon: settings.manageBuiltInDaemon });
-        if (!cancelled) {
-          setPhase("online");
-          setError(null);
+        cancelInitialization = cleanup;
+        return cleanup;
+      })
+      .catch((bootstrapError) => {
+        console.error("[HostRuntime] Failed to initialize store", bootstrapError);
+        if (cancelled) {
+          return;
         }
-      }
-    };
-
-    void init().catch((bootstrapError) => {
-      console.error("[HostRuntime] Failed to initialize store", bootstrapError);
-      if (cancelled) {
-        return;
-      }
-      if (shouldManageDesktop) {
-        setPhase("error");
-        setError(bootstrapError instanceof Error ? bootstrapError.message : String(bootstrapError));
-        return;
-      }
-      setPhase("online");
-      setError(null);
-    });
+        if (shouldManageDesktop) {
+          setPhase("error");
+          setError(
+            bootstrapError instanceof Error ? bootstrapError.message : String(bootstrapError),
+          );
+          return;
+        }
+        setPhase("online");
+        setError(null);
+      });
 
     return () => {
       cancelled = true;
-      cancelAnyOnline?.();
+      cancelInitialization?.();
     };
   }, [retryToken]);
 
