@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import React, { type ReactElement, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -7,7 +7,6 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import { ArrowUpRight, Play, Pause, RotateCw, Copy, FileText, Activity } from "lucide-react-native";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
-import { useAppSettings } from "@/hooks/use-settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
@@ -19,21 +18,25 @@ import {
   stopDesktopDaemon,
 } from "@/desktop/daemon/desktop-daemon";
 import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
+import { useDesktopSettings, type DesktopSettings } from "@/desktop/settings/desktop-settings";
 import type { DesktopDaemonStatus } from "@/desktop/daemon/desktop-daemon";
 import { resolveAppVersion } from "@/utils/app-version";
 
-function getDaemonManagementButtonLabel(isUpdating: boolean, isPaused: boolean): string {
+type DesktopDaemonSettings = DesktopSettings["daemon"];
+
+function managementLabel(isUpdating: boolean, isPaused: boolean): string {
   if (isUpdating) return isPaused ? "Resuming..." : "Pausing...";
   return isPaused ? "Resume" : "Pause";
 }
 
-function getDaemonRestartButtonLabel(
-  isRestarting: boolean,
-  daemonStatus: string | undefined,
-  actionLabel: string,
-): string {
-  if (!isRestarting) return actionLabel;
-  return daemonStatus === "running" ? "Restarting..." : "Starting...";
+function keepRunningLabel(isUpdating: boolean, isEnabled: boolean): string {
+  if (isUpdating) return isEnabled ? "Disabling..." : "Enabling...";
+  return isEnabled ? "Disable" : "Enable";
+}
+
+function restartLabel(isRestarting: boolean, isRunning: boolean, idleLabel: string): string {
+  if (!isRestarting) return idleLabel;
+  return isRunning ? "Restarting..." : "Starting...";
 }
 
 function useDaemonRestartAction(args: {
@@ -109,8 +112,8 @@ function useDaemonRestartAction(args: {
 
 function useDaemonManagementToggle(args: {
   daemonStatus: DesktopDaemonStatus | null;
-  settings: { manageBuiltInDaemon: boolean };
-  updateSettings: (next: { manageBuiltInDaemon: boolean }) => Promise<unknown>;
+  settings: DesktopDaemonSettings;
+  updateSettings: (next: Partial<DesktopDaemonSettings>) => Promise<unknown>;
   setStatus: (status: DesktopDaemonStatus) => void;
   setStatusMessage: (message: string | null) => void;
   refetch: () => void;
@@ -200,6 +203,28 @@ function useDaemonManagementToggle(args: {
   return { isUpdatingDaemonManagement, handleToggleDaemonManagement };
 }
 
+function useKeepRunningAfterQuitToggle(args: {
+  settings: DesktopDaemonSettings;
+  updateSettings: (next: Partial<DesktopDaemonSettings>) => Promise<unknown>;
+}) {
+  const { settings, updateSettings } = args;
+  const [isUpdatingKeepRunningAfterQuit, setIsUpdatingKeepRunningAfterQuit] = useState(false);
+
+  const handleToggleKeepRunningAfterQuit = useCallback(() => {
+    setIsUpdatingKeepRunningAfterQuit(true);
+    void updateSettings({ keepRunningAfterQuit: !settings.keepRunningAfterQuit })
+      .catch((error) => {
+        console.error("[Settings] Failed to update desktop quit daemon behavior", error);
+        Alert.alert("Error", "Unable to update the desktop quit daemon behavior.");
+      })
+      .finally(() => {
+        setIsUpdatingKeepRunningAfterQuit(false);
+      });
+  }, [settings.keepRunningAfterQuit, updateSettings]);
+
+  return { isUpdatingKeepRunningAfterQuit, handleToggleKeepRunningAfterQuit };
+}
+
 function useDaemonCliStatusModal() {
   const [cliStatusOutput, setCliStatusOutput] = useState<string | null>(null);
   const [isCliStatusModalOpen, setIsCliStatusModalOpen] = useState(false);
@@ -233,10 +258,6 @@ function useDaemonCliStatusModal() {
       });
   }, [cliStatusOutput]);
 
-  const handleRunCliStatus = useCallback(() => {
-    void handleOpenCliStatus();
-  }, [handleOpenCliStatus]);
-
   const handleCloseCliStatusModal = useCallback(() => setIsCliStatusModalOpen(false), []);
 
   return {
@@ -244,7 +265,7 @@ function useDaemonCliStatusModal() {
     isCliStatusModalOpen,
     isLoadingCliStatus,
     handleCopyCliStatus,
-    handleRunCliStatus,
+    handleOpenCliStatus,
     handleCloseCliStatusModal,
   };
 }
@@ -348,14 +369,17 @@ interface DaemonInfoCardProps {
   daemonStatusStateText: string;
   daemonStatusDetailText: string;
   isDaemonManagementPaused: boolean;
-  playIcon: React.ReactElement;
-  pauseIcon: React.ReactElement;
-  rotateIcon: React.ReactElement;
-  copyIcon: React.ReactElement;
-  fileTextIcon: React.ReactElement;
-  activityIcon: React.ReactElement;
+  playIcon: ReactElement;
+  pauseIcon: ReactElement;
+  rotateIcon: ReactElement;
+  copyIcon: ReactElement;
+  fileTextIcon: ReactElement;
+  activityIcon: ReactElement;
   handleToggleDaemonManagement: () => void;
   isUpdatingDaemonManagement: boolean;
+  keepRunningAfterQuit: boolean;
+  handleToggleKeepRunningAfterQuit: () => void;
+  isUpdatingKeepRunningAfterQuit: boolean;
   daemonActionLabel: string;
   daemonActionMessage: string;
   statusMessage: string | null;
@@ -382,6 +406,9 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
     activityIcon,
     handleToggleDaemonManagement,
     isUpdatingDaemonManagement,
+    keepRunningAfterQuit,
+    handleToggleKeepRunningAfterQuit,
+    isUpdatingKeepRunningAfterQuit,
     daemonActionLabel,
     daemonActionMessage,
     statusMessage,
@@ -394,6 +421,20 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
     handleRunCliStatus,
     isLoadingCliStatus,
   } = props;
+
+  const managementButtonLabel = managementLabel(
+    isUpdatingDaemonManagement,
+    isDaemonManagementPaused,
+  );
+  const keepRunningButtonLabel = keepRunningLabel(
+    isUpdatingKeepRunningAfterQuit,
+    keepRunningAfterQuit,
+  );
+  const restartButtonLabel = restartLabel(
+    isRestartingDaemon,
+    daemonStatus?.status === "running",
+    daemonActionLabel,
+  );
 
   return (
     <View style={settingsStyles.card}>
@@ -425,7 +466,25 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
           onPress={handleToggleDaemonManagement}
           disabled={isUpdatingDaemonManagement}
         >
-          {getDaemonManagementButtonLabel(isUpdatingDaemonManagement, isDaemonManagementPaused)}
+          {managementButtonLabel}
+        </Button>
+      </View>
+      <View style={ROW_WITH_BORDER_STYLE}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>Keep daemon running after quit</Text>
+          <Text style={settingsStyles.rowHint}>
+            {keepRunningAfterQuit
+              ? "Enabled. The built-in daemon keeps running after you close the desktop app."
+              : "Disabled. Quitting the desktop app stops the built-in daemon if desktop management is enabled."}
+          </Text>
+        </View>
+        <Button
+          variant="outline"
+          size="sm"
+          onPress={handleToggleKeepRunningAfterQuit}
+          disabled={isUpdatingKeepRunningAfterQuit}
+        >
+          {keepRunningButtonLabel}
         </Button>
       </View>
       <View style={ROW_WITH_BORDER_STYLE}>
@@ -441,7 +500,7 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
           onPress={handleUpdateLocalDaemon}
           disabled={isRestartingDaemon}
         >
-          {getDaemonRestartButtonLabel(isRestartingDaemon, daemonStatus?.status, daemonActionLabel)}
+          {restartButtonLabel}
         </Button>
       </View>
       <View style={ROW_WITH_BORDER_STYLE}>
@@ -493,7 +552,12 @@ export function LocalDaemonSection() {
   const { theme } = useUnistyles();
   const showSection = shouldUseDesktopDaemon();
   const appVersion = resolveAppVersion();
-  const { settings, updateSettings } = useAppSettings();
+  const { settings, updateSettings, isLoading: isLoadingSettings } = useDesktopSettings();
+  const daemonSettings = settings.daemon;
+  const updateDaemonSettings = useCallback(
+    (updates: Partial<DesktopDaemonSettings>) => updateSettings({ daemon: updates }),
+    [updateSettings],
+  );
   const { data, isLoading, error: statusError, setStatus, refetch } = useDaemonStatus();
 
   const daemonStatus = data?.status ?? null;
@@ -504,7 +568,7 @@ export function LocalDaemonSection() {
   const daemonStatusStateText =
     statusError ?? (daemonStatus?.status === "running" ? daemonStatus.status : "not running");
   const daemonStatusDetailText = `PID ${daemonStatus?.pid ? daemonStatus.pid : "—"}`;
-  const isDaemonManagementPaused = !settings.manageBuiltInDaemon;
+  const isDaemonManagementPaused = !daemonSettings.manageBuiltInDaemon;
   const daemonActionLabel = daemonStatus?.status === "running" ? "Restart daemon" : "Start daemon";
   const daemonActionMessage =
     daemonStatus?.status === "running"
@@ -522,12 +586,17 @@ export function LocalDaemonSection() {
 
   const { isUpdatingDaemonManagement, handleToggleDaemonManagement } = useDaemonManagementToggle({
     daemonStatus,
-    settings,
-    updateSettings,
+    settings: daemonSettings,
+    updateSettings: updateDaemonSettings,
     setStatus,
     setStatusMessage,
     refetch,
   });
+  const { isUpdatingKeepRunningAfterQuit, handleToggleKeepRunningAfterQuit } =
+    useKeepRunningAfterQuitToggle({
+      settings: daemonSettings,
+      updateSettings: updateDaemonSettings,
+    });
 
   const { isLogsModalOpen, handleCopyLogPath, handleOpenLogs, handleCloseLogsModal } =
     useDaemonLogsModal(daemonLogs);
@@ -537,9 +606,12 @@ export function LocalDaemonSection() {
     isCliStatusModalOpen,
     isLoadingCliStatus,
     handleCopyCliStatus,
-    handleRunCliStatus,
+    handleOpenCliStatus,
     handleCloseCliStatusModal,
   } = useDaemonCliStatusModal();
+  const handleRunCliStatus = useCallback(() => {
+    void handleOpenCliStatus();
+  }, [handleOpenCliStatus]);
 
   const handleOpenAdvancedSettings = useCallback(
     () => void openExternalUrl(ADVANCED_DAEMON_SETTINGS_URL),
@@ -602,7 +674,7 @@ export function LocalDaemonSection() {
       trailing={advancedSettingsButton}
       testID="host-page-daemon-lifecycle-card"
     >
-      {isLoading ? (
+      {isLoading || isLoadingSettings ? (
         <View style={LOADING_CARD_STYLE}>
           <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
         </View>
@@ -620,6 +692,9 @@ export function LocalDaemonSection() {
             activityIcon={activityIcon}
             handleToggleDaemonManagement={handleToggleDaemonManagement}
             isUpdatingDaemonManagement={isUpdatingDaemonManagement}
+            keepRunningAfterQuit={daemonSettings.keepRunningAfterQuit}
+            handleToggleKeepRunningAfterQuit={handleToggleKeepRunningAfterQuit}
+            isUpdatingKeepRunningAfterQuit={isUpdatingKeepRunningAfterQuit}
             daemonActionLabel={daemonActionLabel}
             daemonActionMessage={daemonActionMessage}
             statusMessage={statusMessage}

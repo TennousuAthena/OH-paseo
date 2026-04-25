@@ -34,6 +34,12 @@ import {
 import { registerOpenerHandlers } from "./features/opener.js";
 import { setupApplicationMenu } from "./features/menu.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
+import { getDesktopSettingsStore } from "./settings/desktop-settings-electron.js";
+import { resolveDesktopDaemonStatus, stopDesktopDaemon } from "./daemon/daemon-manager.js";
+import {
+  createBeforeQuitHandler,
+  stopDesktopManagedDaemonOnQuitIfNeeded,
+} from "./daemon/quit-lifecycle.js";
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const APP_SCHEME = "paseo";
@@ -340,9 +346,22 @@ void bootstrap().catch((error) => {
   process.exit(1);
 });
 
-app.on("before-quit", () => {
-  closeAllTransportSessions();
-});
+app.on(
+  "before-quit",
+  createBeforeQuitHandler({
+    app,
+    closeTransportSessions: closeAllTransportSessions,
+    stopDesktopManagedDaemonIfNeeded: () =>
+      stopDesktopManagedDaemonOnQuitIfNeeded({
+        settingsStore: getDesktopSettingsStore(),
+        resolveStatus: resolveDesktopDaemonStatus,
+        stopDaemon: stopDesktopDaemon,
+      }),
+    onStopError: (error) => {
+      log.error("[desktop daemon] failed to stop managed daemon on quit", error);
+    },
+  }),
+);
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
