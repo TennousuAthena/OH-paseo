@@ -392,7 +392,7 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
 
   if (!isError) {
     return (
-      <View style={styles.container}>
+      <View testID="startup-splash" style={styles.container}>
         <TitlebarDragRegion />
         <LogoShimmer />
       </View>

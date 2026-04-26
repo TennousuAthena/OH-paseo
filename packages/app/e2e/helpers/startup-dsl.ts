@@ -164,7 +164,7 @@ class StartupAssertions {
   }
 
   async expectsDesktopDaemonStartup(): Promise<this> {
-    await expect(this.page.getByText("Starting local server...", { exact: true })).toBeVisible({
+    await expect(this.page.getByTestId("startup-splash")).toBeVisible({
       timeout: 15_000,
     });
     return this;
