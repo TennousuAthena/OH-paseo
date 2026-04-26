@@ -46,6 +46,7 @@ export async function initializeHostRuntime(args: {
   setPhase("starting-daemon");
   setError(null);
 
+  let raceSettled = false;
   const anyOnline = store.waitForAnyConnectionOnline();
 
   const bootstrapPromise = (async (): Promise<BootstrapOutcome> => {
@@ -54,7 +55,7 @@ export async function initializeHostRuntime(args: {
       if (!bootstrapResult.ok) {
         return { type: "error", error: bootstrapResult.error };
       }
-      if (!isCancelled()) {
+      if (!isCancelled() && !raceSettled) {
         setPhase("connecting");
       }
       await store.addConnectionFromListenAndWaitForOnline({
@@ -76,6 +77,7 @@ export async function initializeHostRuntime(args: {
   }));
   const result = await Promise.race([onlineFromAny, bootstrapPromise]);
 
+  raceSettled = true;
   anyOnline.cancel();
 
   if (!isCancelled()) {

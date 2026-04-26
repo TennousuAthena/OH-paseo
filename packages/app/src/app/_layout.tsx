@@ -267,7 +267,9 @@ function HostSessionManager() {
 }
 
 function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
-  const [phase, setPhase] = useState<HostRuntimeBootstrapState["phase"]>("starting-daemon");
+  const [phase, setPhase] = useState<HostRuntimeBootstrapState["phase"]>(() =>
+    getHostRuntimeStore().getEarliestOnlineHostServerId() !== null ? "online" : "starting-daemon",
+  );
   const [error, setError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   const retry = useCallback(() => {

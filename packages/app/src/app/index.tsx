@@ -2,33 +2,17 @@ import { useEffect, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "expo-router";
 import { StartupSplashScreen } from "@/screens/startup-splash-screen";
 import { useHostRuntimeBootstrapState, useStoreReady } from "@/app/_layout";
-import { getHostRuntimeStore, isHostRuntimeConnected, useHosts } from "@/runtime/host-runtime";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { buildHostRootRoute } from "@/utils/host-routes";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 
 const WELCOME_ROUTE = "/welcome";
 
-function useAnyOnlineHostServerId(serverIds: string[]): string | null {
+function useEarliestOnlineHostServerId(): string | null {
   const runtime = getHostRuntimeStore();
-
   return useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),
-    () => {
-      let firstOnlineServerId: string | null = null;
-      let firstOnlineAt: string | null = null;
-      for (const serverId of serverIds) {
-        const snapshot = runtime.getSnapshot(serverId);
-        const lastOnlineAt = snapshot?.lastOnlineAt ?? null;
-        if (!isHostRuntimeConnected(snapshot) || !lastOnlineAt) {
-          continue;
-        }
-        if (!firstOnlineAt || lastOnlineAt < firstOnlineAt) {
-          firstOnlineAt = lastOnlineAt;
-          firstOnlineServerId = serverId;
-        }
-      }
-      return firstOnlineServerId;
-    },
+    () => runtime.getEarliestOnlineHostServerId(),
     () => null,
   );
 }
@@ -40,8 +24,7 @@ export default function Index() {
   const pathname = usePathname();
   const bootstrapState = useHostRuntimeBootstrapState();
   const storeReady = useStoreReady();
-  const hosts = useHosts();
-  const anyOnlineServerId = useAnyOnlineHostServerId(hosts.map((host) => host.serverId));
+  const anyOnlineServerId = useEarliestOnlineHostServerId();
 
   useEffect(() => {
     if (!storeReady) {

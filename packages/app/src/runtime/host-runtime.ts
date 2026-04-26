@@ -1739,25 +1739,31 @@ export class HostRuntimeStore {
     };
   }
 
+  getEarliestOnlineHostServerId(): string | null {
+    let earliestServerId: string | null = null;
+    let earliestOnlineAt: string | null = null;
+    for (const host of this.hosts) {
+      const snapshot = this.getSnapshot(host.serverId);
+      if (!isHostRuntimeConnected(snapshot) || !snapshot?.lastOnlineAt) continue;
+      if (!earliestOnlineAt || snapshot.lastOnlineAt < earliestOnlineAt) {
+        earliestOnlineAt = snapshot.lastOnlineAt;
+        earliestServerId = host.serverId;
+      }
+    }
+    return earliestServerId;
+  }
+
   waitForAnyConnectionOnline(): { promise: Promise<void>; cancel: () => void } {
     let unsubscribe: (() => void) | null = null;
 
-    const isAnyOnline = (): boolean => {
-      for (const host of this.hosts) {
-        const snapshot = this.getSnapshot(host.serverId);
-        if (snapshot?.connectionStatus === "online") return true;
-      }
-      return false;
-    };
-
     const promise = new Promise<void>((resolve) => {
-      if (isAnyOnline()) {
+      if (this.getEarliestOnlineHostServerId() !== null) {
         resolve();
         return;
       }
 
       unsubscribe = this.subscribeAll(() => {
-        if (isAnyOnline()) {
+        if (this.getEarliestOnlineHostServerId() !== null) {
           unsubscribe?.();
           unsubscribe = null;
           resolve();
