@@ -96,6 +96,31 @@ function logFilePath(): string {
   return path.join(getPaseoHome(), DAEMON_LOG_FILENAME);
 }
 
+export function isDesktopManagedDaemonRunningSync(): boolean {
+  try {
+    const raw = readFileSync(path.join(getPaseoHome(), "paseo.pid"), "utf-8");
+    const lock = JSON.parse(raw) as { pid?: unknown; desktopManaged?: unknown };
+    if (lock.desktopManaged !== true) return false;
+    if (typeof lock.pid !== "number" || !Number.isInteger(lock.pid)) return false;
+    return isProcessRunning(lock.pid);
+  } catch {
+    return false;
+  }
+}
+
+export async function stopDesktopDaemonViaCli(): Promise<void> {
+  await runCliJsonCommand([
+    "daemon",
+    "stop",
+    "--json",
+    "--timeout",
+    "5",
+    "--force",
+    "--kill-timeout",
+    "5",
+  ]);
+}
+
 function isProcessRunning(pid: number): boolean {
   try {
     process.kill(pid, 0);

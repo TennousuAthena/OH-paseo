@@ -7,49 +7,72 @@ import {
   stopDesktopManagedDaemonOnQuitIfNeeded,
 } from "./quit-lifecycle";
 
+const SETTINGS_KEEP_RUNNING = DEFAULT_DESKTOP_SETTINGS;
+const SETTINGS_STOP_ON_QUIT = {
+  ...DEFAULT_DESKTOP_SETTINGS,
+  daemon: {
+    ...DEFAULT_DESKTOP_SETTINGS.daemon,
+    keepRunningAfterQuit: false,
+  },
+};
+
 describe("quit-lifecycle", () => {
-  it("stops only when quit persistence disables keep-running and the daemon is desktop-managed", () => {
-    expect(
-      shouldStopDesktopManagedDaemonOnQuit({
-        settings: {
-          ...DEFAULT_DESKTOP_SETTINGS,
-          daemon: {
-            ...DEFAULT_DESKTOP_SETTINGS.daemon,
-            keepRunningAfterQuit: false,
-          },
-        },
-        daemonStatus: {
-          status: "running",
-          desktopManaged: true,
-        },
-      }),
-    ).toBe(true);
+  it("only stops when keepRunningAfterQuit is explicitly disabled", () => {
+    expect(shouldStopDesktopManagedDaemonOnQuit(SETTINGS_STOP_ON_QUIT)).toBe(true);
+    expect(shouldStopDesktopManagedDaemonOnQuit(SETTINGS_KEEP_RUNNING)).toBe(false);
+  });
+
+  it("short-circuits without inspecting the daemon when keep-running is on", async () => {
+    const isDesktopManagedDaemonRunning = vi.fn(() => true);
+    const stopDaemon = vi.fn(async () => undefined);
+    const showShutdownFeedback = vi.fn();
+
+    const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
+      settingsStore: { get: async () => SETTINGS_KEEP_RUNNING },
+      isDesktopManagedDaemonRunning,
+      stopDaemon,
+      showShutdownFeedback,
+    });
+
+    expect(stopped).toBe(false);
+    expect(isDesktopManagedDaemonRunning).not.toHaveBeenCalled();
+    expect(stopDaemon).not.toHaveBeenCalled();
+    expect(showShutdownFeedback).not.toHaveBeenCalled();
   });
 
   it("does not stop a manually started daemon on quit", async () => {
     const stopDaemon = vi.fn(async () => undefined);
+    const showShutdownFeedback = vi.fn();
 
     const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
-      settingsStore: {
-        get: async () => ({
-          ...DEFAULT_DESKTOP_SETTINGS,
-          daemon: {
-            ...DEFAULT_DESKTOP_SETTINGS.daemon,
-            keepRunningAfterQuit: false,
-          },
-        }),
-        patch: async () => DEFAULT_DESKTOP_SETTINGS,
-        migrateLegacyRendererSettings: async () => DEFAULT_DESKTOP_SETTINGS,
-      },
-      resolveStatus: async () => ({
-        status: "running",
-        desktopManaged: false,
-      }),
+      settingsStore: { get: async () => SETTINGS_STOP_ON_QUIT },
+      isDesktopManagedDaemonRunning: () => false,
       stopDaemon,
+      showShutdownFeedback,
     });
 
     expect(stopped).toBe(false);
     expect(stopDaemon).not.toHaveBeenCalled();
+    expect(showShutdownFeedback).not.toHaveBeenCalled();
+  });
+
+  it("shows feedback then stops a desktop-managed daemon", async () => {
+    const stopDaemon = vi.fn(async () => undefined);
+    const showShutdownFeedback = vi.fn();
+
+    const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
+      settingsStore: { get: async () => SETTINGS_STOP_ON_QUIT },
+      isDesktopManagedDaemonRunning: () => true,
+      stopDaemon,
+      showShutdownFeedback,
+    });
+
+    expect(stopped).toBe(true);
+    expect(showShutdownFeedback).toHaveBeenCalledTimes(1);
+    expect(stopDaemon).toHaveBeenCalledTimes(1);
+    expect(showShutdownFeedback.mock.invocationCallOrder[0]).toBeLessThan(
+      stopDaemon.mock.invocationCallOrder[0],
+    );
   });
 
   it("gates quit until the stop decision completes, then lets the next quit pass through", async () => {

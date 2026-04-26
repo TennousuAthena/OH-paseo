@@ -6,11 +6,6 @@ interface QuitLifecycleSettings {
   };
 }
 
-interface QuitLifecycleStatus {
-  status: "starting" | "running" | "stopped" | "errored";
-  desktopManaged: boolean;
-}
-
 interface BeforeQuitEvent {
   preventDefault(): void;
 }
@@ -19,37 +14,31 @@ interface BeforeQuitApp {
   quit(): void;
 }
 
-export function shouldStopDesktopManagedDaemonOnQuit({
-  settings,
-  daemonStatus,
-}: {
-  settings: QuitLifecycleSettings;
-  daemonStatus: QuitLifecycleStatus;
-}): boolean {
-  return (
-    settings.daemon.keepRunningAfterQuit === false &&
-    daemonStatus.status === "running" &&
-    daemonStatus.desktopManaged
-  );
+export interface StopOnQuitDeps {
+  settingsStore: Pick<DesktopSettingsStore, "get">;
+  isDesktopManagedDaemonRunning: () => boolean;
+  stopDaemon: () => Promise<unknown>;
+  showShutdownFeedback: () => void;
 }
 
-export async function stopDesktopManagedDaemonOnQuitIfNeeded({
-  settingsStore,
-  resolveStatus,
-  stopDaemon,
-}: {
-  settingsStore: DesktopSettingsStore;
-  resolveStatus: () => Promise<QuitLifecycleStatus>;
-  stopDaemon: () => Promise<unknown>;
-}): Promise<boolean> {
-  const settings = await settingsStore.get();
-  const daemonStatus = await resolveStatus();
+export function shouldStopDesktopManagedDaemonOnQuit(settings: QuitLifecycleSettings): boolean {
+  return settings.daemon.keepRunningAfterQuit === false;
+}
 
-  if (!shouldStopDesktopManagedDaemonOnQuit({ settings, daemonStatus })) {
+export async function stopDesktopManagedDaemonOnQuitIfNeeded(
+  deps: StopOnQuitDeps,
+): Promise<boolean> {
+  const settings = await deps.settingsStore.get();
+  if (!shouldStopDesktopManagedDaemonOnQuit(settings)) {
     return false;
   }
 
-  await stopDaemon();
+  if (!deps.isDesktopManagedDaemonRunning()) {
+    return false;
+  }
+
+  deps.showShutdownFeedback();
+  await deps.stopDaemon();
   return true;
 }
 

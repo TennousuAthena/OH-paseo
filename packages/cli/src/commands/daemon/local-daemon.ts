@@ -43,6 +43,7 @@ export interface DetachedStartResult {
 export interface StopLocalDaemonOptions {
   home?: string;
   timeoutMs?: number;
+  killTimeoutMs?: number;
   force?: boolean;
 }
 
@@ -64,11 +65,11 @@ type DetachedStartupResult = { exitedEarly: false } | ({ exitedEarly: true } & P
 
 const DETACHED_STARTUP_GRACE_MS = 1200;
 const PID_POLL_INTERVAL_MS = 100;
-const KILL_TIMEOUT_MS = 3000;
 const DAEMON_LOG_FILENAME = "daemon.log";
 const DAEMON_PID_FILENAME = "paseo.pid";
 
 export const DEFAULT_STOP_TIMEOUT_MS = 15_000;
+export const DEFAULT_KILL_TIMEOUT_MS = 3_000;
 
 const require = createRequire(import.meta.url);
 
@@ -494,6 +495,7 @@ export async function stopLocalDaemon(
   options: StopLocalDaemonOptions = {},
 ): Promise<StopLocalDaemonResult> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_STOP_TIMEOUT_MS;
+  const killTimeoutMs = options.killTimeoutMs ?? DEFAULT_KILL_TIMEOUT_MS;
   const state = resolveLocalDaemonState({ home: options.home });
 
   if (!state.pidInfo || !state.running) {
@@ -530,7 +532,7 @@ export async function stopLocalDaemon(
   if (!stopped && options.force) {
     forced = true;
     signalProcessGroupSafely(pid, "SIGKILL");
-    stopped = await waitForPidExit(pid, KILL_TIMEOUT_MS);
+    stopped = await waitForPidExit(pid, killTimeoutMs);
   }
 
   if (!stopped) {

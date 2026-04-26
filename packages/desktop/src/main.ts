@@ -9,7 +9,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { app, BrowserWindow, ipcMain, nativeImage, net, protocol } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol } from "electron";
 import { registerDaemonManager } from "./daemon/daemon-manager.js";
 import {
   parseCliPassthroughArgsFromArgv,
@@ -35,7 +35,10 @@ import { registerOpenerHandlers } from "./features/opener.js";
 import { setupApplicationMenu } from "./features/menu.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
 import { getDesktopSettingsStore } from "./settings/desktop-settings-electron.js";
-import { resolveDesktopDaemonStatus, stopDesktopDaemon } from "./daemon/daemon-manager.js";
+import {
+  isDesktopManagedDaemonRunningSync,
+  stopDesktopDaemonViaCli,
+} from "./daemon/daemon-manager.js";
 import {
   createBeforeQuitHandler,
   stopDesktopManagedDaemonOnQuitIfNeeded,
@@ -346,6 +349,16 @@ void bootstrap().catch((error) => {
   process.exit(1);
 });
 
+function showDaemonShutdownDialog(): void {
+  void dialog.showMessageBox({
+    type: "info",
+    message: "Shutting down Paseo daemon…",
+    detail: "Paseo will quit once the local daemon has stopped.",
+    buttons: [],
+    noLink: true,
+  });
+}
+
 app.on(
   "before-quit",
   createBeforeQuitHandler({
@@ -354,8 +367,9 @@ app.on(
     stopDesktopManagedDaemonIfNeeded: () =>
       stopDesktopManagedDaemonOnQuitIfNeeded({
         settingsStore: getDesktopSettingsStore(),
-        resolveStatus: resolveDesktopDaemonStatus,
-        stopDaemon: stopDesktopDaemon,
+        isDesktopManagedDaemonRunning: isDesktopManagedDaemonRunningSync,
+        stopDaemon: stopDesktopDaemonViaCli,
+        showShutdownFeedback: showDaemonShutdownDialog,
       }),
     onStopError: (error) => {
       log.error("[desktop daemon] failed to stop managed daemon on quit", error);
