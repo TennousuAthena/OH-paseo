@@ -235,7 +235,7 @@ try {
       );
       const output = modelsResult.stdout + modelsResult.stderr;
       assert(
-        output.includes("Provider claude is not available"),
+        output.includes("Provider claude is disabled"),
         "provider models should surface the daemon disabled error",
       );
       assert(
