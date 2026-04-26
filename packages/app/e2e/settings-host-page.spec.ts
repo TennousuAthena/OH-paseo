@@ -53,8 +53,7 @@ test.describe("Settings host page", () => {
 
     const injectMcpCard = page.getByTestId("host-page-inject-mcp-card");
     await expect(injectMcpCard).toBeVisible();
-    await expect(injectMcpCard.getByRole("button", { name: "On", exact: true })).toBeVisible();
-    await expect(injectMcpCard.getByRole("button", { name: "Off", exact: true })).toBeVisible();
+    await expect(injectMcpCard.getByRole("switch", { name: "Inject Paseo tools" })).toBeVisible();
 
     await expect(page.getByTestId("host-page-restart-card")).toBeVisible();
     await expect(page.getByTestId("host-page-restart-button")).toBeVisible();
