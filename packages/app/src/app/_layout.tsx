@@ -27,7 +27,7 @@ import { Extrapolation, interpolate, runOnJS, useSharedValue } from "react-nativ
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { CommandCenter } from "@/components/command-center";
-import { DaemonVersionMismatchCalloutSource } from "@/components/daemon-version-mismatch-callout-source";
+import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { LeftSidebar } from "@/components/left-sidebar";
@@ -470,7 +470,7 @@ function AppContainer({
       {isCompactLayout && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
       <DownloadToast />
       <UpdateCalloutSource />
-      <DaemonVersionMismatchCalloutSource />
+      <WorktreeSetupCalloutSource />
       <CommandCenter />
       <ProjectPickerModal />
       <WorkspaceShortcutTargetsSubscriber
