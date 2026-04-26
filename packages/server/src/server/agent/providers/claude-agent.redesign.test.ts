@@ -620,6 +620,56 @@ test("maps tool_result content shapes into deterministic string output", async (
   }
 });
 
+test("Grep tool_result string content flows to a search detail with content", async () => {
+  const session = await createSession();
+  const internal = session as unknown as {
+    buildToolOutput: (
+      block: Record<string, unknown>,
+      entry: Record<string, unknown> | undefined,
+    ) => Record<string, unknown> | undefined;
+  };
+
+  const grepEntry = {
+    id: "tool-grep-1",
+    name: "Grep",
+    server: "Grep",
+    classification: "search",
+    started: true,
+    input: { pattern: "MaskedView", output_mode: "files_with_matches" },
+  };
+
+  try {
+    const output = internal.buildToolOutput(
+      {
+        type: "tool_result",
+        tool_use_id: "tool-grep-1",
+        tool_name: "Grep",
+        content: "Found 2 files\nsrc/foo.tsx\nsrc/bar.tsx",
+        is_error: false,
+      },
+      grepEntry,
+    );
+
+    const { mapClaudeCompletedToolCall } = await import("./claude/tool-call-mapper.js");
+    const item = mapClaudeCompletedToolCall({
+      callId: "tool-grep-1",
+      name: "Grep",
+      input: grepEntry.input,
+      output: output ?? null,
+    });
+
+    expect(item?.detail).toEqual({
+      type: "search",
+      query: "MaskedView",
+      toolName: "grep",
+      content: "Found 2 files\nsrc/foo.tsx\nsrc/bar.tsx",
+      numFiles: 0,
+    });
+  } finally {
+    await session.close();
+  }
+});
+
 test("completes a foreground run when only system metadata arrives before the first assistant message", async () => {
   let step = 0;
   sdkQueryFactory.mockImplementation(() =>

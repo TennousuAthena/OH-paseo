@@ -382,15 +382,6 @@ interface SearchDetail {
 
 function buildSearchSections(detail: SearchDetail, ds: DetailStyles): ReactNode[] {
   const out: ReactNode[] = [];
-  if (detail.query) {
-    out.push(
-      <View key="search-query" style={styles.section}>
-        <Text selectable style={styles.scrollText}>
-          {detail.query}
-        </Text>
-      </View>,
-    );
-  }
   if (detail.content) {
     out.push(
       <View key="search-content" style={styles.section}>
