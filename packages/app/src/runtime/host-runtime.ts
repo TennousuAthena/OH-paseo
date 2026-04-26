@@ -70,6 +70,10 @@ export interface HostRuntimeSnapshot {
   clientGeneration: number;
 }
 
+export interface StartupHostResolution {
+  serverId: string;
+}
+
 type HostRuntimeSnapshotPatch = Partial<Omit<HostRuntimeSnapshot, "serverId" | "clientGeneration">>;
 
 function setSnapshotPatchField<Key extends keyof HostRuntimeSnapshotPatch>(
@@ -1151,6 +1155,8 @@ const REGISTRY_STORAGE_KEY = "@paseo:daemon-registry";
 const DEFAULT_LOCALHOST_ENDPOINT = process.env.EXPO_PUBLIC_LOCAL_DAEMON?.trim() || "localhost:6767";
 const DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS = 2500;
 const CONNECTION_ONLINE_TIMEOUT_MS = 15_000;
+const STARTUP_HOST_GRACE_MS = 2_000;
+const STARTUP_NO_HOST_ONLINE_TIMEOUT_MS = 5_000;
 const E2E_STORAGE_KEY = "@paseo:e2e";
 
 export class HostRuntimeStore {
@@ -1753,30 +1759,101 @@ export class HostRuntimeStore {
     return earliestServerId;
   }
 
-  waitForAnyConnectionOnline(): { promise: Promise<void>; cancel: () => void } {
+  waitForAnyConnectionOnline(input?: { preferredServerId?: string | null; graceMs?: number }): {
+    promise: Promise<StartupHostResolution | null>;
+    cancel: () => void;
+  } {
     let unsubscribe: (() => void) | null = null;
+    let graceTimeout: ReturnType<typeof setTimeout> | null = null;
+    let noHostOnlineTimeout: ReturnType<typeof setTimeout> | null = null;
+    let fallbackServerId: string | null = null;
+    let settled = false;
 
-    const promise = new Promise<void>((resolve) => {
-      if (this.getEarliestOnlineHostServerId() !== null) {
-        resolve();
-        return;
+    const normalizedPreferredServerId = input?.preferredServerId?.trim() || null;
+    const normalizedGraceMs = Math.max(0, input?.graceMs ?? STARTUP_HOST_GRACE_MS);
+
+    const cleanup = (): void => {
+      if (graceTimeout) {
+        clearTimeout(graceTimeout);
+        graceTimeout = null;
       }
+      if (noHostOnlineTimeout) {
+        clearTimeout(noHostOnlineTimeout);
+        noHostOnlineTimeout = null;
+      }
+      unsubscribe?.();
+      unsubscribe = null;
+    };
 
-      unsubscribe = this.subscribeAll(() => {
-        if (this.getEarliestOnlineHostServerId() !== null) {
-          unsubscribe?.();
-          unsubscribe = null;
-          resolve();
+    const promise = new Promise<StartupHostResolution | null>((resolve) => {
+      const settle = (result: StartupHostResolution | null): void => {
+        if (settled) {
+          return;
         }
-      });
+        settled = true;
+        cleanup();
+        resolve(result);
+      };
+
+      const getPreferredOnlineServerId = (): string | null => {
+        if (!normalizedPreferredServerId) {
+          return null;
+        }
+        return isHostRuntimeConnected(this.getSnapshot(normalizedPreferredServerId))
+          ? normalizedPreferredServerId
+          : null;
+      };
+
+      const evaluate = (): void => {
+        if (this.hosts.length === 0) {
+          settle(null);
+          return;
+        }
+
+        const preferredOnlineServerId = getPreferredOnlineServerId();
+        if (preferredOnlineServerId) {
+          settle({ serverId: preferredOnlineServerId });
+          return;
+        }
+
+        const earliestOnlineServerId = this.getEarliestOnlineHostServerId();
+        if (!earliestOnlineServerId) {
+          if (!noHostOnlineTimeout) {
+            noHostOnlineTimeout = setTimeout(() => {
+              settle(null);
+            }, STARTUP_NO_HOST_ONLINE_TIMEOUT_MS);
+          }
+          return;
+        }
+
+        if (noHostOnlineTimeout) {
+          clearTimeout(noHostOnlineTimeout);
+          noHostOnlineTimeout = null;
+        }
+
+        if (!normalizedPreferredServerId) {
+          settle({ serverId: earliestOnlineServerId });
+          return;
+        }
+
+        if (!fallbackServerId) {
+          fallbackServerId = earliestOnlineServerId;
+          graceTimeout = setTimeout(() => {
+            const latestPreferredOnlineServerId = getPreferredOnlineServerId();
+            settle({
+              serverId: latestPreferredOnlineServerId ?? fallbackServerId ?? earliestOnlineServerId,
+            });
+          }, normalizedGraceMs);
+        }
+      };
+
+      unsubscribe = this.subscribeAll(evaluate);
+      evaluate();
     });
 
     return {
       promise,
-      cancel: () => {
-        unsubscribe?.();
-        unsubscribe = null;
-      },
+      cancel: cleanup,
     };
   }
 

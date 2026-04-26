@@ -1,42 +1,58 @@
-import { useEffect, useSyncExternalStore } from "react";
-import { usePathname, useRouter } from "expo-router";
+import React from "react";
+import { Redirect, usePathname, type Href } from "expo-router";
 import { StartupSplashScreen } from "@/screens/startup-splash-screen";
-import { useHostRuntimeBootstrapState, useStoreReady } from "@/app/_layout";
-import { getHostRuntimeStore } from "@/runtime/host-runtime";
-import { buildHostRootRoute } from "@/utils/host-routes";
+import {
+  type HostRuntimeBootstrapState,
+  useHostRuntimeBootstrapState,
+  useStoreReady,
+} from "@/app/_layout";
+import { buildHostRootRoute, buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 
 const WELCOME_ROUTE = "/welcome";
 
-function useEarliestOnlineHostServerId(): string | null {
-  const runtime = getHostRuntimeStore();
-  return useSyncExternalStore(
-    (onStoreChange) => runtime.subscribeAll(onStoreChange),
-    () => runtime.getEarliestOnlineHostServerId(),
-    () => null,
-  );
-}
-
 const isDesktop = shouldUseDesktopDaemon();
 
 export default function Index() {
-  const router = useRouter();
   const pathname = usePathname();
   const bootstrapState = useHostRuntimeBootstrapState();
   const storeReady = useStoreReady();
-  const anyOnlineServerId = useEarliestOnlineHostServerId();
+  const redirectRoute = resolveStartupRedirectRoute({
+    bootstrapState,
+    pathname,
+    storeReady,
+  });
 
-  useEffect(() => {
-    if (!storeReady) {
-      return;
-    }
-    if (pathname !== "/" && pathname !== "") {
-      return;
-    }
-
-    const targetRoute = anyOnlineServerId ? buildHostRootRoute(anyOnlineServerId) : WELCOME_ROUTE;
-    router.replace(targetRoute);
-  }, [anyOnlineServerId, pathname, router, storeReady]);
+  if (redirectRoute) {
+    return <Redirect href={redirectRoute} />;
+  }
 
   return <StartupSplashScreen bootstrapState={isDesktop ? bootstrapState : undefined} />;
+}
+
+function resolveStartupRedirectRoute(input: {
+  bootstrapState: HostRuntimeBootstrapState;
+  pathname: string;
+  storeReady: boolean;
+}): Href | null {
+  const { bootstrapState, pathname, storeReady } = input;
+
+  if (!storeReady || !bootstrapState.startupNavigation) {
+    return null;
+  }
+  if (pathname !== "/" && pathname !== "") {
+    return null;
+  }
+
+  const { target, workspaceSelection } = bootstrapState.startupNavigation;
+
+  if (!target) {
+    return WELCOME_ROUTE;
+  }
+
+  if (workspaceSelection && target.serverId === workspaceSelection.serverId) {
+    return buildHostWorkspaceRoute(workspaceSelection.serverId, workspaceSelection.workspaceId);
+  }
+
+  return buildHostRootRoute(target.serverId);
 }

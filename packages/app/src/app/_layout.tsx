@@ -48,7 +48,7 @@ import {
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
 import { ToastProvider } from "@/contexts/toast-context";
 import { VoiceProvider } from "@/contexts/voice-context";
-import { initializeHostRuntime } from "@/app/host-runtime-bootstrap";
+import { initializeHostRuntime, type StartupNavigationTarget } from "@/app/host-runtime-bootstrap";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { updateDesktopWindowControls } from "@/desktop/electron/window";
@@ -73,7 +73,10 @@ import {
 } from "@/runtime/host-runtime";
 import {
   addBrowserActiveWorkspaceLocationListener,
+  getLastNavigationWorkspaceRouteSelection,
+  hydrateLastNavigationWorkspaceRouteSelection,
   syncNavigationActiveWorkspace,
+  type ActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
@@ -103,13 +106,20 @@ export interface HostRuntimeBootstrapState {
   phase: "starting-daemon" | "connecting" | "online" | "error";
   error: string | null;
   retry: () => void;
+  startupNavigation: HostRuntimeStartupNavigation | null;
 }
 
 const HostRuntimeBootstrapContext = createContext<HostRuntimeBootstrapState>({
   phase: "starting-daemon",
   error: null,
   retry: () => {},
+  startupNavigation: null,
 });
+
+export interface HostRuntimeStartupNavigation {
+  target: StartupNavigationTarget;
+  workspaceSelection: ActiveWorkspaceSelection | null;
+}
 
 function PushNotificationRouter() {
   const router = useRouter();
@@ -272,33 +282,49 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   );
   const [error, setError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
+  const [startupNavigation, setStartupNavigation] = useState<HostRuntimeStartupNavigation | null>(
+    null,
+  );
   const retry = useCallback(() => {
     setPhase("starting-daemon");
     setError(null);
+    setStartupNavigation(null);
     setRetryToken((current) => current + 1);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    let cancelInitialization: (() => void) | null = null;
+    let startupWorkspaceSelection: ActiveWorkspaceSelection | null = null;
+    const abortController = new AbortController();
     const shouldManageDesktop = shouldUseDesktopDaemon();
     const store = getHostRuntimeStore();
+    setStartupNavigation(null);
+
+    const loadStartupWorkspaceSelection = async (): Promise<ActiveWorkspaceSelection | null> => {
+      await hydrateLastNavigationWorkspaceRouteSelection();
+      startupWorkspaceSelection = getLastNavigationWorkspaceRouteSelection();
+      return startupWorkspaceSelection;
+    };
 
     void initializeHostRuntime({
       shouldManageDesktop,
       loadSettings: loadSettingsFromStorage,
+      loadStartupWorkspaceSelection,
       store,
       setPhase,
       setError,
       isCancelled: () => cancelled,
+      signal: abortController.signal,
     })
-      .then((cleanup) => {
+      .then((target) => {
         if (cancelled) {
-          cleanup();
-          return cleanup;
+          return undefined;
         }
-        cancelInitialization = cleanup;
-        return cleanup;
+        setStartupNavigation({
+          target,
+          workspaceSelection: startupWorkspaceSelection,
+        });
+        return undefined;
       })
       .catch((bootstrapError) => {
         console.error("[HostRuntime] Failed to initialize store", bootstrapError);
@@ -314,11 +340,15 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
         }
         setPhase("online");
         setError(null);
+        setStartupNavigation({
+          target: null,
+          workspaceSelection: startupWorkspaceSelection,
+        });
       });
 
     return () => {
       cancelled = true;
-      cancelInitialization?.();
+      abortController.abort();
     };
   }, [retryToken]);
 
@@ -327,8 +357,9 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
       phase,
       error,
       retry,
+      startupNavigation,
     }),
-    [error, phase, retry],
+    [error, phase, retry, startupNavigation],
   );
 
   return (

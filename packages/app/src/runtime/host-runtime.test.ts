@@ -282,6 +282,72 @@ function updateControllerSnapshot(
   ).updateSnapshot(patch);
 }
 
+function makeSingleConnectionHost(serverId: string): HostProfile {
+  return makeHost({
+    serverId,
+    connections: [
+      {
+        id: `direct:${serverId}:6767`,
+        type: "directTcp",
+        endpoint: `${serverId}:6767`,
+      },
+    ],
+    preferredConnectionId: `direct:${serverId}:6767`,
+  });
+}
+
+function createOfflineOnlyStore(): HostRuntimeStore {
+  return new HostRuntimeStore({
+    deps: {
+      createClient: () => {
+        throw new Error("startup host tests drive snapshots directly");
+      },
+      connectToDaemon: async () => {
+        throw new Error("offline");
+      },
+      getClientId: async () => "cid_test_runtime",
+    },
+  });
+}
+
+function setStoreHosts(store: HostRuntimeStore, hosts: HostProfile[]): void {
+  (
+    store as unknown as {
+      setHostsAndSync: (hosts: HostProfile[]) => void;
+    }
+  ).setHostsAndSync(hosts);
+}
+
+function markStoreHostOnline(
+  store: HostRuntimeStore,
+  serverId: string,
+  lastOnlineAt: string,
+): void {
+  const controller = (
+    store as unknown as {
+      controllers: Map<string, HostRuntimeController>;
+    }
+  ).controllers.get(serverId);
+  if (!controller) {
+    throw new Error(`Missing controller for ${serverId}`);
+  }
+  (
+    store as unknown as {
+      lastConnectionStatusByServer: Map<string, HostRuntimeSnapshot["connectionStatus"]>;
+    }
+  ).lastConnectionStatusByServer.set(serverId, "online");
+  updateControllerSnapshot(controller, {
+    connectionStatus: "online",
+    hasEverLoadedAgentDirectory: true,
+    lastOnlineAt,
+  });
+  (
+    store as unknown as {
+      emit: (serverId: string) => void;
+    }
+  ).emit(serverId);
+}
+
 function makeProbeMap(
   entries: Array<
     [string, HostRuntimeSnapshot["probeByConnectionId"] extends Map<string, infer T> ? T : never]
@@ -1158,6 +1224,113 @@ describe("HostRuntimeController", () => {
 });
 
 describe("HostRuntimeStore", () => {
+  it("resolves startup host immediately when the preferred host is first online", async () => {
+    const store = createOfflineOnlyStore();
+    setStoreHosts(store, [
+      makeSingleConnectionHost("srv_preferred"),
+      makeSingleConnectionHost("srv_other"),
+    ]);
+
+    const startup = store.waitForAnyConnectionOnline({ preferredServerId: "srv_preferred" });
+    markStoreHostOnline(store, "srv_preferred", "2026-04-26T10:00:00.000Z");
+
+    await expect(startup.promise).resolves.toEqual({ serverId: "srv_preferred" });
+    startup.cancel();
+    setStoreHosts(store, []);
+  });
+
+  it("waits through grace for the preferred host after a different host comes online first", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = createOfflineOnlyStore();
+      setStoreHosts(store, [
+        makeSingleConnectionHost("srv_preferred"),
+        makeSingleConnectionHost("srv_other"),
+      ]);
+
+      const startup = store.waitForAnyConnectionOnline({ preferredServerId: "srv_preferred" });
+      markStoreHostOnline(store, "srv_other", "2026-04-26T10:00:00.000Z");
+      await vi.advanceTimersByTimeAsync(1_000);
+      markStoreHostOnline(store, "srv_preferred", "2026-04-26T10:00:01.000Z");
+
+      await expect(startup.promise).resolves.toEqual({ serverId: "srv_preferred" });
+      startup.cancel();
+      setStoreHosts(store, []);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the first online host when preferred does not arrive during grace", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = createOfflineOnlyStore();
+      setStoreHosts(store, [
+        makeSingleConnectionHost("srv_preferred"),
+        makeSingleConnectionHost("srv_other"),
+      ]);
+
+      const startup = store.waitForAnyConnectionOnline({ preferredServerId: "srv_preferred" });
+      markStoreHostOnline(store, "srv_other", "2026-04-26T10:00:00.000Z");
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      await expect(startup.promise).resolves.toEqual({ serverId: "srv_other" });
+      startup.cancel();
+      setStoreHosts(store, []);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resolves the first online host immediately when no preferred host is set", async () => {
+    const store = createOfflineOnlyStore();
+    setStoreHosts(store, [makeSingleConnectionHost("srv_other")]);
+
+    const startup = store.waitForAnyConnectionOnline({ preferredServerId: null });
+    markStoreHostOnline(store, "srv_other", "2026-04-26T10:00:00.000Z");
+
+    await expect(startup.promise).resolves.toEqual({ serverId: "srv_other" });
+    startup.cancel();
+    setStoreHosts(store, []);
+  });
+
+  it("resolves null when startup has no hosts to wait for", async () => {
+    const store = createOfflineOnlyStore();
+
+    const startup = store.waitForAnyConnectionOnline({ preferredServerId: "srv_preferred" });
+
+    await expect(startup.promise).resolves.toBeNull();
+    startup.cancel();
+  });
+
+  it("resolves null using the connection online timeout when hosts exist but none come online", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = createOfflineOnlyStore();
+      setStoreHosts(store, [
+        makeSingleConnectionHost("srv_preferred"),
+        makeSingleConnectionHost("srv_other"),
+      ]);
+
+      let resolved = false;
+      const startup = store.waitForAnyConnectionOnline({ preferredServerId: "srv_preferred" });
+      startup.promise.then(() => {
+        resolved = true;
+        return undefined;
+      });
+
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(resolved).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+
+      await expect(startup.promise).resolves.toBeNull();
+      startup.cancel();
+      setStoreHosts(store, []);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("bootstraps agent directory subscription when host transitions online", async () => {
     const host = makeHost({
       connections: [
