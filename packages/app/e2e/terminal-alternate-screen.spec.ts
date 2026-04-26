@@ -31,12 +31,12 @@ async function readTerminalLayoutMetrics(page: Page): Promise<TerminalLayoutMetr
       return rect.width > 0 && rect.height > 0;
     });
     const surface = visibleSurfaces[0] ?? null;
-    const renderedRows = Array.from(document.querySelectorAll<HTMLElement>(".xterm-rows > div"));
-    const firstRow = renderedRows[0] ?? null;
-    const lastRow = renderedRows.at(-1) ?? null;
     const surfaceRect = surface?.getBoundingClientRect() ?? null;
-    const firstRowRect = firstRow?.getBoundingClientRect() ?? null;
-    const lastRowRect = lastRow?.getBoundingClientRect() ?? null;
+    // xterm.js exposes `.xterm-screen` regardless of renderer (DOM, canvas, WebGL),
+    // so use it as the canonical "rendered surface" rect rather than `.xterm-rows`
+    // which is only populated by the DOM renderer.
+    const xtermScreen = surface?.querySelector<HTMLElement>(".xterm-screen") ?? null;
+    const xtermScreenRect = xtermScreen?.getBoundingClientRect() ?? null;
     const term = (
       window as Window & {
         __paseoTerminal?: {
@@ -49,11 +49,10 @@ async function readTerminalLayoutMetrics(page: Page): Promise<TerminalLayoutMetr
     return {
       visibleSurfaceCount: visibleSurfaces.length,
       surfaceHeight: surfaceRect?.height ?? 0,
-      rowCount: renderedRows.length,
+      rowCount: typeof term?.rows === "number" ? term.rows : 0,
       rows: typeof term?.rows === "number" ? term.rows : null,
       cols: typeof term?.cols === "number" ? term.cols : null,
-      renderedRowsHeight:
-        firstRowRect && lastRowRect ? Math.max(0, lastRowRect.bottom - firstRowRect.top) : 0,
+      renderedRowsHeight: xtermScreenRect?.height ?? 0,
       tabIds: currentTabIds,
     };
   }, tabIds);

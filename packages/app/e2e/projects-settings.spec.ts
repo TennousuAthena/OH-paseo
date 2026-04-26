@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test as base, type Page } from "./fixtures";
-import { gotoAppShell } from "./helpers/app";
+import { gotoAppShell, openSettings } from "./helpers/app";
 import { connectNewWorkspaceDaemonClient, openProjectViaDaemon } from "./helpers/new-workspace";
 import { createTempGitRepo } from "./helpers/workspace";
 
@@ -53,19 +53,22 @@ const test = base.extend<ProjectsSettingsFixtures>({
 
 async function openProjects(page: Page): Promise<void> {
   await gotoAppShell(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await expect(page).toHaveURL(/\/projects$/);
+  await openSettings(page);
+  await page.getByTestId("settings-projects").click();
+  await expect(page).toHaveURL(/\/settings\/projects$/);
 }
 
 async function openProjectSettings(page: Page, projectName: string): Promise<void> {
-  await page.getByRole("button", { name: `${projectName} project details` }).click();
-  await expect(page.getByRole("textbox", { name: "Worktree setup" })).toBeVisible({
+  await page.getByRole("button", { name: `Edit ${projectName}`, exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Worktree setup commands" })).toBeVisible({
     timeout: 30_000,
   });
 }
 
 async function editWorktreeSetup(page: Page, setupCommands: string[]): Promise<void> {
-  await page.getByRole("textbox", { name: "Worktree setup" }).fill(setupCommands.join("\n"));
+  await page
+    .getByRole("textbox", { name: "Worktree setup commands" })
+    .fill(setupCommands.join("\n"));
 }
 
 async function saveProjectConfig(page: Page): Promise<void> {
