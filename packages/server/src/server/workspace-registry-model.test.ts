@@ -124,7 +124,7 @@ describe("git worktree grouping", () => {
     });
 
     expect(membership).toMatchObject({
-      cwd: "/tmp/repo-feature",
+      cwd: normalizeWorkspaceId("/tmp/repo-feature"),
       workspaceId: "/tmp/repo-feature",
       workspaceKind: "worktree",
       workspaceDisplayName: "feature/plain",
