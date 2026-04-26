@@ -978,8 +978,55 @@ describe("subscribe", () => {
 
     expect(messages.length).toBe(0);
   });
+});
 
-  it("does not answer terminal identity queries from the headless snapshot parser", async () => {
+const DA_HELPER_SCRIPT = `process.stdin.setRawMode(true);
+process.stdin.resume();
+let buf = "";
+const timer = setTimeout(() => {
+  process.stdout.write("DA_TIMEOUT\\n");
+  process.exit(2);
+}, 2500);
+process.stdin.on("data", (chunk) => {
+  buf += chunk.toString("binary");
+  const m = buf.match(/\\x1b\\[\\?[\\d;]+c/);
+  if (m) {
+    clearTimeout(timer);
+    process.stdout.write("DA_OK:" + m[0].slice(1) + "\\n");
+    process.exit(0);
+  }
+});
+process.stdout.write("\\x1b[c");
+`;
+
+function writeDaHelper(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  temporaryDirs.push(dir);
+  const path = join(dir, "helper.cjs");
+  writeFileSync(path, DA_HELPER_SCRIPT);
+  return path;
+}
+
+function isDaOkLine(line: string): boolean {
+  return line.startsWith("DA_OK:");
+}
+
+function hasDaOkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
+  return getLines(state).some(isDaOkLine);
+}
+
+function lastNonEmptyLineIsPrompt(state: ReturnType<TerminalSession["getState"]>): boolean {
+  const last =
+    getLines(state)
+      .toReversed()
+      .find((line) => line.length > 0) ?? "";
+  return last === "$";
+}
+
+describe("terminal protocol queries", () => {
+  it("delivers a DA1 reply to a foreground app on stdin", async () => {
+    const helperPath = writeDaHelper("terminal-da-helper-");
+
     const session = trackSession(
       await createTerminal({
         cwd: "/tmp",
@@ -987,13 +1034,30 @@ describe("subscribe", () => {
         env: { PS1: "$ " },
       }),
     );
-
     await waitForLines(session, ["$"]);
 
-    session.send({ type: "input", data: "printf '\\033[c'; echo after-da\r" });
-    await waitForState(session, (state) => getLines(state).join("\n").includes("after-da"));
+    session.send({ type: "input", data: `${process.execPath} ${helperPath}\r` });
+    await waitForState(session, hasDaOkLine);
 
-    expect(getLines(session.getState()).join("\n")).not.toContain("62;4;22c");
+    const ack = getLines(session.getState()).find(isDaOkLine) ?? "";
+    expect(ack).toMatch(/^DA_OK:\[\?[\d;]+c$/);
+  });
+
+  it("does not echo DA1 replies onto the prompt after the foreground app exits", async () => {
+    const helperPath = writeDaHelper("terminal-da-cleanup-");
+
+    const session = trackSession(
+      await createTerminal({
+        cwd: "/tmp",
+        shell: "/bin/sh",
+        env: { PS1: "$ " },
+      }),
+    );
+    await waitForLines(session, ["$"]);
+
+    session.send({ type: "input", data: `${process.execPath} ${helperPath}\r` });
+    await waitForState(session, hasDaOkLine);
+    await waitForState(session, lastNonEmptyLineIsPrompt);
   });
 });
 

@@ -657,6 +657,14 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   }
   emitTitleChange(initialTitle);
 
+  terminal.parser.registerCsiHandler({ final: "c" }, (params) => {
+    if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
+      ptyProcess.write("\x1b[?62;4;22c");
+      return true;
+    }
+    return false;
+  });
+
   let disposeTitleChangeSubscription: { dispose(): void } | null = null;
   if (!lockedTitle) {
     disposeTitleChangeSubscription = terminal.onTitleChange((nextTitle) => {

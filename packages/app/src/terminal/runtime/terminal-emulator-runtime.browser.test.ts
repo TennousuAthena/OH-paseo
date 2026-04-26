@@ -162,17 +162,24 @@ describe("terminal emulator runtime in a real browser", () => {
     expect(refreshCalls.at(-1)).toEqual([0, terminal.rows - 1]);
   });
 
-  it("suppresses non-identity terminal query responses as PTY input", async () => {
+  it.each([
+    { name: "DA1", bytes: "\x1b[c" },
+    { name: "DA1-zero", bytes: "\x1b[0c" },
+    { name: "DA2", bytes: "\x1b[>c" },
+    { name: "DA3", bytes: "\x1b[=c" },
+    { name: "DSR-5", bytes: "\x1b[5n" },
+    { name: "DSR-6", bytes: "\x1b[6n" },
+    { name: "DSR-?6", bytes: "\x1b[?6n" },
+    { name: "DECRQM", bytes: "\x1b[1$p" },
+    { name: "DECRQM-?", bytes: "\x1b[?1$p" },
+  ])("does not emit a PTY input reply for $name", async ({ bytes }) => {
     await page.viewport(900, 600);
     const mounted = createTerminalHost({ width: 720, height: 360 });
 
     await waitFor({ predicate: () => mounted.sizes.length > 0 });
 
-    const querySequences = ["\x1b[5n", "\x1b[6n", "\x1b[?6n", "\x1b[1$p", "\x1b[?1$p"];
-
-    for (const sequence of querySequences) {
-      mounted.runtime.write({ text: sequence });
-    }
+    mounted.runtime.write({ text: bytes });
+    await nextFrame();
     await nextFrame();
 
     expect(mounted.inputs).toEqual([]);

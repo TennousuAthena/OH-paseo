@@ -220,6 +220,26 @@ export class TerminalEmulatorRuntime {
       this.fitAndEmitResize?.(true);
     };
 
+    // Browser xterm is a renderer only; it never replies to terminal protocol queries.
+    // Replies live on the daemon (one process boundary from the PTY) so they arrive
+    // before the foreground app exits, instead of racing back over the websocket.
+    // Re-registered after the image addon loads so our handlers stay last in the
+    // LIFO dispatch (the image addon registers its own {final:"c"} for sixel DA1).
+    const registerProtocolQuerySuppression = (): void => {
+      terminal.parser.registerCsiHandler({ final: "c" }, () => true);
+      terminal.parser.registerCsiHandler({ prefix: ">", final: "c" }, () => true);
+      terminal.parser.registerCsiHandler({ prefix: "=", final: "c" }, () => true);
+      terminal.parser.registerCsiHandler({ final: "n" }, () => true);
+      terminal.parser.registerCsiHandler({ prefix: "?", final: "n" }, () => true);
+      terminal.parser.registerCsiHandler({ final: "R" }, () => true);
+      terminal.parser.registerCsiHandler({ intermediates: "$", final: "p" }, () => true);
+      terminal.parser.registerCsiHandler(
+        { prefix: "?", intermediates: "$", final: "p" },
+        () => true,
+      );
+    };
+    registerProtocolQuerySuppression();
+
     let webglAddonRaf: number | null = requestAnimationFrame(() => {
       webglAddonRaf = null;
       try {
@@ -231,20 +251,12 @@ export class TerminalEmulatorRuntime {
         terminal.loadAddon(webglAddon);
         imageAddon = new ImageAddon();
         terminal.loadAddon(imageAddon);
+        registerProtocolQuerySuppression();
         this.fitAndEmitResize?.(true);
       } catch {
         disposeWebglRenderer();
       }
     });
-
-    // Suppress cursor/status query responses whose async browser replies can race
-    // with foreground app exit and feed back to the shell as visible text. DA is
-    // intentionally left to xterm so attached TUIs can identify the terminal.
-    terminal.parser.registerCsiHandler({ final: "n" }, () => true);
-    terminal.parser.registerCsiHandler({ prefix: "?", final: "n" }, () => true);
-    terminal.parser.registerCsiHandler({ final: "R" }, () => true);
-    terminal.parser.registerCsiHandler({ intermediates: "$", final: "p" }, () => true);
-    terminal.parser.registerCsiHandler({ prefix: "?", intermediates: "$", final: "p" }, () => true);
 
     const restoreDocumentStyles = this.applyDocumentBoundsStyles({
       root: input.root,
