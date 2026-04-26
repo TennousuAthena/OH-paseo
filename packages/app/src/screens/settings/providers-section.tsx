@@ -123,7 +123,6 @@ function ProviderRow({
             value={enabled}
             onValueChange={handleToggleValueChange}
             disabled={isToggling}
-            size="sm"
             accessibilityLabel={`Enable ${def.label}`}
           />
         </>

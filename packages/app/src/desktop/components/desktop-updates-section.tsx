@@ -4,17 +4,16 @@ import * as Clipboard from "expo-clipboard";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "@/screens/settings/settings-section";
-import { ArrowUpRight, Play, Pause, RotateCw, Copy, FileText, Activity } from "lucide-react-native";
+import { ArrowUpRight, Copy, FileText, Activity } from "lucide-react-native";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import {
   getCliDaemonStatus,
-  restartDesktopDaemon,
   shouldUseDesktopDaemon,
-  startDesktopDaemon,
   stopDesktopDaemon,
 } from "@/desktop/daemon/desktop-daemon";
 import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
@@ -24,101 +23,14 @@ import { resolveAppVersion } from "@/utils/app-version";
 
 type DesktopDaemonSettings = DesktopSettings["daemon"];
 
-function managementLabel(isUpdating: boolean, isPaused: boolean): string {
-  if (isUpdating) return isPaused ? "Resuming..." : "Pausing...";
-  return isPaused ? "Resume" : "Pause";
-}
-
-function keepRunningLabel(isUpdating: boolean, isEnabled: boolean): string {
-  if (isUpdating) return isEnabled ? "Disabling..." : "Enabling...";
-  return isEnabled ? "Disable" : "Enable";
-}
-
-function restartLabel(isRestarting: boolean, isRunning: boolean, idleLabel: string): string {
-  if (!isRestarting) return idleLabel;
-  return isRunning ? "Restarting..." : "Starting...";
-}
-
-function useDaemonRestartAction(args: {
-  showSection: boolean;
-  daemonStatus: DesktopDaemonStatus | null;
-  daemonActionLabel: string;
-  setStatus: (status: DesktopDaemonStatus) => void;
-  refetch: () => void;
-}) {
-  const { showSection, daemonStatus, daemonActionLabel, setStatus, refetch } = args;
-  const [isRestartingDaemon, setIsRestartingDaemon] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-
-  const handleUpdateLocalDaemon = useCallback(() => {
-    if (!showSection || isRestartingDaemon) {
-      return;
-    }
-
-    void confirmDialog({
-      title: daemonActionLabel,
-      message:
-        daemonStatus?.status === "running"
-          ? "This will restart the built-in daemon. The app will reconnect automatically."
-          : "This will start the built-in daemon.",
-      confirmLabel: daemonActionLabel,
-      cancelLabel: "Cancel",
-    })
-      .then((confirmed) => {
-        if (!confirmed) {
-          return;
-        }
-
-        setIsRestartingDaemon(true);
-        setStatusMessage(null);
-
-        const action =
-          daemonStatus?.status === "running" ? restartDesktopDaemon : startDesktopDaemon;
-
-        void action()
-          .then((newStatus) => {
-            setStatus(newStatus);
-            setStatusMessage(
-              daemonStatus?.status === "running" ? "Daemon restarted." : "Daemon started.",
-            );
-            refetch();
-            return;
-          })
-          .catch((error) => {
-            console.error("[Settings] Failed to change desktop daemon state", error);
-            const message = error instanceof Error ? error.message : String(error);
-            setStatusMessage(`${daemonActionLabel} failed: ${message}`);
-          })
-          .finally(() => {
-            setIsRestartingDaemon(false);
-          });
-        return;
-      })
-      .catch((error) => {
-        console.error("[Settings] Failed to open desktop daemon action confirmation", error);
-        Alert.alert("Error", "Unable to open the daemon confirmation dialog.");
-      });
-  }, [
-    daemonActionLabel,
-    daemonStatus?.status,
-    isRestartingDaemon,
-    refetch,
-    setStatus,
-    showSection,
-  ]);
-
-  return { isRestartingDaemon, statusMessage, setStatusMessage, handleUpdateLocalDaemon };
-}
-
 function useDaemonManagementToggle(args: {
   daemonStatus: DesktopDaemonStatus | null;
   settings: DesktopDaemonSettings;
   updateSettings: (next: Partial<DesktopDaemonSettings>) => Promise<unknown>;
   setStatus: (status: DesktopDaemonStatus) => void;
-  setStatusMessage: (message: string | null) => void;
   refetch: () => void;
 }) {
-  const { daemonStatus, settings, updateSettings, setStatus, setStatusMessage, refetch } = args;
+  const { daemonStatus, settings, updateSettings, setStatus, refetch } = args;
   const [isUpdatingDaemonManagement, setIsUpdatingDaemonManagement] = useState(false);
 
   const handleToggleDaemonManagement = useCallback(() => {
@@ -128,12 +40,7 @@ function useDaemonManagementToggle(args: {
 
     if (!settings.manageBuiltInDaemon) {
       setIsUpdatingDaemonManagement(true);
-      setStatusMessage(null);
       void updateSettings({ manageBuiltInDaemon: true })
-        .then(() => {
-          setStatusMessage("Built-in daemon management resumed.");
-          return;
-        })
         .catch((error) => {
           console.error("[Settings] Failed to update built-in daemon management", error);
           Alert.alert("Error", "Unable to update built-in daemon management.");
@@ -158,7 +65,6 @@ function useDaemonManagementToggle(args: {
         }
 
         setIsUpdatingDaemonManagement(true);
-        setStatusMessage(null);
 
         const stopPromise =
           daemonStatus?.status === "running"
@@ -174,7 +80,6 @@ function useDaemonManagementToggle(args: {
           })
           .then(() => {
             refetch();
-            setStatusMessage("Built-in daemon paused and stopped.");
             return;
           })
           .catch((error) => {
@@ -195,7 +100,6 @@ function useDaemonManagementToggle(args: {
     isUpdatingDaemonManagement,
     refetch,
     setStatus,
-    setStatusMessage,
     settings.manageBuiltInDaemon,
     updateSettings,
   ]);
@@ -318,7 +222,7 @@ function DaemonLogsModal({ visible, onClose, daemonLogs }: DaemonLogsModalProps)
       snapPoints={LOGS_MODAL_SNAP_POINTS}
     >
       <View style={styles.modalBody}>
-        <Text style={settingsStyles.rowHint}>{daemonLogs?.logPath ?? "Log path unavailable."}</Text>
+        <Text style={settingsStyles.rowHint}>{daemonLogs?.logPath ?? "Log path unavailable"}</Text>
         <Text style={styles.logOutput} selectable>
           {daemonLogs?.contents?.length ? daemonLogs.contents : "(log file is empty)"}
         </Text>
@@ -369,9 +273,6 @@ interface DaemonInfoCardProps {
   daemonStatusStateText: string;
   daemonStatusDetailText: string;
   isDaemonManagementPaused: boolean;
-  playIcon: ReactElement;
-  pauseIcon: ReactElement;
-  rotateIcon: ReactElement;
   copyIcon: ReactElement;
   fileTextIcon: ReactElement;
   activityIcon: ReactElement;
@@ -380,12 +281,6 @@ interface DaemonInfoCardProps {
   keepRunningAfterQuit: boolean;
   handleToggleKeepRunningAfterQuit: () => void;
   isUpdatingKeepRunningAfterQuit: boolean;
-  daemonActionLabel: string;
-  daemonActionMessage: string;
-  statusMessage: string | null;
-  handleUpdateLocalDaemon: () => void;
-  isRestartingDaemon: boolean;
-  daemonStatus: DesktopDaemonStatus | null;
   daemonLogs: { logPath?: string } | null;
   handleCopyLogPath: () => void;
   handleOpenLogs: () => void;
@@ -398,9 +293,6 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
     daemonStatusStateText,
     daemonStatusDetailText,
     isDaemonManagementPaused,
-    playIcon,
-    pauseIcon,
-    rotateIcon,
     copyIcon,
     fileTextIcon,
     activityIcon,
@@ -409,12 +301,6 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
     keepRunningAfterQuit,
     handleToggleKeepRunningAfterQuit,
     isUpdatingKeepRunningAfterQuit,
-    daemonActionLabel,
-    daemonActionMessage,
-    statusMessage,
-    handleUpdateLocalDaemon,
-    isRestartingDaemon,
-    daemonStatus,
     daemonLogs,
     handleCopyLogPath,
     handleOpenLogs,
@@ -422,28 +308,12 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
     isLoadingCliStatus,
   } = props;
 
-  const managementButtonLabel = managementLabel(
-    isUpdatingDaemonManagement,
-    isDaemonManagementPaused,
-  );
-  const keepRunningButtonLabel = keepRunningLabel(
-    isUpdatingKeepRunningAfterQuit,
-    keepRunningAfterQuit,
-  );
-  const restartButtonLabel = restartLabel(
-    isRestartingDaemon,
-    daemonStatus?.status === "running",
-    daemonActionLabel,
-  );
-
   return (
     <View style={settingsStyles.card}>
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>Status</Text>
-          <Text style={settingsStyles.rowHint}>
-            Only the built-in desktop daemon is shown here.
-          </Text>
+          <Text style={settingsStyles.rowHint}>Only the built-in desktop daemon is shown here</Text>
         </View>
         <View style={styles.statusValueGroup}>
           <Text style={styles.valueText}>{daemonStatusStateText}</Text>
@@ -452,62 +322,33 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
       </View>
       <View style={ROW_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Daemon management</Text>
-          <Text style={settingsStyles.rowHint}>
-            {isDaemonManagementPaused
-              ? "Paused. The built-in daemon stays stopped until you start it again."
-              : "Enabled. Paseo can manage the built-in daemon from the desktop app."}
-          </Text>
+          <Text style={settingsStyles.rowTitle}>Manage built-in daemon</Text>
+          <Text style={settingsStyles.rowHint}>Let Paseo start and stop the built-in daemon</Text>
         </View>
-        <Button
-          variant="outline"
-          size="sm"
-          leftIcon={isDaemonManagementPaused ? playIcon : pauseIcon}
-          onPress={handleToggleDaemonManagement}
+        <Switch
+          value={!isDaemonManagementPaused}
+          onValueChange={handleToggleDaemonManagement}
           disabled={isUpdatingDaemonManagement}
-        >
-          {managementButtonLabel}
-        </Button>
+          accessibilityLabel="Manage built-in daemon"
+        />
       </View>
       <View style={ROW_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>Keep daemon running after quit</Text>
-          <Text style={settingsStyles.rowHint}>
-            {keepRunningAfterQuit
-              ? "Enabled. The built-in daemon keeps running after you close the desktop app."
-              : "Disabled. Quitting the desktop app stops the built-in daemon if desktop management is enabled."}
-          </Text>
+          <Text style={settingsStyles.rowHint}>Daemon keeps running when you quit Paseo</Text>
         </View>
-        <Button
-          variant="outline"
-          size="sm"
-          onPress={handleToggleKeepRunningAfterQuit}
+        <Switch
+          value={keepRunningAfterQuit}
+          onValueChange={handleToggleKeepRunningAfterQuit}
           disabled={isUpdatingKeepRunningAfterQuit}
-        >
-          {keepRunningButtonLabel}
-        </Button>
-      </View>
-      <View style={ROW_WITH_BORDER_STYLE}>
-        <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{daemonActionLabel}</Text>
-          <Text style={settingsStyles.rowHint}>{daemonActionMessage}</Text>
-          {statusMessage ? <Text style={styles.statusText}>{statusMessage}</Text> : null}
-        </View>
-        <Button
-          variant="outline"
-          size="sm"
-          leftIcon={rotateIcon}
-          onPress={handleUpdateLocalDaemon}
-          disabled={isRestartingDaemon}
-        >
-          {restartButtonLabel}
-        </Button>
+          accessibilityLabel="Keep daemon running after quit"
+        />
       </View>
       <View style={ROW_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>Log file</Text>
           <Text style={settingsStyles.rowHint}>
-            {daemonLogs?.logPath ?? "Log path unavailable."}
+            {daemonLogs?.logPath ?? "Log path unavailable"}
           </Text>
         </View>
         <View style={styles.actionGroup}>
@@ -531,7 +372,7 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>Full status</Text>
           <Text style={settingsStyles.rowHint}>
-            Runs `paseo daemon status` and shows the output.
+            Runs `paseo daemon status` and shows the output
           </Text>
         </View>
         <Button
@@ -569,27 +410,12 @@ export function LocalDaemonSection() {
     statusError ?? (daemonStatus?.status === "running" ? daemonStatus.status : "not running");
   const daemonStatusDetailText = `PID ${daemonStatus?.pid ? daemonStatus.pid : "—"}`;
   const isDaemonManagementPaused = !daemonSettings.manageBuiltInDaemon;
-  const daemonActionLabel = daemonStatus?.status === "running" ? "Restart daemon" : "Start daemon";
-  const daemonActionMessage =
-    daemonStatus?.status === "running"
-      ? "Restarts the built-in daemon."
-      : "Starts the built-in daemon.";
-
-  const { isRestartingDaemon, statusMessage, setStatusMessage, handleUpdateLocalDaemon } =
-    useDaemonRestartAction({
-      showSection,
-      daemonStatus,
-      daemonActionLabel,
-      setStatus,
-      refetch,
-    });
 
   const { isUpdatingDaemonManagement, handleToggleDaemonManagement } = useDaemonManagementToggle({
     daemonStatus,
     settings: daemonSettings,
     updateSettings: updateDaemonSettings,
     setStatus,
-    setStatusMessage,
     refetch,
   });
   const { isUpdatingKeepRunningAfterQuit, handleToggleKeepRunningAfterQuit } =
@@ -621,18 +447,6 @@ export function LocalDaemonSection() {
   const advancedSettingsIcon = useMemo(
     () => <ArrowUpRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
     [theme.iconSize.sm, theme.colors.foregroundMuted],
-  );
-  const playIcon = useMemo(
-    () => <Play size={theme.iconSize.sm} color={theme.colors.foreground} />,
-    [theme.iconSize.sm, theme.colors.foreground],
-  );
-  const pauseIcon = useMemo(
-    () => <Pause size={theme.iconSize.sm} color={theme.colors.foreground} />,
-    [theme.iconSize.sm, theme.colors.foreground],
-  );
-  const rotateIcon = useMemo(
-    () => <RotateCw size={theme.iconSize.sm} color={theme.colors.foreground} />,
-    [theme.iconSize.sm, theme.colors.foreground],
   );
   const copyIcon = useMemo(
     () => <Copy size={theme.iconSize.sm} color={theme.colors.foreground} />,
@@ -684,9 +498,6 @@ export function LocalDaemonSection() {
             daemonStatusStateText={daemonStatusStateText}
             daemonStatusDetailText={daemonStatusDetailText}
             isDaemonManagementPaused={isDaemonManagementPaused}
-            playIcon={playIcon}
-            pauseIcon={pauseIcon}
-            rotateIcon={rotateIcon}
             copyIcon={copyIcon}
             fileTextIcon={fileTextIcon}
             activityIcon={activityIcon}
@@ -695,12 +506,6 @@ export function LocalDaemonSection() {
             keepRunningAfterQuit={daemonSettings.keepRunningAfterQuit}
             handleToggleKeepRunningAfterQuit={handleToggleKeepRunningAfterQuit}
             isUpdatingKeepRunningAfterQuit={isUpdatingKeepRunningAfterQuit}
-            daemonActionLabel={daemonActionLabel}
-            daemonActionMessage={daemonActionMessage}
-            statusMessage={statusMessage}
-            handleUpdateLocalDaemon={handleUpdateLocalDaemon}
-            isRestartingDaemon={isRestartingDaemon}
-            daemonStatus={daemonStatus}
             daemonLogs={daemonLogs}
             handleCopyLogPath={handleCopyLogPath}
             handleOpenLogs={handleOpenLogs}
@@ -761,11 +566,6 @@ const styles = StyleSheet.create((theme) => ({
   valueSubtext: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
-  },
-  statusText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    marginTop: theme.spacing[1],
   },
   warningCard: {
     marginTop: theme.spacing[3],

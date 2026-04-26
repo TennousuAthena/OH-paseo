@@ -14,22 +14,17 @@ import Animated, {
 } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-type SwitchSize = "sm" | "md";
-
 interface SwitchProps {
   value: boolean;
   onValueChange?: (value: boolean) => void;
   disabled?: boolean;
-  size?: SwitchSize;
   accessibilityLabel?: string;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
 
-const SIZES: Record<SwitchSize, { track: { width: number; height: number }; thumb: number }> = {
-  md: { track: { width: 44, height: 26 }, thumb: 22 },
-  sm: { track: { width: 34, height: 20 }, thumb: 16 },
-};
+const TRACK = { width: 34, height: 20 };
+const THUMB = 16;
 
 const TIMING = { duration: 180, easing: Easing.inOut(Easing.ease) };
 
@@ -37,13 +32,13 @@ export function Switch({
   value,
   onValueChange,
   disabled = false,
-  size = "md",
   accessibilityLabel,
   testID,
   style,
 }: SwitchProps) {
   const { theme } = useUnistyles();
-  const { track, thumb } = SIZES[size];
+  const track = TRACK;
+  const thumb = THUMB;
   const padding = (track.height - thumb) / 2;
   const thumbTravel = track.width - thumb - padding * 2;
 

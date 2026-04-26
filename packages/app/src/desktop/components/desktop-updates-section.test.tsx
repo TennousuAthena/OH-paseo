@@ -98,9 +98,6 @@ vi.mock("lucide-react-native", () => {
     ArrowUpRight: icon("ArrowUpRight"),
     Copy: icon("Copy"),
     FileText: icon("FileText"),
-    Pause: icon("Pause"),
-    Play: icon("Play"),
-    RotateCw: icon("RotateCw"),
   };
 });
 
@@ -163,6 +160,28 @@ vi.mock("@/components/ui/button", () => ({
     ),
 }));
 
+vi.mock("@/components/ui/switch", () => ({
+  Switch: ({
+    value,
+    onValueChange,
+    disabled,
+    accessibilityLabel,
+  }: {
+    value: boolean;
+    onValueChange?: (next: boolean) => void;
+    disabled?: boolean;
+    accessibilityLabel?: string;
+  }) =>
+    React.createElement("button", {
+      type: "button",
+      role: "switch",
+      "aria-label": accessibilityLabel,
+      "aria-checked": value,
+      disabled,
+      onClick: () => onValueChange?.(!value),
+    }),
+}));
+
 vi.mock("@/desktop/settings/desktop-settings", () => ({
   useDesktopSettings: () => ({
     ...settingsState,
@@ -189,16 +208,12 @@ vi.mock("@/desktop/updates/desktop-updates", () => ({
 
 const daemonCommandMocks = vi.hoisted(() => ({
   getCliDaemonStatusMock: vi.fn(),
-  restartDesktopDaemonMock: vi.fn(),
-  startDesktopDaemonMock: vi.fn(),
   stopDesktopDaemonMock: vi.fn(),
 }));
 
 vi.mock("@/desktop/daemon/desktop-daemon", () => ({
   getCliDaemonStatus: daemonCommandMocks.getCliDaemonStatusMock,
-  restartDesktopDaemon: daemonCommandMocks.restartDesktopDaemonMock,
   shouldUseDesktopDaemon: vi.fn(() => true),
-  startDesktopDaemon: daemonCommandMocks.startDesktopDaemonMock,
   stopDesktopDaemon: daemonCommandMocks.stopDesktopDaemonMock,
 }));
 
@@ -221,32 +236,40 @@ describe("LocalDaemonSection", () => {
     daemonStatusState.data.status.status = "running";
     daemonStatusState.setStatus.mockReset();
     daemonStatusState.refetch.mockReset();
-    daemonCommandMocks.startDesktopDaemonMock.mockReset();
     daemonCommandMocks.stopDesktopDaemonMock.mockReset();
     daemonCommandMocks.stopDesktopDaemonMock.mockResolvedValue({
       ...daemonStatusState.data.status,
       status: "stopped",
     });
-    daemonCommandMocks.restartDesktopDaemonMock.mockReset();
     daemonCommandMocks.getCliDaemonStatusMock.mockReset();
   });
 
-  it("shows the keep-running-after-quit control enabled by default", () => {
+  it("renders the daemon toggles as switches reflecting current settings", () => {
     const screen = render(<LocalDaemonSection />);
 
     expect(screen.getByText("Keep daemon running after quit")).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Enabled. The built-in daemon keeps running after you close the desktop app.",
-      ),
-    ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Disable" })).toBeTruthy();
+    expect(screen.getByText("Manage built-in daemon")).toBeTruthy();
+
+    const keepRunningSwitch = screen.getByRole("switch", {
+      name: "Keep daemon running after quit",
+    });
+    expect(keepRunningSwitch.getAttribute("aria-checked")).toBe("true");
+
+    const manageSwitch = screen.getByRole("switch", { name: "Manage built-in daemon" });
+    expect(manageSwitch.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("does not render a duplicate restart-daemon control", () => {
+    const screen = render(<LocalDaemonSection />);
+
+    expect(screen.queryByText("Restart daemon")).toBeNull();
+    expect(screen.queryByText("Start daemon")).toBeNull();
   });
 
   it("updates keep-running-after-quit without changing daemon lifecycle", async () => {
     const screen = render(<LocalDaemonSection />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Disable" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Keep daemon running after quit" }));
 
     await waitFor(() => {
       expect(settingsState.updateSettings).toHaveBeenCalledWith({
@@ -256,16 +279,14 @@ describe("LocalDaemonSection", () => {
       });
     });
     expect(confirmDialogMock).not.toHaveBeenCalled();
-    expect(daemonCommandMocks.startDesktopDaemonMock).not.toHaveBeenCalled();
     expect(daemonCommandMocks.stopDesktopDaemonMock).not.toHaveBeenCalled();
-    expect(daemonCommandMocks.restartDesktopDaemonMock).not.toHaveBeenCalled();
   });
 
   it("pauses built-in daemon management and persists the setting through desktop settings", async () => {
     confirmDialogMock.mockResolvedValue(true);
     const screen = render(<LocalDaemonSection />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Manage built-in daemon" }));
 
     await waitFor(() => {
       expect(daemonCommandMocks.stopDesktopDaemonMock).toHaveBeenCalledTimes(1);

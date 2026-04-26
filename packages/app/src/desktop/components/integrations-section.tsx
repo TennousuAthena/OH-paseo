@@ -133,9 +133,7 @@ export function IntegrationsSection() {
               <Terminal size={theme.iconSize.md} color={theme.colors.foreground} />
               <Text style={settingsStyles.rowTitle}>Command line</Text>
             </View>
-            <Text style={settingsStyles.rowHint}>
-              Control and script agents from your terminal.
-            </Text>
+            <Text style={settingsStyles.rowHint}>Control and script agents from your terminal</Text>
           </View>
           {cliStatus?.installed ? (
             <View style={styles.installedLabel}>
@@ -160,7 +158,7 @@ export function IntegrationsSection() {
               <Text style={settingsStyles.rowTitle}>Orchestration skills</Text>
             </View>
             <Text style={settingsStyles.rowHint}>
-              Teach your agents to orchestrate through the CLI.
+              Teach your agents to orchestrate through the CLI
             </Text>
           </View>
           {skillsStatus?.installed ? (

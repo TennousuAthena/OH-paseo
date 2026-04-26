@@ -17,7 +17,7 @@ import { formatConnectionStatus, getConnectionStatusTone } from "@/utils/daemons
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { settingsStyles } from "@/styles/settings";
 import { Button } from "@/components/ui/button";
-import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Switch } from "@/components/ui/switch";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
@@ -28,11 +28,6 @@ import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section
 
 const RESTART_CONFIRMATION_MESSAGE =
   "This will restart the daemon. Agents running on it will keep going; the app will reconnect automatically.";
-
-const INJECT_TOOLS_OPTIONS = [
-  { value: "on", label: "On" },
-  { value: "off", label: "Off" },
-];
 
 function formatHostConnectionLabel(connection: HostConnection): string {
   if (connection.type === "relay") {
@@ -579,7 +574,7 @@ function RestartDaemonCard({ host }: { host: HostProfile }) {
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>Restart daemon</Text>
           <Text style={settingsStyles.rowHint}>
-            Restarts the daemon process. The app will reconnect automatically.
+            Restarts the daemon process. The app will reconnect automatically
           </Text>
         </View>
         <Button
@@ -602,10 +597,10 @@ function InjectPaseoToolsCard({ serverId }: { serverId: string }) {
   const { config, patchConfig } = useDaemonConfig(serverId);
 
   const handleValueChange = useCallback(
-    (value: string) => {
+    (next: boolean) => {
       void patchConfig({
         mcp: {
-          injectIntoAgents: value === "on",
+          injectIntoAgents: next,
         },
       });
     },
@@ -623,11 +618,10 @@ function InjectPaseoToolsCard({ serverId }: { serverId: string }) {
             Automatically inject Paseo MCP tools into new agents
           </Text>
         </View>
-        <SegmentedControl
-          size="sm"
-          value={config?.mcp.injectIntoAgents === false ? "off" : "on"}
+        <Switch
+          value={config?.mcp.injectIntoAgents !== false}
           onValueChange={handleValueChange}
-          options={INJECT_TOOLS_OPTIONS}
+          accessibilityLabel="Inject Paseo tools"
         />
       </View>
     </View>
