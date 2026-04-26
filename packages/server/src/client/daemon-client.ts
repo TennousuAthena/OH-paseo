@@ -68,6 +68,8 @@ import type {
   SessionOutboundMessage,
   SendAgentMessageRequest,
   EditorTargetId,
+  PaseoConfigRaw,
+  PaseoConfigRevision,
 } from "../shared/messages.js";
 import type {
   AgentPermissionRequest,
@@ -274,11 +276,25 @@ type ListAvailableProvidersPayload = ListAvailableProvidersResponse["payload"];
 type GetProvidersSnapshotPayload = GetProvidersSnapshotResponseMessage["payload"];
 type RefreshProvidersSnapshotPayload = RefreshProvidersSnapshotResponseMessage["payload"];
 type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
+type ReadProjectConfigPayload = Extract<
+  SessionOutboundMessage,
+  { type: "read_project_config_response" }
+>["payload"];
+type WriteProjectConfigPayload = Extract<
+  SessionOutboundMessage,
+  { type: "write_project_config_response" }
+>["payload"];
 type ListCommandsPayload = ListCommandsResponse["payload"];
 type ListCommandsDraftConfig = Pick<
   AgentSessionConfig,
   "provider" | "cwd" | "modeId" | "model" | "thinkingOptionId" | "featureValues"
 >;
+export interface WriteProjectConfigInput {
+  repoRoot: string;
+  config: PaseoConfigRaw;
+  expectedRevision: PaseoConfigRevision | null;
+  requestId?: string;
+}
 interface ListCommandsOptions {
   requestId?: string;
   draftConfig?: ListCommandsDraftConfig;
@@ -2936,6 +2952,32 @@ export class DaemonClient {
         config,
       },
       responseType: "set_daemon_config_response",
+      timeout: 10000,
+    });
+  }
+
+  async readProjectConfig(repoRoot: string, requestId?: string): Promise<ReadProjectConfigPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "read_project_config_request",
+        repoRoot,
+      },
+      responseType: "read_project_config_response",
+      timeout: 10000,
+    });
+  }
+
+  async writeProjectConfig(input: WriteProjectConfigInput): Promise<WriteProjectConfigPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "write_project_config_request",
+        repoRoot: input.repoRoot,
+        config: input.config,
+        expectedRevision: input.expectedRevision,
+      },
+      responseType: "write_project_config_response",
       timeout: 10000,
     });
   }

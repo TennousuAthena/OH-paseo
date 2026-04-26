@@ -830,6 +830,8 @@ function RootStack() {
         <Stack.Screen name="welcome" />
         <Stack.Screen name="settings/index" />
         <Stack.Screen name="settings/[section]" />
+        <Stack.Screen name="settings/projects/index" />
+        <Stack.Screen name="settings/projects/[projectKey]" />
         <Stack.Screen name="pair-scan" />
       </Stack.Protected>
       {/*

@@ -27,6 +27,7 @@ import {
   Shield,
   Puzzle,
   Plus,
+  FolderGit2,
 } from "lucide-react-native";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
@@ -70,11 +71,14 @@ import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
 import { HostPage, HostRenameButton } from "@/screens/settings/host-page";
+import ProjectsScreen from "@/screens/projects-screen";
+import ProjectSettingsScreen from "@/screens/project-settings-screen";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
   buildHostOpenProjectRoute,
   buildHostWorkspaceRoute,
+  buildProjectsSettingsRoute,
   buildSettingsHostRoute,
   buildSettingsSectionRoute,
   type SettingsSectionSlug,
@@ -88,7 +92,9 @@ import { getLastNavigationWorkspaceRouteSelection } from "@/stores/navigation-ac
 export type SettingsView =
   | { kind: "root" }
   | { kind: "section"; section: SettingsSectionSlug }
-  | { kind: "host"; serverId: string };
+  | { kind: "host"; serverId: string }
+  | { kind: "projects" }
+  | { kind: "project"; projectKey: string };
 
 interface SidebarSectionItem {
   id: SettingsSectionSlug;
@@ -544,6 +550,37 @@ function SidebarSectionButton({
   );
 }
 
+interface SidebarProjectsButtonProps {
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+function SidebarProjectsButton({ isSelected, onSelect }: SidebarProjectsButtonProps) {
+  const { theme } = useUnistyles();
+  const accessibilityState = useMemo(() => ({ selected: isSelected }), [isSelected]);
+  const labelStyle = useMemo(
+    () => [sidebarStyles.label, isSelected && { color: theme.colors.foreground }],
+    [isSelected, theme.colors.foreground],
+  );
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={accessibilityState}
+      onPress={onSelect}
+      testID="settings-projects"
+      style={isSelected ? selectedSidebarItemStyle : sidebarItemStyle}
+    >
+      <FolderGit2
+        size={theme.iconSize.md}
+        color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
+      />
+      <Text style={labelStyle} numberOfLines={1}>
+        Projects
+      </Text>
+    </Pressable>
+  );
+}
+
 interface SidebarHostItemProps {
   serverId: string;
   label: string;
@@ -590,6 +627,7 @@ interface SettingsSidebarProps {
   view: SettingsView;
   onSelectSection: (section: SettingsSectionSlug) => void;
   onSelectHost: (serverId: string) => void;
+  onSelectProjects: () => void;
   onAddHost: () => void;
   onBackToWorkspace: () => void;
   layout: "desktop" | "mobile";
@@ -599,6 +637,7 @@ function SettingsSidebar({
   view,
   onSelectSection,
   onSelectHost,
+  onSelectProjects,
   onAddHost,
   onBackToWorkspace,
   layout,
@@ -626,6 +665,7 @@ function SettingsSidebar({
   const containerStyle = isDesktop ? sidebarStyles.desktopContainer : sidebarStyles.mobileContainer;
   const selectedSectionId = view.kind === "section" ? view.section : null;
   const selectedServerId = view.kind === "host" ? view.serverId : null;
+  const isProjectsSelected = view.kind === "projects" || view.kind === "project";
   const paddingTopStyle = useMemo(() => ({ height: padding.top }), [padding.top]);
 
   return (
@@ -655,6 +695,7 @@ function SettingsSidebar({
             onSelect={onSelectSection}
           />
         ))}
+        <SidebarProjectsButton isSelected={isProjectsSelected} onSelect={onSelectProjects} />
       </View>
       <SidebarSeparator />
       <View style={sidebarStyles.list}>
@@ -818,6 +859,15 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
     [isCompactLayout, router],
   );
 
+  const handleSelectProjects = useCallback(() => {
+    const target = buildProjectsSettingsRoute();
+    if (isCompactLayout) {
+      router.push(target);
+    } else {
+      router.replace(target);
+    }
+  }, [isCompactLayout, router]);
+
   const handleScanQr = useCallback(() => {
     closeAddConnectionFlow();
     router.push({
@@ -844,17 +894,11 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
   }, [router]);
 
   const handleBackToWorkspace = useCallback(() => {
-    if (!isCompactLayout) {
-      const lastWorkspaceRoute = getLastNavigationWorkspaceRouteSelection();
-      if (lastWorkspaceRoute) {
-        router.replace(
-          buildHostWorkspaceRoute(lastWorkspaceRoute.serverId, lastWorkspaceRoute.workspaceId),
-        );
-        return;
-      }
-    }
-    if (router.canGoBack()) {
-      router.back();
+    const lastWorkspaceRoute = getLastNavigationWorkspaceRouteSelection();
+    if (lastWorkspaceRoute) {
+      router.replace(
+        buildHostWorkspaceRoute(lastWorkspaceRoute.serverId, lastWorkspaceRoute.workspaceId),
+      );
       return;
     }
     if (anyOnlineServerId) {
@@ -862,7 +906,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
       return;
     }
     router.replace("/");
-  }, [anyOnlineServerId, isCompactLayout, router]);
+  }, [anyOnlineServerId, router]);
 
   const detailHeader = ((): {
     title: string;
@@ -883,12 +927,21 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
       if (!item) return null;
       return { title: item.label, Icon: item.icon };
     }
+    if (view.kind === "project" || view.kind === "projects") {
+      return { title: "Projects", Icon: FolderGit2 };
+    }
     return null;
   })();
 
   const content = (() => {
     if (view.kind === "host") {
       return <HostPage serverId={view.serverId} onHostRemoved={handleHostRemoved} />;
+    }
+    if (view.kind === "projects") {
+      return <ProjectsScreen view={view} />;
+    }
+    if (view.kind === "project") {
+      return <ProjectSettingsScreen projectKey={view.projectKey} />;
     }
     if (view.kind === "section") {
       switch (view.section) {
@@ -964,6 +1017,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
             view={view}
             onSelectSection={handleSelectSection}
             onSelectHost={handleSelectHost}
+            onSelectProjects={handleSelectProjects}
             onAddHost={handleAddHost}
             onBackToWorkspace={handleBackToWorkspace}
             layout="mobile"
@@ -974,14 +1028,18 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
     );
   }
 
-  // Mobile detail: full-screen content with a back header that returns to the list.
+  // Mobile detail: full-screen content with a back header. Project detail uses
+  // an app-level back (out of settings, to the workspace) since the in-body
+  // "Back to projects" ghost button handles list-level back; other detail views
+  // step back to the settings root.
+  const detailBackHandler = view.kind === "project" ? handleBackToWorkspace : handleBackToRoot;
   if (isCompactLayout) {
     return (
       <View style={styles.container}>
         <BackHeader
           title={detailHeader?.title}
           titleAccessory={detailHeader?.titleAccessory}
-          onBack={handleBackToRoot}
+          onBack={detailBackHandler}
         />
         <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
           <View style={styles.content}>{content}</View>
@@ -1001,6 +1059,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
           view={view}
           onSelectSection={handleSelectSection}
           onSelectHost={handleSelectHost}
+          onSelectProjects={handleSelectProjects}
           onAddHost={handleAddHost}
           onBackToWorkspace={handleBackToWorkspace}
           layout="desktop"
@@ -1092,6 +1151,16 @@ const styles = StyleSheet.create((theme) => ({
   },
   themeTriggerText: {
     color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  placeholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: theme.spacing[8],
+  },
+  placeholderText: {
+    color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },
 }));
