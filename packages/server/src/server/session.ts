@@ -2,6 +2,7 @@ import equal from "fast-deep-equal";
 import { v4 as uuidv4 } from "uuid";
 import { TTLCache } from "@isaacs/ttlcache";
 import pMemoize from "p-memoize";
+import { realpathSync } from "node:fs";
 import type { FSWatcher } from "node:fs";
 import { resolve, sep } from "path";
 import { homedir } from "node:os";
@@ -162,6 +163,11 @@ import {
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { type WorktreeConfig } from "../utils/worktree.js";
+import {
+  readPaseoConfigForEdit,
+  writePaseoConfigForEdit,
+  type ProjectConfigRpcError,
+} from "../utils/paseo-config-file.js";
 import { runAsyncWorktreeBootstrap } from "./worktree-bootstrap.js";
 import { archivePersistedWorkspaceRecord } from "./workspace-archive-service.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
@@ -216,6 +222,46 @@ import { toWorktreeWireError } from "./worktree-errors.js";
 
 const MAX_INITIAL_AGENT_TITLE_CHARS = Math.min(60, MAX_EXPLICIT_AGENT_TITLE_CHARS);
 const WORKSPACE_GIT_WATCH_REMOVED_STATE_KEY = "__removed__";
+
+interface ResolveKnownProjectRootForConfigInput {
+  repoRoot: string;
+  projectRegistry: Pick<ProjectRegistry, "list">;
+}
+
+async function resolveKnownProjectRootForConfig(
+  input: ResolveKnownProjectRootForConfigInput,
+): Promise<string | null> {
+  const requestedRoot = canonicalizeConfigRoot(input.repoRoot);
+  const projects = await input.projectRegistry.list();
+  for (const project of projects) {
+    if (project.archivedAt !== null) {
+      continue;
+    }
+    const projectRoot = canonicalizeConfigRoot(project.rootPath);
+    if (requestedRoot === projectRoot) {
+      return projectRoot;
+    }
+  }
+  return null;
+}
+
+function canonicalizeConfigRoot(repoRoot: string): string {
+  const resolved = resolve(repoRoot);
+  try {
+    return stripTrailingPathSeparators(realpathSync(resolved));
+  } catch {
+    return stripTrailingPathSeparators(resolved);
+  }
+}
+
+function stripTrailingPathSeparators(path: string): string {
+  let normalized = path;
+  while (normalized.length > 1 && normalized.endsWith(sep)) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
+}
+
 type GitMutationRefreshReason =
   | "commit-changes"
   | "pull"
@@ -1846,9 +1892,132 @@ export class Session {
           },
         });
         return undefined;
+      case "read_project_config_request":
+        return this.handleReadProjectConfigRequest(msg);
+      case "write_project_config_request":
+        return this.handleWriteProjectConfigRequest(msg);
       default:
         return undefined;
     }
+  }
+
+  private async handleReadProjectConfigRequest(
+    msg: Extract<SessionInboundMessage, { type: "read_project_config_request" }>,
+  ): Promise<void> {
+    const repoRoot = await resolveKnownProjectRootForConfig({
+      repoRoot: msg.repoRoot,
+      projectRegistry: this.projectRegistry,
+    });
+    if (!repoRoot) {
+      this.emitProjectConfigReadFailure(msg, { code: "project_not_found" });
+      return;
+    }
+
+    const result = readPaseoConfigForEdit(repoRoot);
+    if (!result.ok) {
+      this.sessionLogger.warn(
+        { repoRoot, requestId: msg.requestId, outcome: result.error.code },
+        "Failed to read project config",
+      );
+      this.emitProjectConfigReadFailure(msg, result.error, repoRoot);
+      return;
+    }
+
+    if (result.config === null) {
+      this.sessionLogger.debug(
+        { repoRoot, requestId: msg.requestId, outcome: "missing_project_config" },
+        "Project config missing",
+      );
+    }
+
+    this.emit({
+      type: "read_project_config_response",
+      payload: {
+        requestId: msg.requestId,
+        repoRoot,
+        ok: true,
+        config: result.config,
+        revision: result.revision,
+      },
+    });
+  }
+
+  private async handleWriteProjectConfigRequest(
+    msg: Extract<SessionInboundMessage, { type: "write_project_config_request" }>,
+  ): Promise<void> {
+    const repoRoot = await resolveKnownProjectRootForConfig({
+      repoRoot: msg.repoRoot,
+      projectRegistry: this.projectRegistry,
+    });
+    if (!repoRoot) {
+      this.emitProjectConfigWriteFailure(msg, { code: "project_not_found" });
+      return;
+    }
+
+    this.sessionLogger.debug(
+      { repoRoot, requestId: msg.requestId, outcome: "write_attempt" },
+      "Writing project config",
+    );
+    const result = writePaseoConfigForEdit({
+      repoRoot,
+      config: msg.config,
+      expectedRevision: msg.expectedRevision,
+    });
+    if (!result.ok) {
+      this.sessionLogger.debug(
+        { repoRoot, requestId: msg.requestId, outcome: result.error.code },
+        "Project config write did not complete",
+      );
+      this.emitProjectConfigWriteFailure(msg, result.error, repoRoot);
+      return;
+    }
+
+    this.sessionLogger.debug(
+      { repoRoot, requestId: msg.requestId, outcome: "written" },
+      "Project config written",
+    );
+    this.emit({
+      type: "write_project_config_response",
+      payload: {
+        requestId: msg.requestId,
+        repoRoot,
+        ok: true,
+        config: result.config,
+        revision: result.revision,
+      },
+    });
+  }
+
+  private emitProjectConfigReadFailure(
+    msg: Extract<SessionInboundMessage, { type: "read_project_config_request" }>,
+    error: ProjectConfigRpcError,
+    repoRoot = msg.repoRoot,
+  ): void {
+    this.emit({
+      type: "read_project_config_response",
+      payload: {
+        requestId: msg.requestId,
+        repoRoot,
+        ok: false,
+        error,
+      },
+    });
+  }
+
+  private emitProjectConfigWriteFailure(
+    msg: Extract<SessionInboundMessage, { type: "write_project_config_request" }>,
+    error: ProjectConfigRpcError,
+    repoRoot = msg.repoRoot,
+  ): void {
+    this.emit({
+      type: "write_project_config_response",
+      payload: {
+        requestId: msg.requestId,
+        repoRoot,
+        ok: false,
+        error,
+      },
+    });
   }
 
   private dispatchCheckoutMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -5908,6 +6077,11 @@ export class Session {
               resolveHealth: this.resolveScriptHealth ?? undefined,
             })
           : [],
+      ...(resolvedProjectRecord
+        ? {
+            project: await this.buildProjectPlacementForWorkspace(workspace, resolvedProjectRecord),
+          }
+        : {}),
     };
   }
 

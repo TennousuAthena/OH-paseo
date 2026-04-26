@@ -47,6 +47,28 @@ import {
   LoopLogsResponseSchema,
   LoopStopResponseSchema,
 } from "../server/loop/rpc-schemas.js";
+import {
+  PaseoConfigRawSchema,
+  PaseoLifecycleCommandRawSchema,
+  PaseoScriptEntryRawSchema,
+  PaseoWorktreeConfigRawSchema,
+  PaseoConfigRevisionSchema,
+  ProjectConfigRpcErrorSchema,
+  type PaseoConfigRaw,
+  type PaseoConfigRevision,
+  type PaseoScriptEntryRaw,
+  type ProjectConfigRpcError,
+} from "../utils/paseo-config-schema.js";
+export {
+  PaseoConfigRawSchema,
+  PaseoLifecycleCommandRawSchema,
+  PaseoScriptEntryRawSchema,
+  PaseoWorktreeConfigRawSchema,
+  type PaseoConfigRaw,
+  type PaseoConfigRevision,
+  type PaseoScriptEntryRaw,
+  type ProjectConfigRpcError,
+};
 // ---------------------------------------------------------------------------
 // Mutable daemon config schemas (shared between server store and client)
 // ---------------------------------------------------------------------------
@@ -872,6 +894,20 @@ export const SetDaemonConfigRequestMessageSchema = z.object({
   config: MutableDaemonConfigPatchSchema,
 });
 
+export const ReadProjectConfigRequestMessageSchema = z.object({
+  type: z.literal("read_project_config_request"),
+  requestId: z.string(),
+  repoRoot: z.string(),
+});
+
+export const WriteProjectConfigRequestMessageSchema = z.object({
+  type: z.literal("write_project_config_request"),
+  requestId: z.string(),
+  repoRoot: z.string(),
+  config: PaseoConfigRawSchema,
+  expectedRevision: PaseoConfigRevisionSchema.nullable(),
+});
+
 // ============================================================================
 // Dictation Streaming (lossless, resumable)
 // ============================================================================
@@ -1601,6 +1637,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WaitForFinishRequestSchema,
   GetDaemonConfigRequestMessageSchema,
   SetDaemonConfigRequestMessageSchema,
+  ReadProjectConfigRequestMessageSchema,
+  WriteProjectConfigRequestMessageSchema,
   DictationStreamStartMessageSchema,
   DictationStreamChunkMessageSchema,
   DictationStreamFinishMessageSchema,
@@ -2110,6 +2148,7 @@ export const WorkspaceDescriptorPayloadSchema = z
     scripts: z.array(WorkspaceScriptPayloadSchema).default([]),
     gitRuntime: WorkspaceGitRuntimePayloadSchema,
     githubRuntime: WorkspaceGitHubRuntimePayloadSchema,
+    project: ProjectPlacementPayloadSchema.optional(),
   })
   .transform((workspace) => ({
     ...workspace,
@@ -2405,6 +2444,44 @@ export const SetDaemonConfigResponseMessageSchema = z.object({
       config: MutableDaemonConfigSchema,
     })
     .passthrough(),
+});
+
+export const ReadProjectConfigResponseMessageSchema = z.object({
+  type: z.literal("read_project_config_response"),
+  payload: z.discriminatedUnion("ok", [
+    z.object({
+      requestId: z.string(),
+      repoRoot: z.string(),
+      ok: z.literal(true),
+      config: PaseoConfigRawSchema.nullable(),
+      revision: PaseoConfigRevisionSchema.nullable(),
+    }),
+    z.object({
+      requestId: z.string(),
+      repoRoot: z.string(),
+      ok: z.literal(false),
+      error: ProjectConfigRpcErrorSchema,
+    }),
+  ]),
+});
+
+export const WriteProjectConfigResponseMessageSchema = z.object({
+  type: z.literal("write_project_config_response"),
+  payload: z.discriminatedUnion("ok", [
+    z.object({
+      requestId: z.string(),
+      repoRoot: z.string(),
+      ok: z.literal(true),
+      config: PaseoConfigRawSchema,
+      revision: PaseoConfigRevisionSchema,
+    }),
+    z.object({
+      requestId: z.string(),
+      repoRoot: z.string(),
+      ok: z.literal(false),
+      error: ProjectConfigRpcErrorSchema,
+    }),
+  ]),
 });
 
 export const AgentPermissionRequestMessageSchema = z.object({
@@ -3187,6 +3264,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetVoiceModeResponseMessageSchema,
   GetDaemonConfigResponseMessageSchema,
   SetDaemonConfigResponseMessageSchema,
+  ReadProjectConfigResponseMessageSchema,
+  WriteProjectConfigResponseMessageSchema,
   SetAgentModeResponseMessageSchema,
   SetAgentModelResponseMessageSchema,
   SetAgentThinkingResponseMessageSchema,

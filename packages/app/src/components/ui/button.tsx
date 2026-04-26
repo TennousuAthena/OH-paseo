@@ -6,7 +6,7 @@ import {
   type PropsWithChildren,
   type ReactElement,
 } from "react";
-import { Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import type {
   PressableProps,
   PressableStateCallbackType,
@@ -104,6 +104,7 @@ export function Button({
   style,
   textStyle,
   disabled,
+  loading = false,
   accessibilityRole,
   ...props
 }: PropsWithChildren<
@@ -113,10 +114,12 @@ export function Button({
     leftIcon?: LeftIcon;
     style?: StyleProp<ViewStyle>;
     textStyle?: StyleProp<TextStyle>;
+    loading?: boolean;
   }
 >) {
   const [hovered, setHovered] = useState(false);
   const { theme } = useUnistyles();
+  const isDisabled = disabled || loading;
 
   let variantStyle: ViewStyle;
   if (variant === "default") {
@@ -150,10 +153,10 @@ export function Button({
       sizeStyle,
       variantStyle,
       pressed ? styles.pressed : null,
-      disabled ? styles.disabled : null,
+      isDisabled ? styles.disabled : null,
       style,
     ],
-    [sizeStyle, variantStyle, disabled, style],
+    [sizeStyle, variantStyle, isDisabled, style],
   );
 
   const resolvedTextStyle = useMemo(
@@ -168,7 +171,30 @@ export function Button({
     [variant, textStyle, isGhostHovered],
   );
 
+  const accessibilityState = useMemo(
+    () => ({ disabled: isDisabled, busy: loading }),
+    [isDisabled, loading],
+  );
+
+  function resolveIconColor(): string {
+    if (variant === "default") {
+      return theme.colors.accentForeground;
+    }
+    if (variant === "ghost") {
+      return isGhostHovered ? theme.colors.foreground : theme.colors.foregroundMuted;
+    }
+    return theme.colors.foreground;
+  }
+
   function renderIcon() {
+    if (loading) {
+      return (
+        <View>
+          <ActivityIndicator size="small" color={resolveIconColor()} />
+        </View>
+      );
+    }
+
     if (!leftIcon) return null;
 
     // Pre-rendered element — pass through
@@ -176,14 +202,7 @@ export function Button({
       return <View>{leftIcon}</View>;
     }
 
-    let color: string;
-    if (variant === "default") {
-      color = theme.colors.accentForeground;
-    } else if (variant === "ghost") {
-      color = isGhostHovered ? theme.colors.foreground : theme.colors.foregroundMuted;
-    } else {
-      color = theme.colors.foreground;
-    }
+    const color = resolveIconColor();
     const iconSize = ICON_SIZE[size];
 
     // Render function
@@ -208,7 +227,8 @@ export function Button({
     <Pressable
       {...props}
       accessibilityRole={accessibilityRole ?? "button"}
-      disabled={disabled}
+      accessibilityState={accessibilityState}
+      disabled={isDisabled}
       onHoverIn={handleHoverIn}
       onHoverOut={handleHoverOut}
       style={pressableStyle}

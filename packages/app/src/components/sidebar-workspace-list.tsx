@@ -39,6 +39,7 @@ import {
   FolderGit2,
   GitPullRequest,
   Globe,
+  Settings,
   SquareTerminal,
   Monitor,
   MoreVertical,
@@ -53,6 +54,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { projectIconQueryKey } from "@/hooks/use-project-icon-query";
 import {
   buildHostNewWorkspaceRoute,
+  buildProjectSettingsRoute,
   parseHostWorkspaceRouteFromPathname,
 } from "@/utils/host-routes";
 import {
@@ -558,6 +560,10 @@ function ProjectKebabMenu({
     () => <Trash2 size={14} color={theme.colors.foregroundMuted} />,
     [theme.colors.foregroundMuted],
   );
+  const settingsLeadingIcon = useMemo(
+    () => <Settings size={14} color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
+  );
   const renderTriggerIcon = useCallback(
     ({ hovered }: { hovered?: boolean }) => (
       <MoreVertical
@@ -567,6 +573,11 @@ function ProjectKebabMenu({
     ),
     [theme.colors.foreground, theme.colors.foregroundMuted],
   );
+  const handleOpenProjectSettings = useCallback(() => {
+    if (projectKey.trim().length === 0) return;
+    router.navigate(buildProjectSettingsRoute(projectKey));
+  }, [projectKey]);
+  const canOpenProjectSettings = projectKey.trim().length > 0;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -579,6 +590,15 @@ function ProjectKebabMenu({
         {renderTriggerIcon}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" width={220}>
+        {canOpenProjectSettings ? (
+          <DropdownMenuItem
+            testID={`sidebar-project-menu-open-settings-${projectKey}`}
+            leading={settingsLeadingIcon}
+            onSelect={handleOpenProjectSettings}
+          >
+            Open project settings
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem
           testID={`sidebar-project-menu-remove-${projectKey}`}
           leading={removeProjectLeadingIcon}

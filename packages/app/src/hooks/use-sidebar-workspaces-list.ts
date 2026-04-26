@@ -21,6 +21,7 @@ export interface SidebarWorkspaceEntry {
   workspaceKey: string;
   serverId: string;
   workspaceId: string;
+  projectKey: string;
   projectRootPath?: string;
   workspaceDirectory?: string;
   projectKind: WorkspaceDescriptor["projectKind"];
@@ -57,6 +58,7 @@ function createStructuralWorkspaceEntry(input: {
     workspaceKey: `${input.serverId}:${input.workspaceId}`,
     serverId: input.serverId,
     workspaceId: input.workspaceId,
+    projectKey: input.project.projectKey,
     projectRootPath: input.project.iconWorkingDir,
     workspaceDirectory: undefined,
     projectKind: input.project.projectKind,
@@ -77,6 +79,7 @@ export function createSidebarWorkspaceEntry(input: {
     workspaceKey: `${input.serverId}:${input.workspace.id}`,
     serverId: input.serverId,
     workspaceId: input.workspace.id,
+    projectKey: input.workspace.project?.projectKey ?? input.workspace.projectId,
     projectRootPath: input.workspace.projectRootPath,
     workspaceDirectory: input.workspace.workspaceDirectory,
     projectKind: input.workspace.projectKind,

@@ -1171,6 +1171,125 @@ test("requests branch suggestions via RPC", async () => {
   });
 });
 
+test("reads project config via correlated RPC", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const promise = client.readProjectConfig("/repo/app", "read-project-config-1");
+
+  expect(mock.sent).toHaveLength(1);
+  const request = JSON.parse(mock.sent[0]) as {
+    type: "session";
+    message: { type: "read_project_config_request"; requestId: string; repoRoot: string };
+  };
+  expect(request.message).toEqual({
+    type: "read_project_config_request",
+    requestId: "read-project-config-1",
+    repoRoot: "/repo/app",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "read_project_config_response",
+      payload: {
+        requestId: "read-project-config-1",
+        repoRoot: "/repo/app",
+        ok: true,
+        config: { worktree: { setup: "npm install" } },
+        revision: { mtimeMs: 10, size: 20 },
+      },
+    }),
+  );
+
+  await expect(promise).resolves.toEqual({
+    requestId: "read-project-config-1",
+    repoRoot: "/repo/app",
+    ok: true,
+    config: { worktree: { setup: "npm install" } },
+    revision: { mtimeMs: 10, size: 20 },
+  });
+});
+
+test("writes project config via correlated RPC and returns inline failures", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const promise = client.writeProjectConfig({
+    requestId: "write-project-config-1",
+    repoRoot: "/repo/app",
+    config: { worktree: { setup: ["npm install"] } },
+    expectedRevision: { mtimeMs: 10, size: 20 },
+  });
+
+  expect(mock.sent).toHaveLength(1);
+  const request = JSON.parse(mock.sent[0]) as {
+    type: "session";
+    message: {
+      type: "write_project_config_request";
+      requestId: string;
+      repoRoot: string;
+      config: unknown;
+      expectedRevision: unknown;
+    };
+  };
+  expect(request.message).toEqual({
+    type: "write_project_config_request",
+    requestId: "write-project-config-1",
+    repoRoot: "/repo/app",
+    config: { worktree: { setup: ["npm install"] } },
+    expectedRevision: { mtimeMs: 10, size: 20 },
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "write_project_config_response",
+      payload: {
+        requestId: "write-project-config-1",
+        repoRoot: "/repo/app",
+        ok: false,
+        error: {
+          code: "stale_project_config",
+          currentRevision: { mtimeMs: 11, size: 21 },
+        },
+      },
+    }),
+  );
+
+  await expect(promise).resolves.toEqual({
+    requestId: "write-project-config-1",
+    repoRoot: "/repo/app",
+    ok: false,
+    error: {
+      code: "stale_project_config",
+      currentRevision: { mtimeMs: 11, size: 21 },
+    },
+  });
+});
+
 test("requests directory suggestions via RPC", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

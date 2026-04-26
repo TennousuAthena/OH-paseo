@@ -119,6 +119,9 @@ export interface WorkspaceDescriptor {
   status: WorkspaceDescriptorPayload["status"];
   diffStat: { additions: number; deletions: number } | null;
   scripts: WorkspaceDescriptorPayload["scripts"];
+  gitRuntime?: WorkspaceDescriptorPayload["gitRuntime"];
+  githubRuntime?: WorkspaceDescriptorPayload["githubRuntime"];
+  project?: ProjectPlacementPayload;
 }
 
 export function normalizeWorkspaceDescriptor(
@@ -136,6 +139,9 @@ export function normalizeWorkspaceDescriptor(
     status: payload.status,
     diffStat: payload.diffStat ?? null,
     scripts: (payload.scripts ?? []).map((s) => Object.assign({}, s)),
+    gitRuntime: payload.gitRuntime,
+    githubRuntime: payload.githubRuntime,
+    project: payload.project,
   };
 }
 

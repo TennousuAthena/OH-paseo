@@ -1,14 +1,24 @@
 import { execFile, spawn } from "child_process";
 import { promisify } from "util";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "fs";
+import { existsSync, mkdirSync, realpathSync, rmSync, statSync } from "fs";
 import { rm, stat } from "fs/promises";
 import { join, basename, dirname, resolve, sep } from "path";
 import net from "node:net";
 import { createHash } from "node:crypto";
 import * as pty from "node-pty";
 import stripAnsi from "strip-ansi";
-import { z } from "zod";
 import { buildStringCommandShellInvocation } from "./string-command-shell.js";
+import { readPaseoConfigJson } from "./paseo-config-file.js";
+export {
+  PaseoConfigRawSchema,
+  PaseoLifecycleCommandRawSchema,
+  PaseoScriptEntryRawSchema,
+  PaseoWorktreeConfigRawSchema,
+  PaseoConfigSchema,
+  type PaseoConfig,
+  type PaseoConfigRaw,
+} from "./paseo-config-schema.js";
+import { PaseoConfigSchema, type PaseoConfig } from "./paseo-config-schema.js";
 import {
   normalizeBaseRefName,
   readPaseoWorktreeMetadata,
@@ -83,49 +93,6 @@ export interface WorktreeTerminalConfig {
   name?: string;
   command: string;
 }
-
-function normalizeLifecycleCommands(commands: unknown): string[] {
-  if (typeof commands === "string") {
-    return commands.trim().length > 0 ? [commands] : [];
-  }
-  if (!Array.isArray(commands)) {
-    return [];
-  }
-  return commands.filter((command): command is string => {
-    return typeof command === "string" && command.trim().length > 0;
-  });
-}
-
-const LifecycleCommandsSchema = z.unknown().transform(normalizeLifecycleCommands);
-
-const WorktreeConfigSchema = z
-  .object({
-    setup: LifecycleCommandsSchema,
-    teardown: LifecycleCommandsSchema,
-    terminals: z.unknown().optional(),
-  })
-  .passthrough()
-  .catch({ setup: [], teardown: [] });
-
-const ScriptEntrySchema = z
-  .object({
-    type: z.unknown(),
-    command: z.unknown(),
-    port: z.unknown(),
-  })
-  .partial()
-  .passthrough()
-  .catch({});
-
-const PaseoConfigSchema = z
-  .object({
-    worktree: WorktreeConfigSchema.optional(),
-    scripts: z.record(z.string(), ScriptEntrySchema).optional().catch({}),
-  })
-  .passthrough()
-  .catch({});
-
-type PaseoConfig = z.infer<typeof PaseoConfigSchema>;
 
 export interface PlainScriptConfig {
   type?: undefined;
@@ -229,13 +196,13 @@ export class UnknownBranchError extends Error {
   }
 }
 
-function readPaseoConfig(repoRoot: string): PaseoConfig | null {
-  const paseoConfigPath = join(repoRoot, "paseo.json");
-  if (!existsSync(paseoConfigPath)) {
-    return null;
-  }
+export function readPaseoConfig(repoRoot: string): PaseoConfig | null {
   try {
-    return PaseoConfigSchema.parse(JSON.parse(readFileSync(paseoConfigPath, "utf8")));
+    const json = readPaseoConfigJson(repoRoot);
+    if (json === null) {
+      return null;
+    }
+    return PaseoConfigSchema.parse(json);
   } catch {
     throw new Error(`Failed to parse paseo.json`);
   }
