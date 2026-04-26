@@ -55,15 +55,15 @@ vi.mock("lucide-react-native", () => {
 vi.stubGlobal("React", React);
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
-import { CalloutCard } from "./callout-card";
+import { SidebarCallout } from "./sidebar-callout";
 
-type CalloutCardActions = React.ComponentProps<typeof CalloutCard>["actions"];
+type SidebarCalloutActions = React.ComponentProps<typeof SidebarCallout>["actions"];
 
-function buildSingleAction(onPress: () => void): CalloutCardActions {
+function buildSingleAction(onPress: () => void): SidebarCalloutActions {
   return [{ label: "Undo", onPress }];
 }
 
-function buildTwoActions(onWhatsNew: () => void, onInstall: () => void): CalloutCardActions {
+function buildTwoActions(onWhatsNew: () => void, onInstall: () => void): SidebarCalloutActions {
   return [
     { label: "What's new", onPress: onWhatsNew },
     { label: "Install & restart", onPress: onInstall, variant: "primary" },
@@ -72,7 +72,7 @@ function buildTwoActions(onWhatsNew: () => void, onInstall: () => void): Callout
 
 const calloutTitleIcon = <span data-testid="callout-title-icon" />;
 
-describe("CalloutCard", () => {
+describe("SidebarCallout", () => {
   let root: Root | null = null;
   let container: HTMLElement | null = null;
 
@@ -96,7 +96,7 @@ describe("CalloutCard", () => {
   it("renders title and description", () => {
     act(() => {
       root?.render(
-        <CalloutCard title="Update available" description="v1.2.3 is ready to install." />,
+        <SidebarCallout title="Update available" description="v1.2.3 is ready to install." />,
       );
     });
 
@@ -106,7 +106,7 @@ describe("CalloutCard", () => {
 
   it("renders an icon next to the title", () => {
     act(() => {
-      root?.render(<CalloutCard title="Update available" icon={calloutTitleIcon} />);
+      root?.render(<SidebarCallout title="Update available" icon={calloutTitleIcon} />);
     });
 
     expect(container?.querySelector('[data-testid="callout-title-icon"]')).not.toBeNull();
@@ -116,7 +116,7 @@ describe("CalloutCard", () => {
     const onPress = vi.fn();
     const actions = buildSingleAction(onPress);
     act(() => {
-      root?.render(<CalloutCard description="Saved." actions={actions} testID="callout" />);
+      root?.render(<SidebarCallout description="Saved." actions={actions} testID="callout" />);
     });
 
     const button = container?.querySelector(
@@ -130,7 +130,7 @@ describe("CalloutCard", () => {
     const actions = buildTwoActions(vi.fn(), vi.fn());
     act(() => {
       root?.render(
-        <CalloutCard
+        <SidebarCallout
           title="Update available"
           description="v1 ready."
           actions={actions}
@@ -149,7 +149,7 @@ describe("CalloutCard", () => {
 
   it("renders no action row when no actions are provided", () => {
     act(() => {
-      root?.render(<CalloutCard description="Copied" testID="callout" />);
+      root?.render(<SidebarCallout description="Copied" testID="callout" />);
     });
 
     expect(container?.querySelector('[data-testid="callout-actions"]')).toBeNull();
@@ -158,7 +158,7 @@ describe("CalloutCard", () => {
   it("renders the dismiss X in the top-left when onDismiss is provided", () => {
     const onDismiss = vi.fn();
     act(() => {
-      root?.render(<CalloutCard description="Saved" onDismiss={onDismiss} testID="callout" />);
+      root?.render(<SidebarCallout description="Saved" onDismiss={onDismiss} testID="callout" />);
     });
 
     const dismissButton = container?.querySelector(
@@ -169,7 +169,7 @@ describe("CalloutCard", () => {
 
   it("omits the dismiss button when onDismiss is not provided", () => {
     act(() => {
-      root?.render(<CalloutCard description="Saved" testID="callout" />);
+      root?.render(<SidebarCallout description="Saved" testID="callout" />);
     });
 
     expect(container?.querySelector('[data-testid="callout-dismiss"]')).toBeNull();

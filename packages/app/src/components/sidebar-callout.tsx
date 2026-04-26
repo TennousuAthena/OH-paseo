@@ -3,33 +3,33 @@ import { useCallback, useMemo, type ReactNode } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
-export type CalloutActionVariant = "primary" | "secondary";
+export type SidebarCalloutActionVariant = "primary" | "secondary";
 
-export interface CalloutAction {
+export interface SidebarCalloutAction {
   label: string;
   onPress: () => void;
-  variant?: CalloutActionVariant;
+  variant?: SidebarCalloutActionVariant;
   disabled?: boolean;
   testID?: string;
 }
 
-export type CalloutVariant = "default" | "success" | "error";
+export type SidebarCalloutVariant = "default" | "success" | "error";
 
-export interface CalloutCardProps {
+export interface SidebarCalloutProps {
   title?: string;
   description?: ReactNode;
   icon?: ReactNode;
-  variant?: CalloutVariant;
-  actions?: readonly CalloutAction[];
+  variant?: SidebarCalloutVariant;
+  actions?: readonly SidebarCalloutAction[];
   onDismiss?: () => void;
   testID?: string;
 }
 
-export function CalloutDescriptionText({ children }: { children: ReactNode }) {
+export function SidebarCalloutDescriptionText({ children }: { children: ReactNode }) {
   return <Text style={styles.description}>{children}</Text>;
 }
 
-export function CalloutCard({
+export function SidebarCallout({
   title,
   description,
   icon,
@@ -37,7 +37,7 @@ export function CalloutCard({
   actions,
   onDismiss,
   testID,
-}: CalloutCardProps) {
+}: SidebarCalloutProps) {
   const { theme } = useUnistyles();
   const visibleActions = (actions ?? []).slice(0, 2);
   const hasHeader = title != null || icon != null;
@@ -84,7 +84,7 @@ export function CalloutCard({
         ) : null}
 
         {hasDescription && typeof description === "string" ? (
-          <CalloutDescriptionText>{description}</CalloutDescriptionText>
+          <SidebarCalloutDescriptionText>{description}</SidebarCalloutDescriptionText>
         ) : null}
         {hasDescription && typeof description !== "string" ? (
           <View style={styles.descriptionSlot}>{description}</View>
@@ -93,7 +93,7 @@ export function CalloutCard({
         {visibleActions.length > 0 ? (
           <View style={styles.actionRow} testID={testID ? `${testID}-actions` : undefined}>
             {visibleActions.map((action, index) => (
-              <CalloutActionButton
+              <SidebarCalloutActionButton
                 key={action.label}
                 action={action}
                 testID={action.testID ?? (testID ? `${testID}-action-${index}` : undefined)}
@@ -106,7 +106,13 @@ export function CalloutCard({
   );
 }
 
-function CalloutActionButton({ action, testID }: { action: CalloutAction; testID?: string }) {
+function SidebarCalloutActionButton({
+  action,
+  testID,
+}: {
+  action: SidebarCalloutAction;
+  testID?: string;
+}) {
   const isPrimary = action.variant === "primary";
   const labelStyle = useMemo(
     () => [styles.actionLabel, isPrimary ? styles.actionLabelPrimary : styles.actionLabelSecondary],

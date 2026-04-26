@@ -1,5 +1,5 @@
 import { router, usePathname } from "expo-router";
-import { MessagesSquare, Plus, Settings } from "lucide-react-native";
+import { FolderPlus, MessagesSquare, Settings } from "lucide-react-native";
 import {
   type Dispatch,
   memo,
@@ -365,7 +365,7 @@ function FooterIconButton({
   onPress: () => void;
   testID: string;
   accessibilityLabel: string;
-  icon: typeof Plus;
+  icon: typeof FolderPlus;
   theme: SidebarTheme;
 }) {
   return (
@@ -448,7 +448,7 @@ function SidebarFooter({
               onPress={handleOpenProject}
               testID="sidebar-add-project"
               accessibilityLabel="Add project"
-              icon={Plus}
+              icon={FolderPlus}
               theme={theme}
             />
           </TooltipTrigger>

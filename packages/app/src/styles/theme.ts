@@ -164,7 +164,7 @@ const lightSemanticColors = {
   accentForeground: "#ffffff",
 
   // Semantic
-  destructive: "#dc2626",
+  destructive: "#b04138", // dark warm red on white — calm but unambiguously red
   destructiveForeground: "#ffffff",
   success: "#20744A",
   successForeground: "#ffffff",
@@ -233,6 +233,7 @@ interface DarkThemeConfig {
   borderAccent: string;
   accent: string;
   accentBright: string;
+  destructive: string;
 }
 
 const darkTerminalAnsi = {
@@ -276,7 +277,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     accentBright: tint.accentBright,
     accentForeground: "#ffffff",
 
-    destructive: "#ef4444",
+    destructive: tint.destructive,
     destructiveForeground: "#ffffff",
     success: tint.accent,
     successForeground: "#ffffff",
@@ -332,6 +333,7 @@ const paseoDarkColors = buildDarkSemanticColors({
   borderAccent: "#2F3534",
   accent: "#20744A",
   accentBright: "#7ccba0",
+  destructive: "#c64f43", // warm red, hue ~7 — reads as red (not pink) against the green tint
 });
 
 // Zinc — neutral gray, no tint
@@ -350,6 +352,7 @@ const zincDarkColors = buildDarkSemanticColors({
   borderAccent: "#303036",
   accent: "#20744A",
   accentBright: "#7ccba0",
+  destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
 });
 
 // Midnight — subtle blue tint
@@ -368,6 +371,7 @@ const midnightDarkColors = buildDarkSemanticColors({
   borderAccent: "#2e3040",
   accent: "#3b6fcf",
   accentBright: "#7eaaeb",
+  destructive: "#c44a52", // red with a hint of cool lean against the blue tint
 });
 
 // Claude — warm neutral with subtle orange undertone
@@ -386,6 +390,7 @@ const claudeDarkColors = buildDarkSemanticColors({
   borderAccent: "#36332f",
   accent: "#d97757",
   accentBright: "#e89a7f",
+  destructive: "#cf513e", // warm orange-red, hue ~10 — sits with the Claude orange accent
 });
 
 // Ghostty — blue-tinted dark based on Ghostty default background
@@ -404,6 +409,7 @@ const ghosttyDarkColors = buildDarkSemanticColors({
   borderAccent: "#3f4454",
   accent: "#89b4fa",
   accentBright: "#b4d0fc",
+  destructive: "#c44a55", // red with slight cool lean against the slate-blue surfaces
 });
 
 const commonTheme = {

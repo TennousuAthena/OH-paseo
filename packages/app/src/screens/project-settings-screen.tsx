@@ -18,9 +18,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Alert } from "@/components/ui/alert";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
-import { CalloutCard, type CalloutAction } from "@/components/callout-card";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
@@ -232,6 +232,7 @@ function renderContent({
     return (
       <ReadFailureCallout
         kind="transport"
+        error={readQuery.error}
         onReload={onReload}
         hasMultipleHosts={hasMultipleHosts}
       />
@@ -242,6 +243,7 @@ function renderContent({
     return (
       <ReadFailureCallout
         kind={readError.code}
+        error={null}
         onReload={onReload}
         hasMultipleHosts={hasMultipleHosts}
       />
@@ -277,77 +279,64 @@ function revisionToKey(revision: PaseoConfigRevision | null): string {
 
 interface ReadFailureCalloutProps {
   kind: "transport" | ProjectConfigRpcError["code"];
+  error: unknown;
   onReload: () => void;
   hasMultipleHosts: boolean;
 }
 
-function ReadFailureCallout({ kind, onReload, hasMultipleHosts }: ReadFailureCalloutProps) {
-  const reloadAction = useMemo<readonly CalloutAction[]>(
-    () => [{ label: "Reload", onPress: onReload, variant: "primary" }],
-    [onReload],
-  );
-
-  if (kind === "invalid_project_config") {
-    return (
-      <View style={styles.errorBlock}>
-        <CalloutCard
-          testID="invalid-callout"
-          variant="error"
-          title="paseo.json couldn't be parsed"
-          description="Fix the file on disk, then reload."
-          actions={reloadAction}
-        />
-      </View>
-    );
-  }
-
-  if (kind === "project_not_found") {
-    return (
-      <View style={styles.errorBlock}>
-        <CalloutCard
-          testID="project-not-found-callout"
-          variant="error"
-          title="This host doesn't have this project"
-          description={
-            hasMultipleHosts
-              ? "Switch to another host above, or reload."
-              : "The selected host has no record of this project."
-          }
-          actions={reloadAction}
-        />
-      </View>
-    );
-  }
-
-  if (kind === "transport") {
-    return (
-      <View style={styles.errorBlock}>
-        <CalloutCard
-          testID="read-transport-callout"
-          variant="error"
-          title="Couldn't reach this host"
-          description={
-            hasMultipleHosts
-              ? "The host didn't respond. Switch to another host above, or reload."
-              : "The host didn't respond. Try again."
-          }
-          actions={reloadAction}
-        />
-      </View>
-    );
-  }
-
+function ReadFailureCallout({ kind, error, onReload, hasMultipleHosts }: ReadFailureCalloutProps) {
+  const { testID, title, description } = resolveReadFailureCopy({ kind, error, hasMultipleHosts });
   return (
     <View style={styles.errorBlock}>
-      <CalloutCard
-        testID="read-failed-callout"
-        variant="error"
-        title="Couldn't load paseo.json"
-        description="Reload to try again."
-        actions={reloadAction}
-      />
+      <Alert testID={testID} variant="error" title={title} description={description}>
+        <Button testID={`${testID}-action-0`} onPress={onReload} variant="outline" size="sm">
+          Reload
+        </Button>
+      </Alert>
     </View>
   );
+}
+
+function resolveReadFailureCopy(input: {
+  kind: ReadFailureCalloutProps["kind"];
+  error: unknown;
+  hasMultipleHosts: boolean;
+}): { testID: string; title: string; description: string } {
+  if (input.kind === "invalid_project_config") {
+    return {
+      testID: "invalid-callout",
+      title: "paseo.json couldn't be parsed",
+      description: "Fix the file on disk, then reload.",
+    };
+  }
+  if (input.kind === "project_not_found") {
+    return {
+      testID: "project-not-found-callout",
+      title: "This host doesn't have this project",
+      description: input.hasMultipleHosts
+        ? "Switch to another host above, or reload."
+        : "The selected host has no record of this project.",
+    };
+  }
+  if (input.kind === "transport") {
+    const detail = errorToDetail(input.error);
+    return {
+      testID: "read-transport-callout",
+      title: "Couldn't load paseo.json",
+      description: detail ?? "The host didn't respond.",
+    };
+  }
+  return {
+    testID: "read-failed-callout",
+    title: "Couldn't load paseo.json",
+    description: "Reload to try again.",
+  };
+}
+
+function errorToDetail(error: unknown): string | null {
+  if (error instanceof Error && error.message.length > 0) return error.message;
+  if (typeof error === "string" && error.length > 0) return error;
+  return null;
 }
 
 interface ProjectConfigFormProps {
@@ -508,18 +497,6 @@ function ProjectConfigForm({
     [draft.scripts],
   );
 
-  const staleActions = useMemo<readonly CalloutAction[]>(
-    () => [{ label: "Reload", onPress: handleReload, variant: "primary" }],
-    [handleReload],
-  );
-  const writeFailedActions = useMemo<readonly CalloutAction[]>(
-    () => [
-      { label: "Try again", onPress: handleSave, variant: "primary" },
-      { label: "Reload", onPress: handleReload, variant: "secondary" },
-    ],
-    [handleSave, handleReload],
-  );
-
   const scriptsTrailing = useMemo(
     () => (
       <Pressable
@@ -594,25 +571,49 @@ function ProjectConfigForm({
 
       {isStale ? (
         <View style={styles.calloutWrap}>
-          <CalloutCard
+          <Alert
             testID="stale-callout"
             variant="error"
             title="Config changed on disk"
             description="Reload to fetch the latest paseo.json before saving."
-            actions={staleActions}
-          />
+          >
+            <Button
+              testID="stale-callout-action-0"
+              onPress={handleReload}
+              variant="outline"
+              size="sm"
+            >
+              Reload
+            </Button>
+          </Alert>
         </View>
       ) : null}
 
       {isWriteFailed ? (
         <View style={styles.calloutWrap}>
-          <CalloutCard
+          <Alert
             testID="write-failed-callout"
             variant="error"
             title="Couldn't save paseo.json"
             description="Try again, or reload the latest version from disk."
-            actions={writeFailedActions}
-          />
+          >
+            <Button
+              testID="write-failed-callout-action-0"
+              onPress={handleSave}
+              variant="outline"
+              size="sm"
+            >
+              Try again
+            </Button>
+            <Button
+              testID="write-failed-callout-action-1"
+              onPress={handleReload}
+              variant="outline"
+              size="sm"
+            >
+              Reload
+            </Button>
+          </Alert>
         </View>
       ) : null}
 
@@ -1033,8 +1034,7 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[6],
   },
   errorBlock: {
-    padding: theme.spacing[4],
-    gap: theme.spacing[3],
+    marginTop: theme.spacing[2],
   },
   lifecycleInput: {
     color: theme.colors.foreground,

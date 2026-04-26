@@ -355,16 +355,16 @@ vi.mock("@/components/adaptive-modal-sheet", () => ({
   },
 }));
 
-vi.mock("@/components/callout-card", () => ({
-  CalloutCard: ({
+vi.mock("@/components/ui/alert", () => ({
+  Alert: ({
     title,
     description,
-    actions,
+    children,
     testID,
   }: {
     title?: string;
     description?: React.ReactNode;
-    actions?: readonly { label: string; onPress: () => void }[];
+    children?: React.ReactNode;
     testID?: string;
   }) =>
     React.createElement(
@@ -372,18 +372,7 @@ vi.mock("@/components/callout-card", () => ({
       { "data-testid": testID, role: "alert" },
       React.createElement("span", { "data-testid": `${testID}-title` }, title),
       React.createElement("span", { "data-testid": `${testID}-description` }, description),
-      actions?.map((action, index) =>
-        React.createElement(
-          "button",
-          {
-            key: index,
-            type: "button",
-            "data-testid": `${testID}-action-${index}`,
-            onClick: action.onPress,
-          },
-          action.label,
-        ),
-      ),
+      children,
     ),
 }));
 

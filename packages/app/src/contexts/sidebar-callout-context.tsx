@@ -9,14 +9,12 @@ import {
   useState,
 } from "react";
 import {
-  type CalloutAction,
-  CalloutCard,
-  type CalloutCardProps,
-  type CalloutVariant,
-} from "@/components/callout-card";
+  SidebarCallout,
+  type SidebarCalloutAction,
+  type SidebarCalloutProps,
+  type SidebarCalloutVariant,
+} from "@/components/sidebar-callout";
 import { useStableEvent } from "@/hooks/use-stable-event";
-
-export type SidebarCalloutAction = CalloutAction;
 
 export interface SidebarCalloutOptions {
   id: string;
@@ -24,7 +22,7 @@ export interface SidebarCalloutOptions {
   title: string;
   description?: ReactNode;
   icon?: ReactNode;
-  variant?: CalloutVariant;
+  variant?: SidebarCalloutVariant;
   actions?: readonly SidebarCalloutAction[];
   dismissible?: boolean;
   priority?: number;
@@ -218,7 +216,7 @@ export function SidebarCalloutViewport() {
     return null;
   }
 
-  const cardProps: CalloutCardProps = {
+  const cardProps: SidebarCalloutProps = {
     title: activeCallout.title,
     description: activeCallout.description,
     icon: activeCallout.icon,
@@ -229,5 +227,5 @@ export function SidebarCalloutViewport() {
     testID: activeCallout.testID,
   };
 
-  return <CalloutCard {...cardProps} />;
+  return <SidebarCallout {...cardProps} />;
 }

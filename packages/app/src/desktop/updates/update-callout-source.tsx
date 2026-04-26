@@ -1,8 +1,11 @@
 import { Gift } from "lucide-react-native";
 import { type ReactNode, useEffect, useRef } from "react";
 import { useUnistyles } from "react-native-unistyles";
-import { CalloutDescriptionText } from "@/components/callout-card";
-import { type SidebarCalloutAction, useSidebarCallouts } from "@/contexts/sidebar-callout-context";
+import {
+  type SidebarCalloutAction,
+  SidebarCalloutDescriptionText,
+} from "@/components/sidebar-callout";
+import { useSidebarCallouts } from "@/contexts/sidebar-callout-context";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -167,14 +170,14 @@ export function UpdateCalloutSource() {
 function UpdateAvailableDescription({ versionLabel }: { versionLabel?: string }) {
   return (
     <>
-      <CalloutDescriptionText>
+      <SidebarCalloutDescriptionText>
         {versionLabel
           ? `${versionLabel} is ready to install.`
           : "A new version is ready to install."}
-      </CalloutDescriptionText>
-      <CalloutDescriptionText>
+      </SidebarCalloutDescriptionText>
+      <SidebarCalloutDescriptionText>
         Upgrading the app will stop running agents and close terminal sessions.
-      </CalloutDescriptionText>
+      </SidebarCalloutDescriptionText>
     </>
   );
 }
