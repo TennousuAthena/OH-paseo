@@ -271,6 +271,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       ],
     );
 
+    const handleToolCallOpenFile = useCallback(
+      (filePath: string) => {
+        handleInlinePathPress({ raw: filePath, path: filePath });
+      },
+      [handleInlinePathPress],
+    );
+
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
         tail: streamItems,
@@ -485,6 +492,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               cwd={agent.cwd}
               metadata={data.metadata}
               isLastInSequence={isLastInSequence}
+              onOpenFilePath={handleToolCallOpenFile}
             />
           );
         }
@@ -499,10 +507,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             result={data.result}
             status={data.status}
             isLastInSequence={isLastInSequence}
+            onOpenFilePath={handleToolCallOpenFile}
           />
         );
       },
-      [agent.cwd, streamRenderStrategy, setInlineDetailsExpanded],
+      [agent.cwd, streamRenderStrategy, setInlineDetailsExpanded, handleToolCallOpenFile],
     );
 
     const renderStreamItemContent = useCallback(

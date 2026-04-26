@@ -4,6 +4,7 @@ import {
   Image,
   Pressable,
   ActivityIndicator,
+  type GestureResponderEvent,
   type LayoutChangeEvent,
   StyleProp,
   ViewStyle,
@@ -45,6 +46,7 @@ import {
   TriangleAlertIcon,
   Scissors,
   MicVocal,
+  FileSymlink,
 } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -64,6 +66,7 @@ import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
 import { buildToolCallDisplayModel } from "@/utils/tool-call-display";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
+import { extractToolCallFilePath } from "@/utils/extract-tool-call-file-path";
 import {
   hasMeaningfulToolCallDetail,
   isPendingToolCallDetail,
@@ -1014,6 +1017,12 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   },
   chevron: {
     marginLeft: theme.spacing[1],
+    flexShrink: 0,
+  },
+  openFileButton: {
+    marginLeft: theme.spacing[1],
+    padding: theme.spacing[1],
+    borderRadius: theme.borderRadius.md,
     flexShrink: 0,
   },
   chevronExpanded: {
@@ -2031,6 +2040,7 @@ interface ExpandableBadgeProps {
   isExpanded: boolean;
   style?: StyleProp<ViewStyle>;
   onToggle?: () => void;
+  onOpenFile?: () => void;
   onDetailHoverChange?: (hovered: boolean) => void;
   renderDetails?: () => ReactNode;
   isLoading?: boolean;
@@ -2320,6 +2330,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
   icon,
   isExpanded,
   onToggle,
+  onOpenFile,
   onDetailHoverChange,
   renderDetails,
   isLoading = false,
@@ -2331,6 +2342,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const { theme } = useUnistyles();
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const [isHovered, setIsHovered] = useState(false);
+  const [isOpenFileHovered, setIsOpenFileHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
   const isInteractive = Boolean(onToggle);
   const hasDetailContent = Boolean(renderDetails);
@@ -2350,6 +2362,15 @@ const ExpandableBadge = memo(function ExpandableBadge({
     () => onDetailHoverChange?.(false),
     [onDetailHoverChange],
   );
+  const handleOpenFilePress = useCallback(
+    (event: GestureResponderEvent) => {
+      event.stopPropagation?.();
+      onOpenFile?.();
+    },
+    [onOpenFile],
+  );
+  const handleOpenFileHoverIn = useCallback(() => setIsOpenFileHovered(true), []);
+  const handleOpenFileHoverOut = useCallback(() => setIsOpenFileHovered(false), []);
 
   const nativeGradientIdRef = useRef(
     `shimmer-gradient-${Math.random().toString(36).substring(2, 9)}`,
@@ -2550,8 +2571,6 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const pressHandlers = isInteractive
     ? {
         onPress: onToggle,
-        onHoverIn: handleHoverIn,
-        onHoverOut: handleHoverOut,
         onPressIn: handlePressIn,
         onPressOut: handlePressOut,
         accessibilityRole: "button" as const,
@@ -2559,7 +2578,12 @@ const ExpandableBadge = memo(function ExpandableBadge({
     : {};
 
   return (
-    <View style={containerStyle} testID={testID}>
+    <View
+      style={containerStyle}
+      testID={testID}
+      onPointerEnter={isWeb ? handleHoverIn : undefined}
+      onPointerLeave={isWeb ? handleHoverOut : undefined}
+    >
       <Pressable
         {...pressHandlers}
         disabled={!isInteractive}
@@ -2588,6 +2612,23 @@ const ExpandableBadge = memo(function ExpandableBadge({
             onLabelLayout={handleLabelLayout}
             onSecondaryLayout={handleSecondaryLayout}
           />
+          {onOpenFile && isHovered ? (
+            <Pressable
+              onPress={handleOpenFilePress}
+              onHoverIn={handleOpenFileHoverIn}
+              onHoverOut={handleOpenFileHoverOut}
+              accessibilityRole="button"
+              accessibilityLabel="Open file"
+              testID="tool-call-open-file"
+              style={expandableBadgeStylesheet.openFileButton}
+              hitSlop={6}
+            >
+              <FileSymlink
+                size={14}
+                color={isOpenFileHovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+              />
+            </Pressable>
+          ) : null}
           {isInteractive && isHovered ? (
             <ChevronRight size={14} color={theme.colors.foreground} style={chevronStyle} />
           ) : null}
@@ -2619,6 +2660,7 @@ function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: Expa
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
   if (previous.testID !== next.testID) return false;
   if (previous.onToggle !== next.onToggle) return false;
+  if (previous.onOpenFile !== next.onOpenFile) return false;
   if (previous.onDetailHoverChange !== next.onDetailHoverChange) return false;
   if (previous.renderDetails !== next.renderDetails) return false;
   return true;
@@ -2637,6 +2679,7 @@ interface ToolCallProps {
   disableOuterSpacing?: boolean;
   onInlineDetailsHoverChange?: (hovered: boolean) => void;
   onInlineDetailsExpandedChange?: (expanded: boolean) => void;
+  onOpenFilePath?: (filePath: string) => void;
 }
 
 export const ToolCall = memo(function ToolCall({
@@ -2652,6 +2695,7 @@ export const ToolCall = memo(function ToolCall({
   disableOuterSpacing,
   onInlineDetailsHoverChange,
   onInlineDetailsExpandedChange,
+  onOpenFilePath,
 }: ToolCallProps) {
   const { openToolCall } = useToolCallSheet();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -2709,6 +2753,17 @@ export const ToolCall = memo(function ToolCall({
   // Check if there's any content to display
   const hasDetails = Boolean(error) || hasMeaningfulToolCallDetail(effectiveDetail);
   const canOpenDetails = hasDetails || isLoadingDetails;
+
+  const extractedFilePath = useMemo(
+    () => extractToolCallFilePath(effectiveDetail),
+    [effectiveDetail],
+  );
+  const handleOpenFile = useMemo(() => {
+    if (!extractedFilePath || !onOpenFilePath) {
+      return undefined;
+    }
+    return () => onOpenFilePath(extractedFilePath);
+  }, [extractedFilePath, onOpenFilePath]);
 
   const handleToggle = useCallback(() => {
     if (isMobile) {
@@ -2792,6 +2847,7 @@ export const ToolCall = memo(function ToolCall({
       icon={IconComponent}
       isExpanded={!isMobile && isExpanded}
       onToggle={canOpenDetails ? handleToggle : undefined}
+      onOpenFile={handleOpenFile}
       renderDetails={canOpenDetails && !isMobile ? renderDetails : undefined}
       isLoading={status === "running" || status === "executing"}
       isError={status === "failed"}
@@ -2813,5 +2869,6 @@ function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.metadata !== next.metadata) return false;
   if (previous.isLastInSequence !== next.isLastInSequence) return false;
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
+  if (previous.onOpenFilePath !== next.onOpenFilePath) return false;
   return true;
 }
