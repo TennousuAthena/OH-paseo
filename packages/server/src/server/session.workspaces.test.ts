@@ -65,6 +65,12 @@ interface SessionTestAccess {
   terminalManager: {
     killTerminal(id: string): unknown;
   } | null;
+  workspaceGitService: {
+    getCheckout: (cwd: string) => Promise<unknown>;
+    getSnapshot: (cwd: string, options?: unknown) => Promise<WorkspaceGitRuntimeSnapshot>;
+    peekSnapshot: (cwd: string) => WorkspaceGitRuntimeSnapshot | null;
+    registerWorkspace: (params: { cwd: string }, listener: unknown) => { unsubscribe: () => void };
+  };
 }
 
 interface ListFetchResult {
@@ -2094,6 +2100,174 @@ test("open_project_request registers a workspace before any agent exists", async
   expect(response?.payload.workspace?.id).toBe("/tmp/repo");
 });
 
+test("open_project_response returns immediately even when the GitHub fetch is slow", async () => {
+  const emitted: Array<{ type: string; payload: unknown }> = [];
+  const session = createSessionForWorkspaceTests();
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const cwd = "/tmp/slow-github-repo";
+
+  session.emit = (message) => emitted.push(message as { type: string; payload: unknown });
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    workspaces.get(workspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceGitService.getCheckout = async (requestedCwd: string) => ({
+    cwd: requestedCwd,
+    isGit: true,
+    currentBranch: "main",
+    remoteUrl: "https://github.com/acme/slow.git",
+    worktreeRoot: requestedCwd,
+    isPaseoOwnedWorktree: false,
+    mainRepoRoot: null,
+  });
+  let resolveSnapshot: (snapshot: WorkspaceGitRuntimeSnapshot) => void = () => {};
+  const snapshotPromise = new Promise<WorkspaceGitRuntimeSnapshot>((resolve) => {
+    resolveSnapshot = resolve;
+  });
+  session.workspaceGitService.getSnapshot = (requestedCwd: string) => {
+    void requestedCwd;
+    return snapshotPromise;
+  };
+
+  const start = Date.now();
+  await session.handleMessage({
+    type: "open_project_request",
+    cwd,
+    requestId: "req-slow-github",
+  });
+  const elapsedMs = Date.now() - start;
+
+  expect(elapsedMs).toBeLessThan(500);
+
+  const response = emitted.find((message) => message.type === "open_project_response") as
+    | {
+        payload: {
+          error: unknown;
+          workspace?: {
+            id: string;
+            gitRuntime?: unknown;
+            githubRuntime?: unknown;
+          };
+        };
+      }
+    | undefined;
+  expect(response?.payload.error).toBeNull();
+  expect(response?.payload.workspace?.id).toBe(cwd);
+  expect(response?.payload.workspace?.gitRuntime).toBeUndefined();
+  expect(response?.payload.workspace?.githubRuntime).toBeUndefined();
+
+  resolveSnapshot(createWorkspaceRuntimeSnapshot(cwd));
+});
+
+test("open_project_request emits a workspace_update with githubRuntime once the snapshot resolves", async () => {
+  const emitted: Array<{ type: string; payload: unknown }> = [];
+  const session = createSessionForWorkspaceTests();
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const cwd = "/tmp/github-runtime-repo";
+  const snapshot = createWorkspaceRuntimeSnapshot(cwd);
+
+  let listener: ((snapshot: WorkspaceGitRuntimeSnapshot) => void) | null = null;
+  const peeked = { value: null as WorkspaceGitRuntimeSnapshot | null };
+
+  session.emit = (message) => emitted.push(message as { type: string; payload: unknown });
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    workspaces.get(workspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceGitService.getCheckout = async (requestedCwd: string) => ({
+    cwd: requestedCwd,
+    isGit: true,
+    currentBranch: "main",
+    remoteUrl: "https://github.com/acme/repo.git",
+    worktreeRoot: requestedCwd,
+    isPaseoOwnedWorktree: false,
+    mainRepoRoot: null,
+  });
+  session.workspaceGitService.peekSnapshot = () => peeked.value;
+  session.workspaceGitService.registerWorkspace = (_params, incomingListener) => {
+    listener = incomingListener as (snapshot: WorkspaceGitRuntimeSnapshot) => void;
+    return { unsubscribe: () => {} };
+  };
+  session.workspaceGitService.getSnapshot = async () => {
+    peeked.value = snapshot;
+    listener?.(snapshot);
+    return snapshot;
+  };
+  session.workspaceUpdatesSubscription = {
+    subscriptionId: "sub-open-project",
+    filter: undefined,
+    isBootstrapping: false,
+    pendingUpdatesByWorkspaceId: new Map(),
+    lastEmittedByWorkspaceId: new Map(),
+  };
+  session.reconcileActiveWorkspaceRecords = async () => new Set();
+
+  await session.handleMessage({
+    type: "open_project_request",
+    cwd,
+    requestId: "req-runtime-update",
+  });
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  const updates = emitted.filter((message) => message.type === "workspace_update") as Array<{
+    type: "workspace_update";
+    payload: WorkspaceUpdatePayloadShape;
+  }>;
+  const upsertedWithGitHub = updates
+    .map((update) => update.payload)
+    .filter(
+      (payload): payload is WorkspaceUpsertPayload =>
+        payload.kind === "upsert" && payload.workspace.id === cwd,
+    )
+    .find((payload) => payload.workspace.githubRuntime?.pullRequest);
+  expect(upsertedWithGitHub?.workspace.githubRuntime?.pullRequest).toEqual(
+    expect.objectContaining({ url: "https://github.com/acme/repo/pull/123" }),
+  );
+});
+
+interface WorkspaceUpsertPayload {
+  kind: "upsert";
+  workspace: {
+    id: string;
+    githubRuntime?: {
+      pullRequest?: { url?: string } | null;
+    } | null;
+  };
+}
+
+interface WorkspaceRemovePayload {
+  kind: "remove";
+  id: string;
+}
+
+type WorkspaceUpdatePayloadShape = WorkspaceUpsertPayload | WorkspaceRemovePayload;
+
 test("open_project_request does not match a new child directory to an existing parent workspace", async () => {
   const emitted: Array<{ type: string; payload: unknown }> = [];
   const session = createSessionForWorkspaceTests();
@@ -2278,6 +2452,15 @@ test("open_project_request reclassifies an archived directory workspace when git
   };
   session.projectRegistry.list = async () => Array.from(projects.values());
   session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceGitService.getCheckout = async () => ({
+    cwd,
+    isGit: true,
+    currentBranch: "feature/desktop-daemon-settings",
+    remoteUrl: "git@github.com:getpaseo/paseo.git",
+    worktreeRoot: cwd,
+    isPaseoOwnedWorktree: false,
+    mainRepoRoot: repoRoot,
+  });
   session.workspaceGitService.getSnapshot = async () =>
     createWorkspaceRuntimeSnapshot(cwd, {
       git: {
@@ -2389,6 +2572,15 @@ test("open_project_request reclassifies an active directory workspace when git m
   };
   session.projectRegistry.list = async () => Array.from(projects.values());
   session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceGitService.getCheckout = async (requestedCwd: string) => ({
+    cwd: requestedCwd,
+    isGit: true,
+    currentBranch: requestedCwd === repoRoot ? "main" : "feature/desktop-daemon-settings",
+    remoteUrl: "git@github.com:getpaseo/paseo.git",
+    worktreeRoot: requestedCwd,
+    isPaseoOwnedWorktree: false,
+    mainRepoRoot: requestedCwd === repoRoot ? null : repoRoot,
+  });
   session.workspaceGitService.getSnapshot = async (requestedCwd: string) =>
     createWorkspaceRuntimeSnapshot(requestedCwd, {
       git: {
@@ -2476,6 +2668,15 @@ test("open_project_request groups a plain git worktree under an existing repo pr
   };
   session.projectRegistry.list = async () => Array.from(projects.values());
   session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceGitService.getCheckout = async (requestedCwd: string) => ({
+    cwd: requestedCwd,
+    isGit: true,
+    currentBranch: requestedCwd === repoRoot ? "main" : "feature/desktop-daemon-settings",
+    remoteUrl: "git@github.com:getpaseo/paseo.git",
+    worktreeRoot: requestedCwd,
+    isPaseoOwnedWorktree: false,
+    mainRepoRoot: requestedCwd === repoRoot ? null : repoRoot,
+  });
   session.workspaceGitService.getSnapshot = async (requestedCwd: string) =>
     createWorkspaceRuntimeSnapshot(requestedCwd, {
       git: {

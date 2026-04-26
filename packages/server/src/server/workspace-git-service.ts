@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import pLimit from "p-limit";
 import type pino from "pino";
+import type { ProjectCheckoutLitePayload } from "../shared/messages.js";
 import type { CheckoutContext } from "../utils/checkout-git.js";
 import {
   type BranchCheckoutResolution,
@@ -28,7 +29,7 @@ import {
   buildWorkspaceGitMetadataFromSnapshot,
   type WorkspaceGitMetadata,
 } from "./workspace-git-metadata.js";
-import { normalizeWorkspaceId } from "./workspace-registry-model.js";
+import { checkoutLiteFromGitSnapshot, normalizeWorkspaceId } from "./workspace-registry-model.js";
 
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 500;
 const BACKGROUND_GIT_FETCH_INTERVAL_MS = 180_000;
@@ -94,6 +95,7 @@ export interface WorkspaceGitService {
   ): WorkspaceGitSubscription;
 
   peekSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot | null;
+  getCheckout(cwd: string): Promise<ProjectCheckoutLitePayload>;
   getSnapshot(
     cwd: string,
     options?: WorkspaceGitSnapshotOptions,
@@ -388,6 +390,42 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
 
     return this.requestWorkspaceSnapshot(target, request);
+  }
+
+  async getCheckout(cwd: string): Promise<ProjectCheckoutLitePayload> {
+    const normalizedCwd = normalizeWorkspaceId(cwd);
+    try {
+      const status = await this.deps.getCheckoutStatus(normalizedCwd, {
+        paseoHome: this.paseoHome,
+      });
+      if (!status.isGit) {
+        return checkoutLiteFromGitSnapshot(normalizedCwd, {
+          isGit: false,
+          currentBranch: null,
+          remoteUrl: null,
+          repoRoot: null,
+          isPaseoOwnedWorktree: false,
+          mainRepoRoot: null,
+        });
+      }
+      return checkoutLiteFromGitSnapshot(normalizedCwd, {
+        isGit: true,
+        currentBranch: status.currentBranch,
+        remoteUrl: status.remoteUrl,
+        repoRoot: status.repoRoot,
+        isPaseoOwnedWorktree: status.isPaseoOwnedWorktree,
+        mainRepoRoot: status.mainRepoRoot,
+      });
+    } catch {
+      return checkoutLiteFromGitSnapshot(normalizedCwd, {
+        isGit: false,
+        currentBranch: null,
+        remoteUrl: null,
+        repoRoot: null,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      });
+    }
   }
 
   peekSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot | null {

@@ -2,7 +2,6 @@ import { resolve } from "node:path";
 
 import type { ProjectCheckoutLitePayload, ProjectPlacementPayload } from "../shared/messages.js";
 import { parseGitRevParsePath } from "../utils/git-rev-parse-path.js";
-import type { WorkspaceGitService } from "./workspace-git-service.js";
 import type { PersistedWorkspaceRecord } from "./workspace-registry.js";
 
 export type PersistedProjectKind = "git" | "non_git";
@@ -215,11 +214,11 @@ export async function detectStaleWorkspaces(
   return staleWorkspaceIds;
 }
 
-export async function buildProjectPlacementForCwd(input: {
+export function buildProjectPlacementForCwd(input: {
   cwd: string;
-  workspaceGitService: WorkspaceGitService;
-}): Promise<ProjectPlacementPayload> {
-  const membership = await classifyDirectoryForProjectMembership(input);
+  checkout: ProjectCheckoutLitePayload;
+}): ProjectPlacementPayload {
+  const membership = classifyDirectoryForProjectMembership(input);
   return {
     projectKey: membership.projectKey,
     projectName: membership.projectName,
@@ -227,28 +226,15 @@ export async function buildProjectPlacementForCwd(input: {
   };
 }
 
-export async function classifyDirectoryForProjectMembership(input: {
+export function classifyDirectoryForProjectMembership(input: {
   cwd: string;
-  workspaceGitService: WorkspaceGitService;
-}): Promise<DirectoryProjectMembership> {
+  checkout: ProjectCheckoutLitePayload;
+}): DirectoryProjectMembership {
   const normalizedCwd = normalizeWorkspaceId(input.cwd);
-  const checkout = await input.workspaceGitService
-    .getSnapshot(normalizedCwd)
-    .then(
-      (snapshot): ProjectCheckoutLitePayload =>
-        checkoutLiteFromGitSnapshot(normalizedCwd, snapshot.git),
-    )
-    .catch(
-      (): ProjectCheckoutLitePayload => ({
-        cwd: normalizedCwd,
-        isGit: false,
-        currentBranch: null,
-        remoteUrl: null,
-        worktreeRoot: null,
-        isPaseoOwnedWorktree: false,
-        mainRepoRoot: null,
-      }),
-    );
+  const checkout: ProjectCheckoutLitePayload = {
+    ...input.checkout,
+    cwd: normalizedCwd,
+  };
 
   const projectKey = deriveProjectGroupingKey({
     cwd: checkout.worktreeRoot ?? normalizedCwd,

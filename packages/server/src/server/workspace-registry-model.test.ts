@@ -109,34 +109,18 @@ describe("deriveWorkspaceId", () => {
 });
 
 describe("git worktree grouping", () => {
-  test("classifies plain git worktrees for project membership from git facts", async () => {
-    const membership = await classifyDirectoryForProjectMembership({
+  test("classifies plain git worktrees for project membership from git facts", () => {
+    const membership = classifyDirectoryForProjectMembership({
       cwd: "/tmp/repo-feature",
-      workspaceGitService: {
-        getSnapshot: async () => ({
-          cwd: "/tmp/repo-feature",
-          git: {
-            isGit: true,
-            repoRoot: "/tmp/repo-feature",
-            mainRepoRoot: "/tmp/repo",
-            currentBranch: "feature/plain",
-            remoteUrl: "https://github.com/acme/repo.git",
-            isPaseoOwnedWorktree: false,
-            isDirty: false,
-            baseRef: null,
-            aheadBehind: null,
-            aheadOfOrigin: null,
-            behindOfOrigin: null,
-            hasRemote: true,
-            diffStat: null,
-          },
-          github: {
-            featuresEnabled: false,
-            pullRequest: null,
-            error: null,
-          },
-        }),
-      } as never,
+      checkout: {
+        cwd: "/tmp/repo-feature",
+        isGit: true,
+        currentBranch: "feature/plain",
+        remoteUrl: "https://github.com/acme/repo.git",
+        worktreeRoot: "/tmp/repo-feature",
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: "/tmp/repo",
+      },
     });
 
     expect(membership).toMatchObject({

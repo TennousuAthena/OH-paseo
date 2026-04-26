@@ -1596,12 +1596,8 @@ export class Session {
       return normalizePersistedWorkspaceId(snapshot?.git.repoRoot ?? normalizedCwd);
     }
 
-    try {
-      const snapshot = await this.workspaceGitService.getSnapshot(normalizedCwd);
-      return normalizePersistedWorkspaceId(snapshot.git.repoRoot ?? normalizedCwd);
-    } catch {
-      return normalizedCwd;
-    }
+    const checkout = await this.workspaceGitService.getCheckout(normalizedCwd);
+    return normalizePersistedWorkspaceId(checkout.worktreeRoot ?? normalizedCwd);
   }
 
   private async buildProjectPlacementForWorkspace(
@@ -6577,10 +6573,8 @@ export class Session {
   }
 
   private async createWorkspaceForDirectory(cwd: string): Promise<PersistedWorkspaceRecord> {
-    const membership = await classifyDirectoryForProjectMembership({
-      cwd,
-      workspaceGitService: this.workspaceGitService,
-    });
+    const checkout = await this.workspaceGitService.getCheckout(cwd);
+    const membership = classifyDirectoryForProjectMembership({ cwd, checkout });
     const timestamp = new Date().toISOString();
 
     const projectRecord = await this.resolveProjectRecordForPlacement({
@@ -6607,10 +6601,8 @@ export class Session {
     project: PersistedProjectRecord | null;
     cwd: string;
   }): Promise<PersistedWorkspaceRecord> {
-    const membership = await classifyDirectoryForProjectMembership({
-      cwd: input.cwd,
-      workspaceGitService: this.workspaceGitService,
-    });
+    const checkout = await this.workspaceGitService.getCheckout(input.cwd);
+    const membership = classifyDirectoryForProjectMembership({ cwd: input.cwd, checkout });
     const timestamp = new Date().toISOString();
     const projectRecord = await this.resolveProjectRecordForPlacement({
       membership,
@@ -6646,7 +6638,7 @@ export class Session {
   }
 
   private async resolveProjectRecordForPlacement(input: {
-    membership: Awaited<ReturnType<typeof classifyDirectoryForProjectMembership>>;
+    membership: ReturnType<typeof classifyDirectoryForProjectMembership>;
     timestamp: string;
   }): Promise<PersistedProjectRecord> {
     const rootPath = input.membership.projectRootPath;
@@ -7063,8 +7055,9 @@ export class Session {
   ): Promise<void> {
     try {
       const workspace = await this.findOrCreateWorkspaceForDirectory(request.cwd);
+      await this.syncWorkspaceGitObserverForWorkspace(workspace);
+      const descriptor = await this.describeWorkspaceRecord(workspace);
       await this.emitWorkspaceUpdateForCwd(workspace.cwd);
-      const descriptor = await this.describeWorkspaceRecordWithGitData(workspace);
       this.emit({
         type: "open_project_response",
         payload: {
@@ -7073,6 +7066,18 @@ export class Session {
           error: null,
         },
       });
+      void this.workspaceGitService
+        .getSnapshot(workspace.cwd, {
+          force: true,
+          includeGitHub: true,
+          reason: "open_project",
+        })
+        .catch((error) => {
+          this.sessionLogger.warn(
+            { err: error, cwd: workspace.cwd },
+            "Background snapshot refresh failed after open_project",
+          );
+        });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to open project";
       this.sessionLogger.error({ err: error, cwd: request.cwd }, "Failed to open project");

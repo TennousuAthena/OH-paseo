@@ -68,16 +68,17 @@ export async function bootstrapWorkspaceRegistries(options: {
   const recordsByWorkspaceId = new Map<
     string,
     {
-      membership: Awaited<ReturnType<typeof classifyDirectoryForProjectMembership>>;
+      membership: ReturnType<typeof classifyDirectoryForProjectMembership>;
       records: StoredAgentRecord[];
     }
   >();
   const placements = await Promise.all(
     activeRecords.map(async (record) => {
       const normalizedCwd = normalizeWorkspaceId(record.cwd);
-      const membership = await classifyDirectoryForProjectMembership({
+      const checkout = await options.workspaceGitService.getCheckout(normalizedCwd);
+      const membership = classifyDirectoryForProjectMembership({
         cwd: normalizedCwd,
-        workspaceGitService: options.workspaceGitService,
+        checkout,
       });
       return { record, membership, workspaceId: membership.workspaceId };
     }),
@@ -91,7 +92,7 @@ export async function bootstrapWorkspaceRegistries(options: {
   const projectRanges = new Map<string, { createdAt: string | null; updatedAt: string | null }>();
   const workspaceUpsertInputs: {
     workspaceId: string;
-    membership: Awaited<ReturnType<typeof classifyDirectoryForProjectMembership>>;
+    membership: ReturnType<typeof classifyDirectoryForProjectMembership>;
     workspaceCwd: string;
     createdAt: string;
     updatedAt: string;
