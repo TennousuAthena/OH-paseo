@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, ChevronDown } from "lucide-react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { EditorTargetDescriptorPayload, EditorTargetId } from "@server/shared/messages";
 import { EditorAppIcon } from "@/components/icons/editor-app-icons";
 import {
@@ -22,6 +22,7 @@ import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-
 import { resolvePreferredEditorId, usePreferredEditor } from "@/hooks/use-preferred-editor";
 import { isAbsolutePath } from "@/utils/path";
 import { isWeb } from "@/constants/platform";
+import type { Theme } from "@/styles/theme";
 
 interface WorkspaceOpenInEditorButtonProps {
   serverId: string;
@@ -33,18 +34,25 @@ interface EditorMenuItemProps {
   editor: EditorTargetDescriptorPayload;
   isPreferred: boolean;
   onOpen: (editorId: EditorTargetId) => void;
-  foregroundMuted: string;
 }
 
-function EditorMenuItem({ editor, isPreferred, onOpen, foregroundMuted }: EditorMenuItemProps) {
+const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedEditorAppIcon = withUnistyles(EditorAppIcon);
+const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedCheckIcon = withUnistyles(Check);
+
+const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+
+function EditorMenuItem({ editor, isPreferred, onOpen }: EditorMenuItemProps) {
   const handleSelect = useCallback(() => onOpen(editor.id), [onOpen, editor.id]);
   const leading = useMemo(
-    () => <EditorAppIcon editorId={editor.id} size={16} color={foregroundMuted} />,
-    [editor.id, foregroundMuted],
+    () => <ThemedEditorAppIcon editorId={editor.id} size={16} uniProps={mutedColorMapping} />,
+    [editor.id],
   );
   const trailing = useMemo(
-    () => (isPreferred ? <Check size={16} color={foregroundMuted} /> : undefined),
-    [isPreferred, foregroundMuted],
+    () => (isPreferred ? <ThemedCheckIcon size={16} uniProps={mutedColorMapping} /> : undefined),
+    [isPreferred],
   );
   return (
     <DropdownMenuItem
@@ -63,7 +71,6 @@ export function WorkspaceOpenInEditorButton({
   cwd,
   hideLabels,
 }: WorkspaceOpenInEditorButtonProps) {
-  const { theme } = useUnistyles();
   const toast = useToast();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -174,17 +181,17 @@ export function WorkspaceOpenInEditorButton({
           accessibilityLabel={`Open workspace in ${primaryOption.label}`}
         >
           {openMutation.isPending ? (
-            <ActivityIndicator
+            <ThemedActivityIndicator
               size="small"
-              color={theme.colors.foreground}
+              uniProps={foregroundColorMapping}
               style={styles.splitButtonSpinnerOnly}
             />
           ) : (
             <View style={styles.splitButtonContent}>
-              <EditorAppIcon
+              <ThemedEditorAppIcon
                 editorId={primaryOption.id}
                 size={16}
-                color={theme.colors.foregroundMuted}
+                uniProps={mutedColorMapping}
               />
               {!hideLabels && <Text style={styles.splitButtonText}>Open</Text>}
             </View>
@@ -198,7 +205,7 @@ export function WorkspaceOpenInEditorButton({
               accessibilityRole="button"
               accessibilityLabel="Choose editor"
             >
-              <ChevronDown size={16} color={theme.colors.foregroundMuted} />
+              <ThemedChevronDown size={16} uniProps={mutedColorMapping} />
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
@@ -212,7 +219,6 @@ export function WorkspaceOpenInEditorButton({
                   editor={editor}
                   isPreferred={editor.id === effectivePreferredEditorId}
                   onOpen={handleOpenEditor}
-                  foregroundMuted={theme.colors.foregroundMuted}
                 />
               ))}
             </DropdownMenuContent>

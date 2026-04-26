@@ -3,7 +3,7 @@ import type { GestureResponderEvent } from "react-native";
 import { Pressable, Text, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import { ChevronDown, ExternalLink, Globe, Play, SquareTerminal } from "lucide-react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useHostRuntimeSnapshot } from "@/runtime/host-runtime";
@@ -17,6 +17,7 @@ import { useToast } from "@/contexts/toast-context";
 import { isNative } from "@/constants/platform";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { resolveWorkspaceScriptLink } from "@/utils/workspace-script-links";
+import type { Theme } from "@/styles/theme";
 
 type ScriptActionIcon = "start" | "view";
 
@@ -39,28 +40,48 @@ interface ScriptActionButtonProps {
   testID: string;
 }
 
+const ThemedPlay = withUnistyles(Play);
+const ThemedSquareTerminal = withUnistyles(SquareTerminal);
+const ThemedGlobe = withUnistyles(Globe);
+const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedExternalLink = withUnistyles(ExternalLink);
+
+const foregroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+});
+const mutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const blueColorMapping = (theme: Theme) => ({
+  color: theme.colors.palette.blue[500],
+});
+const greenColorMapping = (theme: Theme) => ({
+  color: theme.colors.palette.green[500],
+});
+const redColorMapping = (theme: Theme) => ({
+  color: theme.colors.palette.red[500],
+});
+const playFillTransparent = { fill: "transparent" };
+
 interface ScriptActionButtonChildrenProps {
   hovered?: boolean;
   icon: ScriptActionIcon;
   label: string;
-  theme: ReturnType<typeof useUnistyles>["theme"];
 }
 
 function ScriptActionButtonChildren({
   hovered,
   icon,
   label,
-  theme,
 }: ScriptActionButtonChildrenProps): ReactElement {
-  const color = hovered ? theme.colors.foreground : theme.colors.foregroundMuted;
-  const iconProps = { size: 10, color };
+  const colorMapping = hovered ? foregroundColorMapping : mutedColorMapping;
   const iconElement =
     icon === "view" ? (
-      <SquareTerminal {...iconProps} />
+      <ThemedSquareTerminal size={10} uniProps={colorMapping} />
     ) : (
-      <Play {...iconProps} fill="transparent" />
+      <ThemedPlay size={10} uniProps={colorMapping} {...playFillTransparent} />
     );
-  const labelStyle = useMemo(() => [styles.actionButtonLabel, { color }], [color]);
+  const labelStyle = hovered ? actionButtonLabelHoveredStyle : styles.actionButtonLabel;
   return (
     <>
       {iconElement}
@@ -77,8 +98,6 @@ function ScriptActionButton({
   onPress,
   testID,
 }: ScriptActionButtonProps): ReactElement {
-  const { theme } = useUnistyles();
-
   const handlePress = useCallback(
     (event: GestureResponderEvent) => {
       event.stopPropagation();
@@ -89,9 +108,9 @@ function ScriptActionButton({
 
   const renderChildren = useCallback(
     ({ hovered }: { hovered?: boolean }) => (
-      <ScriptActionButtonChildren hovered={hovered} icon={icon} label={label} theme={theme} />
+      <ScriptActionButtonChildren hovered={hovered} icon={icon} label={label} />
     ),
-    [icon, label, theme],
+    [icon, label],
   );
 
   return (
@@ -123,32 +142,26 @@ interface HostLinkChildrenProps {
   hovered?: boolean;
   disabled: boolean;
   label: string;
-  theme: ReturnType<typeof useUnistyles>["theme"];
 }
 
-function HostLinkChildren({
-  hovered,
-  disabled,
-  label,
-  theme,
-}: HostLinkChildrenProps): ReactElement {
+function HostLinkChildren({ hovered, disabled, label }: HostLinkChildrenProps): ReactElement {
   const showIcon = !disabled && (hovered || isNative);
-  const color = hovered && !disabled ? theme.colors.foreground : theme.colors.foregroundMuted;
-  const hostLabelStyle = useMemo(() => [styles.hostLabel, { color }], [color]);
+  const isActive = Boolean(hovered) && !disabled;
+  const colorMapping = isActive ? foregroundColorMapping : mutedColorMapping;
+  const hostLabelStyle = isActive ? hostLabelActiveStyle : styles.hostLabel;
   return (
     <>
       <Text style={hostLabelStyle} numberOfLines={1}>
         {label}
       </Text>
       <View style={styles.hostIconSlot}>
-        {showIcon ? <ExternalLink size={10} color={color} /> : null}
+        {showIcon ? <ThemedExternalLink size={10} uniProps={colorMapping} /> : null}
       </View>
     </>
   );
 }
 
 function HostLinkRow({ label, url, scriptName }: HostLinkProps): ReactElement {
-  const { theme } = useUnistyles();
   const disabled = !url;
 
   const handlePress = useCallback(
@@ -161,9 +174,9 @@ function HostLinkRow({ label, url, scriptName }: HostLinkProps): ReactElement {
 
   const renderChildren = useCallback(
     ({ hovered }: { hovered?: boolean }) => (
-      <HostLinkChildren hovered={hovered} disabled={disabled} label={label} theme={theme} />
+      <HostLinkChildren hovered={hovered} disabled={disabled} label={label} />
     ),
-    [disabled, label, theme],
+    [disabled, label],
   );
 
   return (
@@ -181,9 +194,7 @@ function HostLinkRow({ label, url, scriptName }: HostLinkProps): ReactElement {
 }
 
 function ExitCodeBadge({ code }: { code: number }): ReactElement {
-  const { theme } = useUnistyles();
-  const color = code === 0 ? theme.colors.foregroundMuted : theme.colors.palette.red[300];
-  const exitTextStyle = useMemo(() => [styles.exitBadgeText, { color }], [color]);
+  const exitTextStyle = code === 0 ? styles.exitBadgeText : exitBadgeTextErrorStyle;
   return (
     <View style={styles.exitBadge}>
       <Text style={exitTextStyle}>exit {code}</Text>
@@ -206,26 +217,24 @@ interface ScriptRowProps {
       : null
     : null;
   isStartPending: boolean;
-  theme: ReturnType<typeof useUnistyles>["theme"];
   onStartScript: (scriptName: string) => void;
   onViewTerminal?: (terminalId: string) => void;
 }
 
-function resolveScriptIconColor(args: {
-  theme: ReturnType<typeof useUnistyles>["theme"];
+function resolveScriptIconColorMapping(args: {
   script: WorkspaceDescriptor["scripts"][number];
   isService: boolean;
   isRunning: boolean;
-}): string {
-  const { theme, script, isService, isRunning } = args;
+}): (theme: Theme) => { color: string } {
+  const { script, isService, isRunning } = args;
   if (isService) {
-    if (isRunning && script.health === "healthy") return theme.colors.palette.green[500];
-    if (isRunning && script.health === "unhealthy") return theme.colors.palette.red[500];
-    if (isRunning) return theme.colors.palette.blue[500];
-    return theme.colors.foregroundMuted;
+    if (isRunning && script.health === "healthy") return greenColorMapping;
+    if (isRunning && script.health === "unhealthy") return redColorMapping;
+    if (isRunning) return blueColorMapping;
+    return mutedColorMapping;
   }
-  if (isRunning) return theme.colors.palette.blue[500];
-  return theme.colors.foregroundMuted;
+  if (isRunning) return blueColorMapping;
+  return mutedColorMapping;
 }
 
 function ScriptRow({
@@ -233,7 +242,6 @@ function ScriptRow({
   liveTerminalIdSet,
   activeConnection,
   isStartPending,
-  theme,
   onStartScript,
   onViewTerminal,
 }: ScriptRowProps): ReactElement {
@@ -268,9 +276,8 @@ function ScriptRow({
     }
   }
 
-  const iconColor = resolveScriptIconColor({ theme, script, isService, isRunning });
-
-  const ScriptIcon = isService ? Globe : SquareTerminal;
+  const iconColorMapping = resolveScriptIconColorMapping({ script, isService, isRunning });
+  const ScriptIcon = isService ? ThemedGlobe : ThemedSquareTerminal;
   const showExitBadge = !isRunning && exitCode !== null;
 
   const handleView = useCallback(() => {
@@ -282,13 +289,8 @@ function ScriptRow({
   }, [onStartScript, script.scriptName]);
 
   const scriptNameStyle = useMemo(
-    () => [
-      styles.scriptName,
-      {
-        color: isRunning ? theme.colors.foreground : theme.colors.foregroundMuted,
-      },
-    ],
-    [isRunning, theme.colors.foreground, theme.colors.foregroundMuted],
+    () => (isRunning ? scriptNameActiveStyle : styles.scriptName),
+    [isRunning],
   );
 
   let primaryAction: ReactElement | null = null;
@@ -322,7 +324,7 @@ function ScriptRow({
       style={styles.scriptItem}
     >
       <View style={styles.scriptHeader}>
-        <ScriptIcon size={14} color={iconColor} style={styles.scriptIcon} />
+        <ScriptIcon size={14} uniProps={iconColorMapping} style={styles.scriptIcon} />
         <Text style={scriptNameStyle} numberOfLines={1}>
           {script.scriptName}
         </Text>
@@ -355,7 +357,6 @@ export function WorkspaceScriptsButton({
   onViewTerminal,
   hideLabels,
 }: WorkspaceScriptsButtonProps): ReactElement | null {
-  const { theme } = useUnistyles();
   const toast = useToast();
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const activeConnection = useHostRuntimeSnapshot(serverId)?.activeConnection ?? null;
@@ -402,6 +403,7 @@ export function WorkspaceScriptsButton({
   }
 
   const hasAnyRunning = scripts.some((s) => s.lifecycle === "running");
+  const triggerPlayMapping = hasAnyRunning ? blueColorMapping : mutedColorMapping;
 
   return (
     <View style={styles.row}>
@@ -414,15 +416,9 @@ export function WorkspaceScriptsButton({
             accessibilityLabel="Workspace scripts"
           >
             <View style={styles.splitButtonContent}>
-              <Play
-                size={14}
-                color={
-                  hasAnyRunning ? theme.colors.palette.blue[500] : theme.colors.foregroundMuted
-                }
-                fill="transparent"
-              />
+              <ThemedPlay size={14} uniProps={triggerPlayMapping} {...playFillTransparent} />
               {!hideLabels && <Text style={styles.splitButtonText}>Scripts</Text>}
-              <ChevronDown size={14} color={theme.colors.foregroundMuted} />
+              <ThemedChevronDown size={14} uniProps={mutedColorMapping} />
             </View>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -440,7 +436,6 @@ export function WorkspaceScriptsButton({
                     liveTerminalIdSet={liveTerminalIdSet}
                     activeConnection={activeConnection}
                     isStartPending={startScriptMutation.isPending}
-                    theme={theme}
                     onStartScript={handleStartScript}
                     onViewTerminal={onViewTerminal}
                   />
@@ -511,6 +506,10 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: 18,
     flexShrink: 1,
     minWidth: 0,
+    color: theme.colors.foregroundMuted,
+  },
+  scriptNameActive: {
+    color: theme.colors.foreground,
   },
   spacer: {
     flex: 1,
@@ -531,6 +530,10 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     fontSize: theme.fontSize.xs,
     lineHeight: 14,
+    color: theme.colors.foregroundMuted,
+  },
+  hostLabelActive: {
+    color: theme.colors.foreground,
   },
   hostIconSlot: {
     width: 10,
@@ -549,6 +552,10 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 10,
     lineHeight: 12,
     fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foregroundMuted,
+  },
+  exitBadgeTextError: {
+    color: theme.colors.palette.red[300],
   },
   actionButton: {
     flexDirection: "row",
@@ -558,5 +565,14 @@ const styles = StyleSheet.create((theme) => ({
   actionButtonLabel: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
+    color: theme.colors.foregroundMuted,
+  },
+  actionButtonLabelHovered: {
+    color: theme.colors.foreground,
   },
 }));
+
+const actionButtonLabelHoveredStyle = [styles.actionButtonLabel, styles.actionButtonLabelHovered];
+const hostLabelActiveStyle = [styles.hostLabel, styles.hostLabelActive];
+const scriptNameActiveStyle = [styles.scriptName, styles.scriptNameActive];
+const exitBadgeTextErrorStyle = [styles.exitBadgeText, styles.exitBadgeTextError];

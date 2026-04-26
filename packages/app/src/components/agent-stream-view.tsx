@@ -18,7 +18,7 @@ import {
   ActivityIndicator,
   type PressableStateCallbackType,
 } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -84,6 +84,7 @@ import {
   WORKING_INDICATOR_OFFSETS,
 } from "@/utils/working-indicator";
 import { isWeb } from "@/constants/platform";
+import { SPACING, type Theme } from "@/styles/theme";
 
 const isUserMessageItem = (item?: StreamItem) => item?.kind === "user_message";
 const isToolSequenceItem = (item?: StreamItem) =>
@@ -156,7 +157,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     ref,
   ) {
     const viewportRef = useRef<StreamViewportHandle | null>(null);
-    const { theme } = useUnistyles();
     const router = useRouter();
     const isMobile = useIsCompactFormFactor();
     const streamRenderStrategy = useMemo(
@@ -303,9 +303,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       viewportRef.current?.scrollToBottom("jump-to-bottom");
     }, []);
 
-    const tightGap = theme.spacing[1]; // 4px
-    const assistantBlockGap = theme.spacing[3]; // 12px
-    const looseGap = theme.spacing[4]; // 16px
+    const tightGap = SPACING[1];
+    const assistantBlockGap = SPACING[3];
+    const looseGap = SPACING[4];
 
     const getGapBetween = useCallback(
       (item: StreamItem | null, belowItem: StreamItem | null) => {
@@ -891,16 +891,33 @@ function ToolCallSlot({
   return <ToolCall {...rest} onInlineDetailsExpandedChange={handleExpandedChange} />;
 }
 
+const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedCheckIcon = withUnistyles(Check);
+const ThemedXIcon = withUnistyles(X);
+
+const primaryColorMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+});
+const mutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+
+const pressableStyle = ({
+  pressed,
+  hovered = false,
+}: PressableStateCallbackType & { hovered?: boolean }) => [
+  permissionStyles.optionButton,
+  hovered ? permissionStyles.optionButtonHovered : null,
+  pressed ? permissionStyles.optionButtonPressed : null,
+];
+
 interface PermissionActionButtonProps {
   action: AgentPermissionAction;
   isRespondingAction: boolean;
   isResponding: boolean;
-  textColor: string;
-  iconColor: string;
-  isDanger: boolean;
-  Icon: typeof Check;
+  isPrimary: boolean;
+  Icon: typeof ThemedCheckIcon;
   testID: string;
-  theme: ReturnType<typeof useUnistyles>["theme"];
   onPress: (action: AgentPermissionAction) => void;
 }
 
@@ -908,37 +925,21 @@ function PermissionActionButton({
   action,
   isRespondingAction,
   isResponding,
-  textColor,
-  iconColor,
-  isDanger,
+  isPrimary,
   Icon,
   testID,
-  theme,
   onPress,
 }: PermissionActionButtonProps) {
   const handlePress = useCallback(() => onPress(action), [onPress, action]);
-  const pressableStyle = useCallback(
-    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
-      permissionStyles.optionButton,
-      {
-        backgroundColor: hovered ? theme.colors.surface2 : theme.colors.surface1,
-        borderColor: isDanger ? theme.colors.borderAccent : theme.colors.borderAccent,
-      },
-      pressed ? permissionStyles.optionButtonPressed : null,
-    ],
-    [theme.colors.surface2, theme.colors.surface1, theme.colors.borderAccent, isDanger],
-  );
-  const optionTextStyle = useMemo(
-    () => [permissionStyles.optionText, { color: textColor }],
-    [textColor],
-  );
+  const optionTextStyle = isPrimary ? optionTextPrimaryStyle : permissionStyles.optionText;
+  const colorMapping = isPrimary ? primaryColorMapping : mutedColorMapping;
   return (
     <Pressable testID={testID} style={pressableStyle} onPress={handlePress} disabled={isResponding}>
       {isRespondingAction ? (
-        <ActivityIndicator size="small" color={textColor} />
+        <ThemedActivityIndicator size="small" uniProps={colorMapping} />
       ) : (
         <View style={permissionStyles.optionContent}>
-          <Icon size={14} color={iconColor} />
+          <Icon size={14} uniProps={colorMapping} />
           <Text style={optionTextStyle}>{action.label}</Text>
         </View>
       )}
@@ -953,7 +954,6 @@ function PermissionRequestCard({
   permission: PendingPermission;
   client: DaemonClient | null;
 }) {
-  const { theme } = useUnistyles();
   const isMobile = useIsCompactFormFactor();
 
   const { request } = permission;
@@ -1069,34 +1069,12 @@ function PermissionRequestCard({
     [handleResponse],
   );
 
-  const questionTextStyle = useMemo(
-    () => [permissionStyles.question, { color: theme.colors.foregroundMuted }],
-    [theme.colors.foregroundMuted],
-  );
   const optionsContainerStyle = useMemo(
     () => [
       permissionStyles.optionsContainer,
       !isMobile && permissionStyles.optionsContainerDesktop,
     ],
     [isMobile],
-  );
-  const cardContainerStyle = useMemo(
-    () => [
-      permissionStyles.container,
-      {
-        backgroundColor: theme.colors.surface1,
-        borderColor: theme.colors.border,
-      },
-    ],
-    [theme.colors.surface1, theme.colors.border],
-  );
-  const cardTitleStyle = useMemo(
-    () => [permissionStyles.title, { color: theme.colors.foreground }],
-    [theme.colors.foreground],
-  );
-  const cardDescriptionStyle = useMemo(
-    () => [permissionStyles.description, { color: theme.colors.foregroundMuted }],
-    [theme.colors.foregroundMuted],
   );
 
   if (request.kind === "question") {
@@ -1111,18 +1089,15 @@ function PermissionRequestCard({
 
   const footer = (
     <>
-      <Text testID="permission-request-question" style={questionTextStyle}>
+      <Text testID="permission-request-question" style={permissionStyles.question}>
         How would you like to proceed?
       </Text>
 
       <View style={optionsContainerStyle}>
         {resolvedActions.map((action) => {
-          const isDanger = action.variant === "danger" || action.behavior === "deny";
           const isPrimary = action.variant === "primary";
           const isRespondingAction = respondingActionId === action.id;
-          const textColor = isPrimary ? theme.colors.foreground : theme.colors.foregroundMuted;
-          const iconColor = textColor;
-          const Icon = action.behavior === "allow" ? Check : X;
+          const Icon = action.behavior === "allow" ? ThemedCheckIcon : ThemedXIcon;
           let testID: string;
           if (action.behavior === "deny") testID = "permission-request-deny";
           else if (action.id === "accept" || action.id === "implement")
@@ -1135,12 +1110,9 @@ function PermissionRequestCard({
               action={action}
               isRespondingAction={isRespondingAction}
               isResponding={isResponding}
-              textColor={textColor}
-              iconColor={iconColor}
-              isDanger={isDanger}
+              isPrimary={isPrimary}
               Icon={Icon}
               testID={testID}
-              theme={theme}
               onPress={handleActionPress}
             />
           );
@@ -1162,10 +1134,10 @@ function PermissionRequestCard({
   }
 
   return (
-    <View style={cardContainerStyle}>
-      <Text style={cardTitleStyle}>{title}</Text>
+    <View style={permissionStyles.container}>
+      <Text style={permissionStyles.title}>{title}</Text>
 
-      {description ? <Text style={cardDescriptionStyle}>{description}</Text> : null}
+      {description ? <Text style={permissionStyles.description}>{description}</Text> : null}
 
       {planMarkdown ? (
         <PlanCard title="Proposed plan" text={planMarkdown} disableOuterSpacing />
@@ -1311,14 +1283,18 @@ const permissionStyles = StyleSheet.create((theme) => ({
     borderRadius: theme.spacing[2],
     borderWidth: 1,
     gap: theme.spacing[2],
+    backgroundColor: theme.colors.surface1,
+    borderColor: theme.colors.border,
   },
   title: {
     fontSize: theme.fontSize.base,
     lineHeight: 22,
+    color: theme.colors.foreground,
   },
   description: {
     fontSize: theme.fontSize.sm,
     lineHeight: 20,
+    color: theme.colors.foregroundMuted,
   },
   section: {
     gap: theme.spacing[2],
@@ -1330,6 +1306,7 @@ const permissionStyles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     marginTop: theme.spacing[1],
     marginBottom: theme.spacing[1],
+    color: theme.colors.foregroundMuted,
   },
   optionsContainer: {
     gap: theme.spacing[2],
@@ -1346,6 +1323,11 @@ const permissionStyles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     borderWidth: theme.borderWidth[1],
+    backgroundColor: theme.colors.surface1,
+    borderColor: theme.colors.borderAccent,
+  },
+  optionButtonHovered: {
+    backgroundColor: theme.colors.surface2,
   },
   optionButtonPressed: {
     opacity: 0.9,
@@ -1358,8 +1340,14 @@ const permissionStyles = StyleSheet.create((theme) => ({
   optionText: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
+    color: theme.colors.foregroundMuted,
+  },
+  optionTextPrimary: {
+    color: theme.colors.foreground,
   },
 }));
+
+const optionTextPrimaryStyle = [permissionStyles.optionText, permissionStyles.optionTextPrimary];
 
 interface StreamItemWrapperProps {
   gapBelow: number;

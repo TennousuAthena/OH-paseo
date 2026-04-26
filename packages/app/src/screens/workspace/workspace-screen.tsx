@@ -22,7 +22,8 @@ import {
 } from "lucide-react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import type { Theme } from "@/styles/theme";
 import invariant from "tiny-invariant";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
@@ -134,6 +135,32 @@ const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
 const EMPTY_UI_TABS: WorkspaceTab[] = [];
 const EMPTY_PINNED_AGENT_IDS = new Set<string>();
 const EMPTY_SET = new Set<string>();
+
+const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedEllipsis = withUnistyles(Ellipsis);
+const ThemedEllipsisVertical = withUnistyles(EllipsisVertical);
+const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedCopy = withUnistyles(Copy);
+const ThemedRotateCw = withUnistyles(RotateCw);
+const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
+const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
+const ThemedCopyX = withUnistyles(CopyX);
+const ThemedX = withUnistyles(X);
+const ThemedSquarePen = withUnistyles(SquarePen);
+const ThemedSquareTerminal = withUnistyles(SquareTerminal);
+const ThemedSettings = withUnistyles(Settings);
+const ThemedPanelRight = withUnistyles(PanelRight);
+const ThemedSourceControlPanelIcon = withUnistyles(SourceControlPanelIcon);
+
+const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+
+const sourceControlPanelStrokeWidth15 = { strokeWidth: 1.5 };
+
+const MENU_NEW_AGENT_ICON = <ThemedSquarePen size={16} uniProps={mutedColorMapping} />;
+const MENU_NEW_TERMINAL_ICON = <ThemedSquareTerminal size={16} uniProps={mutedColorMapping} />;
+const MENU_COPY_ICON = <ThemedCopy size={16} uniProps={mutedColorMapping} />;
+const MENU_SETTINGS_ICON = <ThemedSettings size={16} uniProps={mutedColorMapping} />;
 
 interface WorkspaceScreenProps {
   serverId: string;
@@ -298,14 +325,10 @@ function MobileTabTrailingAccessory({
   menuTestIDBase,
   presentationLabel,
   menuEntries,
-  iconColor,
-  iconSizeSm,
 }: {
   menuTestIDBase: string;
   presentationLabel: string;
   menuEntries: WorkspaceTabMenuEntry[];
-  iconColor: string;
-  iconSizeSm: number;
 }) {
   return (
     <DropdownMenu>
@@ -316,14 +339,14 @@ function MobileTabTrailingAccessory({
         hitSlop={8}
         style={mobileTabMenuTriggerStyle}
       >
-        <Ellipsis size={iconSizeSm} color={iconColor} />
+        <ThemedEllipsis size={14} uniProps={mutedColorMapping} />
       </DropdownMenuTrigger>
       <DropdownMenuContent side="bottom" align="end" width={220} testID={menuTestIDBase}>
         {menuEntries.map((entry) =>
           entry.kind === "separator" ? (
             <DropdownMenuSeparator key={entry.key} />
           ) : (
-            <MobileTabDropdownMenuItem key={entry.key} entry={entry} iconColor={iconColor} />
+            <MobileTabDropdownMenuItem key={entry.key} entry={entry} />
           ),
         )}
       </DropdownMenuContent>
@@ -333,29 +356,27 @@ function MobileTabTrailingAccessory({
 
 function MobileTabDropdownMenuItem({
   entry,
-  iconColor,
 }: {
   entry: Extract<WorkspaceTabMenuEntry, { kind: "item" }>;
-  iconColor: string;
 }) {
   const leading = useMemo(() => {
     switch (entry.icon) {
       case "copy":
-        return <Copy size={16} color={iconColor} />;
+        return <ThemedCopy size={16} uniProps={mutedColorMapping} />;
       case "rotate-cw":
-        return <RotateCw size={16} color={iconColor} />;
+        return <ThemedRotateCw size={16} uniProps={mutedColorMapping} />;
       case "arrow-left-to-line":
-        return <ArrowLeftToLine size={16} color={iconColor} />;
+        return <ThemedArrowLeftToLine size={16} uniProps={mutedColorMapping} />;
       case "arrow-right-to-line":
-        return <ArrowRightToLine size={16} color={iconColor} />;
+        return <ThemedArrowRightToLine size={16} uniProps={mutedColorMapping} />;
       case "copy-x":
-        return <CopyX size={16} color={iconColor} />;
+        return <ThemedCopyX size={16} uniProps={mutedColorMapping} />;
       case "x":
-        return <X size={16} color={iconColor} />;
+        return <ThemedX size={16} uniProps={mutedColorMapping} />;
       default:
         return undefined;
     }
-  }, [entry.icon, iconColor]);
+  }, [entry.icon]);
   const trailing = useMemo(
     () => (entry.hint ? <Text style={styles.menuItemHint}>{entry.hint}</Text> : undefined),
     [entry.hint],
@@ -408,7 +429,6 @@ function MobileWorkspaceTabOption({
   onCloseTabsBelow: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
 }) {
-  const { theme } = useUnistyles();
   const menuTestIDBase = `workspace-tab-menu-${tab.key}`;
   const menuEntries = buildWorkspaceTabMenuEntries({
     surface: "mobile",
@@ -425,9 +445,6 @@ function MobileWorkspaceTabOption({
     onCloseOtherTabs,
   });
 
-  const iconColor = theme.colors.foregroundMuted;
-  const iconSizeSm = theme.iconSize.sm;
-
   const fallbackLabel = getFallbackTabOptionLabel(tab);
   const trailingAccessory = useMemo(
     () => (
@@ -435,11 +452,9 @@ function MobileWorkspaceTabOption({
         menuTestIDBase={menuTestIDBase}
         presentationLabel={fallbackLabel}
         menuEntries={menuEntries}
-        iconColor={iconColor}
-        iconSizeSm={iconSizeSm}
       />
     ),
-    [menuTestIDBase, fallbackLabel, menuEntries, iconColor, iconSizeSm],
+    [menuTestIDBase, fallbackLabel, menuEntries],
   );
 
   const renderPresentation = useCallback(
@@ -483,7 +498,6 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
   onCloseTabsBelow,
   onCloseOtherTabs,
 }: MobileWorkspaceTabSwitcherProps) {
-  const { theme } = useUnistyles();
   const [isOpen, setIsOpen] = useState(false);
   const anchorRef = useRef<View>(null);
   const tabIndexByKey = useMemo(() => {
@@ -572,7 +586,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
             normalizedWorkspaceId={normalizedWorkspaceId}
           />
         </View>
-        <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        <ThemedChevronDown size={14} uniProps={mutedColorMapping} />
       </Pressable>
 
       <Combobox
@@ -730,14 +744,9 @@ function WorkspaceHeaderMenuTriggerIcon({
   open: boolean;
   isMobile: boolean;
 }) {
-  const { theme } = useUnistyles();
-  const Icon = isMobile ? EllipsisVertical : Ellipsis;
-  return (
-    <Icon
-      size={theme.iconSize.md}
-      color={hovered || open ? theme.colors.foreground : theme.colors.foregroundMuted}
-    />
-  );
+  const Icon = isMobile ? ThemedEllipsisVertical : ThemedEllipsis;
+  const colorMapping = hovered || open ? foregroundColorMapping : mutedColorMapping;
+  return <Icon size={16} uniProps={colorMapping} />;
 }
 
 function WorkspaceHeaderMenu({
@@ -939,7 +948,6 @@ interface RenderWorkspaceContentInput {
     paneId: string | null;
     tab: WorkspaceTabDescriptor;
   }) => WorkspacePaneContentModel;
-  foregroundMutedColor: string;
 }
 
 function renderWorkspaceContent(input: RenderWorkspaceContentInput): React.ReactNode {
@@ -953,13 +961,12 @@ function renderWorkspaceContent(input: RenderWorkspaceContentInput): React.React
     isRouteFocused,
     focusedPaneId,
     buildMobilePaneContentModel,
-    foregroundMutedColor,
   } = input;
 
   if (showMissingWorkspaceDescriptor) {
     return (
       <View style={styles.emptyState}>
-        <ActivityIndicator color={foregroundMutedColor} />
+        <ThemedActivityIndicator uniProps={mutedColorMapping} />
       </View>
     );
   }
@@ -975,7 +982,7 @@ function renderWorkspaceContent(input: RenderWorkspaceContentInput): React.React
   if (!activeTabDescriptor && !hasHydratedAgents) {
     return (
       <View style={styles.emptyState}>
-        <ActivityIndicator color={foregroundMutedColor} />
+        <ThemedActivityIndicator uniProps={mutedColorMapping} />
       </View>
     );
   }
@@ -1115,9 +1122,7 @@ function WorkspaceScreenContent({
   workspaceId,
   isRouteFocused,
 }: WorkspaceScreenContentProps) {
-  const { theme } = useUnistyles();
   const _insets = useSafeAreaInsets();
-  const mainBackgroundColor = theme.colors.surfaceWorkspace;
   const toast = useToast();
   const isMobile = useIsCompactFormFactor();
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
@@ -2562,7 +2567,6 @@ function WorkspaceScreenContent({
     isRouteFocused,
     focusedPaneId,
     buildMobilePaneContentModel,
-    foregroundMutedColor: theme.colors.foregroundMuted,
   });
 
   const buildDesktopPaneContentModel = useCallback(
@@ -2659,27 +2663,12 @@ function WorkspaceScreenContent({
     );
   }, []);
 
-  const containerStyle = useMemo(
-    () => [styles.container, { backgroundColor: mainBackgroundColor }],
-    [mainBackgroundColor],
-  );
+  const containerStyle = containerWithWorkspaceBackgroundStyle;
 
-  const menuNewAgentIcon = useMemo(
-    () => <SquarePen size={16} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
-  );
-  const menuNewTerminalIcon = useMemo(
-    () => <SquareTerminal size={16} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
-  );
-  const menuCopyIcon = useMemo(
-    () => <Copy size={16} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
-  );
-  const menuSettingsIcon = useMemo(
-    () => <Settings size={16} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
-  );
+  const menuNewAgentIcon = MENU_NEW_AGENT_ICON;
+  const menuNewTerminalIcon = MENU_NEW_TERMINAL_ICON;
+  const menuCopyIcon = MENU_COPY_ICON;
+  const menuSettingsIcon = MENU_SETTINGS_ICON;
 
   const headerRight = useMemo(
     () => (
@@ -2721,12 +2710,10 @@ function WorkspaceScreenContent({
                 >
                   {({ hovered, pressed }) => {
                     const active = isExplorerOpen || hovered || pressed;
-                    const iconColor = active
-                      ? theme.colors.foreground
-                      : theme.colors.foregroundMuted;
+                    const colorMapping = active ? foregroundColorMapping : mutedColorMapping;
                     return (
                       <>
-                        <SourceControlPanelIcon size={theme.iconSize.md} color={iconColor} />
+                        <ThemedSourceControlPanelIcon size={16} uniProps={colorMapping} />
                         {workspaceDescriptor?.diffStat ? (
                           <DiffStat
                             additions={workspaceDescriptor.diffStat.additions}
@@ -2766,9 +2753,9 @@ function WorkspaceScreenContent({
             accessibilityState={explorerToggleAccessibilityState}
           >
             {({ hovered }) => {
-              const color =
-                isExplorerOpen || hovered ? theme.colors.foreground : theme.colors.foregroundMuted;
-              return <PanelRight size={theme.iconSize.md} color={color} />;
+              const colorMapping =
+                isExplorerOpen || hovered ? foregroundColorMapping : mutedColorMapping;
+              return <ThemedPanelRight size={16} uniProps={colorMapping} />;
             }}
           </HeaderToggleButton>
         ) : null}
@@ -2786,12 +2773,16 @@ function WorkspaceScreenContent({
             accessibilityState={explorerToggleAccessibilityState}
           >
             {({ hovered }) => {
-              const color =
-                isExplorerOpen || hovered ? theme.colors.foreground : theme.colors.foregroundMuted;
+              const colorMapping =
+                isExplorerOpen || hovered ? foregroundColorMapping : mutedColorMapping;
               return isGitCheckout ? (
-                <SourceControlPanelIcon size={theme.iconSize.lg} color={color} strokeWidth={1.5} />
+                <ThemedSourceControlPanelIcon
+                  size={20}
+                  uniProps={colorMapping}
+                  {...sourceControlPanelStrokeWidth15}
+                />
               ) : (
-                <PanelRight size={theme.iconSize.lg} color={color} />
+                <ThemedPanelRight size={20} uniProps={colorMapping} />
               );
             }}
           </HeaderToggleButton>
@@ -2812,10 +2803,6 @@ function WorkspaceScreenContent({
       isExplorerOpen,
       explorerToggleAccessibilityState,
       explorerToggleStyle,
-      theme.colors.foreground,
-      theme.colors.foregroundMuted,
-      theme.iconSize.md,
-      theme.iconSize.lg,
     ],
   );
 
@@ -3038,6 +3025,9 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
+  },
+  containerWorkspaceBackground: {
+    backgroundColor: theme.colors.surfaceWorkspace,
   },
   threePaneRow: {
     flex: 1,
@@ -3332,5 +3322,10 @@ const styles = StyleSheet.create((theme) => ({
     textAlign: "center",
   },
 }));
+
+const containerWithWorkspaceBackgroundStyle = [
+  styles.container,
+  styles.containerWorkspaceBackground,
+];
 
 const EXPLORER_TOGGLE_KEYS: ShortcutKey[] = ["mod", "E"];

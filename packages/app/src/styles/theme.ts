@@ -412,74 +412,83 @@ const ghosttyDarkColors = buildDarkSemanticColors({
   destructive: "#c44a55", // red with slight cool lean against the slate-blue surfaces
 });
 
+export const SPACING = {
+  0: 0,
+  1: 4,
+  1.5: 6,
+  2: 8,
+  3: 12,
+  4: 16,
+  6: 24,
+  8: 32,
+  12: 48,
+  16: 64,
+  20: 80,
+  24: 96,
+  32: 128,
+} as const;
+
+export const FONT_SIZE = {
+  xs: 12,
+  sm: 14,
+  base: 16,
+  lg: 18,
+  xl: 20,
+  "2xl": 22,
+  "3xl": 26,
+  "4xl": 34,
+} as const;
+
+export const LINE_HEIGHT = {
+  diff: 22,
+} as const;
+
+export const ICON_SIZE = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 20,
+} as const;
+
+export const FONT_WEIGHT = {
+  normal: "normal" as const,
+  medium: "500" as const,
+  semibold: "600" as const,
+  bold: "bold" as const,
+} as const;
+
+export const BORDER_RADIUS = {
+  none: 0,
+  sm: 2,
+  base: 4,
+  md: 6,
+  lg: 8,
+  xl: 12,
+  "2xl": 16,
+  full: 9999,
+} as const;
+
+export const BORDER_WIDTH = {
+  0: 0,
+  1: 1,
+  2: 2,
+} as const;
+
+export const OPACITY = {
+  0: 0,
+  50: 0.5,
+  100: 1,
+} as const;
+
 const commonTheme = {
-  spacing: {
-    0: 0,
-    1: 4,
-    1.5: 6,
-    2: 8,
-    3: 12,
-    4: 16,
-    6: 24,
-    8: 32,
-    12: 48,
-    16: 64,
-    20: 80,
-    24: 96,
-    32: 128,
-  },
-
-  fontSize: {
-    xs: 12,
-    sm: 14,
-    base: 16,
-    lg: 18,
-    xl: 20,
-    "2xl": 22,
-    "3xl": 26,
-    "4xl": 34,
-  },
-
-  lineHeight: {
-    diff: 22,
-  },
-
-  iconSize: {
-    xs: 12,
-    sm: 14,
-    md: 16,
-    lg: 20,
-  },
-
-  fontWeight: {
-    normal: "normal" as const,
-    medium: "500" as const,
-    semibold: "600" as const,
-    bold: "bold" as const,
-  },
-
-  borderRadius: {
-    none: 0,
-    sm: 2,
-    base: 4,
-    md: 6,
-    lg: 8,
-    xl: 12,
-    "2xl": 16,
-    full: 9999,
-  },
-
-  borderWidth: {
-    0: 0,
-    1: 1,
-    2: 2,
-  },
-
-  opacity: {
-    0: 0,
-    50: 0.5,
-    100: 1,
-  },
+  spacing: SPACING,
+  fontSize: FONT_SIZE,
+  lineHeight: LINE_HEIGHT,
+  iconSize: ICON_SIZE,
+  fontWeight: FONT_WEIGHT,
+  borderRadius: BORDER_RADIUS,
+  borderWidth: BORDER_WIDTH,
+  opacity: OPACITY,
 } as const;
 
 const darkShadow = {

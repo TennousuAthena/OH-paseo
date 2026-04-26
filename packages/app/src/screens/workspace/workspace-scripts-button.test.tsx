@@ -43,7 +43,17 @@ vi.mock("react-native-unistyles", () => ({
   StyleSheet: {
     create: (factory: unknown) => (typeof factory === "function" ? factory(theme) : factory),
   },
-  useUnistyles: () => ({ theme }),
+  withUnistyles:
+    (Component: React.ComponentType<Record<string, unknown>>) =>
+    ({
+      uniProps,
+      ...rest
+    }: {
+      uniProps?: (theme: unknown) => Record<string, unknown>;
+    } & Record<string, unknown>) => {
+      const themed = uniProps ? uniProps(theme) : {};
+      return React.createElement(Component, { ...rest, ...themed });
+    },
 }));
 
 vi.mock("@/constants/platform", () => ({

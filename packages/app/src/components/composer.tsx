@@ -7,7 +7,7 @@ import {
   type PressableStateCallbackType,
 } from "react-native";
 import { useState, useEffect, useRef, useCallback, useMemo, memo, type ReactElement } from "react";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShallow } from "zustand/shallow";
 import {
@@ -40,7 +40,7 @@ import {
   type MessageInputRef,
   type AttachmentMenuItem,
 } from "./message-input";
-import type { Theme } from "@/styles/theme";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
 import { focusWithRetries } from "@/utils/web-focus";
@@ -92,8 +92,8 @@ type AttachmentListUpdater =
 
 function noop() {}
 
-function resolveComposerButtonIconSize(theme: Theme): number {
-  return isWeb ? theme.iconSize.md : theme.iconSize.lg;
+function resolveComposerButtonIconSize(): number {
+  return isWeb ? ICON_SIZE.md : ICON_SIZE.lg;
 }
 
 function resolveIsComposerLocked(
@@ -585,7 +585,6 @@ interface QueuedMessageRowProps {
 }
 
 function QueuedMessageRow({ item, onEdit, onSendNow }: QueuedMessageRowProps) {
-  const { theme } = useUnistyles();
   const handleEdit = useCallback(() => {
     onEdit(item.id);
   }, [onEdit, item.id]);
@@ -599,10 +598,10 @@ function QueuedMessageRow({ item, onEdit, onSendNow }: QueuedMessageRowProps) {
       </Text>
       <View style={styles.queueActions}>
         <Pressable onPress={handleEdit} style={styles.queueActionButton}>
-          <Pencil size={theme.iconSize.sm} color={theme.colors.foreground} />
+          <ThemedPencil size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
         </Pressable>
         <Pressable onPress={handleSendNow} style={QUEUE_SEND_BUTTON_STYLE}>
-          <ArrowUp size={theme.iconSize.sm} color="white" />
+          <ArrowUp size={ICON_SIZE.sm} color="white" />
         </Pressable>
       </View>
     </View>
@@ -668,7 +667,6 @@ function GithubAttachmentPill({
   onOpen,
   onRemove,
 }: GithubAttachmentPillProps) {
-  const { theme } = useUnistyles();
   const item = attachment.item;
   const kindLabel = item.kind === "pr" ? "PR" : "issue";
   const handleOpen = useCallback(() => {
@@ -689,9 +687,9 @@ function GithubAttachmentPill({
       <View style={styles.githubPillBody}>
         <View style={styles.githubPillIcon}>
           {item.kind === "pr" ? (
-            <GitPullRequest size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+            <ThemedGitPullRequest size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
           ) : (
-            <CircleDot size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+            <ThemedCircleDot size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
           )}
         </View>
         <Text style={styles.githubPillText} numberOfLines={1}>
@@ -719,18 +717,17 @@ function GithubPickerOption({
   item,
   onToggle,
 }: GithubPickerOptionProps) {
-  const { theme } = useUnistyles();
   const handlePress = useCallback(() => {
     onToggle(item);
   }, [onToggle, item]);
   const leadingSlot = useMemo(
     () =>
       item.kind === "pr" ? (
-        <GitPullRequest size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        <ThemedGitPullRequest size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
       ) : (
-        <CircleDot size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        <ThemedCircleDot size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
       ),
-    [item.kind, theme.iconSize.sm, theme.colors.foregroundMuted],
+    [item.kind],
   );
   return (
     <ComboboxItem
@@ -872,7 +869,6 @@ interface ComposerVoiceModeButtonProps {
   realtimeVoiceButtonStyle: (
     state: PressableStateCallbackType & { hovered?: boolean },
   ) => (object | undefined)[];
-  theme: Theme;
   voiceToggleKeys: ReturnType<typeof useShortcutKeys>;
 }
 
@@ -911,7 +907,6 @@ function ComposerVoiceModeButton({
   isConnected,
   isVoiceSwitching,
   realtimeVoiceButtonStyle,
-  theme,
   voiceToggleKeys,
 }: ComposerVoiceModeButtonProps) {
   const shortcutNode = voiceToggleKeys ? (
@@ -922,10 +917,10 @@ function ComposerVoiceModeButton({
       if (isVoiceSwitching) {
         return <ActivityIndicator size="small" color="white" />;
       }
-      const color = hovered ? theme.colors.foreground : theme.colors.foregroundMuted;
-      return <AudioLines size={buttonIconSize} color={color} />;
+      const colorMapping = hovered ? iconForegroundMapping : iconForegroundMutedMapping;
+      return <ThemedAudioLines size={buttonIconSize} uniProps={colorMapping} />;
     },
-    [buttonIconSize, isVoiceSwitching, theme.colors.foreground, theme.colors.foregroundMuted],
+    [buttonIconSize, isVoiceSwitching],
   );
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
@@ -978,8 +973,7 @@ export function Composer({
   inputWrapperStyle,
 }: ComposerProps) {
   markScrollInvestigationRender(`Composer:${serverId}:${agentId}`);
-  const { theme } = useUnistyles();
-  const buttonIconSize = resolveComposerButtonIconSize(theme);
+  const buttonIconSize = resolveComposerButtonIconSize();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId);
@@ -1430,7 +1424,6 @@ export function Composer({
         isConnected={isConnected}
         isVoiceSwitching={isVoiceSwitchingValue}
         realtimeVoiceButtonStyle={realtimeVoiceButtonStyle}
-        theme={theme}
         voiceToggleKeys={voiceToggleKeys}
         cancelButton={cancelButton}
       />
@@ -1447,7 +1440,6 @@ export function Composer({
       isVoiceModeForAgent,
       isVoiceSwitchingValue,
       realtimeVoiceButtonStyle,
-      theme,
       voiceToggleKeys,
     ],
   );
@@ -1491,7 +1483,7 @@ export function Composer({
       {
         id: "image",
         label: "Add image",
-        icon: <Paperclip size={theme.iconSize.md} color={theme.colors.foregroundMuted} />,
+        icon: <ThemedPaperclip size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
         onSelect: () => {
           void handlePickImage();
         },
@@ -1499,13 +1491,13 @@ export function Composer({
       {
         id: "github",
         label: "Add issue or PR",
-        icon: <Github size={theme.iconSize.md} color={theme.colors.foregroundMuted} />,
+        icon: <ThemedGithub size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
         onSelect: () => {
           setIsGithubPickerOpen(true);
         },
       },
     ],
-    [handlePickImage, theme.colors.foregroundMuted, theme.iconSize.md],
+    [handlePickImage],
   );
 
   const handleToggleGithubItem = useCallback(
@@ -1860,3 +1852,13 @@ const styles = StyleSheet.create((theme: Theme) => ({
 })) as unknown as Record<string, object>;
 
 const QUEUE_SEND_BUTTON_STYLE = [styles.queueActionButton, styles.queueSendButton];
+
+const ThemedPencil = withUnistyles(Pencil);
+const ThemedGitPullRequest = withUnistyles(GitPullRequest);
+const ThemedCircleDot = withUnistyles(CircleDot);
+const ThemedAudioLines = withUnistyles(AudioLines);
+const ThemedPaperclip = withUnistyles(Paperclip);
+const ThemedGithub = withUnistyles(Github);
+
+const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });

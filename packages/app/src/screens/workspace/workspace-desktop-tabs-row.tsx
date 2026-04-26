@@ -28,7 +28,7 @@ import {
   SquareTerminal,
   X,
 } from "lucide-react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { SortableInlineList } from "@/components/sortable-inline-list";
 import type {
   DraggableListDragHandleProps,
@@ -58,9 +58,25 @@ import {
   type WorkspaceTabMenuEntry,
 } from "@/screens/workspace/workspace-tab-menu";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
+import type { Theme } from "@/styles/theme";
 
 const DROPDOWN_WIDTH = 220;
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
+
+const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedX = withUnistyles(X);
+const ThemedCopy = withUnistyles(Copy);
+const ThemedRotateCw = withUnistyles(RotateCw);
+const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
+const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
+const ThemedCopyX = withUnistyles(CopyX);
+const ThemedSquarePen = withUnistyles(SquarePen);
+const ThemedSquareTerminal = withUnistyles(SquareTerminal);
+const ThemedColumns2 = withUnistyles(Columns2);
+const ThemedRows2 = withUnistyles(Rows2);
+
+const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 function newTabActionButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
   return [styles.newTabActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
@@ -68,29 +84,27 @@ function newTabActionButtonStyle({ hovered, pressed }: PressableStateCallbackTyp
 
 function TabContextMenuItem({
   entry,
-  iconColor,
 }: {
   entry: Extract<WorkspaceTabMenuEntry, { kind: "item" }>;
-  iconColor: string;
 }) {
   const leading = useMemo(() => {
     switch (entry.icon) {
       case "copy":
-        return <Copy size={16} color={iconColor} />;
+        return <ThemedCopy size={16} uniProps={mutedColorMapping} />;
       case "rotate-cw":
-        return <RotateCw size={16} color={iconColor} />;
+        return <ThemedRotateCw size={16} uniProps={mutedColorMapping} />;
       case "arrow-left-to-line":
-        return <ArrowLeftToLine size={16} color={iconColor} />;
+        return <ThemedArrowLeftToLine size={16} uniProps={mutedColorMapping} />;
       case "arrow-right-to-line":
-        return <ArrowRightToLine size={16} color={iconColor} />;
+        return <ThemedArrowRightToLine size={16} uniProps={mutedColorMapping} />;
       case "copy-x":
-        return <CopyX size={16} color={iconColor} />;
+        return <ThemedCopyX size={16} uniProps={mutedColorMapping} />;
       case "x":
-        return <X size={16} color={iconColor} />;
+        return <ThemedX size={16} uniProps={mutedColorMapping} />;
       default:
         return undefined;
     }
-  }, [entry.icon, iconColor]);
+  }, [entry.icon]);
   const trailing = useMemo(
     () => (entry.hint ? <Text style={styles.menuItemHint}>{entry.hint}</Text> : undefined),
     [entry.hint],
@@ -255,7 +269,6 @@ function TabChip({
   onCloseTab: (tabId: string) => Promise<void> | void;
   dragHandleProps: DraggableListDragHandleProps | undefined;
 }) {
-  const { theme } = useUnistyles();
   const { closeButtonTestId, contextMenuTestId, menuEntries } = resolvedTab;
   const middleClickRef = useMiddleClickClose(
     useCallback(() => void onCloseTab(tab.tabId), [onCloseTab, tab.tabId]),
@@ -392,21 +405,17 @@ function TabChip({
                 >
                   {({ hovered: closeHovered, pressed }) =>
                     isClosingTab ? (
-                      <ActivityIndicator
+                      <ThemedActivityIndicator
                         size={12}
-                        color={
-                          closeHovered || pressed
-                            ? theme.colors.foreground
-                            : theme.colors.foregroundMuted
+                        uniProps={
+                          closeHovered || pressed ? foregroundColorMapping : mutedColorMapping
                         }
                       />
                     ) : (
-                      <X
+                      <ThemedX
                         size={12}
-                        color={
-                          closeHovered || pressed
-                            ? theme.colors.foreground
-                            : theme.colors.foregroundMuted
+                        uniProps={
+                          closeHovered || pressed ? foregroundColorMapping : mutedColorMapping
                         }
                       />
                     )
@@ -432,11 +441,7 @@ function TabChip({
             entry.kind === "separator" ? (
               <ContextMenuSeparator key={entry.key} />
             ) : (
-              <TabContextMenuItem
-                key={entry.key}
-                entry={entry}
-                iconColor={theme.colors.foregroundMuted}
-              />
+              <TabContextMenuItem key={entry.key} entry={entry} />
             ),
           )}
         </ContextMenuContent>
@@ -473,7 +478,6 @@ export function WorkspaceDesktopTabsRow({
   tabDropPreviewIndex = null,
   showPaneSplitActions = true,
 }: WorkspaceDesktopTabsRowProps) {
-  const { theme } = useUnistyles();
   const newTabKeys = useShortcutKeys("workspace-tab-new");
   const newTerminalKeys = useShortcutKeys("workspace-terminal-new");
   const splitRightKeys = useShortcutKeys("workspace-pane-split-right");
@@ -499,11 +503,11 @@ export function WorkspaceDesktopTabsRow({
       tabGap: 0,
       maxTabWidth: 200,
       tabIconWidth: 14,
-      tabHorizontalPadding: theme.spacing[3],
+      tabHorizontalPadding: 12,
       estimatedCharWidth: 7,
       closeButtonWidth: 22,
     }),
-    [tabsActionsWidth, theme.spacing],
+    [tabsActionsWidth],
   );
 
   const tabLabelLengths = useMemo(
@@ -668,7 +672,7 @@ export function WorkspaceDesktopTabsRow({
             accessibilityLabel="New agent tab"
             style={newTabActionButtonStyle}
           >
-            <SquarePen size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+            <ThemedSquarePen size={14} uniProps={mutedColorMapping} />
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" offset={8}>
             <View style={styles.newTabTooltipRow}>
@@ -690,7 +694,7 @@ export function WorkspaceDesktopTabsRow({
             }
             style={newTerminalActionButtonStyle}
           >
-            <SquareTerminal size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+            <ThemedSquareTerminal size={14} uniProps={mutedColorMapping} />
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" offset={8}>
             <View style={styles.newTabTooltipRow}>
@@ -712,7 +716,7 @@ export function WorkspaceDesktopTabsRow({
                 accessibilityLabel="Split pane right"
                 style={newTabActionButtonStyle}
               >
-                <Columns2 size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                <ThemedColumns2 size={14} uniProps={mutedColorMapping} />
               </TooltipTrigger>
               <TooltipContent side="bottom" align="center" offset={8}>
                 <View style={styles.newTabTooltipRow}>
@@ -730,7 +734,7 @@ export function WorkspaceDesktopTabsRow({
                 accessibilityLabel="Split pane down"
                 style={newTabActionButtonStyle}
               >
-                <Rows2 size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                <ThemedRows2 size={14} uniProps={mutedColorMapping} />
               </TooltipTrigger>
               <TooltipContent side="bottom" align="center" offset={8}>
                 <View style={styles.newTabTooltipRow}>

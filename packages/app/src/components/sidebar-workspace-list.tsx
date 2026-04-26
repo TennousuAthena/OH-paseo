@@ -9,6 +9,7 @@ import {
   ScrollView,
   type GestureResponderEvent,
   type PressableStateCallbackType,
+  type ViewStyle,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useQueries } from "@tanstack/react-query";
@@ -24,7 +25,8 @@ import {
 } from "react";
 import { router, usePathname, type Href } from "expo-router";
 import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import type { Theme } from "@/styles/theme";
 import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import { DiffStat } from "@/components/diff-stat";
@@ -85,7 +87,8 @@ import { decideLongPressMove } from "@/utils/sidebar-gesture-arbitration";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
-import { getStatusDotColor, isEmphasizedStatusDotBucket } from "@/utils/status-dot-color";
+import { isEmphasizedStatusDotBucket } from "@/utils/status-dot-color";
+import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -125,17 +128,47 @@ const DEFAULT_STATUS_DOT_SIZE = 7;
 const EMPHASIZED_STATUS_DOT_SIZE = 9;
 const DEFAULT_STATUS_DOT_OFFSET = 0;
 const EMPHASIZED_STATUS_DOT_OFFSET = -1;
-function getWorkspacePrIconColor(
-  theme: ReturnType<typeof useUnistyles>["theme"],
-  state: PrHint["state"],
-) {
+const ThemedExternalLink = withUnistyles(ExternalLink);
+const ThemedGitPullRequest = withUnistyles(GitPullRequest);
+const ThemedGitHubIcon = withUnistyles(GitHubIcon);
+const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedCircleAlert = withUnistyles(CircleAlert);
+const ThemedSyncedLoader = withUnistyles(SyncedLoader);
+const ThemedMonitor = withUnistyles(Monitor);
+const ThemedFolderGit2 = withUnistyles(FolderGit2);
+const ThemedFolderPlus = withUnistyles(FolderPlus);
+const ThemedGlobe = withUnistyles(Globe);
+const ThemedSquareTerminal = withUnistyles(SquareTerminal);
+const ThemedMoreVertical = withUnistyles(MoreVertical);
+const ThemedTrash2 = withUnistyles(Trash2);
+const ThemedSettings = withUnistyles(Settings);
+const ThemedCopy = withUnistyles(Copy);
+const ThemedArchive = withUnistyles(Archive);
+
+const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
+const amberColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
+const blueColorMapping = (theme: Theme) => ({ color: theme.colors.palette.blue[500] });
+const greenColorMapping = (theme: Theme) => ({ color: theme.colors.palette.green[500] });
+const purpleColorMapping = (theme: Theme) => ({ color: theme.colors.palette.purple[500] });
+const syncedLoaderColorMapping = (theme: Theme) => ({
+  color:
+    theme.colorScheme === "light"
+      ? theme.colors.palette.amber[700]
+      : theme.colors.palette.amber[500],
+});
+
+function getPrIconUniMapping(state: PrHint["state"]) {
   switch (state) {
     case "merged":
-      return theme.colors.palette.purple[500];
+      return purpleColorMapping;
     case "open":
-      return theme.colors.palette.green[500];
+      return greenColorMapping;
     case "closed":
-      return theme.colors.palette.red[500];
+      return redColorMapping;
   }
 }
 
@@ -223,10 +256,7 @@ function useSidebarWorkspaceEntry(
 }
 
 export function PrBadge({ hint }: { hint: PrHint }) {
-  const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
-  const activeColor = isHovered ? theme.colors.foreground : theme.colors.foregroundMuted;
-  const iconColor = getWorkspacePrIconColor(theme, hint.state);
 
   const handlePressIn = useCallback((event: GestureResponderEvent) => {
     event.stopPropagation();
@@ -243,10 +273,8 @@ export function PrBadge({ hint }: { hint: PrHint }) {
   const handleHoverIn = useCallback(() => setIsHovered(true), []);
   const handleHoverOut = useCallback(() => setIsHovered(false), []);
 
-  const prBadgeTextStyle = useMemo(
-    () => [prBadgeStyles.text, { color: activeColor }],
-    [activeColor],
-  );
+  const textStyle = isHovered ? prBadgeTextHoveredCombined : prBadgeStyles.text;
+  const iconUniProps = isHovered ? foregroundColorMapping : getPrIconUniMapping(hint.state);
 
   return (
     <Pressable
@@ -260,11 +288,11 @@ export function PrBadge({ hint }: { hint: PrHint }) {
       style={prBadgePressableStyle}
     >
       {isHovered ? (
-        <ExternalLink size={12} color={activeColor} />
+        <ThemedExternalLink size={12} uniProps={iconUniProps} />
       ) : (
-        <GitPullRequest size={12} color={iconColor} />
+        <ThemedGitPullRequest size={12} uniProps={iconUniProps} />
       )}
-      <Text style={prBadgeTextStyle} numberOfLines={1}>
+      <Text style={textStyle} numberOfLines={1}>
         #{hint.number}
       </Text>
     </Pressable>
@@ -302,15 +330,16 @@ const prBadgeStyles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
     lineHeight: 14,
+    color: theme.colors.foregroundMuted,
+  },
+  textHovered: {
+    color: theme.colors.foreground,
   },
 }));
 
+const prBadgeTextHoveredCombined = [prBadgeStyles.text, prBadgeStyles.textHovered];
+
 function ChecksBadge({ checks }: { checks: PrHint["checks"] }): ReactElement | null {
-  const { theme } = useUnistyles();
-
-  const color = theme.colors.palette.red[500];
-  const textStyle = useMemo(() => [checksBadgeStyles.text, { color }], [color]);
-
   if (!checks || checks.length === 0) return null;
 
   const failed = checks.filter((c) => c.status === "failure").length;
@@ -320,8 +349,8 @@ function ChecksBadge({ checks }: { checks: PrHint["checks"] }): ReactElement | n
 
   return (
     <View style={checksBadgeStyles.badge}>
-      <GitHubIcon size={10} color={color} />
-      <Text style={textStyle}>{label}</Text>
+      <ThemedGitHubIcon size={10} uniProps={redColorMapping} />
+      <Text style={checksBadgeStyles.text}>{label}</Text>
     </View>
   );
 }
@@ -336,6 +365,7 @@ const checksBadgeStyles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
     lineHeight: 14,
+    color: theme.colors.palette.red[500],
   },
 }));
 
@@ -348,13 +378,12 @@ function WorkspaceStatusIndicator({
   workspaceKind: SidebarWorkspaceEntry["workspaceKind"];
   loading?: boolean;
 }) {
-  const { theme } = useUnistyles();
   const shouldShowSyncedLoader = shouldRenderSyncedStatusLoader({ bucket });
 
   if (loading) {
     return (
       <View style={styles.workspaceStatusDot}>
-        <ActivityIndicator size={8} color={theme.colors.foregroundMuted} />
+        <ThemedActivityIndicator size={8} uniProps={foregroundMutedColorMapping} />
       </View>
     );
   }
@@ -362,14 +391,7 @@ function WorkspaceStatusIndicator({
   if (shouldShowSyncedLoader) {
     return (
       <View style={styles.workspaceStatusDot}>
-        <SyncedLoader
-          size={11}
-          color={
-            theme.colorScheme === "light"
-              ? theme.colors.palette.amber[700]
-              : theme.colors.palette.amber[500]
-          }
-        />
+        <ThemedSyncedLoader size={11} uniProps={syncedLoaderColorMapping} />
       </View>
     );
   }
@@ -377,18 +399,18 @@ function WorkspaceStatusIndicator({
   if (bucket === "needs_input") {
     return (
       <View style={styles.workspaceStatusDot}>
-        <CircleAlert size={14} color={theme.colors.palette.amber[500]} />
+        <ThemedCircleAlert size={14} uniProps={amberColorMapping} />
       </View>
     );
   }
 
-  let KindIcon: typeof Monitor | typeof FolderGit2 | null;
-  if (workspaceKind === "local_checkout") KindIcon = Monitor;
-  else if (workspaceKind === "worktree") KindIcon = FolderGit2;
+  let KindIcon: typeof ThemedMonitor | typeof ThemedFolderGit2 | null;
+  if (workspaceKind === "local_checkout") KindIcon = ThemedMonitor;
+  else if (workspaceKind === "worktree") KindIcon = ThemedFolderGit2;
   else KindIcon = null;
   if (!KindIcon) return null;
 
-  const dotColor = getStatusDotColor({ theme, bucket, showDoneAsInactive: false });
+  const dotColorStyle = getStatusDotColorStyle(bucket);
   const statusDotSize = isEmphasizedStatusDotBucket(bucket)
     ? EMPHASIZED_STATUS_DOT_SIZE
     : DEFAULT_STATUS_DOT_SIZE;
@@ -399,11 +421,10 @@ function WorkspaceStatusIndicator({
 
   return (
     <View style={styles.workspaceStatusDot}>
-      <KindIcon size={14} color={theme.colors.foregroundMuted} />
-      {dotColor ? (
+      <KindIcon size={14} uniProps={foregroundMutedColorMapping} />
+      {dotColorStyle ? (
         <StatusDotOverlay
-          dotColor={dotColor}
-          borderColor={theme.colors.surface0}
+          dotColorStyle={dotColorStyle}
           size={statusDotSize}
           offset={statusDotOffset}
         />
@@ -413,29 +434,26 @@ function WorkspaceStatusIndicator({
 }
 
 function StatusDotOverlay({
-  dotColor,
-  borderColor,
+  dotColorStyle,
   size,
   offset,
 }: {
-  dotColor: string;
-  borderColor: string;
+  dotColorStyle: ViewStyle;
   size: number;
   offset: number;
 }) {
   const overlayStyle = useMemo(
     () => [
       styles.statusDotOverlay,
+      dotColorStyle,
       {
-        backgroundColor: dotColor,
-        borderColor,
         width: size,
         height: size,
         right: offset,
         bottom: offset,
       },
     ],
-    [dotColor, borderColor, size, offset],
+    [dotColorStyle, size, offset],
   );
   return <View style={overlayStyle} />;
 }
@@ -455,7 +473,6 @@ function ProjectLeadingVisual({
   showChevron?: boolean;
   isArchiving?: boolean;
 }) {
-  const { theme } = useUnistyles();
   const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(displayName);
   const placeholderInitial = placeholderLabel.charAt(0).toUpperCase();
   const activeWorkspace = workspace;
@@ -488,7 +505,6 @@ function ProjectLeadingVisual({
       isArchiving={isArchiving}
       shouldShowSyncedLoader={shouldShowSyncedLoader}
       activeWorkspace={activeWorkspace}
-      theme={theme}
     />
   );
 }
@@ -503,7 +519,6 @@ function ProjectRowTrailingActions({
   onBeginWorkspaceSetup,
   onRemoveProject,
   removeProjectStatus,
-  theme,
 }: {
   project: SidebarProjectEntry;
   displayName: string;
@@ -514,7 +529,6 @@ function ProjectRowTrailingActions({
   onBeginWorkspaceSetup: () => void;
   onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
-  theme: ReturnType<typeof useUnistyles>["theme"];
 }) {
   const actionsVisible = isHovered || platformIsNative || isMobileBreakpoint;
   return (
@@ -535,7 +549,6 @@ function ProjectRowTrailingActions({
         >
           <ProjectKebabMenu
             projectKey={project.projectKey}
-            theme={theme}
             onRemoveProject={onRemoveProject}
             removeProjectStatus={removeProjectStatus}
           />
@@ -545,34 +558,29 @@ function ProjectRowTrailingActions({
   );
 }
 
+const trash2LeadingIcon = <ThemedTrash2 size={14} uniProps={foregroundMutedColorMapping} />;
+const settingsLeadingIcon = <ThemedSettings size={14} uniProps={foregroundMutedColorMapping} />;
+const copyLeadingIcon = <ThemedCopy size={14} uniProps={foregroundMutedColorMapping} />;
+const archiveLeadingIcon = <ThemedArchive size={14} uniProps={foregroundMutedColorMapping} />;
+
+function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
+  return (
+    <ThemedMoreVertical
+      size={14}
+      uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
+    />
+  );
+}
+
 function ProjectKebabMenu({
   projectKey,
-  theme,
   onRemoveProject,
   removeProjectStatus,
 }: {
   projectKey: string;
-  theme: ReturnType<typeof useUnistyles>["theme"];
   onRemoveProject: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
-  const removeProjectLeadingIcon = useMemo(
-    () => <Trash2 size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
-  );
-  const settingsLeadingIcon = useMemo(
-    () => <Settings size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
-  );
-  const renderTriggerIcon = useCallback(
-    ({ hovered }: { hovered?: boolean }) => (
-      <MoreVertical
-        size={14}
-        color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-      />
-    ),
-    [theme.colors.foreground, theme.colors.foregroundMuted],
-  );
   const handleOpenProjectSettings = useCallback(() => {
     if (projectKey.trim().length === 0) return;
     router.navigate(buildProjectSettingsRoute(projectKey));
@@ -587,7 +595,7 @@ function ProjectKebabMenu({
         accessibilityLabel="Project actions"
         testID={`sidebar-project-kebab-${projectKey}`}
       >
-        {renderTriggerIcon}
+        {renderKebabTriggerIcon}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" width={220}>
         {canOpenProjectSettings ? (
@@ -601,7 +609,7 @@ function ProjectKebabMenu({
         ) : null}
         <DropdownMenuItem
           testID={`sidebar-project-menu-remove-${projectKey}`}
-          leading={removeProjectLeadingIcon}
+          leading={trash2LeadingIcon}
           status={removeProjectStatus}
           pendingLabel="Removing..."
           onSelect={onRemoveProject}
@@ -622,7 +630,6 @@ function WorkspaceRowRightGroup({
   isCreating,
   showShortcutBadge,
   shortcutNumber,
-  theme,
   archiveLabel,
   archiveStatus,
   archivePendingLabel,
@@ -639,7 +646,6 @@ function WorkspaceRowRightGroup({
   isCreating: boolean;
   showShortcutBadge: boolean;
   shortcutNumber: number | null;
-  theme: ReturnType<typeof useUnistyles>["theme"];
   archiveLabel?: string;
   archiveStatus?: "idle" | "pending" | "success";
   archivePendingLabel?: string;
@@ -654,9 +660,9 @@ function WorkspaceRowRightGroup({
       {showScriptsIcon ? (
         <View testID="workspace-globe-icon" accessibilityLabel="Scripts available">
           {hasRunningService ? (
-            <Globe size={12} color={theme.colors.palette.blue[500]} />
+            <ThemedGlobe size={12} uniProps={blueColorMapping} />
           ) : (
-            <SquareTerminal size={12} color={theme.colors.palette.blue[500]} />
+            <ThemedSquareTerminal size={12} uniProps={blueColorMapping} />
           )}
         </View>
       ) : null}
@@ -664,7 +670,6 @@ function WorkspaceRowRightGroup({
       {showKebab && onArchive ? (
         <WorkspaceKebabMenu
           workspaceKey={workspace.workspaceKey}
-          theme={theme}
           onCopyPath={onCopyPath}
           onCopyBranchName={onCopyBranchName}
           onArchive={onArchive}
@@ -689,21 +694,8 @@ function WorkspaceRowRightGroup({
   );
 }
 
-function WorkspaceKebabTriggerIcon({
-  hovered,
-  foreground,
-  foregroundMuted,
-}: {
-  hovered: boolean;
-  foreground: string;
-  foregroundMuted: string;
-}) {
-  return <MoreVertical size={14} color={hovered ? foreground : foregroundMuted} />;
-}
-
 function WorkspaceKebabMenu({
   workspaceKey,
-  theme,
   onCopyPath,
   onCopyBranchName,
   onArchive,
@@ -713,7 +705,6 @@ function WorkspaceKebabMenu({
   archiveShortcutKeys,
 }: {
   workspaceKey: string;
-  theme: ReturnType<typeof useUnistyles>["theme"];
   onCopyPath?: () => void;
   onCopyBranchName?: () => void;
   onArchive: () => void;
@@ -722,27 +713,9 @@ function WorkspaceKebabMenu({
   archivePendingLabel?: string;
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }) {
-  const copyLeadingIcon = useMemo(
-    () => <Copy size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
-  );
-  const archiveLeadingIcon = useMemo(
-    () => <Archive size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
-  );
   const archiveTrailing = useMemo(
     () => (archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null),
     [archiveShortcutKeys],
-  );
-  const renderTriggerIcon = useCallback(
-    ({ hovered }: { hovered?: boolean }) => (
-      <WorkspaceKebabTriggerIcon
-        hovered={Boolean(hovered)}
-        foreground={theme.colors.foreground}
-        foregroundMuted={theme.colors.foregroundMuted}
-      />
-    ),
-    [theme.colors.foreground, theme.colors.foregroundMuted],
   );
   return (
     <DropdownMenu>
@@ -753,7 +726,7 @@ function WorkspaceKebabMenu({
         accessibilityLabel="Workspace actions"
         testID={`sidebar-workspace-kebab-${workspaceKey}`}
       >
-        {renderTriggerIcon}
+        {renderKebabTriggerIcon}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" width={260}>
         {onCopyPath ? (
@@ -813,19 +786,17 @@ function ProjectLeadingVisualStatus({
   isArchiving,
   shouldShowSyncedLoader,
   activeWorkspace,
-  theme,
 }: {
   iconDataUri: string | null;
   placeholderInitial: string;
   isArchiving: boolean;
   shouldShowSyncedLoader: boolean;
   activeWorkspace: SidebarWorkspaceEntry;
-  theme: ReturnType<typeof useUnistyles>["theme"];
 }) {
   if (isArchiving) {
     return (
       <View style={styles.projectLeadingVisualSlot}>
-        <ActivityIndicator size={8} color={theme.colors.foregroundMuted} />
+        <ThemedActivityIndicator size={8} uniProps={foregroundMutedColorMapping} />
       </View>
     );
   }
@@ -833,14 +804,7 @@ function ProjectLeadingVisualStatus({
   if (shouldShowSyncedLoader) {
     return (
       <View style={styles.projectLeadingVisualSlot}>
-        <SyncedLoader
-          size={11}
-          color={
-            theme.colorScheme === "light"
-              ? theme.colors.palette.amber[700]
-              : theme.colors.palette.amber[500]
-          }
-        />
+        <ThemedSyncedLoader size={11} uniProps={syncedLoaderColorMapping} />
       </View>
     );
   }
@@ -848,16 +812,12 @@ function ProjectLeadingVisualStatus({
   if (activeWorkspace.statusBucket === "needs_input") {
     return (
       <View style={styles.projectLeadingVisualSlot}>
-        <CircleAlert size={14} color={theme.colors.palette.amber[500]} />
+        <ThemedCircleAlert size={14} uniProps={amberColorMapping} />
       </View>
     );
   }
 
-  const dotColor = getStatusDotColor({
-    theme,
-    bucket: activeWorkspace.statusBucket,
-    showDoneAsInactive: false,
-  });
+  const dotColorStyle = getStatusDotColorStyle(activeWorkspace.statusBucket);
   const statusDotSize = isEmphasizedStatusDotBucket(activeWorkspace.statusBucket)
     ? EMPHASIZED_STATUS_DOT_SIZE
     : DEFAULT_STATUS_DOT_SIZE;
@@ -869,10 +829,9 @@ function ProjectLeadingVisualStatus({
   return (
     <View style={styles.projectLeadingVisualSlot}>
       <ProjectIcon iconDataUri={iconDataUri} placeholderInitial={placeholderInitial} />
-      {dotColor ? (
+      {dotColorStyle ? (
         <StatusDotOverlay
-          dotColor={dotColor}
-          borderColor={theme.colors.surface0}
+          dotColorStyle={dotColorStyle}
           size={statusDotSize}
           offset={statusDotOffset}
         />
@@ -906,7 +865,6 @@ function NewWorktreeButton({
   testID: string;
   showShortcutHint?: boolean;
 }) {
-  const { theme } = useUnistyles();
   const newWorktreeKeys = useShortcutKeys("new-worktree");
 
   const pressableStyle = useCallback(
@@ -940,12 +898,12 @@ function NewWorktreeButton({
           >
             {({ hovered, pressed }) =>
               loading ? (
-                <ActivityIndicator size={14} color={theme.colors.foregroundMuted} />
+                <ThemedActivityIndicator size={14} uniProps={foregroundMutedColorMapping} />
               ) : (
-                <FolderPlus
+                <ThemedFolderPlus
                   size={15}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                  uniProps={
+                    hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping
                   }
                 />
               )
@@ -1205,7 +1163,6 @@ function ProjectHeaderRow({
   removeProjectStatus = "idle",
   dragHandleProps,
 }: ProjectHeaderRowProps) {
-  const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
   const isMobileBreakpoint = useIsCompactFormFactor();
   const handleBeginWorkspaceSetup = useCallback(() => {
@@ -1275,7 +1232,6 @@ function ProjectHeaderRow({
         onBeginWorkspaceSetup={handleBeginWorkspaceSetup}
         onRemoveProject={onRemoveProject}
         removeProjectStatus={removeProjectStatus}
-        theme={theme}
       />
       {showShortcutBadge && shortcutNumber !== null ? (
         <View style={styles.shortcutBadge}>
@@ -1351,7 +1307,6 @@ function WorkspaceRowInner({
   onCopyPath,
   archiveShortcutKeys,
 }: WorkspaceRowInnerProps) {
-  const { theme } = useUnistyles();
   const _isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);
   const isTouchPlatform = platformIsNative;
@@ -1447,7 +1402,6 @@ function WorkspaceRowInner({
               isCreating={isCreating}
               showShortcutBadge={showShortcutBadge}
               shortcutNumber={shortcutNumber}
-              theme={theme}
               archiveLabel={archiveLabel}
               archiveStatus={archiveStatus}
               archivePendingLabel={archivePendingLabel}
@@ -2912,4 +2866,35 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
     lineHeight: 14,
   },
+  statusDotNeedsInput: {
+    backgroundColor: theme.colors.palette.amber[500],
+    borderColor: theme.colors.surface0,
+  },
+  statusDotFailed: {
+    backgroundColor: theme.colors.palette.red[500],
+    borderColor: theme.colors.surface0,
+  },
+  statusDotRunning: {
+    backgroundColor: theme.colors.palette.blue[500],
+    borderColor: theme.colors.surface0,
+  },
+  statusDotAttention: {
+    backgroundColor: theme.colors.palette.green[500],
+    borderColor: theme.colors.surface0,
+  },
 }));
+
+function getStatusDotColorStyle(bucket: SidebarStateBucket): ViewStyle | null {
+  switch (bucket) {
+    case "needs_input":
+      return styles.statusDotNeedsInput;
+    case "failed":
+      return styles.statusDotFailed;
+    case "running":
+      return styles.statusDotRunning;
+    case "attention":
+      return styles.statusDotAttention;
+    case "done":
+      return null;
+  }
+}

@@ -9,11 +9,12 @@ import {
   View,
 } from "react-native";
 import invariant from "tiny-invariant";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Fonts } from "@/constants/theme";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import type { Theme } from "@/styles/theme";
 import {
   useWorkspaceSetupStore,
   type WorkspaceSetupSnapshot,
@@ -62,15 +63,13 @@ function useSetupPanelDescriptor(
 type CommandStatus = "running" | "completed" | "failed";
 
 function CommandStatusIcon({ status }: { status: CommandStatus }) {
-  const { theme } = useUnistyles();
-
   if (status === "running") {
-    return <ActivityIndicator size={14} color={theme.colors.foreground} />;
+    return <ThemedActivityIndicator size={14} uniProps={foregroundColorMapping} />;
   }
   if (status === "completed") {
-    return <CheckCircle2 size={14} color={theme.colors.palette.green[500]} />;
+    return <ThemedCheckCircle2 size={14} uniProps={greenColorMapping} />;
   }
-  return <CircleAlert size={14} color={theme.colors.palette.red[500]} />;
+  return <ThemedCircleAlert size={14} uniProps={redColorMapping} />;
 }
 
 function formatDuration(ms: number): string {
@@ -151,7 +150,6 @@ function buildCommandRowState(args: BuildCommandRowPropsArgs) {
 }
 
 function SetupPanel() {
-  const { theme } = useUnistyles();
   const { serverId, target } = usePaneContext();
   invariant(target.kind === "setup", "SetupPanel requires setup target");
 
@@ -231,7 +229,7 @@ function SetupPanel() {
 
       {isWaiting ? (
         <View style={styles.waitingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
+          <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
           <Text style={styles.waitingText}>Setting up workspace...</Text>
         </View>
       ) : null}
@@ -269,7 +267,6 @@ function SetupPanel() {
                 hasError={rowState.hasError}
                 processedLog={rowState.processedLog}
                 errorMessage={snapshot?.error ?? null}
-                foregroundMutedColor={theme.colors.foregroundMuted}
                 onToggle={toggleExpanded}
               />
             );
@@ -292,7 +289,6 @@ interface SetupCommandRowProps {
   hasError: boolean;
   processedLog: string;
   errorMessage: string | null;
-  foregroundMutedColor: string;
   onToggle: (index: number, isAutoExpanded: boolean) => void;
 }
 
@@ -305,7 +301,6 @@ function SetupCommandRow({
   hasError,
   processedLog,
   errorMessage,
-  foregroundMutedColor,
   onToggle,
 }: SetupCommandRowProps) {
   const handlePress = useCallback(() => {
@@ -341,7 +336,7 @@ function SetupCommandRow({
         {command.durationMs != null ? (
           <Text style={styles.commandDuration}>{formatDuration(command.durationMs)}</Text>
         ) : null}
-        <SetupCommandChevron showDetail={showDetail} color={foregroundMutedColor} />
+        <SetupCommandChevron showDetail={showDetail} />
       </Pressable>
       {showDetail ? (
         <View style={styles.commandDetail}>
@@ -388,12 +383,14 @@ export const setupPanelRegistration: PanelRegistration<"setup"> = {
   useDescriptor: useSetupPanelDescriptor,
 };
 
-function SetupCommandChevron({ showDetail, color }: { showDetail: boolean; color: string }) {
+function SetupCommandChevron({ showDetail }: { showDetail: boolean }) {
   const chevronStyle = useMemo(
     () => [styles.chevron, showDetail && styles.chevronExpanded],
     [showDetail],
   );
-  return <ChevronRight size={14} color={color} style={chevronStyle} />;
+  return (
+    <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} style={chevronStyle} />
+  );
 }
 
 function StandaloneLogView({ commands, log }: { commands: SetupCommand[]; log: string }) {
@@ -431,6 +428,24 @@ function TopLevelSetupError({
     </View>
   );
 }
+
+const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedCheckCircle2 = withUnistyles(CheckCircle2);
+const ThemedCircleAlert = withUnistyles(CircleAlert);
+const ThemedChevronRight = withUnistyles(ChevronRight);
+
+const foregroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+});
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const greenColorMapping = (theme: Theme) => ({
+  color: theme.colors.palette.green[500],
+});
+const redColorMapping = (theme: Theme) => ({
+  color: theme.colors.palette.red[500],
+});
 
 const styles = StyleSheet.create((theme) => ({
   container: {

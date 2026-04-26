@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Text, View } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
 import { createNameId } from "mnemonic-id";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Composer } from "@/components/composer";
@@ -140,7 +140,6 @@ function buildCreateAgentOptions({
 }
 
 export function WorkspaceSetupDialog() {
-  const { theme } = useUnistyles();
   const toast = useToast();
   const pendingWorkspaceSetup = useWorkspaceSetupStore((state) => state.pendingWorkspaceSetup);
   const clearWorkspaceSetup = useWorkspaceSetupStore((state) => state.clearWorkspaceSetup);
@@ -349,10 +348,6 @@ export function WorkspaceSetupDialog() {
     addImagesRef.current = addImages;
   }, []);
 
-  const composerInputWrapperStyle = useMemo(
-    () => ({ backgroundColor: theme.colors.surface2 }),
-    [theme.colors.surface2],
-  );
   const iconSource = useMemo(() => (iconDataUri ? { uri: iconDataUri } : null), [iconDataUri]);
   const statusControlsWithDisabled = useMemo(
     () =>
@@ -415,7 +410,7 @@ export function WorkspaceSetupDialog() {
           autoFocus
           commandDraftConfig={composerState?.commandDraftConfig}
           statusControls={statusControlsWithDisabled}
-          inputWrapperStyle={composerInputWrapperStyle}
+          inputWrapperStyle={styles.composerInputWrapper}
           onAddImages={handleAddImagesCallback}
         />
       </View>
@@ -462,5 +457,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.colors.destructive,
     lineHeight: 20,
+  },
+  composerInputWrapper: {
+    backgroundColor: theme.colors.surface2,
   },
 }));

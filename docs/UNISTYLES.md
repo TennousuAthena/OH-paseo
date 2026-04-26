@@ -4,6 +4,74 @@ This app uses [`react-native-unistyles` v3](https://www.unistyl.es/) for theme-a
 
 That model is powerful, but it has sharp edges. Use this note when adding theme-dependent styles.
 
+## STOP — `useUnistyles()` Is Forbidden
+
+**Do not call `useUnistyles()` unless every alternative below has been ruled out and you can explain in a code comment why.** The library authors themselves [strongly advise against it](https://www.unistyl.es/v3/references/use-unistyles):
+
+> We strongly recommend **not using** this hook, as it will re-render your component on every change. This hook was created to simplify the migration process and should only be used when other methods fail.
+
+We have hit this gotcha repeatedly in Paseo. It manifests as periodic, lockstep re-renders of warm subtrees (agent streams, panels, sidebars) even when nothing the user can see has changed — confirmed in profiling: `AgentStreamView` re-rendering constantly with `theme` showing as the only changed input on every render. The hook subscribes the component to **all** Unistyles runtime changes (theme, breakpoint, insets, color scheme, scale) and returns a fresh object reference each call, which also breaks every downstream `useMemo`/`memo` boundary that includes a derived theme value.
+
+Before reaching for `useUnistyles()`, work down this list of alternatives in order:
+
+### 1. `StyleSheet.create((theme) => ...)` — default
+
+Most theme-aware styling needs nothing else. The Babel plugin tracks theme dependencies inside the factory and updates the native ShadowTree without any React re-render.
+
+```tsx
+const styles = StyleSheet.create((theme) => ({
+  container: {
+    backgroundColor: theme.colors.surface0,
+    padding: theme.spacing[4],
+  },
+}));
+
+<View style={styles.container} />;
+```
+
+If you are reading a theme value just to feed it back into a `style` prop, you almost certainly want this and not the hook.
+
+### 2. Hard-coded constants for genuinely static values
+
+If you only need a number that happens to live on the theme (e.g. a fixed spacing value used to compute a gap or animation distance), use a literal constant or import a static module. Static reads do not need a subscription. See the "Static Theme Imports" section below — importing `baseColors`, theme-name constants, or `type Theme` is fine when the value is intentionally static.
+
+### 3. `withUnistyles(Component)` for third-party props
+
+When a third-party component takes a non-`style` prop that must be theme-reactive (e.g. `BlurView.tint`, `Image.tintColor`, navigator option props, bottom-sheet `backgroundStyle`), wrap that single component with `withUnistyles`. Only the wrapper re-renders, not the surrounding tree.
+
+```tsx
+const ThemedBlur = withUnistyles(BlurView);
+<ThemedBlur tint={theme.colors.surface0} />;
+```
+
+(Mind the `> *` child-selector leak documented further down.)
+
+### 4. Lift the read into a tiny leaf component
+
+If only one prop in a large component needs a theme value at runtime, extract a small leaf component that calls `useUnistyles()` and accept its re-renders in isolation. Never let a whole stream / panel / sidebar / virtualized list subscribe.
+
+### 5. (Last resort) `useUnistyles()`
+
+Only acceptable when both of:
+
+- (a) The value is consumed by a 3rd-party library that cannot be wrapped with `withUnistyles` (per the upstream "When to use it?" list), AND
+- (b) The component is small, leaf-level, and not on a hot render path.
+
+If you add a new `useUnistyles()` call, leave a comment on the line explaining which of (a)/(b) applies and why each higher-priority alternative was ruled out.
+
+### Hot-path forbidden list
+
+Do not introduce `useUnistyles()` in or above any of these subtrees — re-renders here are observably expensive:
+
+- `AgentStreamView` and anything it renders (message rows, tool calls, plan card, todo list, activity log, compaction marker, copy buttons)
+- `AgentPanel` body / `AgentStreamSection` / `AgentComposerSection`
+- `Composer` and `MessageInput`
+- `WorkspaceScreen` shell, tabs row, deck wrapper
+- `LeftSidebar` row items, `SidebarWorkspaceList`, `CommandCenter`
+- Anything inside a virtualized list (`@tanstack/react-virtual`, `FlashList`)
+
+Reviewers must reject PRs that add `useUnistyles()` calls in these areas without a written justification matching the last-resort criteria above.
+
 ## How Updates Propagate
 
 For standard React Native components, the [Unistyles Babel plugin](https://www.unistyl.es/v3/other/babel-plugin) rewrites imports such as `View`, `Text`, `Pressable`, and `ScrollView` to Unistyles-aware component factories. On native, those factories borrow the component ref and register the `style` prop with the ShadowRegistry. The upstream ["Why my view doesn't update?"](https://www.unistyl.es/v3/guides/why-my-view-doesnt-update) guide describes this as the ShadowTree update path that avoids unnecessary React re-renders.

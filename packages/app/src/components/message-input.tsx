@@ -18,8 +18,8 @@ import {
   useMemo,
   forwardRef,
 } from "react";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import type { Theme } from "@/styles/theme";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { useDictation } from "@/hooks/use-dictation";
@@ -195,18 +195,15 @@ function AttachButtonIcon({
   hovered,
   onAttachButtonRef,
   buttonIconSize,
-  foreground,
-  foregroundMuted,
 }: {
   hovered: boolean;
   onAttachButtonRef: ((node: View | null) => void) | undefined;
   buttonIconSize: number;
-  foreground: string;
-  foregroundMuted: string;
 }) {
+  const colorMapping = hovered ? iconForegroundMapping : iconForegroundMutedMapping;
   return (
     <View ref={onAttachButtonRef} collapsable={false} style={styles.attachButtonAnchor}>
-      <Plus size={buttonIconSize} color={hovered ? foreground : foregroundMuted} />
+      <ThemedPlus size={buttonIconSize} uniProps={colorMapping} />
     </View>
   );
 }
@@ -278,23 +275,20 @@ function VoiceButtonIcon({
   isDictating,
   isMutedRealtime,
   buttonIconSize,
-  foreground,
-  foregroundMuted,
 }: {
   hovered: boolean;
   isDictating: boolean;
   isMutedRealtime: boolean;
   buttonIconSize: number;
-  foreground: string;
-  foregroundMuted: string;
 }) {
   if (isDictating) {
     return <Square size={buttonIconSize} color="white" fill="white" />;
   }
+  const colorMapping = hovered ? iconForegroundMapping : iconForegroundMutedMapping;
   if (isMutedRealtime) {
-    return <MicOff size={buttonIconSize} color={hovered ? foreground : foregroundMuted} />;
+    return <ThemedMicOff size={buttonIconSize} uniProps={colorMapping} />;
   }
-  return <Mic size={buttonIconSize} color={hovered ? foreground : foregroundMuted} />;
+  return <ThemedMic size={buttonIconSize} uniProps={colorMapping} />;
 }
 
 type ShortcutChord = NonNullable<React.ComponentProps<typeof Shortcut>["chord"]>;
@@ -1365,8 +1359,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onHeightChange,
       inputWrapperStyle,
     } = resolveMessageInputProps(props);
-    const { theme } = useUnistyles();
-    const buttonIconSize = isWeb ? theme.iconSize.md : theme.iconSize.lg;
+    const buttonIconSize = isWeb ? ICON_SIZE.md : ICON_SIZE.lg;
     const investigationComponentId = computeInvestigationComponentId(voiceServerId, voiceAgentId);
     markScrollInvestigationRender(investigationComponentId);
     const toast = useToast();
@@ -1892,11 +1885,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           hovered={Boolean(hovered)}
           onAttachButtonRef={onAttachButtonRef}
           buttonIconSize={buttonIconSize}
-          foreground={theme.colors.foreground}
-          foregroundMuted={theme.colors.foregroundMuted}
         />
       ),
-      [onAttachButtonRef, buttonIconSize, theme.colors.foreground, theme.colors.foregroundMuted],
+      [onAttachButtonRef, buttonIconSize],
     );
 
     const renderVoiceButtonIcon = useCallback(
@@ -1906,18 +1897,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           isDictating={isDictating}
           isMutedRealtime={Boolean(isRealtimeVoiceForCurrentAgent && voice?.isMuted)}
           buttonIconSize={buttonIconSize}
-          foreground={theme.colors.foreground}
-          foregroundMuted={theme.colors.foregroundMuted}
         />
       ),
-      [
-        isDictating,
-        isRealtimeVoiceForCurrentAgent,
-        voice?.isMuted,
-        buttonIconSize,
-        theme.colors.foreground,
-        theme.colors.foregroundMuted,
-      ],
+      [isDictating, isRealtimeVoiceForCurrentAgent, voice?.isMuted, buttonIconSize],
     );
 
     return (
@@ -1926,12 +1908,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         <Animated.View ref={inputWrapperRef} style={inputWrapperCombinedStyle}>
           {/* Text input */}
           <View style={styles.textInputScrollWrapper}>
-            <TextInput
+            <ThemedTextInput
               ref={textInputRef}
               value={value}
               onChangeText={handleInputChange}
               placeholder={placeholder}
-              placeholderTextColor={theme.colors.surface4}
+              uniProps={textInputPlaceholderColorMapping}
               accessibilityLabel="Message agent..."
               onFocus={handleInputFocus}
               onBlur={handleInputBlur}
@@ -2159,3 +2141,14 @@ const styles = StyleSheet.create((theme: Theme) => ({
     bottom: 0,
   },
 })) as unknown as Record<string, object>;
+
+const ThemedPlus = withUnistyles(Plus);
+const ThemedMic = withUnistyles(Mic);
+const ThemedMicOff = withUnistyles(MicOff);
+const ThemedTextInput = withUnistyles(TextInput);
+
+const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const textInputPlaceholderColorMapping = (theme: Theme) => ({
+  placeholderTextColor: theme.colors.surface4,
+});

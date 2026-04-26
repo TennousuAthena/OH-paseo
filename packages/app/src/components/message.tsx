@@ -48,7 +48,8 @@ import {
   MicVocal,
   FileSymlink,
 } from "lucide-react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import type { Theme } from "@/styles/theme";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import Animated, {
   Easing,
@@ -102,6 +103,29 @@ export type { InlinePathTarget } from "@/utils/inline-path";
 
 type MarkdownStyles = Record<string, TextStyle & ViewStyle & { [key: string]: unknown }>;
 
+function useMessageRenderTracker(
+  label: string,
+  identity: string,
+  watched: Record<string, unknown>,
+): void {
+  const renderCountRef = useRef(0);
+  const prevRef = useRef<Record<string, unknown> | null>(null);
+  renderCountRef.current += 1;
+  const changed: string[] = [];
+  if (prevRef.current !== null) {
+    for (const key of Object.keys(watched)) {
+      if (!Object.is(prevRef.current[key], watched[key])) {
+        changed.push(key);
+      }
+    }
+  }
+  prevRef.current = { ...watched };
+  console.log(`[${label}]`, identity, `render #${renderCountRef.current}`, {
+    isFirst: renderCountRef.current === 1,
+    changed,
+  });
+}
+
 interface UserMessageProps {
   message: string;
   images?: UserMessageImageAttachment[];
@@ -154,6 +178,26 @@ interface MarkdownWithStableRendererProps {
 }
 
 const MarkdownWithStableRenderer = Markdown as ComponentType<MarkdownWithStableRendererProps>;
+const ThemedMarkdown = withUnistyles(MarkdownWithStableRenderer);
+const markdownStyleMapping = (theme: Theme) => ({ style: createMarkdownStyles(theme) }) as never;
+
+const ThemedMicVocal = withUnistyles(MicVocal);
+const ThemedTodoCheckIcon = withUnistyles(Check);
+const ThemedFileSymlinkIcon = withUnistyles(FileSymlink);
+const ThemedTriangleAlertIcon = withUnistyles(TriangleAlertIcon);
+const ThemedChevronRightIcon = withUnistyles(ChevronRight);
+
+const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const mutedForegroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.mutedForeground,
+});
+const primaryForegroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.primaryForeground,
+});
+const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 const WEB_TOOLCALL_SHIMMER_KEYFRAME_CSS = `
   @keyframes ${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} {
     0% {
@@ -381,7 +425,13 @@ export const UserMessage = memo(function UserMessage({
   isLastInGroup = true,
   disableOuterSpacing,
 }: UserMessageProps) {
-  const { theme } = useUnistyles();
+  useMessageRenderTracker("UserMessage", `${(message ?? "").slice(0, 16)}`, {
+    message,
+    images,
+    isFirstInGroup,
+    isLastInGroup,
+    disableOuterSpacing,
+  });
   const isCompact = useIsCompactFormFactor();
   const [messageHovered, setMessageHovered] = useState(false);
   const [copyButtonHovered, setCopyButtonHovered] = useState(false);
@@ -398,12 +448,12 @@ export const UserMessage = memo(function UserMessage({
     () => [
       userMessageStylesheet.container,
       !resolvedDisableOuterSpacing && [
-        isFirstInGroup && { marginTop: theme.spacing[4] },
-        isLastInGroup && { marginBottom: theme.spacing[4] },
-        !isFirstInGroup || !isLastInGroup ? { marginBottom: theme.spacing[1] } : undefined,
+        isFirstInGroup ? userMessageStylesheet.containerFirstInGroup : null,
+        isLastInGroup ? userMessageStylesheet.containerLastInGroup : null,
+        !isFirstInGroup || !isLastInGroup ? userMessageStylesheet.containerSpacing : null,
       ],
     ],
-    [resolvedDisableOuterSpacing, isFirstInGroup, isLastInGroup, theme.spacing],
+    [resolvedDisableOuterSpacing, isFirstInGroup, isLastInGroup],
   );
   const imagePreviewContainerStyle = useMemo(
     () => [
@@ -628,7 +678,6 @@ function AssistantMarkdownImage({
   workspaceRoot?: string;
   serverId?: string;
 }) {
-  const { theme } = useUnistyles();
   const resolution = useMemo(
     () => resolveAssistantImageSource({ source, workspaceRoot }),
     [source, workspaceRoot],
@@ -636,10 +685,10 @@ function AssistantMarkdownImage({
   const dataImage = useMemo(() => parseImageDataUrl(source), [source]);
   const containerStyle = useMemo<StyleProp<ViewStyle>>(
     () => ({
-      marginTop: hasLeadingContent ? theme.spacing[4] : 0,
+      marginTop: hasLeadingContent ? 16 : 0,
       marginBottom: 0,
     }),
-    [hasLeadingContent, theme],
+    [hasLeadingContent],
   );
 
   const query = useQuery({
@@ -1224,7 +1273,6 @@ function AssistantMessageBlockContainer({
 
 interface MemoizedMarkdownBlockProps {
   text: string;
-  styles: ReturnType<typeof createMarkdownStyles>;
   rules: RenderRules;
   parser: MarkdownIt;
   onLinkPress: (url: string) => boolean;
@@ -1232,14 +1280,13 @@ interface MemoizedMarkdownBlockProps {
 
 const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
   text,
-  styles,
   rules,
   parser,
   onLinkPress,
 }: MemoizedMarkdownBlockProps) {
   return (
-    <MarkdownWithStableRenderer
-      style={styles}
+    <ThemedMarkdown
+      uniProps={markdownStyleMapping}
       rules={rules}
       markdownit={parser}
       onLinkPress={onLinkPress}
@@ -1247,7 +1294,7 @@ const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
       topLevelMaxExceededItem={MARKDOWN_TOP_LEVEL_MAX_EXCEEDED_ITEM}
     >
       {text}
-    </MarkdownWithStableRenderer>
+    </ThemedMarkdown>
   );
 });
 
@@ -1333,12 +1380,22 @@ export const AssistantMessage = memo(function AssistantMessage({
   disableOuterSpacing,
   spacing = "default",
 }: AssistantMessageProps) {
-  const { theme } = useUnistyles();
+  useMessageRenderTracker(
+    "AssistantMessage",
+    `${serverId ?? "?"}/${(message ?? "").slice(0, 16)}`,
+    {
+      message,
+      onInlinePathPress,
+      workspaceRoot,
+      serverId,
+      client,
+      disableOuterSpacing,
+      spacing,
+    },
+  );
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(
     disableOuterSpacing ?? spacing !== "default",
   );
-
-  const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
 
   const markdownParser = useMemo(() => {
     const parser = MarkdownIt({ typographer: true, linkify: true });
@@ -1602,11 +1659,10 @@ export const AssistantMessage = memo(function AssistantMessage({
         <AssistantMessageBlockContainer
           key={key}
           block={block}
-          marginBottom={index < keyedBlocks.length - 1 ? theme.spacing[3] : 0}
+          marginBottom={index < keyedBlocks.length - 1 ? 12 : 0}
         >
           <MemoizedMarkdownBlock
             text={block}
-            styles={markdownStyles}
             rules={markdownRules}
             parser={markdownParser}
             onLinkPress={handleLinkPress}
@@ -1656,7 +1712,6 @@ export const SpeakMessage = memo(function SpeakMessage({
   timestamp: _timestamp,
   disableOuterSpacing,
 }: SpeakMessageProps) {
-  const { theme } = useUnistyles();
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const containerStyle = useMemo(
     () => [
@@ -1669,7 +1724,7 @@ export const SpeakMessage = memo(function SpeakMessage({
   return (
     <View testID="speak-message" style={containerStyle}>
       <View style={speakMessageStylesheet.header}>
-        <MicVocal size={14} color={theme.colors.foregroundMuted} />
+        <ThemedMicVocal size={14} uniProps={foregroundMutedColorMapping} />
         <Text style={speakMessageStylesheet.headerLabel}>Spoke</Text>
       </View>
       <Text style={speakMessageStylesheet.text}>{message}</Text>
@@ -1927,7 +1982,6 @@ interface TodoListItemRowProps {
 }
 
 function TodoListItemRow({ text, completed }: TodoListItemRowProps) {
-  const { theme: todoUnistylesTheme } = useUnistyles();
   const badgeStyle = useMemo(
     () => [
       todoListCardStylesheet.radioBadge,
@@ -1944,7 +1998,9 @@ function TodoListItemRow({ text, completed }: TodoListItemRowProps) {
   return (
     <View style={todoListCardStylesheet.itemRow}>
       <View style={badgeStyle}>
-        {completed ? <Check size={12} color={todoUnistylesTheme.colors.primaryForeground} /> : null}
+        {completed ? (
+          <ThemedTodoCheckIcon size={12} uniProps={primaryForegroundColorMapping} />
+        ) : null}
       </View>
       <Text style={textStyle}>{text}</Text>
     </View>
@@ -1996,7 +2052,6 @@ export const TodoListCard = memo(function TodoListCard({
   items,
   disableOuterSpacing,
 }: TodoListCardProps) {
-  const { theme: _unistylesTheme } = useUnistyles();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const nextTask = useMemo(() => items.find((item) => !item.completed)?.text, [items]);
@@ -2158,7 +2213,6 @@ function ExpandableBadgeLabelRow({
   onOpenFileHoverIn,
   onOpenFileHoverOut,
 }: ExpandableBadgeLabelRowProps) {
-  const { theme } = useUnistyles();
   return (
     <View
       style={expandableBadgeStylesheet.labelRow}
@@ -2188,9 +2242,9 @@ function ExpandableBadgeLabelRow({
           style={expandableBadgeStylesheet.openFileButton}
           hitSlop={6}
         >
-          <FileSymlink
+          <ThemedFileSymlinkIcon
             size={14}
-            color={isOpenFileHovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+            uniProps={isOpenFileHovered ? foregroundColorMapping : foregroundMutedColorMapping}
           />
         </Pressable>
       ) : null}
@@ -2217,52 +2271,42 @@ function ExpandableBadgeLabelRow({
   );
 }
 
-function resolveExpandableBadgeIconColor({
+function renderExpandableBadgeIcon({
   isError,
   isActive,
-  theme,
+  ThemedIcon,
 }: {
   isError: boolean;
   isActive: boolean;
-  theme: ReturnType<typeof useUnistyles>["theme"];
-}): string {
-  if (isError) return theme.colors.destructive;
-  if (isActive) return theme.colors.foreground;
-  return theme.colors.mutedForeground;
-}
-
-function renderExpandableBadgeIcon({
-  isError,
-  iconColor,
-  icon,
-}: {
-  isError: boolean;
-  iconColor: string;
-  icon?: ComponentType<{ size?: number; color?: string }>;
+  ThemedIcon: ComponentType<{ size?: number; uniProps?: typeof foregroundColorMapping }> | null;
 }): ReactNode {
   if (isError) {
-    return <TriangleAlertIcon size={12} color={iconColor} opacity={0.8} />;
+    return <ThemedTriangleAlertIcon size={12} opacity={0.8} uniProps={destructiveColorMapping} />;
   }
-  if (icon) {
-    const IconComponent = icon;
-    return <IconComponent size={12} color={iconColor} />;
+  if (ThemedIcon) {
+    return (
+      <ThemedIcon
+        size={12}
+        uniProps={isActive ? foregroundColorMapping : mutedForegroundColorMapping}
+      />
+    );
   }
   return null;
 }
 
 function renderExpandableBadgeIconSlot({
   showChevron,
-  chevronColor,
   chevronStyle,
   iconNode,
 }: {
   showChevron: boolean;
-  chevronColor: string;
   chevronStyle: StyleProp<ViewStyle>;
   iconNode: ReactNode;
 }): ReactNode {
   if (showChevron) {
-    return <ChevronRight size={14} color={chevronColor} style={chevronStyle} />;
+    return (
+      <ThemedChevronRightIcon size={14} style={chevronStyle} uniProps={foregroundColorMapping} />
+    );
   }
   return iconNode;
 }
@@ -2385,7 +2429,6 @@ const ExpandableBadge = memo(function ExpandableBadge({
   disableOuterSpacing,
   testID,
 }: ExpandableBadgeProps) {
-  const { theme } = useUnistyles();
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const [isHovered, setIsHovered] = useState(false);
   const [isOpenFileHovered, setIsOpenFileHovered] = useState(false);
@@ -2614,11 +2657,10 @@ const ExpandableBadge = memo(function ExpandableBadge({
     [isExpanded],
   );
 
-  const iconColor = resolveExpandableBadgeIconColor({ isError, isActive, theme });
-  const iconNode = renderExpandableBadgeIcon({ isError, iconColor, icon });
+  const ThemedIcon = useMemo(() => (icon ? withUnistyles(icon) : null), [icon]);
+  const iconNode = renderExpandableBadgeIcon({ isError, isActive, ThemedIcon });
   const iconSlotNode = renderExpandableBadgeIconSlot({
     showChevron: isInteractive && isHovered && !isIconHovered,
-    chevronColor: theme.colors.foreground,
     chevronStyle,
     iconNode,
   });
@@ -2743,6 +2785,21 @@ export const ToolCall = memo(function ToolCall({
   onInlineDetailsExpandedChange,
   onOpenFilePath,
 }: ToolCallProps) {
+  useMessageRenderTracker("ToolCall", `${toolName}/${status}`, {
+    toolName,
+    args,
+    result,
+    error,
+    status,
+    detail,
+    cwd,
+    metadata,
+    isLastInSequence,
+    disableOuterSpacing,
+    onInlineDetailsHoverChange,
+    onInlineDetailsExpandedChange,
+    onOpenFilePath,
+  });
   const { openToolCall } = useToolCallSheet();
   const [isExpanded, setIsExpanded] = useState(false);
 

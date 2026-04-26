@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
@@ -44,6 +44,7 @@ import {
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { type Agent, useSessionStore } from "@/stores/session-store";
+import type { Theme } from "@/styles/theme";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
@@ -125,9 +126,8 @@ function buildChatAgentFromState(
 function renderChatAgentNonReadyView(args: {
   viewState: AgentScreenViewState;
   effectiveAgent: AgentScreenAgent | null;
-  theme: ReturnType<typeof useUnistyles>["theme"];
 }): React.ReactElement | null {
-  const { viewState, effectiveAgent, theme } = args;
+  const { viewState, effectiveAgent } = args;
   if (viewState.tag === "not_found") {
     return (
       <View style={styles.container} testID="agent-not-found">
@@ -151,7 +151,7 @@ function renderChatAgentNonReadyView(args: {
     return (
       <View style={styles.container} testID="agent-loading">
         <View style={styles.errorContainer}>
-          <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
+          <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
         </View>
       </View>
     );
@@ -419,7 +419,6 @@ function AgentPanelBody({
   connectionStatus: HostRuntimeConnectionStatus;
   onOpenWorkspaceFile?: (input: { filePath: string }) => void;
 }) {
-  const { theme } = useUnistyles();
   const { isArchivingAgent: _isArchivingAgent } = useArchiveAgent();
   const hasSession = useSessionStore((state) => Boolean(state.sessions[serverId]));
   const projectPlacement = useStoreWithEqualityFn(
@@ -549,7 +548,7 @@ function AgentPanelBody({
     return (
       <View style={styles.container} testID="agent-loading">
         <View style={styles.errorContainer}>
-          <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
+          <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
         </View>
       </View>
     );
@@ -585,7 +584,6 @@ function ChatAgentContent({
   connectionStatus: HostRuntimeConnectionStatus;
   onOpenWorkspaceFile?: (input: { filePath: string }) => void;
 }) {
-  const { theme } = useUnistyles();
   const panelToast = useToastHost();
   const { isArchivingAgent } = useArchiveAgent();
   const streamViewRef = useRef<AgentStreamViewHandle>(null);
@@ -945,7 +943,6 @@ function ChatAgentContent({
   const nonReadyView = renderChatAgentNonReadyView({
     viewState,
     effectiveAgent,
-    theme,
   });
   if (nonReadyView) return nonReadyView;
   invariant(effectiveAgent, "effectiveAgent is defined when the non-ready view is absent");
@@ -990,7 +987,7 @@ function ChatAgentContent({
           viewState.sync.status === "catching_up" &&
           viewState.sync.ui === "overlay" ? (
             <View style={styles.historySyncOverlay} testID="agent-history-overlay">
-              <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
+              <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
             </View>
           ) : null}
 
@@ -1004,7 +1001,7 @@ function ChatAgentContent({
 
       {isArchivingCurrentAgent ? (
         <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
-          <ActivityIndicator size="large" color={theme.colors.foreground} />
+          <ThemedActivityIndicator size="large" uniProps={foregroundColorMapping} />
           <Text style={styles.archivingTitle}>Archiving agent...</Text>
           <Text style={styles.archivingSubtitle}>Please wait while we archive this agent.</Text>
         </View>
@@ -1339,6 +1336,15 @@ function AgentSessionUnavailableState({
     </View>
   );
 }
+
+const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const foregroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+});
 
 const styles = StyleSheet.create((theme) => ({
   root: {
