@@ -997,7 +997,8 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     opacity: 0.72,
   },
   secondaryLabel: {
-    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
@@ -2064,7 +2065,7 @@ function ExpandableBadgeSecondaryLabel({
   onSecondaryLayout,
 }: ExpandableBadgeSecondaryLabelProps) {
   if (!secondaryLabel) {
-    return <View style={expandableBadgeStylesheet.spacer} />;
+    return null;
   }
   return (
     <Text
@@ -2125,6 +2126,11 @@ interface ExpandableBadgeLabelRowProps {
   onLabelRowLayout: (event: LayoutChangeEvent) => void;
   onLabelLayout: (event: LayoutChangeEvent) => void;
   onSecondaryLayout: (event: LayoutChangeEvent) => void;
+  showOpenFileButton: boolean;
+  isOpenFileHovered: boolean;
+  onOpenFilePress: (event: GestureResponderEvent) => void;
+  onOpenFileHoverIn: () => void;
+  onOpenFileHoverOut: () => void;
 }
 
 function ExpandableBadgeLabelRow({
@@ -2146,7 +2152,13 @@ function ExpandableBadgeLabelRow({
   onLabelRowLayout,
   onLabelLayout,
   onSecondaryLayout,
+  showOpenFileButton,
+  isOpenFileHovered,
+  onOpenFilePress,
+  onOpenFileHoverIn,
+  onOpenFileHoverOut,
 }: ExpandableBadgeLabelRowProps) {
+  const { theme } = useUnistyles();
   return (
     <View
       style={expandableBadgeStylesheet.labelRow}
@@ -2165,6 +2177,23 @@ function ExpandableBadgeLabelRow({
         shouldMeasureWebShimmer={shouldMeasureWebShimmer}
         onSecondaryLayout={onSecondaryLayout}
       />
+      {showOpenFileButton ? (
+        <Pressable
+          onPress={onOpenFilePress}
+          onHoverIn={onOpenFileHoverIn}
+          onHoverOut={onOpenFileHoverOut}
+          accessibilityRole="button"
+          accessibilityLabel="Open file"
+          testID="tool-call-open-file"
+          style={expandableBadgeStylesheet.openFileButton}
+          hitSlop={6}
+        >
+          <FileSymlink
+            size={14}
+            color={isOpenFileHovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+          />
+        </Pressable>
+      ) : null}
       {isWebShimmer ? (
         <ExpandableBadgeWebShimmerOverlay
           label={label}
@@ -2219,6 +2248,23 @@ function renderExpandableBadgeIcon({
     return <IconComponent size={12} color={iconColor} />;
   }
   return null;
+}
+
+function renderExpandableBadgeIconSlot({
+  showChevron,
+  chevronColor,
+  chevronStyle,
+  iconNode,
+}: {
+  showChevron: boolean;
+  chevronColor: string;
+  chevronStyle: StyleProp<ViewStyle>;
+  iconNode: ReactNode;
+}): ReactNode {
+  if (showChevron) {
+    return <ChevronRight size={14} color={chevronColor} style={chevronStyle} />;
+  }
+  return iconNode;
 }
 
 function computeShimmerMetrics(input: {
@@ -2343,6 +2389,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const [isHovered, setIsHovered] = useState(false);
   const [isOpenFileHovered, setIsOpenFileHovered] = useState(false);
+  const [isIconHovered, setIsIconHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
   const isInteractive = Boolean(onToggle);
   const hasDetailContent = Boolean(renderDetails);
@@ -2371,6 +2418,8 @@ const ExpandableBadge = memo(function ExpandableBadge({
   );
   const handleOpenFileHoverIn = useCallback(() => setIsOpenFileHovered(true), []);
   const handleOpenFileHoverOut = useCallback(() => setIsOpenFileHovered(false), []);
+  const handleIconHoverIn = useCallback(() => setIsIconHovered(true), []);
+  const handleIconHoverOut = useCallback(() => setIsIconHovered(false), []);
 
   const nativeGradientIdRef = useRef(
     `shimmer-gradient-${Math.random().toString(36).substring(2, 9)}`,
@@ -2567,6 +2616,12 @@ const ExpandableBadge = memo(function ExpandableBadge({
 
   const iconColor = resolveExpandableBadgeIconColor({ isError, isActive, theme });
   const iconNode = renderExpandableBadgeIcon({ isError, iconColor, icon });
+  const iconSlotNode = renderExpandableBadgeIconSlot({
+    showChevron: isInteractive && isHovered && !isIconHovered,
+    chevronColor: theme.colors.foreground,
+    chevronStyle,
+    iconNode,
+  });
 
   const pressHandlers = isInteractive
     ? {
@@ -2591,7 +2646,13 @@ const ExpandableBadge = memo(function ExpandableBadge({
         style={pressableStyle}
       >
         <View style={expandableBadgeStylesheet.headerRow}>
-          <View style={expandableBadgeStylesheet.iconBadge}>{iconNode}</View>
+          <View
+            style={expandableBadgeStylesheet.iconBadge}
+            onPointerEnter={isWeb ? handleIconHoverIn : undefined}
+            onPointerLeave={isWeb ? handleIconHoverOut : undefined}
+          >
+            {iconSlotNode}
+          </View>
           <ExpandableBadgeLabelRow
             label={label}
             labelStyle={labelStyle}
@@ -2611,27 +2672,12 @@ const ExpandableBadge = memo(function ExpandableBadge({
             onLabelRowLayout={handleLabelRowLayout}
             onLabelLayout={handleLabelLayout}
             onSecondaryLayout={handleSecondaryLayout}
+            showOpenFileButton={Boolean(onOpenFile && isHovered)}
+            isOpenFileHovered={isOpenFileHovered}
+            onOpenFilePress={handleOpenFilePress}
+            onOpenFileHoverIn={handleOpenFileHoverIn}
+            onOpenFileHoverOut={handleOpenFileHoverOut}
           />
-          {onOpenFile && isHovered ? (
-            <Pressable
-              onPress={handleOpenFilePress}
-              onHoverIn={handleOpenFileHoverIn}
-              onHoverOut={handleOpenFileHoverOut}
-              accessibilityRole="button"
-              accessibilityLabel="Open file"
-              testID="tool-call-open-file"
-              style={expandableBadgeStylesheet.openFileButton}
-              hitSlop={6}
-            >
-              <FileSymlink
-                size={14}
-                color={isOpenFileHovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-              />
-            </Pressable>
-          ) : null}
-          {isInteractive && isHovered ? (
-            <ChevronRight size={14} color={theme.colors.foreground} style={chevronStyle} />
-          ) : null}
         </View>
       </Pressable>
       {detailContent ? (
