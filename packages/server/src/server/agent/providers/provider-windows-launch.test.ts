@@ -141,7 +141,7 @@ function withPathEntry<T>(dir: string, run: () => Promise<T>): Promise<T> {
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
 

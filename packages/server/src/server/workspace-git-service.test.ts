@@ -136,8 +136,9 @@ function createDirent(name: string, isDirectory: boolean) {
 }
 
 async function flushPromises(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let i = 0; i < 6; i++) {
+    await Promise.resolve();
+  }
 }
 
 function createDeferred<T>() {

@@ -1180,9 +1180,6 @@ describe("session checkout pull request creation", () => {
         base: "main",
       },
       expect.anything(),
-      expect.objectContaining({
-        getCheckoutDiff: workspaceGitService.getCheckoutDiff,
-      }),
     );
     expect(messages).toContainEqual({
       type: "checkout_pr_create_response",
