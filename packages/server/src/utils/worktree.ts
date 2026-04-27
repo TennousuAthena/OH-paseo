@@ -1,7 +1,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { existsSync, mkdirSync, realpathSync, rmSync, statSync } from "fs";
-import { rm, stat } from "fs/promises";
+import { copyFile, rm, stat } from "fs/promises";
 import { join, basename, dirname, resolve, sep } from "path";
 import net from "node:net";
 import { createHash } from "node:crypto";
@@ -1225,6 +1225,19 @@ export const createWorktree = async ({
   }
 
   writePaseoWorktreeMetadata(worktreePath, { baseRefName: sourcePlan.metadataBaseRefName });
+
+  // If paseo.json exists in the main repo but wasn't checked into the worktree
+  // (e.g. uncommitted on first-time setup), seed the worktree with it so setup
+  // commands and scripts pick up the user's intended config.
+  const mainConfigPath = join(cwd, "paseo.json");
+  const worktreeConfigPath = join(worktreePath, "paseo.json");
+  try {
+    await stat(worktreeConfigPath);
+  } catch {
+    await copyFile(mainConfigPath, worktreeConfigPath).catch((err) => {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    });
+  }
 
   if (runSetup) {
     await runWorktreeSetupCommands({

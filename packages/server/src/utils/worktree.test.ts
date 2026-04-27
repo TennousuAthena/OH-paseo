@@ -779,6 +779,66 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
       ]),
     );
   });
+
+  it("seeds an uncommitted paseo.json from the main repo into a new worktree", async () => {
+    writeFileSync(
+      join(repoDir, "paseo.json"),
+      JSON.stringify({ scripts: { dev: { command: "echo hi" } } }),
+    );
+
+    const result = await createLegacyWorktreeForTest({
+      cwd: repoDir,
+      worktreeSlug: "seed-uncommitted",
+      source: { kind: "branch-off", baseBranch: "main", newBranchName: "feature/seed" },
+      runSetup: false,
+      paseoHome,
+    });
+
+    const worktreeConfigPath = join(result.worktreePath, "paseo.json");
+    expect(existsSync(worktreeConfigPath)).toBe(true);
+    expect(JSON.parse(readFileSync(worktreeConfigPath, "utf8"))).toEqual({
+      scripts: { dev: { command: "echo hi" } },
+    });
+  });
+
+  it("does not overwrite a committed paseo.json with uncommitted edits in the main repo", async () => {
+    writeFileSync(
+      join(repoDir, "paseo.json"),
+      JSON.stringify({ scripts: { dev: { command: "committed" } } }),
+    );
+    execSync("git add paseo.json", { cwd: repoDir });
+    execSync('git -c commit.gpgsign=false commit -m "add paseo.json"', { cwd: repoDir });
+
+    writeFileSync(
+      join(repoDir, "paseo.json"),
+      JSON.stringify({ scripts: { dev: { command: "uncommitted" } } }),
+    );
+
+    const result = await createLegacyWorktreeForTest({
+      cwd: repoDir,
+      worktreeSlug: "preserve-committed",
+      source: { kind: "branch-off", baseBranch: "main", newBranchName: "feature/preserve" },
+      runSetup: false,
+      paseoHome,
+    });
+
+    const worktreeConfigPath = join(result.worktreePath, "paseo.json");
+    expect(JSON.parse(readFileSync(worktreeConfigPath, "utf8"))).toEqual({
+      scripts: { dev: { command: "committed" } },
+    });
+  });
+
+  it("creates a worktree without error when no paseo.json exists in the main repo", async () => {
+    const result = await createLegacyWorktreeForTest({
+      cwd: repoDir,
+      worktreeSlug: "no-config",
+      source: { kind: "branch-off", baseBranch: "main", newBranchName: "feature/no-config" },
+      runSetup: false,
+      paseoHome,
+    });
+
+    expect(existsSync(join(result.worktreePath, "paseo.json"))).toBe(false);
+  });
 });
 
 describe("paseo worktree manager", () => {
