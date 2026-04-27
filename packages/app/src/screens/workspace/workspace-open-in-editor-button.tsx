@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { type ReactElement, useCallback, useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -9,8 +9,9 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, ChevronDown } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { EditorTargetDescriptorPayload, EditorTargetId } from "@server/shared/messages";
+import type { EditorTargetDescriptorPayload } from "@server/shared/messages";
 import { EditorAppIcon } from "@/components/icons/editor-app-icons";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,8 +19,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/contexts/toast-context";
+import { useCheckoutStatusQuery } from "@/hooks/use-checkout-status-query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { resolvePreferredEditorId, usePreferredEditor } from "@/hooks/use-preferred-editor";
+import { buildGitHubBranchTreeUrl } from "@/utils/github-repo-url";
+import { openExternalUrl } from "@/utils/open-external-url";
 import { isAbsolutePath } from "@/utils/path";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
@@ -30,38 +34,42 @@ interface WorkspaceOpenInEditorButtonProps {
   hideLabels?: boolean;
 }
 
-interface EditorMenuItemProps {
-  editor: EditorTargetDescriptorPayload;
-  isPreferred: boolean;
-  onOpen: (editorId: EditorTargetId) => void;
+interface OpenTarget {
+  id: string;
+  label: string;
+  icon: ReactElement;
+  onOpen: () => Promise<void> | void;
 }
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedEditorAppIcon = withUnistyles(EditorAppIcon);
+const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedCheckIcon = withUnistyles(Check);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-function EditorMenuItem({ editor, isPreferred, onOpen }: EditorMenuItemProps) {
-  const handleSelect = useCallback(() => onOpen(editor.id), [onOpen, editor.id]);
-  const leading = useMemo(
-    () => <ThemedEditorAppIcon editorId={editor.id} size={16} uniProps={mutedColorMapping} />,
-    [editor.id],
-  );
+interface OpenTargetMenuItemProps {
+  target: OpenTarget;
+  isPreferred: boolean;
+  onOpen: (target: OpenTarget) => void;
+}
+
+function OpenTargetMenuItem({ target, isPreferred, onOpen }: OpenTargetMenuItemProps) {
+  const handleSelect = useCallback(() => onOpen(target), [onOpen, target]);
   const trailing = useMemo(
     () => (isPreferred ? <ThemedCheckIcon size={16} uniProps={mutedColorMapping} /> : undefined),
     [isPreferred],
   );
   return (
     <DropdownMenuItem
-      testID={`workspace-open-in-editor-item-${editor.id}`}
-      leading={leading}
+      testID={`workspace-open-in-editor-item-${target.id}`}
+      leading={target.icon}
       trailing={trailing}
       onSelect={handleSelect}
     >
-      {editor.label}
+      {target.label}
     </DropdownMenuItem>
   );
 }
@@ -76,12 +84,12 @@ export function WorkspaceOpenInEditorButton({
   const isConnected = useHostRuntimeIsConnected(serverId);
   const { preferredEditorId, updatePreferredEditor } = usePreferredEditor();
 
-  const shouldLoadEditors =
+  const shouldLoadTargets =
     isWeb && Boolean(client && isConnected) && cwd.trim().length > 0 && isAbsolutePath(cwd);
 
   const availableEditorsQuery = useQuery<EditorTargetDescriptorPayload[]>({
     queryKey: ["available-editors", serverId],
-    enabled: shouldLoadEditors,
+    enabled: shouldLoadTargets,
     staleTime: 60_000,
     retry: false,
     queryFn: async () => {
@@ -97,20 +105,65 @@ export function WorkspaceOpenInEditorButton({
     },
   });
 
-  const availableEditorsRaw = availableEditorsQuery.data;
-  const availableEditors = useMemo(() => availableEditorsRaw ?? [], [availableEditorsRaw]);
-  const availableEditorIds = useMemo(
-    () => availableEditors.map((editor: EditorTargetDescriptorPayload) => editor.id),
-    [availableEditors],
+  const availableEditors = useMemo(
+    () => availableEditorsQuery.data ?? [],
+    [availableEditorsQuery.data],
   );
+
+  const { status: checkoutStatus } = useCheckoutStatusQuery({
+    serverId,
+    cwd: shouldLoadTargets ? cwd : "",
+  });
+
+  const editorTargets = useMemo<OpenTarget[]>(
+    () =>
+      availableEditors.map((editor) => ({
+        id: editor.id,
+        label: editor.label,
+        icon: <ThemedEditorAppIcon editorId={editor.id} size={16} uniProps={mutedColorMapping} />,
+        onOpen: async () => {
+          if (!client) {
+            throw new Error("Host is not connected");
+          }
+          const payload = await client.openInEditor(cwd, editor.id);
+          if (payload.error) {
+            throw new Error(payload.error);
+          }
+        },
+      })),
+    [availableEditors, client, cwd],
+  );
+
+  const githubTarget = useMemo<OpenTarget | null>(() => {
+    if (!checkoutStatus?.isGit) {
+      return null;
+    }
+    const url = buildGitHubBranchTreeUrl({
+      remoteUrl: checkoutStatus.remoteUrl,
+      branch: checkoutStatus.currentBranch,
+    });
+    if (!url) {
+      return null;
+    }
+    return {
+      id: "github",
+      label: "GitHub",
+      icon: <ThemedGitHubIcon size={16} uniProps={mutedColorMapping} />,
+      onOpen: () => openExternalUrl(url),
+    };
+  }, [checkoutStatus]);
+
+  const targets = useMemo(
+    () => (githubTarget ? [...editorTargets, githubTarget] : editorTargets),
+    [editorTargets, githubTarget],
+  );
+
+  const targetIds = useMemo(() => targets.map((target) => target.id), [targets]);
   const effectivePreferredEditorId = useMemo(
-    () => resolvePreferredEditorId(availableEditorIds, preferredEditorId),
-    [availableEditorIds, preferredEditorId],
+    () => resolvePreferredEditorId(targetIds, preferredEditorId),
+    [targetIds, preferredEditorId],
   );
-  const primaryOption =
-    availableEditors.find(
-      (editor: EditorTargetDescriptorPayload) => editor.id === effectivePreferredEditorId,
-    ) ?? null;
+  const primaryOption = targets.find((target) => target.id === effectivePreferredEditorId) ?? null;
 
   useEffect(() => {
     if (!effectivePreferredEditorId || effectivePreferredEditorId === preferredEditorId) {
@@ -120,25 +173,16 @@ export function WorkspaceOpenInEditorButton({
   }, [effectivePreferredEditorId, preferredEditorId, updatePreferredEditor]);
 
   const openMutation = useMutation({
-    mutationFn: async (editorId: EditorTargetId) => {
-      if (!client) {
-        throw new Error("Host is not connected");
-      }
-      const payload = await client.openInEditor(cwd, editorId);
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return editorId;
-    },
+    mutationFn: (target: OpenTarget) => Promise.resolve(target.onOpen()),
     onError: (error: unknown) => {
-      toast.error(error instanceof Error ? error.message : "Failed to open in editor");
+      toast.error(error instanceof Error ? error.message : "Failed to open workspace");
     },
   });
 
-  const handleOpenEditor = useCallback(
-    (editorId: EditorTargetId) => {
-      void updatePreferredEditor(editorId).catch(() => undefined);
-      openMutation.mutate(editorId);
+  const handleOpenTarget = useCallback(
+    (target: OpenTarget) => {
+      void updatePreferredEditor(target.id).catch(() => undefined);
+      openMutation.mutate(target);
     },
     [openMutation, updatePreferredEditor],
   );
@@ -160,12 +204,13 @@ export function WorkspaceOpenInEditorButton({
     [],
   );
 
-  const primaryId = primaryOption?.id;
   const handlePrimaryPress = useCallback(() => {
-    if (primaryId) handleOpenEditor(primaryId);
-  }, [primaryId, handleOpenEditor]);
+    if (primaryOption) {
+      handleOpenTarget(primaryOption);
+    }
+  }, [primaryOption, handleOpenTarget]);
 
-  if (!shouldLoadEditors || !primaryOption || availableEditors.length === 0) {
+  if (!shouldLoadTargets || !primaryOption || targets.length === 0) {
     return null;
   }
 
@@ -188,16 +233,12 @@ export function WorkspaceOpenInEditorButton({
             />
           ) : (
             <View style={styles.splitButtonContent}>
-              <ThemedEditorAppIcon
-                editorId={primaryOption.id}
-                size={16}
-                uniProps={mutedColorMapping}
-              />
+              {primaryOption.icon}
               {!hideLabels && <Text style={styles.splitButtonText}>Open</Text>}
             </View>
           )}
         </Pressable>
-        {availableEditors.length > 1 ? (
+        {targets.length > 1 ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               testID="workspace-open-in-editor-caret"
@@ -213,12 +254,12 @@ export function WorkspaceOpenInEditorButton({
               maxWidth={176}
               testID="workspace-open-in-editor-menu"
             >
-              {availableEditors.map((editor: EditorTargetDescriptorPayload) => (
-                <EditorMenuItem
-                  key={editor.id}
-                  editor={editor}
-                  isPreferred={editor.id === effectivePreferredEditorId}
-                  onOpen={handleOpenEditor}
+              {targets.map((target) => (
+                <OpenTargetMenuItem
+                  key={target.id}
+                  target={target}
+                  isPreferred={target.id === effectivePreferredEditorId}
+                  onOpen={handleOpenTarget}
                 />
               ))}
             </DropdownMenuContent>
