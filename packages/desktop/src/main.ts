@@ -9,7 +9,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol } from "electron";
+import { app, BrowserWindow, ipcMain, nativeImage, net, protocol } from "electron";
 import { createDaemonCommandHandlers, registerDaemonManager } from "./daemon/daemon-manager.js";
 import {
   parseCliPassthroughArgsFromArgv,
@@ -218,7 +218,6 @@ async function createMainWindow(): Promise<void> {
     const { loadReactDevTools } = await import("./features/react-devtools.js");
     await loadReactDevTools();
     await mainWindow.loadURL(DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools({ mode: "detach" });
     return;
   }
 
@@ -402,13 +401,9 @@ void bootstrap().catch((error) => {
 });
 
 function showDaemonShutdownDialog(): void {
-  void dialog.showMessageBox({
-    type: "info",
-    message: "Shutting down Paseo daemon…",
-    detail: "Paseo will quit once the local daemon has stopped.",
-    buttons: [],
-    noLink: true,
-  });
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send("paseo:event:quitting", {});
+  }
 }
 
 app.on(

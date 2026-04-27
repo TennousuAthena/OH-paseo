@@ -29,6 +29,7 @@ import { UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { CommandCenter } from "@/components/command-center";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
+import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { LeftSidebar } from "@/components/left-sidebar";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
@@ -479,6 +480,7 @@ function AppContainer({
       />
       <WorkspaceSetupDialog />
       <KeyboardShortcutsDialog />
+      <QuittingOverlay />
     </View>
   );
 

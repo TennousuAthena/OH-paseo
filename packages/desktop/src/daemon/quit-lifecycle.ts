@@ -11,7 +11,7 @@ interface BeforeQuitEvent {
 }
 
 interface BeforeQuitApp {
-  quit(): void;
+  exit(code: number): void;
 }
 
 export interface StopOnQuitDeps {
@@ -53,30 +53,25 @@ export function createBeforeQuitHandler({
   stopDesktopManagedDaemonIfNeeded: () => Promise<boolean>;
   onStopError: (error: unknown) => void;
 }): (event: BeforeQuitEvent) => void {
-  let allowingQuitToContinue = false;
-  let quittingInProgress = false;
+  // We always preventDefault on first quit so we can run the async stop
+  // decision, then call app.exit(0) — which bypasses Electron's
+  // close → window-all-closed → will-quit chain. The window-all-closed
+  // listener is a darwin no-op (macOS convention) and would otherwise
+  // veto a re-fired app.quit().
+  let quitting = false;
 
   return (event) => {
     closeTransportSessions();
-
-    if (allowingQuitToContinue) {
-      return;
-    }
-
+    if (quitting) return;
+    quitting = true;
     event.preventDefault();
-    if (quittingInProgress) {
-      return;
-    }
 
-    quittingInProgress = true;
     void stopDesktopManagedDaemonIfNeeded()
       .catch((error) => {
         onStopError(error);
       })
       .finally(() => {
-        allowingQuitToContinue = true;
-        quittingInProgress = false;
-        app.quit();
+        app.exit(0);
       });
   };
 }

@@ -75,9 +75,9 @@ describe("quit-lifecycle", () => {
     );
   });
 
-  it("gates quit until the stop decision completes, then lets the next quit pass through", async () => {
+  it("preventDefaults the first quit, runs the async stop decision, then exits hard", async () => {
     let resolveStopDecision: (() => void) | null = null;
-    const app = { quit: vi.fn() };
+    const app = { exit: vi.fn() };
     const closeTransportSessions = vi.fn();
     const onStopError = vi.fn();
     const preventDefault = vi.fn();
@@ -99,20 +99,20 @@ describe("quit-lifecycle", () => {
 
     expect(preventDefault).toHaveBeenCalledTimes(1);
     expect(closeTransportSessions).toHaveBeenCalledTimes(1);
-    expect(app.quit).not.toHaveBeenCalled();
+    expect(app.exit).not.toHaveBeenCalled();
     expect(resolveStopDecision).not.toBeNull();
 
     resolveStopDecision?.();
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(app.quit).toHaveBeenCalledTimes(1);
+    expect(app.exit).toHaveBeenCalledWith(0);
     expect(onStopError).not.toHaveBeenCalled();
 
     handleBeforeQuit({ preventDefault: secondPreventDefault });
 
     expect(secondPreventDefault).not.toHaveBeenCalled();
     expect(closeTransportSessions).toHaveBeenCalledTimes(2);
-    expect(app.quit).toHaveBeenCalledTimes(1);
+    expect(app.exit).toHaveBeenCalledTimes(1);
   });
 });
