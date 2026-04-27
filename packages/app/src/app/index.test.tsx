@@ -6,29 +6,24 @@ import { act } from "@testing-library/react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostRuntimeBootstrapState } from "./_layout";
+import type { ActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 
-const { redirectMock, runtimeStoreAccessMock, workspaceStoreAccessMock, state } = vi.hoisted(() => {
+const { redirectMock, state } = vi.hoisted(() => {
   const hoistedState = {
     pathname: "/",
-    storeReady: true,
     bootstrapState: {
-      phase: "online",
-      error: null,
+      splashError: null,
       retry: vi.fn(),
-      startupNavigation: null,
+      hasGivenUpWaitingForHost: false,
+      storeReady: false,
     } as HostRuntimeBootstrapState,
+    anyOnlineHostServerId: null as string | null,
+    isWorkspaceSelectionLoaded: true,
+    workspaceSelection: null as ActiveWorkspaceSelection | null,
   };
 
   return {
     redirectMock: vi.fn(),
-    runtimeStoreAccessMock: vi.fn(() => {
-      throw new Error("index.tsx must not read the host runtime store during startup navigation");
-    }),
-    workspaceStoreAccessMock: vi.fn(() => {
-      throw new Error(
-        "index.tsx must not read the navigation workspace store during startup navigation",
-      );
-    }),
     state: hoistedState,
   };
 });
@@ -43,11 +38,7 @@ vi.mock("expo-router", () => ({
 
 vi.mock("@/app/_layout", () => ({
   useHostRuntimeBootstrapState: () => state.bootstrapState,
-  useStoreReady: () => state.storeReady,
-}));
-
-vi.mock("@/runtime/host-runtime", () => ({
-  getHostRuntimeStore: runtimeStoreAccessMock,
+  useEarliestOnlineHostServerId: () => state.anyOnlineHostServerId,
 }));
 
 vi.mock("@/desktop/daemon/desktop-daemon", () => ({
@@ -59,8 +50,8 @@ vi.mock("@/screens/startup-splash-screen", () => ({
 }));
 
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
-  getLastNavigationWorkspaceRouteSelection: workspaceStoreAccessMock,
-  useIsLastNavigationWorkspaceRouteSelectionLoaded: workspaceStoreAccessMock,
+  getLastNavigationWorkspaceRouteSelection: () => state.workspaceSelection,
+  useIsLastNavigationWorkspaceRouteSelectionLoaded: () => state.isWorkspaceSelectionLoaded,
 }));
 
 describe("Index route startup navigation", () => {
@@ -70,16 +61,16 @@ describe("Index route startup navigation", () => {
   beforeEach(() => {
     vi.resetModules();
     state.pathname = "/";
-    state.storeReady = true;
     state.bootstrapState = {
-      phase: "online",
-      error: null,
+      splashError: null,
       retry: vi.fn(),
-      startupNavigation: null,
+      hasGivenUpWaitingForHost: false,
+      storeReady: false,
     };
+    state.anyOnlineHostServerId = null;
+    state.isWorkspaceSelectionLoaded = true;
+    state.workspaceSelection = null;
     redirectMock.mockReset();
-    runtimeStoreAccessMock.mockClear();
-    workspaceStoreAccessMock.mockClear();
 
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -100,54 +91,54 @@ describe("Index route startup navigation", () => {
     });
   }
 
-  it("shows the startup splash until bootstrap has resolved the startup navigation target", async () => {
+  it("shows the startup splash while no host is online and the welcome timer has not fired", async () => {
     await renderIndex();
 
     expect(container.querySelector("[data-testid='startup-splash']")).not.toBeNull();
     expect(redirectMock).not.toHaveBeenCalled();
-    expect(runtimeStoreAccessMock).not.toHaveBeenCalled();
-    expect(workspaceStoreAccessMock).not.toHaveBeenCalled();
   });
 
-  it("restores the persisted workspace when the startup target matches its host", async () => {
-    state.bootstrapState.startupNavigation = {
-      target: { serverId: "server-1" },
-      workspaceSelection: { serverId: "server-1", workspaceId: "workspace-a" },
-    };
+  it("shows the startup splash while the workspace selection has not loaded", async () => {
+    state.anyOnlineHostServerId = "server-1";
+    state.isWorkspaceSelectionLoaded = false;
+
+    await renderIndex();
+
+    expect(container.querySelector("[data-testid='startup-splash']")).not.toBeNull();
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  it("restores the persisted workspace when the online host matches its server id", async () => {
+    state.anyOnlineHostServerId = "server-1";
+    state.workspaceSelection = { serverId: "server-1", workspaceId: "workspace-a" };
 
     await renderIndex();
 
     expect(redirectMock).toHaveBeenCalledWith("/h/server-1/workspace/workspace-a");
-    expect(runtimeStoreAccessMock).not.toHaveBeenCalled();
-    expect(workspaceStoreAccessMock).not.toHaveBeenCalled();
   });
 
-  it("navigates to the startup host root when it differs from the persisted workspace host", async () => {
-    state.bootstrapState.startupNavigation = {
-      target: { serverId: "server-2" },
-      workspaceSelection: { serverId: "server-1", workspaceId: "workspace-a" },
-    };
+  it("navigates to the host root when the persisted workspace targets a different server", async () => {
+    state.anyOnlineHostServerId = "server-2";
+    state.workspaceSelection = { serverId: "server-1", workspaceId: "workspace-a" };
 
     await renderIndex();
 
     expect(redirectMock).toHaveBeenCalledWith("/h/server-2");
   });
 
-  it("navigates to the startup host root when no persisted workspace exists", async () => {
-    state.bootstrapState.startupNavigation = {
-      target: { serverId: "server-2" },
-      workspaceSelection: null,
-    };
+  it("navigates to the host root when no persisted workspace exists", async () => {
+    state.anyOnlineHostServerId = "server-2";
+    state.workspaceSelection = null;
 
     await renderIndex();
 
     expect(redirectMock).toHaveBeenCalledWith("/h/server-2");
   });
 
-  it("falls back to welcome when bootstrap resolves no startup target", async () => {
-    state.bootstrapState.startupNavigation = {
-      target: null,
-      workspaceSelection: null,
+  it("falls back to welcome when the give-up timer fires with no host online", async () => {
+    state.bootstrapState = {
+      ...state.bootstrapState,
+      hasGivenUpWaitingForHost: true,
     };
 
     await renderIndex();

@@ -1,26 +1,30 @@
 import React from "react";
-import { Redirect, usePathname, type Href } from "expo-router";
+import { Redirect, usePathname } from "expo-router";
 import { StartupSplashScreen } from "@/screens/startup-splash-screen";
+import { useEarliestOnlineHostServerId, useHostRuntimeBootstrapState } from "@/app/_layout";
+import { resolveStartupRedirectRoute } from "@/app/host-runtime-bootstrap";
 import {
-  type HostRuntimeBootstrapState,
-  useHostRuntimeBootstrapState,
-  useStoreReady,
-} from "@/app/_layout";
-import { buildHostRootRoute, buildHostWorkspaceRoute } from "@/utils/host-routes";
+  getLastNavigationWorkspaceRouteSelection,
+  useIsLastNavigationWorkspaceRouteSelectionLoaded,
+} from "@/stores/navigation-active-workspace-store";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
-
-const WELCOME_ROUTE = "/welcome";
 
 const isDesktop = shouldUseDesktopDaemon();
 
 export default function Index() {
   const pathname = usePathname();
   const bootstrapState = useHostRuntimeBootstrapState();
-  const storeReady = useStoreReady();
+  const anyOnlineHostServerId = useEarliestOnlineHostServerId();
+  const isWorkspaceSelectionLoaded = useIsLastNavigationWorkspaceRouteSelectionLoaded();
+
   const redirectRoute = resolveStartupRedirectRoute({
-    bootstrapState,
     pathname,
-    storeReady,
+    anyOnlineHostServerId,
+    workspaceSelection: isWorkspaceSelectionLoaded
+      ? getLastNavigationWorkspaceRouteSelection()
+      : null,
+    isWorkspaceSelectionLoaded,
+    hasGivenUpWaitingForHost: bootstrapState.hasGivenUpWaitingForHost,
   });
 
   if (redirectRoute) {
@@ -28,31 +32,4 @@ export default function Index() {
   }
 
   return <StartupSplashScreen bootstrapState={isDesktop ? bootstrapState : undefined} />;
-}
-
-function resolveStartupRedirectRoute(input: {
-  bootstrapState: HostRuntimeBootstrapState;
-  pathname: string;
-  storeReady: boolean;
-}): Href | null {
-  const { bootstrapState, pathname, storeReady } = input;
-
-  if (!storeReady || !bootstrapState.startupNavigation) {
-    return null;
-  }
-  if (pathname !== "/" && pathname !== "") {
-    return null;
-  }
-
-  const { target, workspaceSelection } = bootstrapState.startupNavigation;
-
-  if (!target) {
-    return WELCOME_ROUTE;
-  }
-
-  if (workspaceSelection && target.serverId === workspaceSelection.serverId) {
-    return buildHostWorkspaceRoute(workspaceSelection.serverId, workspaceSelection.workspaceId);
-  }
-
-  return buildHostRootRoute(target.serverId);
 }

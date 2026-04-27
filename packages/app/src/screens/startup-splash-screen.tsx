@@ -24,8 +24,7 @@ import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 
 interface StartupSplashScreenProps {
   bootstrapState?: {
-    phase: "starting-daemon" | "connecting" | "online" | "error";
-    error: string | null;
+    splashError: string | null;
     retry: () => void;
   };
 }
@@ -312,7 +311,7 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
   const [logsError, setLogsError] = useState<string | null>(null);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
-  const isError = bootstrapState?.phase === "error";
+  const isError = bootstrapState !== undefined && bootstrapState.splashError !== null;
 
   useEffect(() => {
     if (!isError) {
@@ -418,7 +417,7 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
             GitHub and include the logs below.
           </Text>
 
-          <Text style={styles.errorMessage}>{bootstrapState.error}</Text>
+          <Text style={styles.errorMessage}>{bootstrapState.splashError}</Text>
 
           {daemonLogs?.logPath ? <Text style={styles.logsMeta}>{daemonLogs.logPath}</Text> : null}
 

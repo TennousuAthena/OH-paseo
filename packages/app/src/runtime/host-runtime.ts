@@ -18,7 +18,7 @@ import {
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
 import { resolveAppVersion } from "@/utils/app-version";
 import { ConnectionOfferSchema, type ConnectionOffer } from "@server/shared/connection-offer";
-import { shouldUseDesktopDaemon, startDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
+import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
 import { buildDaemonWebSocketUrl, buildRelayWebSocketUrl } from "@/utils/daemon-endpoints";
 import { getOrCreateClientId } from "@/utils/client-id";
@@ -36,10 +36,6 @@ import { replaceFetchedAgentDirectory } from "@/utils/agent-directory-sync";
 import { useSessionStore } from "@/stores/session-store";
 
 export type HostRuntimeConnectionStatus = "idle" | "connecting" | "online" | "offline" | "error";
-
-export type HostRuntimeBootstrapResult =
-  | { ok: true; listenAddress: string; serverId: string; hostname: string | null }
-  | { ok: false; error: string };
 
 export type ActiveConnection =
   | { type: "directTcp"; endpoint: string; display: string }
@@ -68,10 +64,6 @@ export interface HostRuntimeSnapshot {
   hasEverLoadedAgentDirectory: boolean;
   probeByConnectionId: Map<string, ConnectionProbeState>;
   clientGeneration: number;
-}
-
-export interface StartupHostResolution {
-  serverId: string;
 }
 
 type HostRuntimeSnapshotPatch = Partial<Omit<HostRuntimeSnapshot, "serverId" | "clientGeneration">>;
@@ -1154,9 +1146,6 @@ export class HostRuntimeController {
 const REGISTRY_STORAGE_KEY = "@paseo:daemon-registry";
 const DEFAULT_LOCALHOST_ENDPOINT = process.env.EXPO_PUBLIC_LOCAL_DAEMON?.trim() || "localhost:6767";
 const DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS = 2500;
-const CONNECTION_ONLINE_TIMEOUT_MS = 15_000;
-const STARTUP_HOST_GRACE_MS = 2_000;
-const STARTUP_NO_HOST_ONLINE_TIMEOUT_MS = 5_000;
 const E2E_STORAGE_KEY = "@paseo:e2e";
 
 export class HostRuntimeStore {
@@ -1170,8 +1159,7 @@ export class HostRuntimeStore {
   private deps: HostRuntimeControllerDeps;
   private lastConnectionStatusByServer = new Map<string, HostRuntimeConnectionStatus>();
   private agentDirectoryBootstrapInFlight = new Map<string, Promise<void>>();
-  private storageLoaded = false;
-  private bootstrapAttempted = false;
+  private bootStarted = false;
 
   constructor(input?: { deps?: HostRuntimeControllerDeps }) {
     this.deps = input?.deps ?? createDefaultDeps();
@@ -1194,11 +1182,33 @@ export class HostRuntimeStore {
     return this.hostListVersion;
   }
 
-  async loadFromStorage(): Promise<void> {
-    if (this.storageLoaded) {
+  boot(): void {
+    if (this.bootStarted) {
       return;
     }
-    this.storageLoaded = true;
+    this.bootStarted = true;
+    void this.runBoot();
+  }
+
+  private async runBoot(): Promise<void> {
+    await this.loadFromStorage();
+
+    let isE2E: string | null = null;
+    try {
+      isE2E = await AsyncStorage.getItem(E2E_STORAGE_KEY);
+    } catch {
+      return;
+    }
+    if (isE2E) {
+      return;
+    }
+
+    if (!shouldUseDesktopDaemon()) {
+      await this.bootstrapLocalhost();
+    }
+  }
+
+  private async loadFromStorage(): Promise<void> {
     try {
       const stored = await AsyncStorage.getItem(REGISTRY_STORAGE_KEY);
       if (!stored) {
@@ -1216,67 +1226,6 @@ export class HostRuntimeStore {
       this.emitHostList();
     } catch (error) {
       console.error("[HostRuntime] Failed to load host registry from storage", error);
-    }
-  }
-
-  async bootstrap(options?: { manageBuiltInDaemon?: boolean }): Promise<void> {
-    if (this.bootstrapAttempted) {
-      return;
-    }
-    this.bootstrapAttempted = true;
-
-    try {
-      const isE2E = await AsyncStorage.getItem(E2E_STORAGE_KEY);
-      if (isE2E) {
-        return;
-      }
-    } catch {
-      return;
-    }
-
-    if (shouldUseDesktopDaemon()) {
-      if (options?.manageBuiltInDaemon ?? true) {
-        await this.bootstrapDesktop();
-      }
-    } else {
-      await this.bootstrapLocalhost();
-    }
-  }
-
-  async bootstrapDesktop(): Promise<HostRuntimeBootstrapResult> {
-    try {
-      const daemon = await startDesktopDaemon();
-      const listenAddress = daemon.listen?.trim() ?? "";
-      const serverId = daemon.serverId.trim();
-      if (!listenAddress) {
-        return {
-          ok: false,
-          error: "Desktop daemon did not return a listen address.",
-        };
-      }
-      if (!serverId) {
-        return {
-          ok: false,
-          error: "Desktop daemon did not return a server id.",
-        };
-      }
-      if (!connectionFromListen(listenAddress)) {
-        return {
-          ok: false,
-          error: `Desktop daemon returned an unsupported listen address: ${listenAddress}`,
-        };
-      }
-      return {
-        ok: true,
-        listenAddress,
-        serverId,
-        hostname: daemon.hostname,
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        error: toErrorMessage(error),
-      };
     }
   }
 
@@ -1375,11 +1324,10 @@ export class HostRuntimeStore {
     return this.upsertConnectionFromOffer(offer, label);
   }
 
-  async addConnectionFromListenAndWaitForOnline(input: {
+  async upsertConnectionFromListen(input: {
     listenAddress: string;
     serverId: string;
     hostname: string | null;
-    timeoutMs?: number;
   }): Promise<HostProfile> {
     const normalizedListenAddress = input.listenAddress.trim();
     const serverId = input.serverId.trim();
@@ -1390,19 +1338,11 @@ export class HostRuntimeStore {
     if (!serverId) {
       throw new Error("Desktop daemon did not return a server id.");
     }
-    const profile = await this.upsertHostConnection({
+    return this.upsertHostConnection({
       serverId,
       label: input.hostname ?? undefined,
       connection,
     });
-
-    await this.waitForConnectionOnline({
-      serverId,
-      connectionId: connection.id,
-      timeoutMs: input.timeoutMs,
-    });
-
-    return profile;
   }
 
   async renameHost(serverId: string, label: string): Promise<void> {
@@ -1566,97 +1506,6 @@ export class HostRuntimeStore {
     }
   }
 
-  private waitForConnectionOnline(input: {
-    serverId: string;
-    connectionId: string;
-    timeoutMs?: number;
-  }): Promise<void> {
-    const { serverId, connectionId } = input;
-    const timeoutMs = input.timeoutMs ?? CONNECTION_ONLINE_TIMEOUT_MS;
-
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-
-      const cleanup = (unsubscribe: (() => void) | null): void => {
-        if (timeoutHandle) {
-          clearTimeout(timeoutHandle);
-          timeoutHandle = null;
-        }
-        unsubscribe?.();
-      };
-
-      const settle = (
-        unsubscribe: (() => void) | null,
-        outcome: { ok: true } | { ok: false; error: Error },
-      ): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        cleanup(unsubscribe);
-        if (outcome.ok) {
-          resolve();
-        } else {
-          reject(outcome.error);
-        }
-      };
-
-      const readSnapshot = (): { ok: true } | { ok: false; error: Error } | null => {
-        const snapshot = this.getSnapshot(serverId);
-        if (!snapshot) {
-          return {
-            ok: false,
-            error: new Error(`Unknown host runtime for serverId ${serverId}`),
-          };
-        }
-
-        if (
-          snapshot.activeConnectionId === connectionId &&
-          snapshot.connectionStatus === "online"
-        ) {
-          return { ok: true };
-        }
-
-        if (snapshot.activeConnectionId === connectionId && snapshot.connectionStatus === "error") {
-          return {
-            ok: false,
-            error: new Error(snapshot.lastError ?? "Connection failed before coming online."),
-          };
-        }
-
-        return null;
-      };
-
-      const unsubscribe = this.subscribe(serverId, () => {
-        const outcome = readSnapshot();
-        if (outcome) {
-          settle(unsubscribe, outcome);
-        }
-      });
-
-      timeoutHandle = setTimeout(() => {
-        settle(unsubscribe, {
-          ok: false,
-          error: new Error(`Timed out waiting for connection ${connectionId} to come online.`),
-        });
-      }, timeoutMs);
-
-      const initialOutcome = readSnapshot();
-      if (initialOutcome) {
-        settle(unsubscribe, initialOutcome);
-        return;
-      }
-
-      void this.runProbeCycleNow(serverId).catch((error) => {
-        settle(unsubscribe, {
-          ok: false,
-          error: error instanceof Error ? error : new Error(String(error)),
-        });
-      });
-    });
-  }
-
   private maybeAutoBootstrapAgentDirectory(serverId: string): void {
     const controller = this.controllers.get(serverId);
     if (!controller) {
@@ -1757,104 +1606,6 @@ export class HostRuntimeStore {
       }
     }
     return earliestServerId;
-  }
-
-  waitForAnyConnectionOnline(input?: { preferredServerId?: string | null; graceMs?: number }): {
-    promise: Promise<StartupHostResolution | null>;
-    cancel: () => void;
-  } {
-    let unsubscribe: (() => void) | null = null;
-    let graceTimeout: ReturnType<typeof setTimeout> | null = null;
-    let noHostOnlineTimeout: ReturnType<typeof setTimeout> | null = null;
-    let fallbackServerId: string | null = null;
-    let settled = false;
-
-    const normalizedPreferredServerId = input?.preferredServerId?.trim() || null;
-    const normalizedGraceMs = Math.max(0, input?.graceMs ?? STARTUP_HOST_GRACE_MS);
-
-    const cleanup = (): void => {
-      if (graceTimeout) {
-        clearTimeout(graceTimeout);
-        graceTimeout = null;
-      }
-      if (noHostOnlineTimeout) {
-        clearTimeout(noHostOnlineTimeout);
-        noHostOnlineTimeout = null;
-      }
-      unsubscribe?.();
-      unsubscribe = null;
-    };
-
-    const promise = new Promise<StartupHostResolution | null>((resolve) => {
-      const settle = (result: StartupHostResolution | null): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        cleanup();
-        resolve(result);
-      };
-
-      const getPreferredOnlineServerId = (): string | null => {
-        if (!normalizedPreferredServerId) {
-          return null;
-        }
-        return isHostRuntimeConnected(this.getSnapshot(normalizedPreferredServerId))
-          ? normalizedPreferredServerId
-          : null;
-      };
-
-      const evaluate = (): void => {
-        if (this.hosts.length === 0) {
-          settle(null);
-          return;
-        }
-
-        const preferredOnlineServerId = getPreferredOnlineServerId();
-        if (preferredOnlineServerId) {
-          settle({ serverId: preferredOnlineServerId });
-          return;
-        }
-
-        const earliestOnlineServerId = this.getEarliestOnlineHostServerId();
-        if (!earliestOnlineServerId) {
-          if (!noHostOnlineTimeout) {
-            noHostOnlineTimeout = setTimeout(() => {
-              settle(null);
-            }, STARTUP_NO_HOST_ONLINE_TIMEOUT_MS);
-          }
-          return;
-        }
-
-        if (noHostOnlineTimeout) {
-          clearTimeout(noHostOnlineTimeout);
-          noHostOnlineTimeout = null;
-        }
-
-        if (!normalizedPreferredServerId) {
-          settle({ serverId: earliestOnlineServerId });
-          return;
-        }
-
-        if (!fallbackServerId) {
-          fallbackServerId = earliestOnlineServerId;
-          graceTimeout = setTimeout(() => {
-            const latestPreferredOnlineServerId = getPreferredOnlineServerId();
-            settle({
-              serverId: latestPreferredOnlineServerId ?? fallbackServerId ?? earliestOnlineServerId,
-            });
-          }, normalizedGraceMs);
-        }
-      };
-
-      unsubscribe = this.subscribeAll(evaluate);
-      evaluate();
-    });
-
-    return {
-      promise,
-      cancel: cleanup,
-    };
   }
 
   ensureConnectedAll(): void {

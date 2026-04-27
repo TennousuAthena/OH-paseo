@@ -1,247 +1,190 @@
 import { describe, expect, it, vi } from "vitest";
-import { initializeHostRuntime } from "./host-runtime-bootstrap";
+import {
+  resolveStartupRedirectRoute,
+  startHostRuntimeBootstrap,
+  WELCOME_ROUTE,
+} from "./host-runtime-bootstrap";
 
-type BootstrapStore = Parameters<typeof initializeHostRuntime>[0]["store"];
+function createFakeStore() {
+  return { boot: vi.fn() };
+}
 
-function createSettings(input: { manageBuiltInDaemon: boolean }) {
+function createFakeDaemonStartService() {
   return {
-    theme: "auto" as const,
-    sendBehavior: "interrupt" as const,
-    manageBuiltInDaemon: input.manageBuiltInDaemon,
-    releaseChannel: "stable" as const,
+    start: vi.fn(async () => ({ ok: true as const })),
   };
 }
 
-function createDeferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((res) => {
-    resolve = res;
-  });
-  return { promise, resolve };
-}
+describe("startHostRuntimeBootstrap", () => {
+  it("fires boot and daemon-start without awaiting the daemon-start promise", () => {
+    const events: string[] = [];
+    const store = {
+      boot: vi.fn(() => {
+        events.push("boot");
+      }),
+    };
+    const daemonStartService = {
+      start: vi.fn(async () => {
+        events.push("daemon-start");
+        return { ok: true as const };
+      }),
+    };
 
-function createStore(overrides: Partial<BootstrapStore> = {}): BootstrapStore {
-  return {
-    loadFromStorage: vi.fn(async () => {}),
-    bootstrap: vi.fn(async () => {}),
-    bootstrapDesktop: vi.fn(async () => ({
-      ok: true as const,
-      listenAddress: "127.0.0.1:6767",
-      serverId: "srv_test",
-      hostname: "test",
-    })),
-    addConnectionFromListenAndWaitForOnline: vi.fn(async () => {}),
-    waitForAnyConnectionOnline: vi.fn(() => ({
-      promise: Promise.resolve({ serverId: "srv_test" }),
-      cancel: vi.fn(),
-    })),
-    ...overrides,
+    startHostRuntimeBootstrap({
+      store,
+      daemonStartService,
+      shouldStartDaemon: true,
+    });
+
+    expect(store.boot).toHaveBeenCalledTimes(1);
+    expect(daemonStartService.start).toHaveBeenCalledTimes(1);
+    expect(events).toEqual(["boot", "daemon-start"]);
+  });
+
+  it("skips daemon-start when shouldStartDaemon is false", () => {
+    const store = createFakeStore();
+    const daemonStartService = createFakeDaemonStartService();
+
+    startHostRuntimeBootstrap({
+      store,
+      daemonStartService,
+      shouldStartDaemon: false,
+    });
+
+    expect(store.boot).toHaveBeenCalledTimes(1);
+    expect(daemonStartService.start).not.toHaveBeenCalled();
+  });
+
+  it("does not await the daemon-start promise", () => {
+    const store = createFakeStore();
+    let resolveStart: ((value: { ok: true }) => void) | undefined;
+    const daemonStartService = {
+      start: vi.fn(
+        () =>
+          new Promise<{ ok: true }>((resolve) => {
+            resolveStart = resolve;
+          }),
+      ),
+    };
+
+    startHostRuntimeBootstrap({
+      store,
+      daemonStartService,
+      shouldStartDaemon: true,
+    });
+
+    expect(store.boot).toHaveBeenCalledTimes(1);
+    expect(daemonStartService.start).toHaveBeenCalledTimes(1);
+
+    resolveStart?.({ ok: true });
+  });
+});
+
+describe("resolveStartupRedirectRoute", () => {
+  const baseInput = {
+    pathname: "/",
+    anyOnlineHostServerId: null,
+    workspaceSelection: null,
+    isWorkspaceSelectionLoaded: true,
+    hasGivenUpWaitingForHost: false,
   };
-}
 
-describe("initializeHostRuntime", () => {
-  it("uses effective desktop settings to skip desktop-managed bootstrap when daemon management is disabled", async () => {
-    const store = createStore();
-    const setPhase = vi.fn();
-    const setError = vi.fn();
-
-    const target = await initializeHostRuntime({
-      shouldManageDesktop: true,
-      loadSettings: async () => createSettings({ manageBuiltInDaemon: false }),
-      loadStartupWorkspaceSelection: async () => null,
-      store,
-      setPhase,
-      setError,
-      isCancelled: () => false,
-    });
-
-    expect(store.bootstrap).toHaveBeenCalledWith({ manageBuiltInDaemon: false });
-    expect(store.bootstrapDesktop).not.toHaveBeenCalled();
-    expect(target).toEqual({ serverId: "srv_test" });
-    expect(setPhase).toHaveBeenLastCalledWith("online");
-    expect(setError).toHaveBeenLastCalledWith(null);
+  it("returns null when the pathname is not the index route", () => {
+    expect(
+      resolveStartupRedirectRoute({
+        ...baseInput,
+        pathname: "/h/server-1",
+        anyOnlineHostServerId: "server-1",
+      }),
+    ).toBeNull();
   });
 
-  it("waits for any saved host after non-managed connection setup before setting online", async () => {
-    const events: string[] = [];
-    const wait = createDeferred<{ serverId: string } | null>();
-    const store = createStore({
-      bootstrap: vi.fn(async () => {
-        events.push("bootstrap");
+  it("waits while the persisted workspace selection has not finished loading", () => {
+    expect(
+      resolveStartupRedirectRoute({
+        ...baseInput,
+        anyOnlineHostServerId: "server-1",
+        isWorkspaceSelectionLoaded: false,
       }),
-      waitForAnyConnectionOnline: vi.fn(() => {
-        events.push("wait");
-        return {
-          promise: wait.promise,
-          cancel: vi.fn(),
-        };
-      }),
-    });
-    const setPhase = vi.fn((phase: string) => events.push(`phase:${phase}`));
-
-    const initPromise = initializeHostRuntime({
-      shouldManageDesktop: false,
-      loadSettings: async () => createSettings({ manageBuiltInDaemon: false }),
-      loadStartupWorkspaceSelection: async () => {
-        events.push("read-workspace-selection");
-        return null;
-      },
-      store,
-      setPhase,
-      setError: vi.fn(),
-      isCancelled: () => false,
-    });
-
-    await vi.waitFor(() => {
-      expect(events).toEqual(["phase:connecting", "bootstrap", "read-workspace-selection", "wait"]);
-    });
-    expect(setPhase).not.toHaveBeenCalledWith("online");
-
-    wait.resolve({ serverId: "srv_saved" });
-    await expect(initPromise).resolves.toEqual({ serverId: "srv_saved" });
-    expect(setPhase).toHaveBeenLastCalledWith("online");
+    ).toBeNull();
   });
 
-  it("passes the startup workspace server id into the shared wait", async () => {
-    const store = createStore();
+  it("waits while no host is online and the give-up timer has not fired", () => {
+    expect(resolveStartupRedirectRoute(baseInput)).toBeNull();
+  });
 
-    await initializeHostRuntime({
-      shouldManageDesktop: false,
-      loadSettings: async () => createSettings({ manageBuiltInDaemon: false }),
-      loadStartupWorkspaceSelection: async () => ({
-        serverId: "srv_workspace",
-        workspaceId: "workspace-1",
-      }),
-      store,
-      setPhase: vi.fn(),
-      setError: vi.fn(),
-      isCancelled: () => false,
+  describe("scenario: saved-host-online", () => {
+    it("redirects to the workspace route when the online host matches the persisted workspace", () => {
+      const route = resolveStartupRedirectRoute({
+        ...baseInput,
+        anyOnlineHostServerId: "server-1",
+        workspaceSelection: { serverId: "server-1", workspaceId: "workspace-a" },
+      });
+
+      expect(route).toBe("/h/server-1/workspace/workspace-a");
     });
 
-    expect(store.waitForAnyConnectionOnline).toHaveBeenCalledWith({
-      preferredServerId: "srv_workspace",
+    it("redirects to the host root when the persisted workspace targets a different server", () => {
+      const route = resolveStartupRedirectRoute({
+        ...baseInput,
+        anyOnlineHostServerId: "server-2",
+        workspaceSelection: { serverId: "server-1", workspaceId: "workspace-a" },
+      });
+
+      expect(route).toBe("/h/server-2");
+    });
+
+    it("redirects to the host root when no persisted workspace exists", () => {
+      const route = resolveStartupRedirectRoute({
+        ...baseInput,
+        anyOnlineHostServerId: "server-2",
+      });
+
+      expect(route).toBe("/h/server-2");
     });
   });
 
-  it("passes a null preference into the shared wait when no startup workspace is persisted", async () => {
-    const store = createStore();
+  describe("scenario: daemon-start-success-only (host comes online via daemon-start upsert)", () => {
+    it("redirects to the host that came online", () => {
+      const route = resolveStartupRedirectRoute({
+        ...baseInput,
+        anyOnlineHostServerId: "srv_desktop",
+      });
 
-    await initializeHostRuntime({
-      shouldManageDesktop: false,
-      loadSettings: async () => createSettings({ manageBuiltInDaemon: false }),
-      loadStartupWorkspaceSelection: async () => null,
-      store,
-      setPhase: vi.fn(),
-      setError: vi.fn(),
-      isCancelled: () => false,
+      expect(route).toBe("/h/srv_desktop");
     });
-
-    expect(store.waitForAnyConnectionOnline).toHaveBeenCalledWith({ preferredServerId: null });
   });
 
-  it("uses desktop daemon startup only as the managed connection producer before the shared wait", async () => {
-    const events: string[] = [];
-    const store = createStore({
-      bootstrapDesktop: vi.fn(async () => {
-        events.push("bootstrap-desktop");
-        return {
-          ok: true as const,
-          listenAddress: "127.0.0.1:6767",
-          serverId: "srv_desktop",
-          hostname: "desktop",
-        };
-      }),
-      addConnectionFromListenAndWaitForOnline: vi.fn(async () => {
-        events.push("add-connection");
-      }),
-      waitForAnyConnectionOnline: vi.fn(() => {
-        events.push("wait");
-        return {
-          promise: Promise.resolve({ serverId: "srv_desktop" }),
-          cancel: vi.fn(),
-        };
-      }),
-    });
-    const setPhase = vi.fn((phase: string) => events.push(`phase:${phase}`));
+  describe("scenario: both-succeed", () => {
+    it("redirects to the host that the host runtime selects as earliest online", () => {
+      const route = resolveStartupRedirectRoute({
+        ...baseInput,
+        anyOnlineHostServerId: "server-saved",
+        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
+      });
 
-    const target = await initializeHostRuntime({
-      shouldManageDesktop: true,
-      loadSettings: async () => createSettings({ manageBuiltInDaemon: true }),
-      loadStartupWorkspaceSelection: async () => {
-        events.push("read-workspace-selection");
-        return null;
-      },
-      store,
-      setPhase,
-      setError: vi.fn(),
-      isCancelled: () => false,
+      expect(route).toBe("/h/server-saved/workspace/workspace-a");
     });
-
-    expect(target).toEqual({ serverId: "srv_desktop" });
-    expect(events).toEqual([
-      "phase:starting-daemon",
-      "bootstrap-desktop",
-      "phase:connecting",
-      "add-connection",
-      "read-workspace-selection",
-      "wait",
-      "phase:online",
-    ]);
-    expect(store.bootstrap).not.toHaveBeenCalled();
   });
 
-  it("returns null without waiting when there are no saved hosts", async () => {
-    const store = createStore({
-      waitForAnyConnectionOnline: vi.fn(() => ({
-        promise: Promise.resolve(null),
-        cancel: vi.fn(),
-      })),
+  describe("scenario: both-fail (no host comes online, give-up timer fires)", () => {
+    it("redirects to the welcome route", () => {
+      const route = resolveStartupRedirectRoute({
+        ...baseInput,
+        hasGivenUpWaitingForHost: true,
+      });
+
+      expect(route).toBe(WELCOME_ROUTE);
     });
 
-    const target = await initializeHostRuntime({
-      shouldManageDesktop: false,
-      loadSettings: async () => createSettings({ manageBuiltInDaemon: false }),
-      loadStartupWorkspaceSelection: async () => null,
-      store,
-      setPhase: vi.fn(),
-      setError: vi.fn(),
-      isCancelled: () => false,
+    it("still redirects to the host when one comes online before the timer expires", () => {
+      const route = resolveStartupRedirectRoute({
+        ...baseInput,
+        anyOnlineHostServerId: "server-saved",
+        hasGivenUpWaitingForHost: true,
+      });
+
+      expect(route).toBe("/h/server-saved");
     });
-
-    expect(target).toBeNull();
-    expect(store.waitForAnyConnectionOnline).toHaveBeenCalledWith({ preferredServerId: null });
-  });
-
-  it("cancels the shared wait while initialization is still pending", async () => {
-    const abortController = new AbortController();
-    const wait = createDeferred<{ serverId: string } | null>();
-    const cancel = vi.fn();
-    const store = createStore({
-      waitForAnyConnectionOnline: vi.fn(() => ({
-        promise: wait.promise,
-        cancel,
-      })),
-    });
-    const setPhase = vi.fn();
-
-    const initPromise = initializeHostRuntime({
-      shouldManageDesktop: false,
-      loadSettings: async () => createSettings({ manageBuiltInDaemon: false }),
-      loadStartupWorkspaceSelection: async () => null,
-      store,
-      setPhase,
-      setError: vi.fn(),
-      isCancelled: () => true,
-      signal: abortController.signal,
-    });
-
-    await vi.waitFor(() => {
-      expect(store.waitForAnyConnectionOnline).toHaveBeenCalled();
-    });
-    abortController.abort();
-
-    await expect(initPromise).resolves.toBeNull();
-    expect(cancel).toHaveBeenCalledTimes(1);
-    expect(setPhase).not.toHaveBeenCalledWith("online");
   });
 });

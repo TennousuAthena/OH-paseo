@@ -19,6 +19,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { View } from "react-native";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
@@ -49,7 +50,7 @@ import {
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
 import { ToastProvider } from "@/contexts/toast-context";
 import { VoiceProvider } from "@/contexts/voice-context";
-import { initializeHostRuntime, type StartupNavigationTarget } from "@/app/host-runtime-bootstrap";
+import { startHostRuntimeBootstrap } from "@/app/host-runtime-bootstrap";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { updateDesktopWindowControls } from "@/desktop/electron/window";
@@ -60,7 +61,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useOpenProject } from "@/hooks/use-open-project";
-import { loadSettingsFromStorage, useAppSettings } from "@/hooks/use-settings";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
@@ -72,12 +73,10 @@ import {
   useHostRuntimeClient,
   useHosts,
 } from "@/runtime/host-runtime";
+import { getDaemonStartService } from "@/runtime/daemon-start-service";
 import {
   addBrowserActiveWorkspaceLocationListener,
-  getLastNavigationWorkspaceRouteSelection,
-  hydrateLastNavigationWorkspaceRouteSelection,
   syncNavigationActiveWorkspace,
-  type ActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
@@ -104,23 +103,18 @@ import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 polyfillCrypto();
 
 export interface HostRuntimeBootstrapState {
-  phase: "starting-daemon" | "connecting" | "online" | "error";
-  error: string | null;
+  splashError: string | null;
   retry: () => void;
-  startupNavigation: HostRuntimeStartupNavigation | null;
+  hasGivenUpWaitingForHost: boolean;
+  storeReady: boolean;
 }
 
 const HostRuntimeBootstrapContext = createContext<HostRuntimeBootstrapState>({
-  phase: "starting-daemon",
-  error: null,
+  splashError: null,
   retry: () => {},
-  startupNavigation: null,
+  hasGivenUpWaitingForHost: false,
+  storeReady: false,
 });
-
-export interface HostRuntimeStartupNavigation {
-  target: StartupNavigationTarget;
-  workspaceSelection: ActiveWorkspaceSelection | null;
-}
 
 function PushNotificationRouter() {
   const router = useRouter();
@@ -277,90 +271,90 @@ function HostSessionManager() {
   );
 }
 
+export function useEarliestOnlineHostServerId(): string | null {
+  const store = getHostRuntimeStore();
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      const unsubscribeAll = store.subscribeAll(listener);
+      const unsubscribeHostList = store.subscribeHostList(listener);
+      return () => {
+        unsubscribeAll();
+        unsubscribeHostList();
+      };
+    },
+    [store],
+  );
+  return useSyncExternalStore(
+    subscribe,
+    () => store.getEarliestOnlineHostServerId(),
+    () => store.getEarliestOnlineHostServerId(),
+  );
+}
+
+function useDaemonStartLastError(): string | null {
+  const service = getDaemonStartService({ store: getHostRuntimeStore() });
+  return useSyncExternalStore(
+    (listener) => service.subscribe(listener),
+    () => service.getLastError(),
+    () => service.getLastError(),
+  );
+}
+
+function useDaemonStartIsRunning(): boolean {
+  const service = getDaemonStartService({ store: getHostRuntimeStore() });
+  return useSyncExternalStore(
+    (listener) => service.subscribe(listener),
+    () => service.isRunning(),
+    () => service.isRunning(),
+  );
+}
+
+const STARTUP_GIVE_UP_TIMEOUT_MS = 5_000;
+
 function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
-  const [phase, setPhase] = useState<HostRuntimeBootstrapState["phase"]>(() =>
-    getHostRuntimeStore().getEarliestOnlineHostServerId() !== null ? "online" : "starting-daemon",
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [retryToken, setRetryToken] = useState(0);
-  const [startupNavigation, setStartupNavigation] = useState<HostRuntimeStartupNavigation | null>(
-    null,
-  );
-  const retry = useCallback(() => {
-    setPhase("starting-daemon");
-    setError(null);
-    setStartupNavigation(null);
-    setRetryToken((current) => current + 1);
+  useEffect(() => {
+    const store = getHostRuntimeStore();
+    const daemonStartService = getDaemonStartService({ store });
+    startHostRuntimeBootstrap({
+      store,
+      daemonStartService,
+      shouldStartDaemon: shouldUseDesktopDaemon(),
+    });
   }, []);
 
+  const anyOnlineHostServerId = useEarliestOnlineHostServerId();
+  const daemonStartError = useDaemonStartLastError();
+  const daemonStartIsRunning = useDaemonStartIsRunning();
+
+  const [hasGivenUpWaitingForHost, setHasGivenUpWaitingForHost] = useState(false);
   useEffect(() => {
-    let cancelled = false;
-    let startupWorkspaceSelection: ActiveWorkspaceSelection | null = null;
-    const abortController = new AbortController();
-    const shouldManageDesktop = shouldUseDesktopDaemon();
-    const store = getHostRuntimeStore();
-    setStartupNavigation(null);
-
-    const loadStartupWorkspaceSelection = async (): Promise<ActiveWorkspaceSelection | null> => {
-      await hydrateLastNavigationWorkspaceRouteSelection();
-      startupWorkspaceSelection = getLastNavigationWorkspaceRouteSelection();
-      return startupWorkspaceSelection;
-    };
-
-    void initializeHostRuntime({
-      shouldManageDesktop,
-      loadSettings: loadSettingsFromStorage,
-      loadStartupWorkspaceSelection,
-      store,
-      setPhase,
-      setError,
-      isCancelled: () => cancelled,
-      signal: abortController.signal,
-    })
-      .then((target) => {
-        if (cancelled) {
-          return undefined;
-        }
-        setStartupNavigation({
-          target,
-          workspaceSelection: startupWorkspaceSelection,
-        });
-        return undefined;
-      })
-      .catch((bootstrapError) => {
-        console.error("[HostRuntime] Failed to initialize store", bootstrapError);
-        if (cancelled) {
-          return;
-        }
-        if (shouldManageDesktop) {
-          setPhase("error");
-          setError(
-            bootstrapError instanceof Error ? bootstrapError.message : String(bootstrapError),
-          );
-          return;
-        }
-        setPhase("online");
-        setError(null);
-        setStartupNavigation({
-          target: null,
-          workspaceSelection: startupWorkspaceSelection,
-        });
-      });
-
+    if (
+      anyOnlineHostServerId ||
+      daemonStartError ||
+      daemonStartIsRunning ||
+      hasGivenUpWaitingForHost
+    ) {
+      return;
+    }
+    const handle = setTimeout(() => {
+      setHasGivenUpWaitingForHost(true);
+    }, STARTUP_GIVE_UP_TIMEOUT_MS);
     return () => {
-      cancelled = true;
-      abortController.abort();
+      clearTimeout(handle);
     };
-  }, [retryToken]);
+  }, [anyOnlineHostServerId, daemonStartError, daemonStartIsRunning, hasGivenUpWaitingForHost]);
+
+  const retry = useCallback(() => {
+    void getDaemonStartService({ store: getHostRuntimeStore() }).start();
+  }, []);
+
+  const splashError = !anyOnlineHostServerId ? daemonStartError : null;
+  const storeReady =
+    Boolean(anyOnlineHostServerId) || Boolean(splashError) || hasGivenUpWaitingForHost;
 
   const state = useMemo<HostRuntimeBootstrapState>(
-    () => ({
-      phase,
-      error,
-      retry,
-      startupNavigation,
-    }),
-    [error, phase, retry, startupNavigation],
+    () => ({ splashError, retry, hasGivenUpWaitingForHost, storeReady }),
+    [splashError, retry, hasGivenUpWaitingForHost, storeReady],
   );
 
   return (
@@ -371,7 +365,7 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
 }
 
 export function useStoreReady(): boolean {
-  return useContext(HostRuntimeBootstrapContext).phase === "online";
+  return useContext(HostRuntimeBootstrapContext).storeReady;
 }
 
 export function useHostRuntimeBootstrapState(): HostRuntimeBootstrapState {
