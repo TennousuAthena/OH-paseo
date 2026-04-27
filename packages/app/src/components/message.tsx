@@ -1075,6 +1075,10 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     flexShrink: 0,
   },
+  openFileButtonPlaceholderIcon: {
+    width: 14,
+    height: 14,
+  },
   chevronExpanded: {
     transform: [{ rotate: "90deg" }],
   },
@@ -2138,6 +2142,7 @@ interface ExpandableBadgeWebShimmerOverlayProps {
   secondaryLabel?: string;
   shimmerLabelTextStyle: StyleProp<TextStyle>;
   shimmerSecondaryTextStyle: StyleProp<TextStyle>;
+  showOpenFileButton: boolean;
 }
 
 function ExpandableBadgeWebShimmerOverlay({
@@ -2145,6 +2150,7 @@ function ExpandableBadgeWebShimmerOverlay({
   secondaryLabel,
   shimmerLabelTextStyle,
   shimmerSecondaryTextStyle,
+  showOpenFileButton,
 }: ExpandableBadgeWebShimmerOverlayProps) {
   return (
     <View style={expandableBadgeStylesheet.shimmerOverlay} pointerEvents="none">
@@ -2155,9 +2161,15 @@ function ExpandableBadgeWebShimmerOverlay({
         <Text style={shimmerSecondaryTextStyle} numberOfLines={1}>
           {secondaryLabel}
         </Text>
-      ) : (
+      ) : null}
+      {showOpenFileButton ? (
+        <View style={expandableBadgeStylesheet.openFileButton}>
+          <View style={expandableBadgeStylesheet.openFileButtonPlaceholderIcon} />
+        </View>
+      ) : null}
+      {!secondaryLabel && !showOpenFileButton ? (
         <View style={expandableBadgeStylesheet.spacer} />
-      )}
+      ) : null}
     </View>
   );
 }
@@ -2254,6 +2266,7 @@ function ExpandableBadgeLabelRow({
           secondaryLabel={secondaryLabel}
           shimmerLabelTextStyle={shimmerLabelTextStyle}
           shimmerSecondaryTextStyle={shimmerSecondaryTextStyle}
+          showOpenFileButton={showOpenFileButton}
         />
       ) : null}
       {isNativeShimmer ? (
