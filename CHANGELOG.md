@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.63-beta.3 - 2026-04-26
+## 0.1.63-beta.4 - 2026-04-27
 
 ### Added
 
@@ -13,15 +13,18 @@
 ### Improved
 
 - Provider settings and model selection have been redesigned, with switches replacing toggle buttons.
+- Voice mode transcription endpoint is configurable for OpenAI-compatible providers. ([#570](https://github.com/getpaseo/paseo/pull/570) by [@yuruiz](https://github.com/yuruiz))
 - Adding a project no longer waits for GitHub PR status to load.
 - Startup splash screen is cleaner — just the logo with a subtle shimmer.
 - Desktop quit flow is smoother with a clearer shutdown dialog.
 - `paseo.json` setup and teardown accept a single command string, not just an array.
+- New worktrees auto-seed a `paseo.json` so scripts edited in Settings apply on the first run without committing.
 - Archiving a worktree is instant instead of waiting for the backend to confirm.
 - Agent timelines and git diff lists no longer jump around while loading or streaming.
 
 ### Fixed
 
+- Cmd+Q on macOS quits the desktop app instead of leaving it running in the background.
 - Terminal sessions recover cleanly after rendering hiccups, including the initial resize for nvim.
 - Terminal protocol query responses no longer leak into the browser.
 - Assistant link color matches the theme again.
@@ -31,6 +34,7 @@
 - Agents from disabled or unavailable providers stay visible in history.
 - New CLI agents now require a provider instead of failing silently.
 - Git diff headers no longer truncate.
+- Provider diagnostic modal scrolls on short screens.
 - The packaged desktop app preserves your zsh prompt.
 
 ## 0.1.62 - 2026-04-23
