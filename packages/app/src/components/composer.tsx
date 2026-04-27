@@ -62,7 +62,6 @@ import {
   persistAttachmentFromFileUri,
 } from "@/attachments/service";
 import { resolveStatusControlMode } from "@/components/composer.status-controls";
-import { markScrollInvestigationRender } from "@/utils/scroll-jank";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
@@ -972,7 +971,6 @@ export function Composer({
   statusControls,
   inputWrapperStyle,
 }: ComposerProps) {
-  markScrollInvestigationRender(`Composer:${serverId}:${agentId}`);
   const buttonIconSize = resolveComposerButtonIconSize();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);

@@ -306,8 +306,6 @@ type RouteBottomAnchorRequest = ReturnType<typeof deriveRouteBottomAnchorRequest
 type PendingCreateByDraftId = ReturnType<typeof useCreateFlowStore.getState>["pendingByDraftId"];
 type PendingCreateAttempt = PendingCreateByDraftId[string];
 
-function logWebStickyBottom(_event: string, _details: Record<string, unknown>): void {}
-
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -815,14 +813,10 @@ function ChatAgentContent({
   );
 
   const handleComposerHeightChange = useCallback(
-    (height: number) => {
+    (_height: number) => {
       if (!agentId) {
         return;
       }
-      logWebStickyBottom("screen_composer_height_change", {
-        agentId,
-        height,
-      });
       streamViewRef.current?.prepareForViewportChange();
     },
     [agentId],
@@ -832,9 +826,6 @@ function ChatAgentContent({
     if (!agentId) {
       return;
     }
-    logWebStickyBottom("screen_message_sent_scroll_to_bottom", {
-      agentId,
-    });
     streamViewRef.current?.scrollToBottom("message-sent");
   }, [agentId]);
 

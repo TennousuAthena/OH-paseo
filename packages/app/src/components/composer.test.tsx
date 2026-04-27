@@ -22,7 +22,6 @@ const {
   deleteAttachmentsMock,
   encodeImagesMock,
   openExternalUrlMock,
-  markScrollInvestigationRenderMock,
   mockSessionState,
   setAgentStreamTailMock,
   setAgentStreamHeadMock,
@@ -161,7 +160,6 @@ const {
   );
   hoistedMockSessionState.setAgentStreamTail = hoistedSetAgentStreamTailMock;
   hoistedMockSessionState.setAgentStreamHead = hoistedSetAgentStreamHeadMock;
-  const hoistedMarkScrollInvestigationRenderMock = vi.fn();
   const hoistedAgentDirectoryStatusMock = vi.fn(() => "ready");
 
   return {
@@ -175,7 +173,6 @@ const {
     deleteAttachmentsMock: vi.fn(async () => {}),
     encodeImagesMock: vi.fn(async (images: AttachmentMetadata[]) => images),
     openExternalUrlMock: vi.fn(async () => {}),
-    markScrollInvestigationRenderMock: hoistedMarkScrollInvestigationRenderMock,
     mockSessionState: hoistedMockSessionState,
     setAgentStreamTailMock: hoistedSetAgentStreamTailMock,
     setAgentStreamHeadMock: hoistedSetAgentStreamHeadMock,
@@ -337,11 +334,6 @@ vi.mock("@/contexts/voice-context", () => ({
 
 vi.mock("@/contexts/toast-context", () => ({
   useToast: () => ({ error: vi.fn() }),
-}));
-
-vi.mock("@/utils/scroll-jank", () => ({
-  markScrollInvestigationRender: markScrollInvestigationRenderMock,
-  markScrollInvestigationEvent: vi.fn(),
 }));
 
 vi.mock("@/components/agent-status-bar", () => ({
@@ -592,7 +584,6 @@ beforeEach(() => {
   deleteAttachmentsMock.mockClear();
   encodeImagesMock.mockClear();
   openExternalUrlMock.mockClear();
-  markScrollInvestigationRenderMock.mockClear();
   setAgentStreamTailMock.mockClear();
   setAgentStreamHeadMock.mockClear();
   setQueuedMessagesMock.mockClear();
@@ -736,12 +727,6 @@ function dispatchAgentInterrupt() {
     const registeredHandler = keyboardActionHandlerMock.mock.calls.at(-1)?.[0];
     registeredHandler?.handle({ id: "agent.interrupt", scope: "global" });
   });
-}
-
-function countMessageInputRenders(): number {
-  return markScrollInvestigationRenderMock.mock.calls.filter(
-    ([componentId]) => componentId === "MessageInput:server:agent",
-  ).length;
 }
 
 describe("Composer keyboard shortcuts", () => {
@@ -985,27 +970,6 @@ describe("Composer attachments", () => {
     expect(queryByTestId("attachment-lightbox-image")).not.toBeNull();
     expect(openExternalUrlMock).not.toHaveBeenCalled();
     expect(latestAttachments).toEqual([{ kind: "image", metadata: image }]);
-  });
-
-  it("does not re-render MessageInput when opening the attachment lightbox", () => {
-    const image = imageAttachment("img-lightbox-render");
-    renderComposer({ initialAttachments: [{ kind: "image", metadata: image }] });
-    const renderCountBeforeLightbox = countMessageInputRenders();
-
-    click(queryByTestId("composer-image-attachment-pill")!);
-
-    expect(queryByTestId("attachment-lightbox-image")).not.toBeNull();
-    expect(countMessageInputRenders()).toBe(renderCountBeforeLightbox);
-  });
-
-  it("still re-renders MessageInput when submit loading semantics change", () => {
-    renderComposer({ initialText: "pending submit", isSubmitLoading: false });
-    const renderCountBeforeLoading = countMessageInputRenders();
-
-    renderComposer({ initialText: "pending submit", isSubmitLoading: true });
-
-    expect(countMessageInputRenders()).toBe(renderCountBeforeLoading + 1);
-    expect(document.querySelector('[aria-label="Send message"]')).toHaveProperty("disabled", true);
   });
 
   it("enables dictation from server capabilities before the agent directory finishes loading", () => {
