@@ -337,7 +337,7 @@ describe("WorkspaceGitServiceImpl", () => {
     service.dispose();
   });
 
-  test("cold getSnapshot calls share one workspace target and cache the snapshot", async () => {
+  test("cold getSnapshot calls share one workspace target setup and cache the snapshot", async () => {
     const checkoutStatusDeferred = createDeferred<CheckoutStatusGit>();
     const getCheckoutStatus = vi.fn(async () => checkoutStatusDeferred.promise);
     const getPullRequestStatus = vi.fn(async () => createPullRequestStatusResult());
