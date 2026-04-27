@@ -411,7 +411,6 @@ export function ProviderDiagnosticSheet({
       visible={visible}
       onClose={onClose}
       snapPoints={DIAGNOSTIC_SHEET_SNAP_POINTS}
-      scrollable={false}
       headerActions={headerActions}
     >
       <SettingsSection title="Diagnostic">
@@ -426,12 +425,12 @@ export function ProviderDiagnosticSheet({
 
       <CustomModelsSection provider={provider} serverId={serverId} refresh={refresh} />
 
-      <View style={sheetStyles.modelsSection}>
+      <View>
         <View style={sheetStyles.modelsHeader}>
           <Text style={settingsStyles.sectionHeaderTitle}>Models</Text>
           {modelsTrailing}
         </View>
-        <View style={MODELS_CARD_STYLE}>
+        <View style={settingsStyles.card}>
           <View style={INLINE_ROW_STYLE}>
             <Search size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
             <AdaptiveTextInput
@@ -521,10 +520,6 @@ const sheetStyles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
   },
-  modelsSection: {
-    flex: 1,
-    minHeight: 0,
-  },
   modelsHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -533,18 +528,13 @@ const sheetStyles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[3],
     marginLeft: theme.spacing[1],
   },
-  flexCard: {
-    flex: 1,
-    minHeight: 0,
-  },
   modelsTrailing: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
   },
   modelsScroll: {
-    flex: 1,
-    minHeight: 0,
+    maxHeight: 360,
   },
   modelsScrollContent: {
     paddingBottom: 0,
@@ -566,4 +556,3 @@ const DIAGNOSTIC_SEARCH_INPUT_STYLE = [sheetStyles.inlineInput, isWeb && { outli
 const DIAGNOSTIC_INLINE_INPUT_STYLE = [sheetStyles.inlineInput, isWeb && { outlineStyle: "none" }];
 const MODEL_ROW_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 const INLINE_ROW_STYLE = [settingsStyles.row, sheetStyles.inlineRow];
-const MODELS_CARD_STYLE = [settingsStyles.card, sheetStyles.flexCard];
