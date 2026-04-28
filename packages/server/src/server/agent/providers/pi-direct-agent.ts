@@ -624,13 +624,6 @@ function mapToolDetail(toolCall: PiTrackedToolCall, result?: PiToolResult): Tool
   }
 }
 
-function stringifyUnknownError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return typeof error === "string" ? error : "Unknown Pi error";
-}
-
 function parseModelReference(modelId: string | null): PiModelReference | null {
   if (!modelId) {
     return null;
@@ -756,7 +749,7 @@ function isPiRequestAbortError(error: unknown): boolean {
     return true;
   }
 
-  return /\brequest was aborted\b/i.test(stringifyUnknownError(error));
+  return /\brequest was aborted\b/i.test(toDiagnosticErrorMessage(error));
 }
 
 function resolveThinkingOptionId(
@@ -1113,7 +1106,7 @@ export class PiDirectAgentSession implements AgentSession {
             type: "turn_canceled",
             provider: PI_PROVIDER,
             turnId: failedTurnId,
-            reason: stringifyUnknownError(error),
+            reason: toDiagnosticErrorMessage(error),
           });
           return;
         }
@@ -1121,7 +1114,7 @@ export class PiDirectAgentSession implements AgentSession {
           type: "turn_failed",
           provider: PI_PROVIDER,
           turnId: failedTurnId,
-          error: stringifyUnknownError(error),
+          error: toDiagnosticErrorMessage(error),
         });
       });
 
