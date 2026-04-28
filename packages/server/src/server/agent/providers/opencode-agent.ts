@@ -67,11 +67,19 @@ const OPENCODE_CAPABILITIES: AgentCapabilityFlags = {
   supportsToolInvocations: true,
 };
 
+const OPENCODE_BUILD_MODE_ID = "build";
+const OPENCODE_FULL_ACCESS_MODE_ID = "full-access";
+
 const DEFAULT_MODES: AgentMode[] = [
   {
-    id: "build",
+    id: OPENCODE_BUILD_MODE_ID,
     label: "Build",
     description: "Allows edits and tool execution for implementation work",
+  },
+  {
+    id: OPENCODE_FULL_ACCESS_MODE_ID,
+    label: "Full Access",
+    description: "Automatically approves all tool permission prompts for the session",
   },
   {
     id: "plan",
@@ -404,9 +412,24 @@ function resolvePartDedupeKey(
 function normalizeOpenCodeModeId(modeId: string | null | undefined): string {
   const trimmed = typeof modeId === "string" ? modeId.trim() : "";
   if (!trimmed || trimmed === "default") {
-    return "build";
+    return OPENCODE_BUILD_MODE_ID;
   }
   return trimmed;
+}
+
+function resolveOpenCodeRuntimeAgentId(modeId: string | null | undefined): string {
+  const normalizedModeId = normalizeOpenCodeModeId(modeId);
+  return normalizedModeId === OPENCODE_FULL_ACCESS_MODE_ID
+    ? OPENCODE_BUILD_MODE_ID
+    : normalizedModeId;
+}
+
+function mergeOpenCodeModes(discoveredModes: AgentMode[]): AgentMode[] {
+  const modesById = new Map(DEFAULT_MODES.map((mode) => [mode.id, mode]));
+  for (const mode of discoveredModes) {
+    modesById.set(mode.id, mode);
+  }
+  return sortOpenCodeModes(Array.from(modesById.values()));
 }
 
 function sortOpenCodeModes(modes: AgentMode[]): AgentMode[] {
@@ -1176,7 +1199,7 @@ export class OpenCodeAgentClient implements AgentClient {
               : DEFAULT_MODES.find((mode) => mode.id === agent.name)?.description,
         }));
 
-      return discovered.length > 0 ? sortOpenCodeModes(discovered) : DEFAULT_MODES;
+      return mergeOpenCodeModes(discovered);
     } finally {
       acquisition.release();
     }
@@ -2031,7 +2054,7 @@ class OpenCodeAgentSession implements AgentSession {
     const model = this.parseModel(this.config.model);
     const thinkingOptionId = this.config.thinkingOptionId;
     const effectiveVariant = thinkingOptionId ?? undefined;
-    const effectiveMode = normalizeOpenCodeModeId(this.currentMode);
+    const effectiveMode = resolveOpenCodeRuntimeAgentId(this.currentMode);
 
     const turnId = this.createTurnId();
     this.activeForegroundTurnId = turnId;
@@ -2205,7 +2228,7 @@ class OpenCodeAgentSession implements AgentSession {
           break;
         }
 
-        const translated = this.translateEvent(event);
+        const translated = await this.translateEvent(event);
         for (const e of translated) {
           if (this.activeForegroundTurnId !== turnId) {
             return;
@@ -2400,23 +2423,20 @@ class OpenCodeAgentSession implements AgentSession {
     const response = await this.client.app.agents({
       directory: this.config.cwd,
     });
+    const agents = response.error || !response.data ? [] : response.data;
 
-    const discoveredModes =
-      response.error || !response.data
-        ? []
-        : response.data
-            .filter((agent) => agent.mode === "primary" && agent.hidden !== true)
-            .map((agent) => ({
-              id: agent.name,
-              label: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
-              description:
-                typeof agent.description === "string" && agent.description.trim().length > 0
-                  ? agent.description.trim()
-                  : DEFAULT_MODES.find((mode) => mode.id === agent.name)?.description,
-            }));
+    const discoveredModes = agents
+      .filter((agent) => agent.mode === "primary" && agent.hidden !== true)
+      .map((agent) => ({
+        id: agent.name,
+        label: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
+        description:
+          typeof agent.description === "string" && agent.description.trim().length > 0
+            ? agent.description.trim()
+            : DEFAULT_MODES.find((mode) => mode.id === agent.name)?.description,
+      }));
 
-    this.availableModesCache =
-      discoveredModes.length > 0 ? sortOpenCodeModes(discoveredModes) : DEFAULT_MODES;
+    this.availableModesCache = mergeOpenCodeModes(discoveredModes);
     return this.availableModesCache;
   }
 
@@ -2649,7 +2669,7 @@ class OpenCodeAgentSession implements AgentSession {
     );
   }
 
-  private translateEvent(event: OpenCodeEvent): AgentStreamEvent[] {
+  private async translateEvent(event: OpenCodeEvent): Promise<AgentStreamEvent[]> {
     const translated = translateOpenCodeEvent(event, {
       sessionId: this.sessionId,
       messageRoles: this.messageRoles,
@@ -2666,8 +2686,14 @@ class OpenCodeAgentSession implements AgentSession {
       },
     });
 
+    const events: AgentStreamEvent[] = [];
+
     for (const translatedEvent of translated) {
       if (translatedEvent.type === "permission_requested") {
+        const autoApproved = await this.tryAutoApproveToolPermission(translatedEvent.request);
+        if (autoApproved) {
+          continue;
+        }
         this.pendingPermissions.set(translatedEvent.request.id, translatedEvent.request);
       }
       if (translatedEvent.type === "turn_completed") {
@@ -2678,9 +2704,31 @@ class OpenCodeAgentSession implements AgentSession {
         this.accumulatedUsage =
           contextWindowMaxTokens !== undefined ? { contextWindowMaxTokens } : {};
       }
+      events.push(translatedEvent);
     }
 
-    return translated;
+    return events;
+  }
+
+  private async tryAutoApproveToolPermission(request: AgentPermissionRequest): Promise<boolean> {
+    if (this.currentMode !== OPENCODE_FULL_ACCESS_MODE_ID || request.kind !== "tool") {
+      return false;
+    }
+
+    try {
+      await this.client.permission.reply({
+        requestID: request.id,
+        directory: this.config.cwd,
+        reply: "once",
+      });
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        { err: error, requestId: request.id },
+        "Failed to auto-approve OpenCode tool permission",
+      );
+      return false;
+    }
   }
 
   private resolveSelectedModelContextWindowMaxTokens(): number | undefined {
