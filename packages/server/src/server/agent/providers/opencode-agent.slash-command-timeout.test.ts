@@ -91,7 +91,12 @@ describe("OpenCodeAgentSession slash command timeout handling", () => {
       },
       event: {
         subscribe: vi.fn().mockResolvedValue({
-          stream: (async function* () {})(),
+          stream: (async function* () {
+            yield {
+              type: "session.idle",
+              properties: { sessionID: "session-1" },
+            };
+          })(),
         }),
       },
       command: {
