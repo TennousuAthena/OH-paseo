@@ -14,7 +14,12 @@ vi.mock("electron-updater", () => ({
   autoUpdater: {},
 }));
 
-import { resolveStagingUserId, rolloutManifestSchema, shouldAdmitToRollout } from "./auto-updater";
+import {
+  bucketFromStagingUserId,
+  resolveStagingUserId,
+  rolloutManifestSchema,
+  shouldAdmitToRollout,
+} from "./auto-updater";
 
 describe("shouldAdmitToRollout", () => {
   it("admits beta, missing rollout hours, zero-hour rollout, and missing release date", () => {
@@ -86,6 +91,61 @@ describe("shouldAdmitToRollout", () => {
     ).toBe(false);
   });
 
+  it("blocks the bucket-zero client at exact release time, admits as soon as time advances", () => {
+    expect(
+      shouldAdmitToRollout({
+        channel: "stable",
+        rolloutHours: 24,
+        releaseDate: "2026-04-28T00:00:00.000Z",
+        now: Date.parse("2026-04-28T00:00:00.000Z"),
+        bucket: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAdmitToRollout({
+        channel: "stable",
+        rolloutHours: 24,
+        releaseDate: "2026-04-28T00:00:00.000Z",
+        now: Date.parse("2026-04-28T00:00:00.001Z"),
+        bucket: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("admits the highest-bucket client at and past the rollout end", () => {
+    const maxBucket = (0x100000000 - 1) / 0x100000000;
+    expect(
+      shouldAdmitToRollout({
+        channel: "stable",
+        rolloutHours: 24,
+        releaseDate: "2026-04-28T00:00:00.000Z",
+        now: Date.parse("2026-04-29T00:00:00.000Z"),
+        bucket: maxBucket,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAdmitToRollout({
+        channel: "stable",
+        rolloutHours: 24,
+        releaseDate: "2026-04-28T00:00:00.000Z",
+        now: Date.parse("2027-04-28T00:00:00.000Z"),
+        bucket: maxBucket,
+      }),
+    ).toBe(true);
+  });
+
+  it("admits when releaseDate is unparseable", () => {
+    expect(
+      shouldAdmitToRollout({
+        channel: "stable",
+        rolloutHours: 24,
+        releaseDate: "not a date",
+        now: Date.parse("2026-04-28T12:00:00.000Z"),
+        bucket: 0.99,
+      }),
+    ).toBe(true);
+  });
+
   it("treats garbage manifest rollout fields as missing and admits", () => {
     const parsed = rolloutManifestSchema.parse({
       rolloutHours: "not a number",
@@ -101,6 +161,14 @@ describe("shouldAdmitToRollout", () => {
         bucket: 0.99,
       }),
     ).toBe(true);
+  });
+
+  it("maps the maximum 32-bit slot to a bucket strictly less than 1", () => {
+    const allOnes = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    const allZeros = "00000000-0000-0000-0000-000000000000";
+    expect(bucketFromStagingUserId(allOnes)).toBeLessThan(1);
+    expect(bucketFromStagingUserId(allOnes)).toBeGreaterThan(0.999);
+    expect(bucketFromStagingUserId(allZeros)).toBe(0);
   });
 
   it("creates and then reuses the on-disk staging user id", async () => {

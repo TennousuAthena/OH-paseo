@@ -69,8 +69,8 @@ export function shouldAdmitToRollout(args: {
   return args.bucket * 100 < pct;
 }
 
-function bucketFromStagingUserId(stagingUserId: string): number {
-  return UUID.parse(stagingUserId).readUInt32BE(12) / 0xffffffff;
+export function bucketFromStagingUserId(stagingUserId: string): number {
+  return UUID.parse(stagingUserId).readUInt32BE(12) / 0x100000000;
 }
 
 export async function resolveStagingUserId(filePath: string): Promise<string> {
