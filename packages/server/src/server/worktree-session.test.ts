@@ -572,11 +572,13 @@ describe("runWorktreeSetupInBackground", () => {
     expect(progressMessages[0]?.payload.status).toBe("running");
     expect(progressMessages[0]?.payload.error).toBeNull();
     expect(progressMessages[1]?.payload.status).toBe("failed");
-    expect(progressMessages[1]?.payload.error).toContain("Failed to parse paseo.json");
+    expect(progressMessages[1]?.payload.error).toMatch(
+      /Failed to parse paseo\.json at .*paseo\.json/,
+    );
     expect(progressMessages[1]?.payload.detail.commands).toEqual([]);
     expect(snapshots.get(workspaceId)).toMatchObject({
       status: "failed",
-      error: expect.stringContaining("Failed to parse paseo.json"),
+      error: expect.stringMatching(/Failed to parse paseo\.json at .*paseo\.json/),
     });
     expect(archiveWorkspaceRecord).toHaveBeenCalledWith(workspaceId);
     expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);

@@ -213,19 +213,31 @@ export function readPaseoConfig(repoRoot: string): ReadPaseoConfigResult {
   }
 }
 
-export function getWorktreeSetupCommands(repoRoot: string): string[] {
+export function paseoConfigParseError(failure: { configPath: string; error: unknown }): Error {
+  const detail = failure.error instanceof Error ? failure.error.message : String(failure.error);
+  return new Error(`Failed to parse paseo.json at ${failure.configPath}: ${detail}`, {
+    cause: failure.error,
+  });
+}
+
+function readPaseoConfigOrThrow(repoRoot: string): PaseoConfig | null {
   const result = readPaseoConfig(repoRoot);
-  return result.ok ? (result.config?.worktree?.setup ?? []) : [];
+  if (!result.ok) {
+    throw paseoConfigParseError(result);
+  }
+  return result.config;
+}
+
+export function getWorktreeSetupCommands(repoRoot: string): string[] {
+  return readPaseoConfigOrThrow(repoRoot)?.worktree?.setup ?? [];
 }
 
 export function getWorktreeTeardownCommands(repoRoot: string): string[] {
-  const result = readPaseoConfig(repoRoot);
-  return result.ok ? (result.config?.worktree?.teardown ?? []) : [];
+  return readPaseoConfigOrThrow(repoRoot)?.worktree?.teardown ?? [];
 }
 
 export function getWorktreeTerminalSpecs(repoRoot: string): WorktreeTerminalConfig[] {
-  const result = readPaseoConfig(repoRoot);
-  const terminals = result.ok ? result.config?.worktree?.terminals : undefined;
+  const terminals = readPaseoConfigOrThrow(repoRoot)?.worktree?.terminals;
   if (!Array.isArray(terminals) || terminals.length === 0) {
     return [];
   }

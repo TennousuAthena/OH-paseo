@@ -132,7 +132,7 @@ describe("OpenCode full-access mode", () => {
     const client = new OpenCodeAgentClient(createTestLogger());
     const modes = await client.listModes({ cwd: "/tmp/project", force: false });
 
-    expect(modes.map((mode) => mode.id)).toEqual(["build", "full-access", "plan", "paseo-custom"]);
+    expect(modes.map((mode) => mode.id)).toEqual(["build", "plan", "full-access", "paseo-custom"]);
     expect(modes.find((mode) => mode.id === "full-access")).toMatchObject({
       label: "Full Access",
       description: "Automatically approves all tool permission prompts for the session",
