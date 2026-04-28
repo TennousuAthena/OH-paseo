@@ -10,21 +10,24 @@
 - Open the current branch on GitHub from a workspace's open menu. ([#583](https://github.com/getpaseo/paseo/pull/583) by [@Myriad-Dreamin](https://github.com/Myriad-Dreamin))
 - Enable or disable providers from Settings without editing config files.
 - Paseo prompts you to configure a worktree setup script when one is missing.
+- Choose whether the daemon shuts down when you close the desktop app.
 
 ### Improved
 
-- Provider settings and model selection have been redesigned, with switches replacing toggle buttons.
+- Provider settings and model selection have been redesigned.
 - Voice mode transcription endpoint is configurable for OpenAI-compatible providers. ([#570](https://github.com/getpaseo/paseo/pull/570) by [@yuruiz](https://github.com/yuruiz))
 - Adding a project no longer waits for GitHub PR status to load.
 - Startup splash screen is cleaner — just the logo with a subtle shimmer.
-- Desktop quit flow is smoother with a clearer shutdown dialog.
 - `paseo.json` setup and teardown accept a single command string, not just an array.
-- New worktrees auto-seed a `paseo.json` so scripts edited in Settings apply on the first run without committing.
 - Archiving a worktree is instant instead of waiting for the backend to confirm.
 - Agent timelines and git diff lists no longer jump around while loading or streaming.
 
 ### Fixed
 
+- `paseo loop run` and `paseo run` now respect the `--provider` and `--model` flags. ([#594](https://github.com/getpaseo/paseo/pull/594) by [@VincenzoRocchi](https://github.com/VincenzoRocchi))
+- Pi provider shows up when only DeepSeek or other non-OpenAI/Anthropic/OpenRouter API keys are set.
+- Custom models from `additionalModels` and `profileModels` are honored when picking a default for new agents.
+- File preview line numbers stay on one line past line 99.
 - Cmd+Q on macOS quits the desktop app instead of leaving it running in the background.
 - Terminal sessions recover cleanly after rendering hiccups, including the initial resize for nvim.
 - Terminal protocol query responses no longer leak into the browser.
