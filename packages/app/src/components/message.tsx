@@ -81,8 +81,10 @@ import { getMarkdownListMarker } from "@/utils/markdown-list";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 import {
+  getAssistantImageLoadStateFromMetadata,
   getAssistantImageMetadata,
   setAssistantImageMetadata,
+  type AssistantImageLoadState,
 } from "@/utils/assistant-image-metadata";
 import { setAssistantMarkdownBlockHeight } from "@/utils/assistant-message-height-estimate";
 import { resolveAssistantImageSource } from "@/utils/assistant-image-source";
@@ -318,7 +320,7 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     flexDirection: "row",
     justifyContent: "flex-end",
     paddingHorizontal: theme.spacing[2],
-    userSelect: isWeb ? "text" : "auto",
+    ...(isWeb ? { userSelect: "text" as const } : {}),
   },
   content: {
     alignItems: "flex-end",
@@ -493,7 +495,7 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   container: {
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[3],
-    userSelect: isWeb ? "text" : "auto",
+    ...(isWeb ? { userSelect: "text" as const } : {}),
   },
   containerCompactTop: {
     paddingTop: 0,
@@ -567,17 +569,17 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
     () => getAssistantImageMetadata({ source, workspaceRoot, serverId }),
     [serverId, source, workspaceRoot],
   );
-  const [aspectRatio, setAspectRatio] = useState<number | null>(
-    cachedMetadata?.aspectRatio ?? null,
+  const [loadState, setLoadState] = useState<AssistantImageLoadState>(() =>
+    getAssistantImageLoadStateFromMetadata(cachedMetadata),
   );
 
   useEffect(() => {
     if (cachedMetadata) {
-      setAspectRatio(cachedMetadata.aspectRatio);
+      setLoadState(getAssistantImageLoadStateFromMetadata(cachedMetadata));
       return;
     }
 
-    setAspectRatio(null);
+    setLoadState({ status: "loading" });
     let cancelled = false;
 
     Image.getSize(
@@ -591,14 +593,17 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
             { source, workspaceRoot, serverId },
             { width, height },
           );
-          setAspectRatio(metadata?.aspectRatio ?? width / height);
+          setLoadState({
+            status: "ready",
+            aspectRatio: metadata?.aspectRatio ?? width / height,
+          });
         }
       },
       () => {
         if (cancelled) {
           return;
         }
-        setAspectRatio(null);
+        setLoadState({ status: "error" });
       },
     );
 
@@ -607,18 +612,40 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
     };
   }, [cachedMetadata, serverId, source, uri, workspaceRoot]);
 
+  const handleImageError = useCallback(() => {
+    setLoadState({ status: "error" });
+  }, []);
   const surfaceStyle = useMemo<StyleProp<ViewStyle>>(
     () => [
       assistantMessageStylesheet.imageSurface,
-      aspectRatio ? { aspectRatio } : { minHeight: ASSISTANT_IMAGE_MIN_HEIGHT },
+      loadState.status === "ready"
+        ? { aspectRatio: loadState.aspectRatio }
+        : { height: ASSISTANT_IMAGE_MIN_HEIGHT },
     ],
-    [aspectRatio],
+    [loadState],
   );
   const frameStyle = useMemo<StyleProp<ViewStyle>>(
     () => [assistantMessageStylesheet.imageFrame, containerStyle],
     [containerStyle],
   );
+  const stateSurfaceStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [surfaceStyle, assistantMessageStylesheet.imageState],
+    [surfaceStyle],
+  );
   const imageSource = useMemo(() => ({ uri }), [uri]);
+
+  if (loadState.status !== "ready") {
+    return (
+      <View style={frameStyle}>
+        <View style={stateSurfaceStyle}>
+          {loadState.status === "loading" ? <ActivityIndicator size="small" /> : null}
+          {loadState.status === "error" ? (
+            <Text style={assistantMessageStylesheet.imageErrorText}>Image unavailable</Text>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={frameStyle}>
@@ -628,6 +655,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
           style={assistantMessageStylesheet.image}
           resizeMode="contain"
           accessibilityLabel={alt}
+          onError={handleImageError}
         />
       </View>
     </View>
@@ -728,6 +756,7 @@ function AssistantMarkdownImage({
     () => [
       assistantMessageStylesheet.imageFrame,
       containerStyle,
+      { height: ASSISTANT_IMAGE_MIN_HEIGHT },
       assistantMessageStylesheet.imageState,
     ],
     [containerStyle],
