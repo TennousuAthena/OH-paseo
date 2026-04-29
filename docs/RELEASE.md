@@ -61,9 +61,16 @@ Use the beta path when you need to:
 
 ## Staged rollout (stable channel)
 
-Stable desktop releases go out via a linear time-based rollout: 0% admitted at publish, 100% admitted 24 hours later, linear ramp in between. Beta releases bypass the rollout entirely — beta users always receive updates immediately.
+Stable desktop releases go out via a linear time-based rollout: 0% admitted when the updater manifests appear, 100% admitted 24 hours later, linear ramp in between. Beta releases bypass the rollout entirely — beta users always receive updates immediately.
 
 The rollout is driven by a `rolloutHours` field stamped into the GitHub Release manifests (`latest-mac.yml`, `latest-linux.yml`, `latest.yml`) by the `finalize-rollout` job in `desktop-release.yml`.
+
+Desktop release builds now publish in two phases:
+
+- Platform build jobs upload the installers/packages (`.dmg`, `.zip`, `.exe`, `.AppImage`, etc.) to the GitHub release.
+- The final job merges/stamps the manifests and uploads all `.yml` files only after they already contain the final `releaseDate` and `rolloutHours`.
+
+Updater clients only discover a release through those `.yml` manifests, so there is no silent 100% admission window before rollout metadata is present.
 
 ### Default behavior
 
@@ -85,7 +92,7 @@ gh workflow run desktop-rollout.yml \
   -f rollout_hours=0
 ```
 
-**Why this is gap-free:** `desktop-release.yml`'s `finalize-rollout` job and `desktop-rollout.yml` share the concurrency group `desktop-rollout-<tag>`. Dispatching `desktop-rollout.yml` while the tag-push pipeline is still running queues it safely behind `finalize-rollout`. The release manifest goes from `rolloutHours=24` to `rolloutHours=0` within ~30s of publish, and the renderer polls every 30 minutes — so no stable user can admit during the gap.
+**Why this is gap-free:** `desktop-release.yml`'s `finalize-rollout` job and `desktop-rollout.yml` share the concurrency group `desktop-rollout-<tag>`. Dispatching `desktop-rollout.yml` while the tag-push pipeline is still running queues it safely behind `finalize-rollout`. The first public manifests already carry `rolloutHours=24`, then `desktop-rollout.yml` flips them to `rolloutHours=0` shortly afterward. The renderer polls every 30 minutes, so active stable users pick up the new manifest on their next check.
 
 Run the dispatch right after `release:patch` returns. Don't wait for the tag-push CI to finish.
 

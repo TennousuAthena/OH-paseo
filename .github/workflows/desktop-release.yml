@@ -164,16 +164,25 @@ jobs:
           PASEO_DESKTOP_SMOKE: "1"
         run: |
           set -euo pipefail
-          publish_mode="never"
-          build_args=(-- --publish "$publish_mode" --mac --${{ matrix.electron_arch }})
-          if [[ "$SHOULD_PUBLISH" == "true" && "$IS_SMOKE_TAG" != "true" ]]; then
-            publish_mode="always"
-            build_args=(-- --publish "$publish_mode" --mac --${{ matrix.electron_arch }})
-            build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
-            build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
-          fi
-
+          build_args=(-- --publish never --mac --${{ matrix.electron_arch }})
+          build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
+          build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
           npm run build --workspace="$DESKTOP_WORKSPACE" "${build_args[@]}"
+
+      - name: Upload desktop artifacts to release
+        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="${DESKTOP_PACKAGE_PATH}/release"
+          mapfile -d '' files < <(find "$release_dir" -maxdepth 1 -type f ! -name '*.yml' -print0 | sort -z)
+          if (( ${#files[@]} == 0 )); then
+            echo "::error::No release artifacts found in $release_dir"
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber --repo "${{ github.repository }}"
 
       - name: Upload manifest artifact
         if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
@@ -182,63 +191,6 @@ jobs:
           name: mac-manifest-${{ matrix.electron_arch }}
           path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-mac.yml
           retention-days: 1
-
-  finalize-mac-manifest:
-    needs: [publish-macos]
-    if: ${{ needs.publish-macos.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            package.json
-            package-lock.json
-            scripts
-          ref: ${{ env.CHECKOUT_REF }}
-
-      - name: Resolve release tag
-        shell: bash
-        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: package-lock.json
-          registry-url: "https://npm.pkg.github.com"
-          scope: "@boudra"
-
-      - name: Install JS dependencies
-        run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download manifest artifacts
-        if: env.IS_SMOKE_TAG != 'true'
-        uses: actions/download-artifact@v4
-        with:
-          pattern: mac-manifest-*
-
-      - name: Merge manifests
-        if: env.IS_SMOKE_TAG != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          manifest_name="${RELEASE_CHANNEL}-mac.yml"
-          node scripts/merge-mac-manifest.mjs \
-            "mac-manifest-arm64/${manifest_name}" \
-            "mac-manifest-x64/${manifest_name}" \
-            "${manifest_name}"
-
-      - name: Upload merged manifest to release
-        if: env.IS_SMOKE_TAG != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$RELEASE_TAG" "$RELEASE_CHANNEL-mac.yml" --clobber --repo "${{ github.repository }}"
 
   publish-linux:
     needs: [create-release]
@@ -302,16 +254,33 @@ jobs:
           PASEO_DESKTOP_SMOKE: "1"
         run: |
           set -euo pipefail
-          publish_mode="never"
-          build_args=(-- --publish "$publish_mode" --linux --x64)
-          if [[ "$SHOULD_PUBLISH" == "true" && "$IS_SMOKE_TAG" != "true" ]]; then
-            publish_mode="always"
-            build_args=(-- --publish "$publish_mode" --linux --x64)
-            build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
-            build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
-          fi
-
+          build_args=(-- --publish never --linux --x64)
+          build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
+          build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
           npm run build --workspace="$DESKTOP_WORKSPACE" "${build_args[@]}"
+
+      - name: Upload desktop artifacts to release
+        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="${DESKTOP_PACKAGE_PATH}/release"
+          mapfile -d '' files < <(find "$release_dir" -maxdepth 1 -type f ! -name '*.yml' -print0 | sort -z)
+          if (( ${#files[@]} == 0 )); then
+            echo "::error::No release artifacts found in $release_dir"
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber --repo "${{ github.repository }}"
+
+      - name: Upload manifest artifact
+        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-manifest
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-linux.yml
+          retention-days: 1
 
   publish-windows:
     needs: [create-release]
@@ -380,20 +349,37 @@ jobs:
           PASEO_DESKTOP_SMOKE: "1"
         run: |
           set -euo pipefail
-          publish_mode="never"
-          build_args=(-- --publish "$publish_mode" --win --x64)
-          if [[ "$SHOULD_PUBLISH" == "true" && "$IS_SMOKE_TAG" != "true" ]]; then
-            publish_mode="always"
-            build_args=(-- --publish "$publish_mode" --win --x64)
-            build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
-            build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
-          fi
-
+          build_args=(-- --publish never --win --x64)
+          build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
+          build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
           npm run build --workspace="$DESKTOP_WORKSPACE" "${build_args[@]}"
 
+      - name: Upload desktop artifacts to release
+        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="${DESKTOP_PACKAGE_PATH}/release"
+          mapfile -d '' files < <(find "$release_dir" -maxdepth 1 -type f ! -name '*.yml' -print0 | sort -z)
+          if (( ${#files[@]} == 0 )); then
+            echo "::error::No release artifacts found in $release_dir"
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber --repo "${{ github.repository }}"
+
+      - name: Upload manifest artifact
+        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-manifest
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}.yml
+          retention-days: 1
+
   finalize-rollout:
-    needs: [publish-macos, finalize-mac-manifest, publish-linux, publish-windows]
-    if: ${{ always() && (needs.publish-macos.result == 'success' || needs.publish-macos.result == 'skipped') && (needs.finalize-mac-manifest.result == 'success' || needs.finalize-mac-manifest.result == 'skipped') && (needs.publish-linux.result == 'success' || needs.publish-linux.result == 'skipped') && (needs.publish-windows.result == 'success' || needs.publish-windows.result == 'skipped') && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
+    needs: [publish-macos, publish-linux, publish-windows]
+    if: ${{ always() && (needs.publish-macos.result == 'success' || needs.publish-macos.result == 'skipped') && (needs.publish-linux.result == 'success' || needs.publish-linux.result == 'skipped') && (needs.publish-windows.result == 'success' || needs.publish-windows.result == 'skipped') && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -428,20 +414,58 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Stamp rollout metadata
+      - name: Download mac manifest artifacts
+        if: env.IS_SMOKE_TAG != 'true' && needs.publish-macos.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mac-manifest-*
+          path: release-manifests
+
+      - name: Download Linux manifest artifact
+        if: env.IS_SMOKE_TAG != 'true' && needs.publish-linux.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-manifest
+          path: release-manifests/linux-manifest
+
+      - name: Download Windows manifest artifact
+        if: env.IS_SMOKE_TAG != 'true' && needs.publish-windows.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-manifest
+          path: release-manifests/windows-manifest
+
+      - name: Assemble and upload stamped manifests
         if: env.IS_SMOKE_TAG != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          mkdir release-manifests
           cd release-manifests
-          gh release download "$RELEASE_TAG" --repo "${{ github.repository }}" --pattern "${RELEASE_CHANNEL}*.yml"
+          manifests_dir="$PWD/final"
+          mkdir -p "$manifests_dir"
+
+          if [[ "${{ needs.publish-macos.result }}" == "success" ]]; then
+            manifest_name="${RELEASE_CHANNEL}-mac.yml"
+            node ../scripts/merge-mac-manifest.mjs \
+              "mac-manifest-arm64/${manifest_name}" \
+              "mac-manifest-x64/${manifest_name}" \
+              "$manifests_dir/${manifest_name}"
+          fi
+
+          if [[ "${{ needs.publish-linux.result }}" == "success" ]]; then
+            cp "linux-manifest/${RELEASE_CHANNEL}-linux.yml" "$manifests_dir/"
+          fi
+
+          if [[ "${{ needs.publish-windows.result }}" == "success" ]]; then
+            cp "windows-manifest/${RELEASE_CHANNEL}.yml" "$manifests_dir/"
+          fi
+
           shopt -s nullglob
-          files=( ./*.yml )
+          files=( "$manifests_dir"/*.yml )
           if (( ${#files[@]} == 0 )); then
-            echo "::error::No manifests matched ${RELEASE_CHANNEL}*.yml on $RELEASE_TAG"
+            echo "::error::No manifest artifacts were available to publish"
             exit 1
           fi
           timestamp="$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")"
