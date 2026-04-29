@@ -177,7 +177,10 @@ jobs:
         run: |
           set -euo pipefail
           release_dir="${DESKTOP_PACKAGE_PATH}/release"
-          mapfile -d '' files < <(find "$release_dir" -maxdepth 1 -type f ! -name '*.yml' -print0 | sort -z)
+          files=()
+          while IFS= read -r -d '' f; do
+            files+=("$f")
+          done < <(find "$release_dir" -maxdepth 1 -type f ! -name '*.yml' -print0 | sort -z)
           if (( ${#files[@]} == 0 )); then
             echo "::error::No release artifacts found in $release_dir"
             exit 1
@@ -267,7 +270,10 @@ jobs:
         run: |
           set -euo pipefail
           release_dir="${DESKTOP_PACKAGE_PATH}/release"
-          mapfile -d '' files < <(find "$release_dir" -maxdepth 1 -type f ! -name '*.yml' -print0 | sort -z)
+          files=()
+          while IFS= read -r -d '' f; do
+            files+=("$f")
+          done < <(find "$release_dir" -maxdepth 1 -type f ! -name '*.yml' -print0 | sort -z)
           if (( ${#files[@]} == 0 )); then
             echo "::error::No release artifacts found in $release_dir"
             exit 1
@@ -362,7 +368,10 @@ jobs:
         run: |
           set -euo pipefail
           release_dir="${DESKTOP_PACKAGE_PATH}/release"
-          mapfile -d '' files < <(find "$release_dir" -maxdepth 1 -type f ! -name '*.yml' -print0 | sort -z)
+          files=()
+          while IFS= read -r -d '' f; do
+            files+=("$f")
+          done < <(find "$release_dir" -maxdepth 1 -type f ! -name '*.yml' -print0 | sort -z)
           if (( ${#files[@]} == 0 )); then
             echo "::error::No release artifacts found in $release_dir"
             exit 1
