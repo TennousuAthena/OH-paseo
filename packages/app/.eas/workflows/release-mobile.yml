@@ -5,6 +5,7 @@ on:
     tags:
       - "v*"
       - "!v*-rc.*"
+      - "!v*-beta.*"
   workflow_dispatch: {}
 
 jobs:
