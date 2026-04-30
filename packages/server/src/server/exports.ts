@@ -4,7 +4,12 @@ export { loadConfig, type CliConfigOverrides } from "./config.js";
 export { resolvePaseoHome } from "./paseo-home.js";
 export { getOrCreateServerId } from "./server-id.js";
 export { createRootLogger, type LogLevel, type LogFormat } from "./logger.js";
-export { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
+export {
+  loadPersistedConfig,
+  savePersistedConfig,
+  type PersistedConfig,
+} from "./persisted-config.js";
+export { hashDaemonPassword, isBearerTokenValid } from "./auth.js";
 export { generateLocalPairingOffer, type LocalPairingOffer } from "./pairing-offer.js";
 export {
   ConnectionOfferSchema,
@@ -20,6 +25,18 @@ export {
   type DaemonEvent,
 } from "../client/daemon-client.js";
 export type { WebSocketFactory, WebSocketLike } from "../client/daemon-client-transport-types.js";
+export {
+  buildDaemonWebSocketUrl,
+  deriveLabelFromEndpoint,
+  normalizeHostPort,
+  parseConnectionUri,
+  shouldUseTlsForDefaultHostedRelay,
+} from "../shared/daemon-endpoints.js";
+export {
+  DirectTcpHostConnectionSchema,
+  type DirectTcpHostConnection,
+  type NormalizedDirectTcpHostConnection,
+} from "../shared/host-connection-schema.js";
 export {
   ensureLocalSpeechModels,
   listLocalSpeechModels,

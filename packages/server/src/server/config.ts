@@ -11,6 +11,7 @@ import type {
 } from "./agent/provider-launch-config.js";
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
 import { AgentProviderSchema } from "./agent/provider-manifest.js";
+import { hashDaemonPassword } from "./auth.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
 
@@ -184,6 +185,19 @@ function resolveListenAddress(
   );
 }
 
+function resolveAuthConfig(
+  env: NodeJS.ProcessEnv,
+  persisted: ReturnType<typeof loadPersistedConfig>,
+): PaseoDaemonConfig["auth"] {
+  const envPassword = env.PASEO_PASSWORD?.trim();
+  if (envPassword) {
+    return { password: hashDaemonPassword(envPassword) };
+  }
+  return persisted.daemon?.auth?.password
+    ? { password: persisted.daemon.auth.password }
+    : undefined;
+}
+
 function resolveStaticLoadConfigSettings(
   env: NodeJS.ProcessEnv,
   cli: CliConfigOverrides | undefined,
@@ -249,6 +263,7 @@ export function loadConfig(
     relayEndpoint: relay.endpoint,
     relayPublicEndpoint: relay.publicEndpoint,
     appBaseUrl,
+    auth: resolveAuthConfig(env, persisted),
     openai,
     speech,
     voiceLlmProvider: voiceLlm.provider,
