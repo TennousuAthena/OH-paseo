@@ -133,6 +133,7 @@ import type {
   AgentRunOptions,
   AgentSessionConfig,
   AgentStreamEvent,
+  AgentTimelineItem,
   ProviderSnapshotEntry,
 } from "./agent/agent-sdk-types.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
@@ -415,6 +416,19 @@ export function resolveCreateAgentTitles(options: {
     explicitTitle,
     provisionalTitle,
   };
+}
+
+function getFirstUserMessageText(timeline: readonly AgentTimelineItem[]): string | null {
+  for (const item of timeline) {
+    if (item.type !== "user_message") {
+      continue;
+    }
+    const text = item.text.trim();
+    if (text) {
+      return text;
+    }
+  }
+  return null;
 }
 
 function parseFetchWorkspacesCursorSort(raw: unknown[]): FetchWorkspacesRequestSort[] {
@@ -3329,6 +3343,7 @@ export class Session {
       );
       await unarchiveAgentState(this.agentStorage, this.agentManager, snapshot.id);
       await this.agentManager.hydrateTimelineFromProvider(snapshot.id);
+      await this.applyImportedAgentTitle(snapshot);
       await this.forwardAgentUpdate(snapshot);
       const timelineSize = this.agentManager.getTimeline(snapshot.id).length;
       const agentPayload = await this.buildAgentPayload(snapshot);
@@ -3363,6 +3378,31 @@ export class Session {
         },
       });
     }
+  }
+
+  private async applyImportedAgentTitle(snapshot: ManagedAgent): Promise<void> {
+    const initialPrompt = getFirstUserMessageText(this.agentManager.getTimeline(snapshot.id));
+    if (!initialPrompt) {
+      return;
+    }
+
+    const { explicitTitle, provisionalTitle } = resolveCreateAgentTitles({
+      configTitle: snapshot.config.title,
+      initialPrompt,
+    });
+    if (!explicitTitle && provisionalTitle) {
+      await this.agentManager.setTitle(snapshot.id, provisionalTitle);
+    }
+
+    scheduleAgentMetadataGeneration({
+      agentManager: this.agentManager,
+      agentId: snapshot.id,
+      cwd: snapshot.cwd,
+      initialPrompt,
+      explicitTitle,
+      paseoHome: this.paseoHome,
+      logger: this.sessionLogger,
+    });
   }
 
   private async handleRefreshAgentRequest(

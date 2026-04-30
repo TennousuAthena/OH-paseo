@@ -418,7 +418,7 @@ class FakeAgentSession implements AgentSession {
 
   private async emitSlashCommandTurn(slashCommand: {
     commandName: string;
-    args: string;
+    args?: string;
   }): Promise<void> {
     const threadStarted: AgentStreamEvent = {
       type: "thread_started",
