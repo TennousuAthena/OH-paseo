@@ -115,7 +115,8 @@ import { DaemonConfigStore } from "./daemon-config-store.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
 import { archivePersistedWorkspaceRecord } from "./workspace-archive-service.js";
 import { wrapSessionMessage, type SessionOutboundMessage } from "./messages.js";
-import { createTerminalManager, type TerminalManager } from "../terminal/terminal-manager.js";
+import type { TerminalManager } from "../terminal/terminal-manager.js";
+import { createConfiguredTerminalManager } from "../terminal/terminal-manager-factory.js";
 import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { startRelayTransport, type RelayTransportController } from "./relay-transport.js";
@@ -434,7 +435,7 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     logger,
   });
-  const terminalManager = createTerminalManager();
+  const terminalManager = createConfiguredTerminalManager();
   const github = createGitHubService();
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger,

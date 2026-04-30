@@ -1,0 +1,211 @@
+import { afterEach, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { createWorkerTerminalManager } from "./worker-terminal-manager.js";
+import type { TerminalManager } from "./terminal-manager.js";
+import type { TerminalSession } from "./terminal.js";
+import type { TerminalState } from "../shared/messages.js";
+import type {
+  TerminalWorkerRequest,
+  TerminalWorkerToParentMessage,
+} from "./terminal-worker-protocol.js";
+
+async function waitForCondition(
+  predicate: () => boolean,
+  timeoutMs: number,
+  intervalMs = 25,
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`Timed out after ${timeoutMs}ms waiting for condition`);
+}
+
+async function withShell<T>(shell: string, run: () => Promise<T>): Promise<T> {
+  const originalShell = process.env.SHELL;
+  process.env.SHELL = shell;
+  try {
+    return await run();
+  } finally {
+    if (originalShell === undefined) {
+      delete process.env.SHELL;
+    } else {
+      process.env.SHELL = originalShell;
+    }
+  }
+}
+
+function getVisibleText(session: TerminalSession): string {
+  return session
+    .getState()
+    .grid.map((row) =>
+      row
+        .map((cell) => cell.char)
+        .join("")
+        .trimEnd(),
+    )
+    .join("\n");
+}
+
+function createTerminalState(): TerminalState {
+  const blankCell = { char: " " };
+  return {
+    rows: 1,
+    cols: 1,
+    grid: [[blankCell]],
+    scrollback: [],
+    cursor: { row: 0, col: 0 },
+  };
+}
+
+class FakeTerminalWorker extends EventEmitter {
+  connected = true;
+  killed = false;
+  readonly sentMessages: TerminalWorkerRequest[] = [];
+
+  send(message: TerminalWorkerRequest, callback: (error: Error | null) => void): boolean {
+    this.sentMessages.push(message);
+    callback(null);
+    return true;
+  }
+
+  disconnect(): void {
+    this.connected = false;
+    this.emit("exit", 0, null);
+  }
+
+  kill(): boolean {
+    this.killed = true;
+    this.connected = false;
+    this.emit("exit", 0, null);
+    return true;
+  }
+
+  emitWorkerMessage(message: TerminalWorkerToParentMessage): void {
+    this.emit("message", message);
+  }
+}
+
+let manager: TerminalManager | null = null;
+const temporaryDirs: string[] = [];
+
+afterEach(() => {
+  manager?.killAll();
+  manager = null;
+  while (temporaryDirs.length > 0) {
+    const dir = temporaryDirs.pop();
+    if (dir) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+it("creates a terminal through the worker and streams output", async () => {
+  await withShell("/bin/sh", async () => {
+    manager = createWorkerTerminalManager();
+    const session = await manager.createTerminal({ cwd: "/tmp", env: { PS1: "$ " } });
+    const messages: string[] = [];
+    let snapshots = 0;
+    const unsubscribe = session.subscribe((message) => {
+      if (message.type === "output") {
+        messages.push(message.data);
+      }
+      if (message.type === "snapshot") {
+        snapshots += 1;
+      }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const snapshotsBeforeOutput = snapshots;
+
+    session.send({ type: "input", data: "printf worker-output\\r" });
+
+    await waitForCondition(
+      () =>
+        messages.join("").includes("worker-output") ||
+        getVisibleText(session).includes("worker-output"),
+      10000,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    unsubscribe();
+
+    expect(messages.join("") + getVisibleText(session)).toContain("worker-output");
+    expect(snapshots).toBe(snapshotsBeforeOutput);
+  });
+});
+
+it("does not surface fire-and-forget send timeouts as unhandled rejections", async () => {
+  const worker = new FakeTerminalWorker();
+  manager = createWorkerTerminalManager({
+    requestTimeoutMs: 5,
+    forkWorker: () => worker,
+  });
+
+  worker.emitWorkerMessage({
+    type: "terminalCreated",
+    terminal: { id: "terminal-1", name: "Terminal", cwd: "/tmp" },
+    state: createTerminalState(),
+  });
+  const session = manager.getTerminal("terminal-1");
+  expect(session).toBeDefined();
+
+  const unhandledRejections: unknown[] = [];
+  const onUnhandledRejection = (reason: unknown) => {
+    unhandledRejections.push(reason);
+  };
+  process.on("unhandledRejection", onUnhandledRejection);
+  try {
+    session?.send({ type: "input", data: "x" });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  } finally {
+    process.off("unhandledRejection", onUnhandledRejection);
+  }
+
+  expect(worker.sentMessages.some((message) => message.type === "send")).toBe(true);
+  expect(unhandledRejections).toEqual([]);
+});
+
+it("keeps registered cwd env inheritance behind the worker manager interface", async () => {
+  await withShell("/bin/sh", async () => {
+    manager = createWorkerTerminalManager();
+    const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-env-"));
+    temporaryDirs.push(cwd);
+    const markerPath = join(cwd, "env.txt");
+
+    manager.registerCwdEnv({
+      cwd,
+      env: { PASEO_WORKER_TERMINAL_TEST: "worker-env" },
+    });
+    const session = await manager.createTerminal({ cwd, env: { PS1: "$ " } });
+    session.send({
+      type: "input",
+      data: `printf '%s' "$PASEO_WORKER_TERMINAL_TEST" > ${JSON.stringify(markerPath)}\r`,
+    });
+
+    await waitForCondition(() => existsSync(markerPath), 10000);
+
+    expect(readFileSync(markerPath, "utf8")).toBe("worker-env");
+  });
+});
+
+it("removes worker terminals after killAndWait", async () => {
+  await withShell("/bin/sh", async () => {
+    manager = createWorkerTerminalManager();
+    const session = await manager.createTerminal({ cwd: "/tmp", env: { PS1: "$ " } });
+
+    await manager.killTerminalAndWait(session.id, {
+      gracefulTimeoutMs: 1000,
+      forceTimeoutMs: 500,
+    });
+
+    await waitForCondition(() => manager?.getTerminal(session.id) === undefined, 5000);
+
+    expect(manager.getTerminal(session.id)).toBeUndefined();
+    expect(manager.listDirectories()).not.toContain("/tmp");
+  });
+});
