@@ -2410,41 +2410,36 @@ export async function codexAppServerTurnInputFromPrompt(
     return [{ type: "text", text: prompt }];
   }
 
-  const blocks = prompt as Array<unknown>;
-  const output = await Promise.all(
-    blocks.map(async (block) => {
-      if (!block || typeof block !== "object") {
-        return block;
-      }
-      const record = block as { type?: unknown; mimeType?: unknown; data?: unknown };
-      if (
-        record.type === "image" &&
-        typeof record.mimeType === "string" &&
-        typeof record.data === "string"
-      ) {
-        try {
-          const filePath = await writeImageAttachment(record.mimeType, record.data);
-          return { type: "localImage", path: filePath };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          logger.warn({ message }, "Failed to write Codex image attachment");
-          return {
-            type: "text",
-            text: `User attached image (failed to write temp file): ${message}`,
-          };
-        }
-      }
-      if (record.type === "github_pr" || record.type === "github_issue") {
-        return {
+  const output: unknown[] = [];
+  let previousTextBlock = false;
+  for (const block of prompt) {
+    if (block.type === "text") {
+      output.push(block);
+      previousTextBlock = block.text.length > 0;
+      continue;
+    }
+    if (block.type === "image") {
+      try {
+        const filePath = await writeImageAttachment(block.mimeType, block.data);
+        output.push({ type: "localImage", path: filePath });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn({ message }, "Failed to write Codex image attachment");
+        output.push({
           type: "text",
-          text: renderPromptAttachmentAsText(
-            record as Extract<AgentPromptContentBlock, { type: "github_pr" | "github_issue" }>,
-          ),
-        };
+          text: `User attached image (failed to write temp file): ${message}`,
+        });
       }
-      return block;
-    }),
-  );
+      previousTextBlock = false;
+      continue;
+    }
+    const attachmentText = renderPromptAttachmentAsText(block);
+    output.push({
+      type: "text",
+      text: previousTextBlock ? `\n\n${attachmentText}` : attachmentText,
+    });
+    previousTextBlock = true;
+  }
   return output;
 }
 

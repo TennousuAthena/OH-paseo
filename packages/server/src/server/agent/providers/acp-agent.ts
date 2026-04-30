@@ -2091,19 +2091,21 @@ function toACPContentBlocks(prompt: AgentPromptInput): ContentBlock[] {
     return [{ type: "text", text: prompt }];
   }
 
-  return prompt.map((block: AgentPromptContentBlock) => {
-    if (block.type === "text") {
-      return { type: "text", text: block.text };
+  const contentBlocks: ContentBlock[] = [];
+  for (const block of prompt) {
+    switch (block.type) {
+      case "text":
+        contentBlocks.push({ type: "text", text: block.text });
+        break;
+      case "image":
+        contentBlocks.push({ type: "image", data: block.data, mimeType: block.mimeType });
+        break;
+      default:
+        contentBlocks.push({ type: "text", text: renderPromptAttachmentAsText(block) });
+        break;
     }
-    if (block.type === "github_pr" || block.type === "github_issue") {
-      return { type: "text", text: renderPromptAttachmentAsText(block) };
-    }
-    return {
-      type: "image",
-      data: block.data,
-      mimeType: block.mimeType,
-    };
-  });
+  }
+  return contentBlocks;
 }
 
 function extractPromptText(prompt: AgentPromptInput): string {
