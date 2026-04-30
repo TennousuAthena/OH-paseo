@@ -128,7 +128,13 @@ exports.default = async function afterPack(context) {
   pruneNativeModules(context.appOutDir, platform, arch);
 
   if (platform === "linux" || platform === "win32") {
-    await smokeUnpackedAppIfRequested(context.appOutDir);
+    if (arch !== process.arch) {
+      console.log(
+        `Skipping packaged-app smoke: build arch ${arch} differs from host ${process.arch}.`,
+      );
+    } else {
+      await smokeUnpackedAppIfRequested(context.appOutDir);
+    }
   }
 };
 
