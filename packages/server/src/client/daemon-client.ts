@@ -2759,7 +2759,7 @@ export class DaemonClient {
         branchName: input.branchName,
       },
       responseType: "paseo_worktree_archive_response",
-      timeout: 20000,
+      timeout: 60000,
     });
   }
 
