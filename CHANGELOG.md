@@ -5,6 +5,7 @@
 ### Added
 
 - **Windows:** Native ARM64 builds are now available for Snapdragon X / Copilot+ PCs.
+- Pull and push your branch in one step from the git actions menu in the changes pane.
 - Images in assistant messages show a loading spinner while they load and an "Image unavailable" fallback if they fail, instead of a blank space.
 
 ### Fixed
