@@ -746,6 +746,7 @@ interface GitDiffPaneProps {
   workspaceId?: string | null;
   cwd: string;
   hideHeaderRow?: boolean;
+  enabled?: boolean;
 }
 
 type PressableStyleFn = (
@@ -1489,7 +1490,17 @@ function buildGitActionsForPane({
   });
 }
 
-export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDiffPaneProps) {
+function shouldEnableCheckoutDiff(input: { paneEnabled: boolean; isGit: boolean }): boolean {
+  return input.paneEnabled && input.isGit;
+}
+
+export function GitDiffPane({
+  serverId,
+  workspaceId,
+  cwd,
+  hideHeaderRow,
+  enabled = true,
+}: GitDiffPaneProps) {
   const { theme } = useUnistyles();
   const toast = useToast();
   const isMobile = useIsCompactFormFactor();
@@ -1594,7 +1605,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
     mode: diffMode,
     baseRef,
     ignoreWhitespace: changesPreferences.hideWhitespace,
-    enabled: isGit,
+    enabled: shouldEnableCheckoutDiff({ paneEnabled: enabled, isGit }),
   });
   const {
     status: prStatus,

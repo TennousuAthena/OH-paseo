@@ -1,7 +1,5 @@
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useMemo } from "react";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { selectIsFileExplorerOpen, usePanelStore } from "@/stores/panel-store";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import type { SubscribeCheckoutDiffResponse } from "@server/shared/messages";
 import { orderCheckoutDiffFiles } from "./checkout-diff-order";
@@ -58,9 +56,6 @@ export function useCheckoutDiffQuery({
   const queryClient = useQueryClient();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const isMobile = useIsCompactFormFactor();
-  const explorerTab = usePanelStore((state) => state.explorerTab);
-  const isOpen = usePanelStore((state) => selectIsFileExplorerOpen(state, { isCompact: isMobile }));
   const hookInstanceId = useId();
   const normalizedCompare = useMemo(
     () => normalizeCheckoutDiffCompare({ mode, baseRef, ignoreWhitespace }),
@@ -82,9 +77,6 @@ export function useCheckoutDiffQuery({
 
   useEffect(() => {
     if (!client || !isConnected || !cwd || !enabled) {
-      return;
-    }
-    if (!isOpen || explorerTab !== "changes") {
       return;
     }
 
@@ -173,8 +165,6 @@ export function useCheckoutDiffQuery({
     isConnected,
     cwd,
     enabled,
-    isOpen,
-    explorerTab,
     hookInstanceId,
     serverId,
     compareMode,
