@@ -6,13 +6,19 @@ import { getStarCount } from "~/stars";
 
 interface ReleaseContext {
   version: string;
+  windowsX64Asset: string | null;
+  windowsArm64Asset: string | null;
 }
 
 interface StarsContext {
   stars: string;
 }
 
-const ReleaseCtx = createContext<ReleaseContext>({ version: "" });
+const ReleaseCtx = createContext<ReleaseContext>({
+  version: "",
+  windowsX64Asset: null,
+  windowsArm64Asset: null,
+});
 const StarsCtx = createContext<StarsContext>({ stars: "" });
 
 const PLAUSIBLE_INIT_SCRIPT = {

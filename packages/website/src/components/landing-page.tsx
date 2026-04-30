@@ -1030,9 +1030,9 @@ function GetStarted() {
 }
 
 function DownloadButton() {
-  const { version } = useRelease();
+  const release = useRelease();
   const detectedPlatform = useDetectedPlatform();
-  const primary = getDownloadOptions(version).find((o) => o.platform === detectedPlatform)!;
+  const primary = getDownloadOptions(release).find((o) => o.platform === detectedPlatform)!;
   const PrimaryIcon = primary.icon;
 
   return (

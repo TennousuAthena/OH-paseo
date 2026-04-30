@@ -33,8 +33,9 @@ const homebrewTrigger = (
 );
 
 function Download() {
-  const { version } = useRelease();
-  const urls = downloadUrls(version);
+  const release = useRelease();
+  const { version } = release;
+  const urls = downloadUrls(release);
 
   return (
     <div className="min-h-screen bg-background">
@@ -130,7 +131,11 @@ function Download() {
                 <span className="font-medium">Windows</span>
               </div>
               <div className="flex flex-wrap gap-2">
-                <DownloadPill href={urls.windowsExe} label="Download" />
+                <DownloadPill
+                  href={urls.windowsExeX64}
+                  label={urls.windowsExeArm64 ? "Intel / x64" : "Download"}
+                />
+                {urls.windowsExeArm64 && <DownloadPill href={urls.windowsExeArm64} label="ARM64" />}
               </div>
             </div>
 

@@ -355,7 +355,7 @@ jobs:
           PASEO_DESKTOP_SMOKE: "1"
         run: |
           set -euo pipefail
-          build_args=(-- --publish never --win --x64)
+          build_args=(-- --publish never --win --x64 --arm64)
           build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
           build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
           npm run build --workspace="$DESKTOP_WORKSPACE" "${build_args[@]}"
