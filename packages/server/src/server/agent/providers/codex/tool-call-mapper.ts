@@ -16,6 +16,7 @@ interface CodexMapperOptions {
 const CodexCommandValueSchema = z.union([z.string(), z.array(z.string())]);
 
 const CodexToolCallStatusSchema = z.enum(["running", "completed", "failed", "canceled"]);
+type CodexToolCallStatus = z.infer<typeof CodexToolCallStatusSchema>;
 
 const CodexRolloutToolCallParamsSchema = z
   .object({
@@ -38,117 +39,44 @@ interface CodexNormalizedToolCallEnvelope {
   cwd?: string | null;
 }
 
-const CodexNormalizedToolCallPass1Schema = z
-  .object({
-    callId: z.string().min(1),
-    name: z.string().min(1),
-    input: z.unknown().nullable(),
-    output: z.unknown().nullable(),
-    status: CodexToolCallStatusSchema,
-    error: z.unknown().nullable(),
-    metadata: z.record(z.string(), z.unknown()).optional(),
-    cwd: z.string().nullable().optional(),
-  })
-  .passthrough();
+type CodexToolKind = "shell" | "read" | "write" | "edit" | "search" | "speak" | "unknown";
 
-const CodexShellToolNameSchema = z.union([
-  z.literal("Bash"),
-  z.literal("shell"),
-  z.literal("bash"),
-  z.literal("exec"),
-  z.literal("exec_command"),
-  z.literal("command"),
-]);
-const CodexReadToolNameSchema = z.union([z.literal("read"), z.literal("read_file")]);
-const CodexWriteToolNameSchema = z.union([
-  z.literal("write"),
-  z.literal("write_file"),
-  z.literal("create_file"),
-]);
-const CodexEditToolNameSchema = z.union([
-  z.literal("edit"),
-  z.literal("apply_patch"),
-  z.literal("apply_diff"),
-]);
-const CodexSearchToolNameSchema = z.union([z.literal("search"), z.literal("web_search")]);
-const CodexSpeakToolNameSchema = z
-  .string()
-  .min(1)
-  .refine((name) => isSpeakToolName(name.trim()));
-
-const CodexToolKindSchema = z.enum([
+const CODEX_SHELL_NAMES: ReadonlySet<string> = new Set([
+  "Bash",
   "shell",
-  "read",
-  "write",
-  "edit",
-  "search",
-  "speak",
-  "unknown",
+  "bash",
+  "exec",
+  "exec_command",
+  "command",
 ]);
+const CODEX_READ_NAMES: ReadonlySet<string> = new Set(["read", "read_file"]);
+const CODEX_WRITE_NAMES: ReadonlySet<string> = new Set(["write", "write_file", "create_file"]);
+const CODEX_EDIT_NAMES: ReadonlySet<string> = new Set(["edit", "apply_patch", "apply_diff"]);
+const CODEX_SEARCH_NAMES: ReadonlySet<string> = new Set(["search", "web_search"]);
 
-const CodexToolCallPass2BaseSchema = CodexNormalizedToolCallPass1Schema.extend({
-  toolKind: CodexToolKindSchema,
-});
+function resolveCodexToolKind(name: string): CodexToolKind {
+  if (CODEX_SHELL_NAMES.has(name)) return "shell";
+  if (CODEX_READ_NAMES.has(name)) return "read";
+  if (CODEX_WRITE_NAMES.has(name)) return "write";
+  if (CODEX_EDIT_NAMES.has(name)) return "edit";
+  if (CODEX_SEARCH_NAMES.has(name)) return "search";
+  if (isSpeakToolName(name)) return "speak";
+  return "unknown";
+}
 
-const CodexToolCallPass2EnvelopeSchema = z.union([
-  CodexNormalizedToolCallPass1Schema.extend({
-    name: CodexShellToolNameSchema,
-  }).transform((envelope) => ({ ...envelope, toolKind: "shell" as const })),
-  CodexNormalizedToolCallPass1Schema.extend({
-    name: CodexReadToolNameSchema,
-  }).transform((envelope) => ({ ...envelope, toolKind: "read" as const })),
-  CodexNormalizedToolCallPass1Schema.extend({
-    name: CodexWriteToolNameSchema,
-  }).transform((envelope) => ({ ...envelope, toolKind: "write" as const })),
-  CodexNormalizedToolCallPass1Schema.extend({
-    name: CodexEditToolNameSchema,
-  }).transform((envelope) => ({ ...envelope, toolKind: "edit" as const })),
-  CodexNormalizedToolCallPass1Schema.extend({
-    name: CodexSearchToolNameSchema,
-  }).transform((envelope) => ({ ...envelope, toolKind: "search" as const })),
-  CodexNormalizedToolCallPass1Schema.extend({
-    name: CodexSpeakToolNameSchema,
-  }).transform((envelope) => ({ ...envelope, toolKind: "speak" as const })),
-  CodexNormalizedToolCallPass1Schema.transform((envelope) => ({
-    ...envelope,
-    name: envelope.name.trim(),
-    toolKind: "unknown" as const,
-  })),
-]);
+interface CodexResolvedToolCall {
+  callId: string;
+  name: string;
+  toolKind: CodexToolKind;
+  input: unknown;
+  output: unknown;
+  status: CodexToolCallStatus;
+  error: unknown;
+  metadata?: Record<string, unknown>;
+  cwd: string | null;
+}
 
-const CodexNormalizedToolCallPass2Schema = z.discriminatedUnion("toolKind", [
-  CodexToolCallPass2BaseSchema.extend({
-    toolKind: z.literal("shell"),
-    name: CodexShellToolNameSchema,
-  }),
-  CodexToolCallPass2BaseSchema.extend({
-    toolKind: z.literal("read"),
-    name: CodexReadToolNameSchema,
-  }),
-  CodexToolCallPass2BaseSchema.extend({
-    toolKind: z.literal("write"),
-    name: CodexWriteToolNameSchema,
-  }),
-  CodexToolCallPass2BaseSchema.extend({
-    toolKind: z.literal("edit"),
-    name: CodexEditToolNameSchema,
-  }),
-  CodexToolCallPass2BaseSchema.extend({
-    toolKind: z.literal("search"),
-    name: CodexSearchToolNameSchema,
-  }),
-  CodexToolCallPass2BaseSchema.extend({
-    toolKind: z.literal("speak"),
-    name: CodexSpeakToolNameSchema,
-  }),
-  CodexToolCallPass2BaseSchema.extend({
-    toolKind: z.literal("unknown"),
-  }),
-]);
-
-type CodexNormalizedToolCallPass2 = z.infer<typeof CodexNormalizedToolCallPass2Schema>;
-
-function toToolCallTimelineItem(envelope: CodexNormalizedToolCallPass2): ToolCallTimelineItem {
+function toToolCallTimelineItem(envelope: CodexResolvedToolCall): ToolCallTimelineItem {
   const name = envelope.toolKind === "speak" ? ("speak" as const) : envelope.name;
   const parsedDetail = deriveCodexToolDetail({
     name,
@@ -574,15 +502,24 @@ function toNullableObject(value: Record<string, unknown>): Record<string, unknow
 function toToolCallFromNormalizedEnvelope(
   envelope: CodexNormalizedToolCallEnvelope,
 ): ToolCallTimelineItem | null {
-  const pass2Envelope = CodexToolCallPass2EnvelopeSchema.safeParse(envelope);
-  if (!pass2Envelope.success) {
+  if (envelope.callId.length === 0 || envelope.name.length === 0 || !envelope.status) {
     return null;
   }
-  const parsed = CodexNormalizedToolCallPass2Schema.safeParse(pass2Envelope.data);
-  if (!parsed.success) {
+  const trimmedName = envelope.name.trim();
+  if (trimmedName.length === 0) {
     return null;
   }
-  return toToolCallTimelineItem(parsed.data);
+  return toToolCallTimelineItem({
+    callId: envelope.callId,
+    name: trimmedName,
+    toolKind: resolveCodexToolKind(trimmedName),
+    input: envelope.input ?? null,
+    output: envelope.output ?? null,
+    status: envelope.status,
+    error: envelope.error ?? null,
+    ...(envelope.metadata ? { metadata: envelope.metadata } : {}),
+    cwd: envelope.cwd ?? null,
+  });
 }
 
 function mapCommandExecutionItem(
@@ -905,13 +842,20 @@ export function mapCodexRolloutToolCall(params: {
   }
 
   const normalizedName = parsed.data.name.trim();
+  if (normalizedName.length === 0) {
+    return null;
+  }
+  const callId = typeof parsed.data.callId === "string" ? parsed.data.callId.trim() : "";
+  if (callId.length === 0) {
+    return null;
+  }
   const normalizedInput =
     normalizedName === "apply_patch" || normalizedName === "apply_diff"
       ? normalizeRolloutEditInput(parsed.data.input ?? null)
       : (parsed.data.input ?? null);
 
-  const pass1 = CodexNormalizedToolCallPass1Schema.safeParse({
-    callId: typeof parsed.data.callId === "string" ? parsed.data.callId.trim() : "",
+  return toToolCallFromNormalizedEnvelope({
+    callId,
     name: normalizedName,
     input: normalizedInput,
     output: parsed.data.output ?? null,
@@ -923,14 +867,4 @@ export function mapCodexRolloutToolCall(params: {
     ),
     cwd: params.cwd ?? null,
   });
-  if (!pass1.success) {
-    return null;
-  }
-
-  const mapped = toToolCallFromNormalizedEnvelope(pass1.data);
-  if (!mapped) {
-    return null;
-  }
-
-  return mapped;
 }
