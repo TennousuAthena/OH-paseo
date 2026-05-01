@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ToolCallTimelineItem } from "../../agent-sdk-types.js";
+import { normalizeToolCallStatus } from "../tool-call-mapper-utils.js";
 import { deriveOpencodeToolDetail } from "./tool-call-detail-parser.js";
 
 interface OpencodeToolCallParams {
@@ -12,10 +13,6 @@ interface OpencodeToolCallParams {
   error?: unknown;
   metadata?: Record<string, unknown>;
 }
-
-const FAILED_STATUSES = new Set(["error", "failed", "failure"]);
-const CANCELED_STATUSES = new Set(["canceled", "cancelled", "aborted", "interrupted"]);
-const COMPLETED_STATUSES = new Set(["complete", "completed", "success", "succeeded", "done"]);
 
 const OpencodeToolCallStatusSchema = z.enum(["running", "completed", "failed", "canceled"]);
 
@@ -37,24 +34,8 @@ const OpencodeNormalizedToolCallPass1Schema = OpencodeRawToolCallSchema.transfor
   const error = raw.error ?? null;
   const callId =
     typeof raw.callId === "string" && raw.callId.trim().length > 0 ? raw.callId.trim() : null;
-  let status: z.infer<typeof OpencodeToolCallStatusSchema>;
-
-  if (error !== null) {
-    status = "failed";
-  } else if (typeof raw.status === "string") {
-    const normalized = raw.status.trim().toLowerCase();
-    if (FAILED_STATUSES.has(normalized)) {
-      status = "failed";
-    } else if (CANCELED_STATUSES.has(normalized)) {
-      status = "canceled";
-    } else if (COMPLETED_STATUSES.has(normalized)) {
-      status = "completed";
-    } else {
-      status = "running";
-    }
-  } else {
-    status = output !== null ? "completed" : "running";
-  }
+  const rawStatus = typeof raw.status === "string" ? raw.status : undefined;
+  const status = normalizeToolCallStatus(rawStatus, error, output);
 
   return {
     callId,

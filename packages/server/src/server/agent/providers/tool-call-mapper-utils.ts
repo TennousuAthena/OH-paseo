@@ -1,3 +1,44 @@
+export type NormalizedToolCallStatus = "running" | "completed" | "failed" | "canceled";
+
+const FAILED_STATUS_VOCAB = new Set([
+  "failed",
+  "failure",
+  "error",
+  "errored",
+  "rejected",
+  "denied",
+]);
+const CANCELED_STATUS_VOCAB = new Set(["canceled", "cancelled", "interrupted", "aborted"]);
+const COMPLETED_STATUS_VOCAB = new Set(["completed", "complete", "done", "success", "succeeded"]);
+
+export function normalizeToolCallStatus(
+  rawStatus: string | undefined | null,
+  error: unknown,
+  output: unknown,
+): NormalizedToolCallStatus {
+  if (error !== undefined && error !== null) {
+    return "failed";
+  }
+
+  if (typeof rawStatus === "string") {
+    const normalized = rawStatus.trim().toLowerCase();
+    if (normalized.length > 0) {
+      if (FAILED_STATUS_VOCAB.has(normalized)) {
+        return "failed";
+      }
+      if (CANCELED_STATUS_VOCAB.has(normalized)) {
+        return "canceled";
+      }
+      if (COMPLETED_STATUS_VOCAB.has(normalized)) {
+        return "completed";
+      }
+      return "running";
+    }
+  }
+
+  return output !== null && output !== undefined ? "completed" : "running";
+}
+
 interface ReadChunkLike {
   text?: string;
   content?: string;

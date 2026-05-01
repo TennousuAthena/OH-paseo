@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import type { ToolCallTimelineItem } from "../../agent-sdk-types.js";
-import { extractCodexShellOutput, truncateDiffText } from "../tool-call-mapper-utils.js";
+import {
+  extractCodexShellOutput,
+  normalizeToolCallStatus,
+  truncateDiffText,
+} from "../tool-call-mapper-utils.js";
 import { deriveCodexToolDetail, normalizeCodexFilePath } from "./tool-call-detail-parser.js";
 import { isSpeakToolName } from "../../tool-name-normalization.js";
 
@@ -9,9 +13,6 @@ interface CodexMapperOptions {
   cwd?: string | null;
 }
 
-const FAILED_STATUSES = new Set(["failed", "error", "errored", "rejected", "denied"]);
-const CANCELED_STATUSES = new Set(["canceled", "cancelled", "interrupted", "aborted"]);
-const COMPLETED_STATUSES = new Set(["completed", "complete", "done", "success", "succeeded"]);
 const CodexCommandValueSchema = z.union([z.string(), z.array(z.string())]);
 
 const CodexToolCallStatusSchema = z.enum(["running", "completed", "failed", "canceled"]);
@@ -552,34 +553,6 @@ function hasRenderableEditDetail(detail: ToolCallTimelineItem["detail"]): boolea
   );
 }
 
-function resolveStatus(
-  rawStatus: string | undefined,
-  error: unknown,
-  output: unknown,
-): ToolCallTimelineItem["status"] {
-  if (error !== undefined && error !== null) {
-    return "failed";
-  }
-
-  if (typeof rawStatus === "string") {
-    const normalized = rawStatus.trim().toLowerCase();
-    if (normalized.length > 0) {
-      if (FAILED_STATUSES.has(normalized)) {
-        return "failed";
-      }
-      if (CANCELED_STATUSES.has(normalized)) {
-        return "canceled";
-      }
-      if (COMPLETED_STATUSES.has(normalized)) {
-        return "completed";
-      }
-      return "running";
-    }
-  }
-
-  return output !== null && output !== undefined ? "completed" : "running";
-}
-
 function buildMcpToolName(server: string | undefined, tool: string): string {
   const trimmedTool = tool.trim();
   if (!trimmedTool) {
@@ -633,7 +606,7 @@ function mapCommandExecutionItem(
 
   const name = "shell";
   const error = item.error ?? null;
-  const status = resolveStatus(item.status, error, output);
+  const status = normalizeToolCallStatus(item.status, error, output);
 
   return {
     callId: item.id,
@@ -808,7 +781,7 @@ function mapFileChangeItem(
 
   const name = "apply_patch";
   const error = item.error ?? null;
-  const status = resolveStatus(item.status, error, output);
+  const status = normalizeToolCallStatus(item.status, error, output);
   const firstFile = files[0];
   const firstTextFields = resolveFileChangeTextFields(firstFile);
   const hasFirstTextFields = Object.keys(firstTextFields).length > 0;
@@ -846,7 +819,7 @@ function mapMcpToolCallItem(
   const input = item.arguments ?? null;
   const output = item.result ?? null;
   const error = item.error ?? null;
-  const status = resolveStatus(item.status, error, output);
+  const status = normalizeToolCallStatus(item.status, error, output);
 
   return {
     callId: item.id,
@@ -866,7 +839,7 @@ function mapWebSearchItem(
   const output = item.action ?? null;
   const name = "web_search";
   const error = item.error ?? null;
-  const status = resolveStatus(item.status ?? "completed", error, output);
+  const status = normalizeToolCallStatus(item.status ?? "completed", error, output);
 
   return {
     callId: item.id,
@@ -943,7 +916,11 @@ export function mapCodexRolloutToolCall(params: {
     input: normalizedInput,
     output: parsed.data.output ?? null,
     error: parsed.data.error ?? null,
-    status: resolveStatus("completed", parsed.data.error ?? null, parsed.data.output ?? null),
+    status: normalizeToolCallStatus(
+      "completed",
+      parsed.data.error ?? null,
+      parsed.data.output ?? null,
+    ),
     cwd: params.cwd ?? null,
   });
   if (!pass1.success) {
