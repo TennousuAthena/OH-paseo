@@ -35,7 +35,8 @@ import {
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { TerminalSessionController } from "../terminal/terminal-session-controller.js";
 import type { TerminalStreamFrame } from "../shared/terminal-stream-protocol.js";
-import { CursorError, decodeCursor, encodeCursor } from "./pagination/cursor.js";
+import { CursorError } from "./pagination/cursor.js";
+import { SortablePager, type SortSpec } from "./pagination/sortable-pager.js";
 import { TTSManager } from "./agent/tts-manager.js";
 import { STTManager } from "./agent/stt-manager.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
@@ -473,11 +474,6 @@ interface AgentUpdatesSubscriptionState {
   isBootstrapping: boolean;
   pendingUpdatesByAgentId: Map<string, AgentUpdatePayload>;
 }
-interface FetchAgentsCursor {
-  sort: FetchAgentsRequestSort[];
-  values: Record<string, string | number | null>;
-  id: string;
-}
 type FetchWorkspacesRequestMessage = Extract<
   SessionInboundMessage,
   { type: "fetch_workspaces_request" }
@@ -502,12 +498,6 @@ interface WorkspaceUpdatesSubscriptionState {
   pendingUpdatesByWorkspaceId: Map<string, WorkspaceUpdatePayload>;
   lastEmittedByWorkspaceId: Map<string, WorkspaceUpdatePayload>;
 }
-interface FetchWorkspacesCursor {
-  sort: FetchWorkspacesRequestSort[];
-  values: Record<string, string | number | null>;
-  id: string;
-}
-
 function summarizeFetchWorkspacesEntries(entries: Iterable<FetchWorkspacesResponseEntry>): {
   count: number;
   projectIds: string[];
@@ -5744,26 +5734,6 @@ export class Session {
     return this.isProviderVisibleToClient(payload.provider) ? payload : null;
   }
 
-  private normalizeFetchAgentsSort(
-    sort: FetchAgentsRequestSort[] | undefined,
-  ): FetchAgentsRequestSort[] {
-    const fallback: FetchAgentsRequestSort[] = [{ key: "updated_at", direction: "desc" }];
-    if (!sort || sort.length === 0) {
-      return fallback;
-    }
-
-    const deduped: FetchAgentsRequestSort[] = [];
-    const seen = new Set<string>();
-    for (const entry of sort) {
-      if (seen.has(entry.key)) {
-        continue;
-      }
-      seen.add(entry.key);
-      deduped.push(entry);
-    }
-    return deduped.length > 0 ? deduped : fallback;
-  }
-
   private getStatusPriority(agent: AgentSnapshotPayload): number {
     const attentionReason = agent.attentionReason ?? null;
     const hasPendingPermission = (agent.pendingPermissions?.length ?? 0) > 0;
@@ -5780,115 +5750,6 @@ export class Session {
       return 3;
     }
     return 4;
-  }
-
-  private getFetchAgentsSortValue(
-    entry: FetchAgentsResponseEntry,
-    key: FetchAgentsRequestSort["key"],
-  ): string | number | null {
-    switch (key) {
-      case "status_priority":
-        return this.getStatusPriority(entry.agent);
-      case "created_at":
-        return Date.parse(entry.agent.createdAt);
-      case "updated_at":
-        return Date.parse(entry.agent.updatedAt);
-      case "title":
-        return entry.agent.title?.toLocaleLowerCase() ?? "";
-    }
-  }
-
-  private getFetchAgentsSortValueFromAgent(
-    agent: AgentSnapshotPayload,
-    key: FetchAgentsRequestSort["key"],
-  ): string | number | null {
-    switch (key) {
-      case "status_priority":
-        return this.getStatusPriority(agent);
-      case "created_at":
-        return Date.parse(agent.createdAt);
-      case "updated_at":
-        return Date.parse(agent.updatedAt);
-      case "title":
-        return agent.title?.toLocaleLowerCase() ?? "";
-    }
-  }
-
-  private compareSortValues(left: string | number | null, right: string | number | null): number {
-    if (left === right) {
-      return 0;
-    }
-    if (left === null) {
-      return -1;
-    }
-    if (right === null) {
-      return 1;
-    }
-    if (typeof left === "number" && typeof right === "number") {
-      return left < right ? -1 : 1;
-    }
-    return String(left).localeCompare(String(right));
-  }
-
-  private compareFetchAgentsAgents(
-    left: AgentSnapshotPayload,
-    right: AgentSnapshotPayload,
-    sort: FetchAgentsRequestSort[],
-  ): number {
-    for (const spec of sort) {
-      const leftValue = this.getFetchAgentsSortValueFromAgent(left, spec.key);
-      const rightValue = this.getFetchAgentsSortValueFromAgent(right, spec.key);
-      const base = this.compareSortValues(leftValue, rightValue);
-      if (base === 0) {
-        continue;
-      }
-      return spec.direction === "asc" ? base : -base;
-    }
-    return left.id.localeCompare(right.id);
-  }
-
-  private encodeFetchAgentsCursor(
-    entry: FetchAgentsResponseEntry,
-    sort: FetchAgentsRequestSort[],
-  ): string {
-    return encodeCursor(
-      entry,
-      sort,
-      (e) => e.agent.id,
-      (e, key) => this.getFetchAgentsSortValue(e, key),
-    );
-  }
-
-  private decodeFetchAgentsCursor(
-    cursor: string,
-    sort: FetchAgentsRequestSort[],
-  ): FetchAgentsCursor {
-    try {
-      return decodeCursor(cursor, sort, FETCH_AGENTS_SORT_KEYS, "fetch_agents");
-    } catch (error) {
-      if (error instanceof CursorError) {
-        throw new SessionRequestError("invalid_cursor", error.message);
-      }
-      throw error;
-    }
-  }
-
-  private compareAgentWithCursor(
-    agent: AgentSnapshotPayload,
-    cursor: FetchAgentsCursor,
-    sort: FetchAgentsRequestSort[],
-  ): number {
-    for (const spec of sort) {
-      const leftValue = this.getFetchAgentsSortValueFromAgent(agent, spec.key);
-      const rightValue =
-        cursor.values[spec.key] !== undefined ? (cursor.values[spec.key] ?? null) : null;
-      const base = this.compareSortValues(leftValue, rightValue);
-      if (base === 0) {
-        continue;
-      }
-      return spec.direction === "asc" ? base : -base;
-    }
-    return agent.id.localeCompare(cursor.id);
   }
 
   private async buildActiveProjectPlacementsByWorkspaceCwd(): Promise<
@@ -5976,7 +5837,7 @@ export class Session {
         ? { ...request.filter, includeArchived: true }
         : request.filter;
     const scope = request.type === "fetch_agents_request" ? request.scope : undefined;
-    const sort = this.normalizeFetchAgentsSort(request.sort);
+    const sort = this.agentsPager.normalizeSort(request.sort);
 
     let agents = await this.listAgentPayloads({
       labels: filter?.labels,
@@ -6008,12 +5869,12 @@ export class Session {
     };
 
     let candidates = [...agents];
-    candidates.sort((left, right) => this.compareFetchAgentsAgents(left, right, sort));
+    candidates.sort((left, right) => this.agentsPager.compare(left, right, sort));
     const cursorToken = request.page?.cursor;
     if (cursorToken) {
-      const cursor = this.decodeFetchAgentsCursor(cursorToken, sort);
+      const cursor = this.decodeAgentCursor(cursorToken, sort);
       candidates = candidates.filter(
-        (agent) => this.compareAgentWithCursor(agent, cursor, sort) > 0,
+        (agent) => this.agentsPager.compareWithCursor(agent, cursor, sort) > 0,
       );
     }
 
@@ -6030,7 +5891,7 @@ export class Session {
     const hasMore = matchedEntries.length > limit;
     const nextCursor =
       hasMore && pagedEntries.length > 0
-        ? this.encodeFetchAgentsCursor(pagedEntries[pagedEntries.length - 1], sort)
+        ? this.agentsPager.encode(pagedEntries[pagedEntries.length - 1].agent, sort)
         : null;
 
     return {
@@ -6050,6 +5911,75 @@ export class Session {
     attention: 3,
     done: 4,
   };
+
+  private readonly agentsPager = new SortablePager<
+    AgentSnapshotPayload,
+    FetchAgentsRequestSort["key"]
+  >({
+    validKeys: FETCH_AGENTS_SORT_KEYS,
+    defaultSort: [{ key: "updated_at", direction: "desc" }],
+    label: "fetch_agents",
+    getId: (agent) => agent.id,
+    getSortValue: (agent, key) => {
+      switch (key) {
+        case "status_priority":
+          return this.getStatusPriority(agent);
+        case "created_at":
+          return Date.parse(agent.createdAt);
+        case "updated_at":
+          return Date.parse(agent.updatedAt);
+        case "title":
+          return agent.title?.toLocaleLowerCase() ?? "";
+      }
+    },
+  });
+
+  private readonly workspacesPager = new SortablePager<
+    WorkspaceDescriptorPayload,
+    FetchWorkspacesRequestSort["key"]
+  >({
+    validKeys: FETCH_WORKSPACES_SORT_KEYS,
+    defaultSort: [{ key: "activity_at", direction: "desc" }],
+    label: "fetch_workspaces",
+    getId: (workspace) => workspace.id,
+    getSortValue: (workspace, key) => {
+      switch (key) {
+        case "status_priority":
+          return this.workspaceStatePriority[workspace.status];
+        case "activity_at":
+          return workspace.activityAt ? Date.parse(workspace.activityAt) : null;
+        case "name":
+          return workspace.name.toLocaleLowerCase();
+        case "project_id":
+          return workspace.projectId.toLocaleLowerCase();
+      }
+    },
+  });
+
+  private decodeAgentCursor(token: string, sort: SortSpec<FetchAgentsRequestSort["key"]>[]) {
+    try {
+      return this.agentsPager.decode(token, sort);
+    } catch (error) {
+      if (error instanceof CursorError) {
+        throw new SessionRequestError("invalid_cursor", error.message);
+      }
+      throw error;
+    }
+  }
+
+  private decodeWorkspaceCursor(
+    token: string,
+    sort: SortSpec<FetchWorkspacesRequestSort["key"]>[],
+  ) {
+    try {
+      return this.workspacesPager.decode(token, sort);
+    } catch (error) {
+      if (error instanceof CursorError) {
+        throw new SessionRequestError("invalid_cursor", error.message);
+      }
+      throw error;
+    }
+  }
 
   private deriveWorkspaceStateBucket(agent: AgentSnapshotPayload): WorkspaceStateBucket {
     const pendingPermissionCount = agent.pendingPermissions?.length ?? 0;
@@ -6332,102 +6262,6 @@ export class Session {
     );
   }
 
-  private normalizeFetchWorkspacesSort(
-    sort: FetchWorkspacesRequestSort[] | undefined,
-  ): FetchWorkspacesRequestSort[] {
-    const fallback: FetchWorkspacesRequestSort[] = [{ key: "activity_at", direction: "desc" }];
-    if (!sort || sort.length === 0) {
-      return fallback;
-    }
-    const deduped: FetchWorkspacesRequestSort[] = [];
-    const seen = new Set<string>();
-    for (const entry of sort) {
-      if (seen.has(entry.key)) {
-        continue;
-      }
-      seen.add(entry.key);
-      deduped.push(entry);
-    }
-    return deduped.length > 0 ? deduped : fallback;
-  }
-
-  private getFetchWorkspacesSortValue(
-    workspace: WorkspaceDescriptorPayload,
-    key: FetchWorkspacesRequestSort["key"],
-  ): string | number | null {
-    switch (key) {
-      case "status_priority":
-        return this.workspaceStatePriority[workspace.status];
-      case "activity_at":
-        return workspace.activityAt ? Date.parse(workspace.activityAt) : null;
-      case "name":
-        return workspace.name.toLocaleLowerCase();
-      case "project_id":
-        return workspace.projectId.toLocaleLowerCase();
-    }
-  }
-
-  private compareFetchWorkspacesEntries(
-    left: WorkspaceDescriptorPayload,
-    right: WorkspaceDescriptorPayload,
-    sort: FetchWorkspacesRequestSort[],
-  ): number {
-    for (const spec of sort) {
-      const leftValue = this.getFetchWorkspacesSortValue(left, spec.key);
-      const rightValue = this.getFetchWorkspacesSortValue(right, spec.key);
-      const base = this.compareSortValues(leftValue, rightValue);
-      if (base === 0) {
-        continue;
-      }
-      return spec.direction === "asc" ? base : -base;
-    }
-    return left.id.localeCompare(right.id);
-  }
-
-  private encodeFetchWorkspacesCursor(
-    entry: FetchWorkspacesResponseEntry,
-    sort: FetchWorkspacesRequestSort[],
-  ): string {
-    return encodeCursor(
-      entry,
-      sort,
-      (e) => e.id,
-      (e, key) => this.getFetchWorkspacesSortValue(e, key),
-    );
-  }
-
-  private decodeFetchWorkspacesCursor(
-    cursor: string,
-    sort: FetchWorkspacesRequestSort[],
-  ): FetchWorkspacesCursor {
-    try {
-      return decodeCursor(cursor, sort, FETCH_WORKSPACES_SORT_KEYS, "fetch_workspaces");
-    } catch (error) {
-      if (error instanceof CursorError) {
-        throw new SessionRequestError("invalid_cursor", error.message);
-      }
-      throw error;
-    }
-  }
-
-  private compareWorkspaceWithCursor(
-    workspace: WorkspaceDescriptorPayload,
-    cursor: FetchWorkspacesCursor,
-    sort: FetchWorkspacesRequestSort[],
-  ): number {
-    for (const spec of sort) {
-      const leftValue = this.getFetchWorkspacesSortValue(workspace, spec.key);
-      const rightValue =
-        cursor.values[spec.key] !== undefined ? (cursor.values[spec.key] ?? null) : null;
-      const base = this.compareSortValues(leftValue, rightValue);
-      if (base === 0) {
-        continue;
-      }
-      return spec.direction === "asc" ? base : -base;
-    }
-    return workspace.id.localeCompare(cursor.id);
-  }
-
   private matchesWorkspaceFilter(input: {
     workspace: WorkspaceDescriptorPayload;
     filter: FetchWorkspacesRequestFilter | undefined;
@@ -6467,18 +6301,18 @@ export class Session {
     pageInfo: FetchWorkspacesResponsePageInfo;
   }> {
     const filter = request.filter;
-    const sort = this.normalizeFetchWorkspacesSort(request.sort);
+    const sort = this.workspacesPager.normalizeSort(request.sort);
     let entries = await this.listWorkspaceDescriptors();
     const listedCount = entries.length;
     entries = entries.filter((workspace) => this.matchesWorkspaceFilter({ workspace, filter }));
     const filteredCount = entries.length;
-    entries.sort((left, right) => this.compareFetchWorkspacesEntries(left, right, sort));
+    entries.sort((left, right) => this.workspacesPager.compare(left, right, sort));
 
     const cursorToken = request.page?.cursor;
     if (cursorToken) {
-      const cursor = this.decodeFetchWorkspacesCursor(cursorToken, sort);
+      const cursor = this.decodeWorkspaceCursor(cursorToken, sort);
       entries = entries.filter(
-        (workspace) => this.compareWorkspaceWithCursor(workspace, cursor, sort) > 0,
+        (workspace) => this.workspacesPager.compareWithCursor(workspace, cursor, sort) > 0,
       );
     }
 
@@ -6487,7 +6321,7 @@ export class Session {
     const hasMore = entries.length > limit;
     const nextCursor =
       hasMore && pagedEntries.length > 0
-        ? this.encodeFetchWorkspacesCursor(pagedEntries[pagedEntries.length - 1], sort)
+        ? this.workspacesPager.encode(pagedEntries[pagedEntries.length - 1], sort)
         : null;
 
     this.sessionLogger.debug(
