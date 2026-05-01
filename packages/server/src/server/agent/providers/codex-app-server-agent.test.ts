@@ -983,6 +983,51 @@ describe("Codex app-server provider", () => {
     ]);
   });
 
+  test("emits a markdown divider when a new Codex assistant item starts after the previous one completed", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("item/agentMessage/delta", {
+      itemId: "assistant-item-3",
+      delta:
+        "I’m in the waiting phase now. The next read is intentionally delayed so we get meaningful CI state instead of churn.",
+    });
+    asInternals(session).handleNotification("item/completed", {
+      item: {
+        id: "assistant-item-3",
+        type: "agentMessage",
+        text: "I’m in the waiting phase now. The next read is intentionally delayed so we get meaningful CI state instead of churn.",
+      },
+    });
+    asInternals(session).handleNotification("item/agentMessage/delta", {
+      itemId: "assistant-item-4",
+      delta:
+        "CI is still cooking. I’m staying on the current run rather than jumping around, because the first red job will tell us exactly whether anything else needs work.",
+    });
+
+    expect(events).toEqual([
+      {
+        type: "timeline",
+        provider: "codex",
+        turnId: "test-turn",
+        item: {
+          type: "assistant_message",
+          text: "I’m in the waiting phase now. The next read is intentionally delayed so we get meaningful CI state instead of churn.",
+        },
+      },
+      {
+        type: "timeline",
+        provider: "codex",
+        turnId: "test-turn",
+        item: {
+          type: "assistant_message",
+          text: "\n\n---\n\nCI is still cooking. I’m staying on the current run rather than jumping around, because the first red job will tell us exactly whether anything else needs work.",
+        },
+      },
+    ]);
+  });
+
   test("streams Codex reasoning deltas and does not replay completed reasoning", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];

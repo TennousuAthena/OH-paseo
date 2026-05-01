@@ -69,6 +69,7 @@ const APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS = 2_000;
 const APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS = 1_000;
 const CODEX_PROVIDER = "codex" as const;
 const CODEX_IMAGE_ATTACHMENT_DIR = "paseo-attachments";
+const ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN = "\n\n---\n\n";
 const CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX =
   "The user approved the plan. Implement it now. Do not restate or revise the plan unless blocked.";
 
@@ -2539,6 +2540,7 @@ class CodexAppServerAgentSession implements AgentSession {
   private pendingReasoning = new Map<string, string[]>();
   private pendingCommandOutputDeltas = new Map<string, string[]>();
   private pendingFileChangeOutputDeltas = new Map<string, string[]>();
+  private pendingAssistantMessageBoundary = false;
   private terminalCommandByProcessId = new Map<string, string>();
   private pendingUnlabeledTerminalInteractions = new Set<string>();
   private emittedTerminalInteractionKeys = new Set<string>();
@@ -3633,11 +3635,21 @@ class CodexAppServerAgentSession implements AgentSession {
     if (parsed.kind === "agent_message_delta") {
       const prev = this.pendingAgentMessages.get(parsed.itemId) ?? "";
       this.pendingAgentMessages.set(parsed.itemId, prev + parsed.delta);
+      const isFirstDeltaForItem = prev.length === 0;
       this.emitEvent({
         type: "timeline",
         provider: CODEX_PROVIDER,
-        item: { type: "assistant_message", text: parsed.delta },
+        item: {
+          type: "assistant_message",
+          text:
+            isFirstDeltaForItem && this.pendingAssistantMessageBoundary
+              ? `${ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN}${parsed.delta}`
+              : parsed.delta,
+        },
       });
+      if (isFirstDeltaForItem) {
+        this.pendingAssistantMessageBoundary = false;
+      }
       return;
     }
     if (parsed.kind === "reasoning_delta") {
@@ -3714,6 +3726,7 @@ class CodexAppServerAgentSession implements AgentSession {
     this.pendingReasoning.clear();
     this.pendingCommandOutputDeltas.clear();
     this.pendingFileChangeOutputDeltas.clear();
+    this.pendingAssistantMessageBoundary = false;
     this.warnedIncompleteEditToolCallIds.clear();
   }
 
@@ -3893,6 +3906,9 @@ class CodexAppServerAgentSession implements AgentSession {
       return;
     }
     if (this.consumeStreamedTextCompletion(timelineItem, itemId)) {
+      if (timelineItem.type === "assistant_message") {
+        this.pendingAssistantMessageBoundary = true;
+      }
       if (itemId) {
         this.emittedItemCompletedIds.add(itemId);
         this.emittedItemStartedIds.delete(itemId);
@@ -3912,6 +3928,9 @@ class CodexAppServerAgentSession implements AgentSession {
       this.warnOnIncompleteEditToolCall(timelineItem, "item_completed", parsed.item);
     }
     this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
+    if (timelineItem.type === "assistant_message") {
+      this.pendingAssistantMessageBoundary = true;
+    }
     if (itemId) {
       this.emittedItemCompletedIds.add(itemId);
       this.emittedItemStartedIds.delete(itemId);
