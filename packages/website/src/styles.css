@@ -94,6 +94,16 @@
   margin-top: 0;
 }
 
+.docs-prose h1,
+.docs-prose h2,
+.docs-prose h3,
+.docs-prose h4,
+.docs-prose h5,
+.docs-prose h6 {
+  position: relative;
+  scroll-margin-top: 1.5rem;
+}
+
 .docs-prose h1 {
   color: var(--color-foreground);
   font-size: 1.875rem;
@@ -119,6 +129,39 @@
   font-weight: 500;
   margin-top: 1.5rem;
   margin-bottom: 0.75rem;
+}
+
+.docs-prose .heading-anchor {
+  position: absolute;
+  right: 100%;
+  top: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  padding-right: 0.375rem;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.4);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.docs-prose .heading-anchor:hover {
+  color: var(--color-foreground);
+}
+
+.docs-prose h1:hover .heading-anchor,
+.docs-prose h2:hover .heading-anchor,
+.docs-prose h3:hover .heading-anchor,
+.docs-prose h4:hover .heading-anchor,
+.docs-prose h5:hover .heading-anchor,
+.docs-prose h6:hover .heading-anchor,
+.docs-prose .heading-anchor:focus {
+  opacity: 1;
+}
+
+.docs-prose .heading-anchor-icon {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 400;
 }
 
 .docs-prose p {
