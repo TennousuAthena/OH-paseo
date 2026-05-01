@@ -87,14 +87,45 @@ class FakeTerminalWorker extends EventEmitter {
 
 let manager: TerminalManager | null = null;
 const temporaryDirs: string[] = [];
+const terminalSessions: TerminalSession[] = [];
 
-afterEach(() => {
+function trackTerminal(session: TerminalSession): TerminalSession {
+  terminalSessions.push(session);
+  return session;
+}
+
+async function removeTemporaryDir(dir: string): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  throw lastError;
+}
+
+afterEach(async () => {
+  const sessions = terminalSessions.splice(0);
+  await Promise.all(
+    sessions.map((session) =>
+      session
+        .killAndWait({
+          gracefulTimeoutMs: 1000,
+          forceTimeoutMs: 500,
+        })
+        .catch(() => {}),
+    ),
+  );
   manager?.killAll();
   manager = null;
   while (temporaryDirs.length > 0) {
     const dir = temporaryDirs.pop();
     if (dir) {
-      rmSync(dir, { recursive: true, force: true });
+      await removeTemporaryDir(dir);
     }
   }
 });
@@ -103,15 +134,17 @@ it("creates a terminal through the worker and streams output", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-output-"));
   temporaryDirs.push(cwd);
   manager = createWorkerTerminalManager();
-  const session = await manager.createTerminal({
-    cwd,
-    ...nodeTerminalCommand(`
+  const session = trackTerminal(
+    await manager.createTerminal({
+      cwd,
+      ...nodeTerminalCommand(`
       process.stdin.on("data", (chunk) => {
         process.stdout.write("worker-output:" + chunk.toString());
       });
       setInterval(() => {}, 1000);
     `),
-  });
+    }),
+  );
   const messages: string[] = [];
   let snapshots = 0;
   const unsubscribe = session.subscribe((message) => {
@@ -125,7 +158,7 @@ it("creates a terminal through the worker and streams output", async () => {
   await new Promise((resolve) => setTimeout(resolve, 100));
   const snapshotsBeforeOutput = snapshots;
 
-  session.send({ type: "input", data: "hello\n" });
+  session.send({ type: "input", data: "hello\r" });
 
   await waitForCondition(
     () =>
@@ -181,16 +214,18 @@ it("keeps registered cwd env inheritance behind the worker manager interface", a
     cwd,
     env: { PASEO_WORKER_TERMINAL_TEST: "worker-env" },
   });
-  await manager.createTerminal({
-    cwd,
-    ...nodeTerminalCommand(`
+  trackTerminal(
+    await manager.createTerminal({
+      cwd,
+      ...nodeTerminalCommand(`
       require("node:fs").writeFileSync(
         ${JSON.stringify(markerPath)},
         process.env.PASEO_WORKER_TERMINAL_TEST ?? "",
       );
       setInterval(() => {}, 1000);
     `),
-  });
+    }),
+  );
 
   await waitForCondition(() => existsSync(markerPath), 10000);
 
@@ -202,7 +237,7 @@ it("starts the default shell through the worker and accepts quoted commands", as
   const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-shell-"));
   temporaryDirs.push(cwd);
   const markerPath = join(cwd, "shell quoted marker.txt");
-  const session = await manager.createTerminal({ cwd });
+  const session = trackTerminal(await manager.createTerminal({ cwd }));
   const command = [
     "node",
     "-e",
@@ -220,15 +255,18 @@ it("removes worker terminals after killAndWait", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-kill-"));
   temporaryDirs.push(cwd);
   manager = createWorkerTerminalManager();
-  const session = await manager.createTerminal({
-    cwd,
-    ...nodeTerminalCommand("setInterval(() => {}, 1000);"),
-  });
+  const session = trackTerminal(
+    await manager.createTerminal({
+      cwd,
+      ...nodeTerminalCommand("setInterval(() => {}, 1000);"),
+    }),
+  );
 
   await manager.killTerminalAndWait(session.id, {
     gracefulTimeoutMs: 1000,
     forceTimeoutMs: 500,
   });
+  terminalSessions.splice(terminalSessions.indexOf(session), 1);
 
   await waitForCondition(() => manager?.getTerminal(session.id) === undefined, 5000);
 
