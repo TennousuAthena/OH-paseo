@@ -279,7 +279,7 @@ test.describe("Workspace setup streaming", () => {
       await page.getByTestId("workspace-scripts-button").click();
       await expect(page.getByTestId("workspace-scripts-menu")).toBeVisible({ timeout: 10_000 });
       await page.getByTestId("workspace-scripts-start-web").click();
-      await page.keyboard.press("Escape");
+      await page.getByTestId("workspace-scripts-menu-backdrop").click();
 
       const terminalTab = page.locator('[data-testid^="workspace-tab-terminal_"]').first();
       await expect(terminalTab).toBeVisible({ timeout: 30_000 });

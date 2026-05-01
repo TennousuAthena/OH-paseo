@@ -28,14 +28,12 @@ test.describe("Codex plan approval", () => {
       }
 
       const agent = await client.createAgent({
-        provider: "codex",
+        provider: "mock",
         cwd: repo.path,
         title: "Codex plan approval e2e",
-        model: "gpt-5.4-mini",
-        thinkingOptionId: "low",
-        featureValues: { plan_mode: true, fast_mode: true },
-        initialPrompt:
-          "Create a concise plan to add a README note. Present the plan only and wait for approval.",
+        modeId: "load-test",
+        model: "ten-second-stream",
+        initialPrompt: "Emit synthetic plan approval.",
       });
 
       const agentUrl = `${buildHostWorkspaceRoute(

@@ -99,6 +99,10 @@ interface AgentStreamStressRequest {
   coalesced: boolean;
 }
 
+function shouldEmitPlanApprovalPrompt(prompt: AgentPromptInput): boolean {
+  return /emit\s+(?:a\s+)?synthetic\s+plan\s+approval/i.test(promptToText(prompt));
+}
+
 function resolveModelProfile(modelId: string | null | undefined): {
   modelId: string;
   durationMs: number;
@@ -288,6 +292,7 @@ export class MockLoadTestAgentSession implements AgentSession {
   private readonly history: AgentStreamEvent[] = [];
   private readonly logger?: Logger;
   private activeTurn: ActiveTurn | null = null;
+  private pendingPermissions = new Map<string, AgentPermissionRequest>();
   private modeId: string | null;
   private modelId: string | null;
 
@@ -336,7 +341,9 @@ export class MockLoadTestAgentSession implements AgentSession {
 
     const largePayload = parseLargeAgentStreamPayloadPrompt(prompt);
     const stress = parseAgentStreamStressPrompt(prompt);
-    if (largePayload) {
+    if (shouldEmitPlanApprovalPrompt(prompt)) {
+      this.schedulePlanApprovalTurn(turn);
+    } else if (largePayload) {
       this.scheduleLargePayloadTurn(turn, largePayload);
     } else if (stress) {
       this.scheduleStressTurn(turn, stress);
@@ -381,13 +388,29 @@ export class MockLoadTestAgentSession implements AgentSession {
   }
 
   getPendingPermissions(): AgentPermissionRequest[] {
-    return [];
+    return Array.from(this.pendingPermissions.values());
   }
 
   async respondToPermission(
-    _requestId: string,
-    _response: AgentPermissionResponse,
+    requestId: string,
+    response: AgentPermissionResponse,
   ): Promise<AgentPermissionResult | void> {
+    if (!this.pendingPermissions.delete(requestId)) {
+      return undefined;
+    }
+
+    const turn = this.activeTurn;
+    this.emit({
+      type: "permission_resolved",
+      provider: this.provider,
+      requestId,
+      resolution: response,
+      ...(turn ? { turnId: turn.turnId } : {}),
+    });
+
+    if (turn) {
+      this.finishTurnWithText(turn, "Synthetic plan approval resolved");
+    }
     return undefined;
   }
 
@@ -455,6 +478,65 @@ export class MockLoadTestAgentSession implements AgentSession {
       this.emitStressTurn(turn, stress);
     }, 0);
     turn.timer.unref?.();
+  }
+
+  private schedulePlanApprovalTurn(turn: ActiveTurn): void {
+    turn.timer = setTimeout(() => {
+      this.emitPlanApprovalTurn(turn);
+    }, 0);
+    turn.timer.unref?.();
+  }
+
+  private emitPlanApprovalTurn(turn: ActiveTurn): void {
+    if (this.activeTurn !== turn) {
+      return;
+    }
+
+    this.clearTurnTimer(turn);
+    this.emit({
+      type: "turn_started",
+      provider: this.provider,
+      turnId: turn.turnId,
+    });
+
+    const request: AgentPermissionRequest = {
+      id: `mock-plan-${turn.turnId}`,
+      provider: this.provider,
+      name: "MockPlanApproval",
+      kind: "plan",
+      title: "Plan",
+      description: "Review the proposed plan before implementation starts.",
+      input: {
+        plan: "1. Add the README note.\n2. Keep the change scoped.\n3. Verify the diff.",
+      },
+      actions: [
+        {
+          id: "implement",
+          label: "Implement",
+          behavior: "allow",
+          variant: "primary",
+          intent: "implement",
+        },
+        {
+          id: "dismiss",
+          label: "Dismiss",
+          behavior: "deny",
+          variant: "secondary",
+          intent: "dismiss",
+        },
+      ],
+      metadata: {
+        source: "mock_plan_approval",
+      },
+    };
+
+    this.pendingPermissions.set(request.id, request);
+    this.emit({
+      type: "permission_requested",
+      provider: this.provider,
+      request,
+      turnId: turn.turnId,
+    });
   }
 
   private emitStressTurn(turn: ActiveTurn, stress: AgentStreamStressRequest): void {
@@ -695,11 +777,15 @@ export class MockLoadTestAgentSession implements AgentSession {
   }
 
   private finishTurn(turn: ActiveTurn): void {
-    this.activeTurn = null;
     this.emitTimeline(turn.turnId, {
       type: "assistant_message",
       text: "## Synthetic load test complete\n\nThe mock provider finished its foreground turn.\n",
     });
+    this.finishTurnWithText(turn, "Synthetic load test complete");
+  }
+
+  private finishTurnWithText(turn: ActiveTurn, finalText: string): void {
+    this.activeTurn = null;
     const usage = {
       inputTokens: turn.iteration * 32,
       outputTokens: turn.iteration * 128,
@@ -714,7 +800,7 @@ export class MockLoadTestAgentSession implements AgentSession {
     });
     turn.resolve({
       sessionId: this.id,
-      finalText: "Synthetic load test complete",
+      finalText,
       usage,
       timeline: [],
       canceled: false,
