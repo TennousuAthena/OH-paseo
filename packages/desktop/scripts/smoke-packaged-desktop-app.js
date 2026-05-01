@@ -7,6 +7,8 @@ const { setTimeout: delay } = require("node:timers/promises");
 const EXECUTABLE_NAME = "Paseo";
 const SMOKE_TIMEOUT_MS = 60_000;
 const EXIT_TIMEOUT_MS = 10_000;
+const TERMINAL_CAPTURE_ATTEMPTS = 20;
+const TERMINAL_CAPTURE_INTERVAL_MS = 500;
 
 function createTempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -61,6 +63,14 @@ function getLaunchCommand(executablePath) {
 
 function shellQuote(value) {
   return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function shellQuoteCliArg(value) {
+  if (process.platform === "win32") {
+    return `"${String(value).replace(/"/g, '""')}"`;
+  }
+
+  return shellQuote(String(value));
 }
 
 function getShellCommand(script) {
@@ -311,7 +321,7 @@ function runShellCommand({ script, env, label }) {
 }
 
 function getCliShimScript(cliShimPath, args) {
-  const commandArgs = args.join(" ");
+  const commandArgs = args.map(shellQuoteCliArg).join(" ");
   if (process.platform === "win32") {
     return `call "${cliShimPath}" ${commandArgs}`;
   }
@@ -323,11 +333,30 @@ async function runCliShimCommand({ appPath, env, args, label }) {
   const cliShimPath = getCliShimPath(appPath);
   assertExecutable(cliShimPath, "Bundled CLI shim");
 
-  await runShellCommand({
+  return await runShellCommand({
     script: getCliShimScript(cliShimPath, args),
     env,
     label,
   });
+}
+
+async function runCliShimJsonCommand({ appPath, env, args, label }) {
+  const result = await runCliShimCommand({
+    appPath,
+    env,
+    args: [...args, "--json"],
+    label,
+  });
+  const output = result.stdout.trim();
+  if (!output) {
+    throw new Error(`${label} produced empty JSON output`);
+  }
+
+  try {
+    return JSON.parse(output);
+  } catch (error) {
+    throw new Error(`${label} produced invalid JSON: ${output}`, { cause: error });
+  }
 }
 
 async function smokeCliShim({ appPath, env }) {
@@ -338,6 +367,76 @@ async function smokeCliShim({ appPath, env }) {
     args: ["daemon", "status"],
     label: "Bundled CLI shim daemon status",
   });
+}
+
+async function smokeCliTerminal({ appPath, env }) {
+  const cwd = createTempDir("paseo-smoke-terminal-cwd-");
+  const marker = `paseo-packaged-terminal-smoke-${Date.now()}`;
+  const name = `packaged-smoke-${process.pid}-${Date.now()}`;
+  let terminalId = null;
+
+  try {
+    console.log("Packaged desktop smoke: creating terminal through bundled CLI shim");
+    const created = await runCliShimJsonCommand({
+      appPath,
+      env,
+      args: ["terminal", "create", "--cwd", cwd, "--name", name],
+      label: "Bundled CLI shim terminal create",
+    });
+    if (!created || typeof created.id !== "string" || created.id.length === 0) {
+      throw new Error(`Terminal create returned unexpected payload: ${JSON.stringify(created)}`);
+    }
+    terminalId = created.id;
+
+    const terminals = await runCliShimJsonCommand({
+      appPath,
+      env,
+      args: ["terminal", "ls", "--all"],
+      label: "Bundled CLI shim terminal ls",
+    });
+    if (!Array.isArray(terminals) || !terminals.some((terminal) => terminal.id === terminalId)) {
+      throw new Error(`Terminal ${terminalId} was not listed after create`);
+    }
+
+    await runCliShimJsonCommand({
+      appPath,
+      env,
+      args: ["terminal", "send-keys", terminalId, "echo", "Space", marker, "Enter"],
+      label: "Bundled CLI shim terminal send-keys",
+    });
+
+    for (let attempt = 1; attempt <= TERMINAL_CAPTURE_ATTEMPTS; attempt += 1) {
+      const capture = await runCliShimJsonCommand({
+        appPath,
+        env,
+        args: ["terminal", "capture", terminalId, "--scrollback"],
+        label: "Bundled CLI shim terminal capture",
+      });
+      const lines = Array.isArray(capture?.lines) ? capture.lines : [];
+      if (lines.join("\n").includes(marker)) {
+        console.log("Packaged desktop smoke: terminal command output captured");
+        return;
+      }
+
+      if (attempt < TERMINAL_CAPTURE_ATTEMPTS) {
+        await delay(TERMINAL_CAPTURE_INTERVAL_MS);
+      }
+    }
+
+    throw new Error(`Timed out waiting for terminal capture marker ${marker}`);
+  } finally {
+    if (terminalId) {
+      await runCliShimJsonCommand({
+        appPath,
+        env,
+        args: ["terminal", "kill", terminalId],
+        label: "Bundled CLI shim terminal kill",
+      }).catch((error) => {
+        console.warn(`Packaged desktop smoke: failed to kill terminal ${terminalId}: ${error}`);
+      });
+    }
+    await removeTempDir(cwd);
+  }
 }
 
 async function stopCliDaemon({ appPath, env }) {
@@ -392,10 +491,12 @@ async function smokePackagedDesktopApp({ appPath }) {
     });
     smokeStarted = true;
     console.log("Packaged desktop smoke: desktop-managed daemon reported running");
-    await smokeCliShim({ appPath, env: createDefaultDaemonEnv() });
+    const cliEnv = createDefaultDaemonEnv();
+    await smokeCliShim({ appPath, env: cliEnv });
+    await smokeCliTerminal({ appPath, env: cliEnv });
     await stopDaemonForCleanup();
     console.log(
-      `Packaged desktop smoke passed: desktop-managed daemon pid ${message.status.pid}, listen ${message.status.listen}; CLI shim daemon status succeeded`,
+      `Packaged desktop smoke passed: desktop-managed daemon pid ${message.status.pid}, listen ${message.status.listen}; CLI shim daemon status and terminal smoke succeeded`,
     );
   } catch (error) {
     if (smokeStarted && !daemonStopped) {
