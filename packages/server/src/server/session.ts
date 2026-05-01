@@ -20,17 +20,8 @@ import {
   type GitSetupOptions,
   type CheckoutPrStatusResponse,
   type CheckoutStatusResponse,
-  type ListTerminalsRequest,
-  type SubscribeTerminalsRequest,
-  type UnsubscribeTerminalsRequest,
-  type CreateTerminalRequest,
   type StartWorkspaceScriptRequest,
-  type SubscribeTerminalRequest,
-  type UnsubscribeTerminalRequest,
-  type TerminalInput,
   type CloseItemsRequest,
-  type KillTerminalRequest,
-  type CaptureTerminalRequest,
   type SubscribeCheckoutDiffRequest,
   type UnsubscribeCheckoutDiffRequest,
   type DirectorySuggestionsRequest,
@@ -41,16 +32,9 @@ import {
   type WorkspaceDescriptorPayload,
   type WorkspaceStateBucket,
 } from "./messages.js";
-import type { TerminalManager, TerminalsChangedEvent } from "../terminal/terminal-manager.js";
-import type { TerminalSession } from "../terminal/terminal.js";
-import { TerminalOutputCoalescer } from "../terminal/terminal-output-coalescer.js";
-import {
-  TerminalStreamOpcode,
-  encodeTerminalSnapshotPayload,
-  encodeTerminalStreamFrame,
-  decodeTerminalResizePayload,
-  type TerminalStreamFrame,
-} from "../shared/terminal-stream-protocol.js";
+import type { TerminalManager } from "../terminal/terminal-manager.js";
+import { TerminalSessionController } from "../terminal/terminal-session-controller.js";
+import type { TerminalStreamFrame } from "../shared/terminal-stream-protocol.js";
 import { CursorError, decodeCursor, encodeCursor } from "./pagination/cursor.js";
 import { TTSManager } from "./agent/tts-manager.js";
 import { STTManager } from "./agent/stt-manager.js";
@@ -224,7 +208,6 @@ import {
   handlePaseoWorktreeListRequest as handleWorktreeListRequest,
   handleWorkspaceSetupStatusRequest as handleWorkspaceSetupStatusRequestMessage,
 } from "./worktree-session.js";
-import { killTerminalsUnderPath as killWorktreeTerminalsUnderPath } from "./paseo-worktree-archive-service.js";
 import { toWorktreeWireError } from "./worktree-errors.js";
 
 const MAX_INITIAL_AGENT_TITLE_CHARS = Math.min(60, MAX_EXPLICIT_AGENT_TITLE_CHARS);
@@ -373,8 +356,6 @@ function clientSupportsFlexibleEditorIds(appVersion: string | null): boolean {
   return isAppVersionAtLeast(appVersion, MIN_VERSION_FLEXIBLE_EDITOR_IDS);
 }
 
-const MAX_TERMINAL_STREAM_SLOTS = 256;
-
 type DeleteFencedAgentStorage = AgentStorage & {
   beginDelete(agentId: string): void;
 };
@@ -461,14 +442,6 @@ interface WorkspaceGitWatchTarget {
   refreshQueued: boolean;
   latestDescriptorStateKey: string | null;
   lastBranchName: string | null;
-}
-
-interface ActiveTerminalStream {
-  terminalId: string;
-  slot: number;
-  unsubscribe: () => void;
-  needsSnapshot: boolean;
-  outputCoalescer: TerminalOutputCoalescer;
 }
 
 export interface SessionRuntimeMetrics {
@@ -881,12 +854,7 @@ export class Session {
   private readonly getDaemonTcpPort: (() => number | null) | null;
   private readonly getDaemonTcpHost: (() => string | null) | null;
   private readonly resolveScriptHealth: ((hostname: string) => ScriptHealthState | null) | null;
-  private readonly subscribedTerminalDirectories = new Set<string>();
-  private unsubscribeTerminalsChanged: (() => void) | null = null;
-  private terminalExitSubscriptions: Map<string, () => void> = new Map();
-  private readonly activeTerminalStreams = new Map<number, ActiveTerminalStream>();
-  private readonly terminalIdToSlot = new Map<string, number>();
-  private nextTerminalSlot = 0;
+  private readonly terminalController: TerminalSessionController;
   private inflightRequests = 0;
   private peakInflightRequests = 0;
   private readonly availableEditorTargetsCache = new TTLCache<
@@ -989,6 +957,14 @@ export class Session {
     this.daemonConfigStore = daemonConfigStore;
     this.mcpBaseUrl = mcpBaseUrl ?? null;
     this.terminalManager = terminalManager;
+    this.terminalController = new TerminalSessionController({
+      terminalManager,
+      emit: (msg) => this.emit(msg),
+      emitBinary: (frame) => this.emitBinary(frame),
+      hasBinaryChannel: () => this.onBinaryMessage !== null,
+      isPathWithinRoot: (rootPath, candidatePath) => this.isPathWithinRoot(rootPath, candidatePath),
+      sessionLogger: this.sessionLogger,
+    });
     this.providerSnapshotManager = providerSnapshotManager ?? null;
     this.scriptRouteStore = scriptRouteStore ?? null;
     this.scriptRuntimeStore = scriptRuntimeStore ?? null;
@@ -1070,9 +1046,10 @@ export class Session {
   }
 
   public getRuntimeMetrics(): SessionRuntimeMetrics {
+    const terminalMetrics = this.terminalController.getMetrics();
     return {
-      terminalDirectorySubscriptionCount: this.subscribedTerminalDirectories.size,
-      terminalSubscriptionCount: this.activeTerminalStreams.size,
+      terminalDirectorySubscriptionCount: terminalMetrics.directorySubscriptionCount,
+      terminalSubscriptionCount: terminalMetrics.streamSubscriptionCount,
       inflightRequests: this.inflightRequests,
       peakInflightRequests: this.peakInflightRequests,
     };
@@ -1254,11 +1231,7 @@ export class Session {
    * Subscribe to AgentManager events and forward them to the client
    */
   private subscribeToOptionalManagers(): void {
-    if (this.terminalManager) {
-      this.unsubscribeTerminalsChanged = this.terminalManager.subscribeTerminalsChanged((event) =>
-        this.handleTerminalsChanged(event),
-      );
-    }
+    this.terminalController.start();
     if (this.providerSnapshotManager) {
       const handleProviderSnapshotChange = (entries: ProviderSnapshotEntry[], cwd: string) => {
         // COMPAT(providersSnapshot): keep provider visibility gating for older clients.
@@ -2147,34 +2120,10 @@ export class Session {
   }
 
   private dispatchTerminalMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "subscribe_terminals_request":
-        this.handleSubscribeTerminalsRequest(msg);
-        return undefined;
-      case "unsubscribe_terminals_request":
-        this.handleUnsubscribeTerminalsRequest(msg);
-        return undefined;
-      case "list_terminals_request":
-        return this.handleListTerminalsRequest(msg);
-      case "create_terminal_request":
-        return this.handleCreateTerminalRequest(msg);
-      case "start_workspace_script_request":
-        return this.handleStartWorkspaceScriptRequest(msg);
-      case "subscribe_terminal_request":
-        return this.handleSubscribeTerminalRequest(msg);
-      case "unsubscribe_terminal_request":
-        this.handleUnsubscribeTerminalRequest(msg);
-        return undefined;
-      case "terminal_input":
-        this.handleTerminalInput(msg);
-        return undefined;
-      case "kill_terminal_request":
-        return this.handleKillTerminalRequest(msg);
-      case "capture_terminal_request":
-        return this.handleCaptureTerminalRequest(msg);
-      default:
-        return undefined;
+    if (msg.type === "start_workspace_script_request") {
+      return this.handleStartWorkspaceScriptRequest(msg);
     }
+    return this.terminalController.dispatch(msg);
   }
 
   private dispatchChatScheduleLoopMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -2238,41 +2187,7 @@ export class Session {
   }
 
   public handleBinaryFrame(frame: TerminalStreamFrame): void {
-    const activeStream = this.activeTerminalStreams.get(frame.slot);
-    if (!activeStream || !this.terminalManager) {
-      return;
-    }
-    const terminal = this.terminalManager.getTerminal(activeStream.terminalId);
-    if (!terminal) {
-      this.detachTerminalStream(activeStream.terminalId, { emitExit: true });
-      return;
-    }
-
-    switch (frame.opcode) {
-      case TerminalStreamOpcode.Input: {
-        if (frame.payload.byteLength === 0) {
-          return;
-        }
-        const text = Buffer.from(frame.payload).toString("utf8");
-        if (!text) {
-          return;
-        }
-        terminal.send({ type: "input", data: text });
-        return;
-      }
-
-      case TerminalStreamOpcode.Resize: {
-        const resize = decodeTerminalResizePayload(frame.payload);
-        if (!resize) {
-          return;
-        }
-        terminal.send({ type: "resize", rows: resize.rows, cols: resize.cols });
-        return;
-      }
-
-      default:
-        return;
-    }
+    this.terminalController.handleBinaryFrame(frame);
   }
 
   private async handleRestartServerRequest(requestId: string, reason?: string): Promise<void> {
@@ -2490,7 +2405,7 @@ export class Session {
     const terminals = [];
     for (const terminalId of msg.terminalIds) {
       try {
-        terminals.push(this.killTerminalForClose(terminalId));
+        terminals.push(this.terminalController.killTerminalForClose(terminalId));
       } catch (error) {
         this.sessionLogger.warn(
           { err: error, terminalId, requestId: msg.requestId },
@@ -5523,7 +5438,8 @@ export class Session {
         clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
         isPathWithinRoot: (rootPath, candidatePath) =>
           this.isPathWithinRoot(rootPath, candidatePath),
-        killTerminalsUnderPath: (rootPath) => this.killTerminalsUnderPath(rootPath),
+        killTerminalsUnderPath: (rootPath) =>
+          this.terminalController.killTerminalsUnderPath(rootPath),
         sessionLogger: this.sessionLogger,
       },
       msg,
@@ -8622,18 +8538,7 @@ export class Session {
     await this.disableVoiceModeForActiveAgent(true);
     this.isVoiceMode = false;
 
-    // Unsubscribe from all terminals
-    if (this.unsubscribeTerminalsChanged) {
-      this.unsubscribeTerminalsChanged();
-      this.unsubscribeTerminalsChanged = null;
-    }
-    this.subscribedTerminalDirectories.clear();
-
-    for (const unsubscribeExit of this.terminalExitSubscriptions.values()) {
-      unsubscribeExit();
-    }
-    this.terminalExitSubscriptions.clear();
-    this.disposeTerminalSubscriptions();
+    this.terminalController.dispose();
 
     for (const unsubscribe of this.checkoutDiffSubscriptions.values()) {
       unsubscribe();
@@ -8644,31 +8549,6 @@ export class Session {
       unsubscribe();
     }
     this.workspaceGitSubscriptions.clear();
-  }
-
-  // ----------------------------------------------------------------------------
-  // Terminal Handlers
-  // ----------------------------------------------------------------------------
-
-  private ensureTerminalExitSubscription(terminal: TerminalSession): void {
-    if (this.terminalExitSubscriptions.has(terminal.id)) {
-      return;
-    }
-
-    const unsubscribeExit = terminal.onExit(() => {
-      this.handleTerminalExited(terminal.id);
-    });
-    this.terminalExitSubscriptions.set(terminal.id, unsubscribeExit);
-  }
-
-  private handleTerminalExited(terminalId: string): void {
-    const unsubscribeExit = this.terminalExitSubscriptions.get(terminalId);
-    if (unsubscribeExit) {
-      unsubscribeExit();
-      this.terminalExitSubscriptions.delete(terminalId);
-    }
-
-    this.detachTerminalStream(terminalId, { emitExit: true });
   }
 
   private emitChatRpcError(request: { requestId: string; type: string }, error: unknown): void {
@@ -9151,537 +9031,6 @@ export class Session {
       });
     } catch (error) {
       this.emitLoopRpcError(request, error);
-    }
-  }
-
-  private emitTerminalsChangedSnapshot(input: {
-    cwd: string;
-    terminals: Array<{ id: string; name: string; title?: string }>;
-  }): void {
-    this.emit({
-      type: "terminals_changed",
-      payload: {
-        cwd: input.cwd,
-        terminals: input.terminals,
-      },
-    });
-  }
-
-  private filterStandaloneTerminals<T extends { id: string }>(terminals: T[]): T[] {
-    return terminals;
-  }
-
-  private toTerminalInfo(terminal: Pick<TerminalSession, "id" | "name" | "getTitle">): {
-    id: string;
-    name: string;
-    title?: string;
-  } {
-    const title = terminal.getTitle();
-    return {
-      id: terminal.id,
-      name: terminal.name,
-      ...(title ? { title } : {}),
-    };
-  }
-
-  private handleTerminalsChanged(event: TerminalsChangedEvent): void {
-    if (!this.subscribedTerminalDirectories.has(event.cwd)) {
-      return;
-    }
-
-    this.emitTerminalsChangedSnapshot({
-      cwd: event.cwd,
-      terminals: this.filterStandaloneTerminals(event.terminals).map((terminal) =>
-        Object.assign(
-          { id: terminal.id, name: terminal.name },
-          terminal.title ? { title: terminal.title } : {},
-        ),
-      ),
-    });
-  }
-
-  private handleSubscribeTerminalsRequest(msg: SubscribeTerminalsRequest): void {
-    this.subscribedTerminalDirectories.add(msg.cwd);
-    void this.emitInitialTerminalsChangedSnapshot(msg.cwd);
-  }
-
-  private handleUnsubscribeTerminalsRequest(msg: UnsubscribeTerminalsRequest): void {
-    this.subscribedTerminalDirectories.delete(msg.cwd);
-  }
-
-  private async emitInitialTerminalsChangedSnapshot(cwd: string): Promise<void> {
-    if (!this.terminalManager || !this.subscribedTerminalDirectories.has(cwd)) {
-      return;
-    }
-
-    try {
-      const terminals = this.filterStandaloneTerminals(
-        await this.terminalManager.getTerminals(cwd),
-      );
-      for (const terminal of terminals) {
-        this.ensureTerminalExitSubscription(terminal);
-      }
-
-      if (!this.subscribedTerminalDirectories.has(cwd)) {
-        return;
-      }
-
-      this.emitTerminalsChangedSnapshot({
-        cwd,
-        terminals: terminals.map((terminal) => this.toTerminalInfo(terminal)),
-      });
-    } catch (error) {
-      this.sessionLogger.warn({ err: error, cwd }, "Failed to emit initial terminal snapshot");
-    }
-  }
-
-  private async handleListTerminalsRequest(msg: ListTerminalsRequest): Promise<void> {
-    if (!this.terminalManager) {
-      this.emit({
-        type: "list_terminals_response",
-        payload: {
-          ...(msg.cwd ? { cwd: msg.cwd } : {}),
-          terminals: [],
-          requestId: msg.requestId,
-        },
-      });
-      return;
-    }
-
-    try {
-      const terminals = this.filterStandaloneTerminals(
-        typeof msg.cwd === "string"
-          ? await this.terminalManager.getTerminals(msg.cwd)
-          : await this.getAllTerminalSessions(),
-      );
-      for (const terminal of terminals) {
-        this.ensureTerminalExitSubscription(terminal);
-      }
-      this.emit({
-        type: "list_terminals_response",
-        payload: {
-          ...(msg.cwd ? { cwd: msg.cwd } : {}),
-          terminals: terminals.map((terminal) => this.toTerminalInfo(terminal)),
-          requestId: msg.requestId,
-        },
-      });
-    } catch (error) {
-      this.sessionLogger.error({ err: error, cwd: msg.cwd }, "Failed to list terminals");
-      this.emit({
-        type: "list_terminals_response",
-        payload: {
-          ...(msg.cwd ? { cwd: msg.cwd } : {}),
-          terminals: [],
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
-  private async getAllTerminalSessions(): Promise<TerminalSession[]> {
-    if (!this.terminalManager) {
-      return [];
-    }
-
-    const directories = this.terminalManager.listDirectories();
-    const terminalsByDirectory = await Promise.all(
-      directories.map((cwd) => this.terminalManager!.getTerminals(cwd)),
-    );
-    return terminalsByDirectory.flat();
-  }
-
-  private async handleCreateTerminalRequest(msg: CreateTerminalRequest): Promise<void> {
-    if (!this.terminalManager) {
-      this.emit({
-        type: "create_terminal_response",
-        payload: {
-          terminal: null,
-          error: "Terminal manager not available",
-          requestId: msg.requestId,
-        },
-      });
-      return;
-    }
-
-    try {
-      if (msg.agentId) {
-        this.emit({
-          type: "create_terminal_response",
-          payload: {
-            terminal: null,
-            error: `Agent-backed terminals are no longer supported for agent ${msg.agentId}`,
-            requestId: msg.requestId,
-          },
-        });
-        return;
-      }
-
-      const session = await this.terminalManager.createTerminal({
-        cwd: msg.cwd,
-        name: msg.name,
-        command: msg.command,
-        args: msg.args,
-      });
-      this.ensureTerminalExitSubscription(session);
-      this.emit({
-        type: "create_terminal_response",
-        payload: {
-          terminal: {
-            id: session.id,
-            name: session.name,
-            cwd: session.cwd,
-            ...(session.getTitle() ? { title: session.getTitle() } : {}),
-          },
-          error: null,
-          requestId: msg.requestId,
-        },
-      });
-    } catch (error) {
-      this.sessionLogger.error({ err: error, cwd: msg.cwd }, "Failed to create terminal");
-      this.emit({
-        type: "create_terminal_response",
-        payload: {
-          terminal: null,
-          error: (error as Error).message,
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
-  private async handleSubscribeTerminalRequest(msg: SubscribeTerminalRequest): Promise<void> {
-    if (!this.terminalManager) {
-      this.emit({
-        type: "subscribe_terminal_response",
-        payload: {
-          terminalId: msg.terminalId,
-          error: "Terminal manager not available",
-          requestId: msg.requestId,
-        },
-      });
-      return;
-    }
-
-    const session = this.terminalManager.getTerminal(msg.terminalId);
-    if (!session) {
-      this.emit({
-        type: "subscribe_terminal_response",
-        payload: {
-          terminalId: msg.terminalId,
-          error: "Terminal not found",
-          requestId: msg.requestId,
-        },
-      });
-      return;
-    }
-    this.ensureTerminalExitSubscription(session);
-
-    const slot = this.bindActiveTerminalStream(session);
-    if (slot === null) {
-      this.sessionLogger.warn(
-        {
-          terminalId: msg.terminalId,
-          activeTerminalStreamCount: this.activeTerminalStreams.size,
-        },
-        "Terminal stream slot exhaustion",
-      );
-      this.emit({
-        type: "subscribe_terminal_response",
-        payload: {
-          terminalId: msg.terminalId,
-          error: "No terminal stream slots available",
-          requestId: msg.requestId,
-        },
-      });
-      return;
-    }
-
-    this.emit({
-      type: "subscribe_terminal_response",
-      payload: {
-        terminalId: msg.terminalId,
-        slot,
-        error: null,
-        requestId: msg.requestId,
-      },
-    });
-
-    const activeStream = this.activeTerminalStreams.get(slot);
-    if (activeStream) {
-      this.trySendTerminalSnapshot(activeStream);
-    }
-  }
-
-  private handleUnsubscribeTerminalRequest(msg: UnsubscribeTerminalRequest): void {
-    this.detachTerminalStream(msg.terminalId, { emitExit: false });
-  }
-
-  private handleTerminalInput(msg: TerminalInput): void {
-    if (!this.terminalManager) {
-      return;
-    }
-
-    const session = this.terminalManager.getTerminal(msg.terminalId);
-    if (!session) {
-      this.sessionLogger.warn({ terminalId: msg.terminalId }, "Terminal not found for input");
-      return;
-    }
-    this.ensureTerminalExitSubscription(session);
-
-    if (msg.message.type === "resize") {
-      const currentSize = session.getSize();
-      if (currentSize.rows === msg.message.rows && currentSize.cols === msg.message.cols) {
-        return;
-      }
-    }
-
-    session.send(msg.message);
-  }
-
-  private killTrackedTerminal(terminalId: string, options?: { emitExit: boolean }): void {
-    this.detachTerminalStream(terminalId, { emitExit: options?.emitExit ?? true });
-    this.terminalManager?.killTerminal(terminalId);
-  }
-
-  private async killTerminalsUnderPath(rootPath: string): Promise<void> {
-    return killWorktreeTerminalsUnderPath(
-      {
-        isPathWithinRoot: (pathRoot, candidatePath) =>
-          this.isPathWithinRoot(pathRoot, candidatePath),
-        killTrackedTerminal: (terminalId, options) => this.killTrackedTerminal(terminalId, options),
-        detachTerminalStream: (terminalId, options) =>
-          void this.detachTerminalStream(terminalId, options),
-        sessionLogger: this.sessionLogger,
-        terminalManager: this.terminalManager,
-      },
-      rootPath,
-    );
-  }
-
-  private async handleKillTerminalRequest(msg: KillTerminalRequest): Promise<void> {
-    const result = this.killTerminalForClose(msg.terminalId);
-    this.emit({
-      type: "kill_terminal_response",
-      payload: {
-        terminalId: result.terminalId,
-        success: result.success,
-        requestId: msg.requestId,
-      },
-    });
-  }
-
-  private killTerminalForClose(terminalId: string): { terminalId: string; success: boolean } {
-    if (!this.terminalManager) {
-      return {
-        terminalId,
-        success: false,
-      };
-    }
-
-    this.killTrackedTerminal(terminalId, { emitExit: true });
-    return {
-      terminalId,
-      success: true,
-    };
-  }
-
-  private async handleCaptureTerminalRequest(msg: CaptureTerminalRequest): Promise<void> {
-    if (!this.terminalManager) {
-      this.emit({
-        type: "capture_terminal_response",
-        payload: {
-          terminalId: msg.terminalId,
-          lines: [],
-          totalLines: 0,
-          requestId: msg.requestId,
-        },
-      });
-      return;
-    }
-
-    const session = this.terminalManager.getTerminal(msg.terminalId);
-    if (!session) {
-      this.emit({
-        type: "capture_terminal_response",
-        payload: {
-          terminalId: msg.terminalId,
-          lines: [],
-          totalLines: 0,
-          requestId: msg.requestId,
-        },
-      });
-      return;
-    }
-
-    this.ensureTerminalExitSubscription(session);
-
-    try {
-      const capture = await this.terminalManager.captureTerminal(msg.terminalId, {
-        start: msg.start,
-        end: msg.end,
-        stripAnsi: msg.stripAnsi,
-      });
-      this.emit({
-        type: "capture_terminal_response",
-        payload: {
-          terminalId: msg.terminalId,
-          lines: capture.lines,
-          totalLines: capture.totalLines,
-          requestId: msg.requestId,
-        },
-      });
-    } catch (error) {
-      this.sessionLogger.error(
-        { err: error, terminalId: msg.terminalId },
-        "Failed to capture terminal",
-      );
-      this.emit({
-        type: "capture_terminal_response",
-        payload: {
-          terminalId: msg.terminalId,
-          lines: [],
-          totalLines: 0,
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
-  private bindActiveTerminalStream(terminal: TerminalSession): number | null {
-    if (!this.onBinaryMessage) {
-      return null;
-    }
-
-    const existingSlot = this.terminalIdToSlot.get(terminal.id);
-    if (typeof existingSlot === "number") {
-      const existingStream = this.activeTerminalStreams.get(existingSlot);
-      if (existingStream) {
-        existingStream.needsSnapshot = true;
-        return existingSlot;
-      }
-      this.terminalIdToSlot.delete(terminal.id);
-    }
-
-    const slot = this.allocateTerminalSlot();
-    if (slot === null) {
-      return null;
-    }
-
-    const activeStream: ActiveTerminalStream = {
-      terminalId: terminal.id,
-      slot,
-      unsubscribe: () => {},
-      needsSnapshot: true,
-      outputCoalescer: new TerminalOutputCoalescer({
-        timers: { setTimeout, clearTimeout },
-        onFlush: ({ payload }) => {
-          if (this.activeTerminalStreams.get(slot) !== activeStream) {
-            return;
-          }
-          this.emitBinary(
-            encodeTerminalStreamFrame({
-              opcode: TerminalStreamOpcode.Output,
-              slot,
-              payload,
-            }),
-          );
-        },
-      }),
-    };
-
-    this.activeTerminalStreams.set(slot, activeStream);
-    this.terminalIdToSlot.set(terminal.id, slot);
-
-    activeStream.unsubscribe = terminal.subscribe((message) => {
-      if (this.activeTerminalStreams.get(slot) !== activeStream) {
-        return;
-      }
-      if (message.type === "snapshot") {
-        activeStream.outputCoalescer.flush();
-        activeStream.needsSnapshot = true;
-        this.trySendTerminalSnapshot(activeStream);
-        return;
-      }
-      if (message.type === "titleChange") {
-        return;
-      }
-      if (activeStream.needsSnapshot || message.data.length === 0) {
-        return;
-      }
-      activeStream.outputCoalescer.handle(message.data);
-    });
-    return slot;
-  }
-
-  private trySendTerminalSnapshot(activeStream: ActiveTerminalStream): void {
-    if (
-      this.activeTerminalStreams.get(activeStream.slot) !== activeStream ||
-      !activeStream.needsSnapshot
-    ) {
-      return;
-    }
-
-    const terminal = this.terminalManager?.getTerminal(activeStream.terminalId);
-    if (!terminal) {
-      this.detachTerminalStream(activeStream.terminalId, { emitExit: true });
-      return;
-    }
-
-    activeStream.outputCoalescer.flush();
-    activeStream.needsSnapshot = false;
-    this.emitBinary(
-      encodeTerminalStreamFrame({
-        opcode: TerminalStreamOpcode.Snapshot,
-        slot: activeStream.slot,
-        payload: encodeTerminalSnapshotPayload(terminal.getState()),
-      }),
-    );
-  }
-
-  private allocateTerminalSlot(): number | null {
-    for (let attempt = 0; attempt < MAX_TERMINAL_STREAM_SLOTS; attempt += 1) {
-      const slot = (this.nextTerminalSlot + attempt) % MAX_TERMINAL_STREAM_SLOTS;
-      if (this.activeTerminalStreams.has(slot)) {
-        continue;
-      }
-      this.nextTerminalSlot = (slot + 1) % MAX_TERMINAL_STREAM_SLOTS;
-      return slot;
-    }
-    return null;
-  }
-
-  private detachTerminalStream(terminalId: string, options?: { emitExit: boolean }): boolean {
-    const slot = this.terminalIdToSlot.get(terminalId);
-    if (typeof slot !== "number") {
-      return false;
-    }
-    const activeStream = this.activeTerminalStreams.get(slot);
-    if (!activeStream) {
-      this.terminalIdToSlot.delete(terminalId);
-      return false;
-    }
-    activeStream.outputCoalescer.flush();
-    this.activeTerminalStreams.delete(slot);
-    this.terminalIdToSlot.delete(terminalId);
-    try {
-      activeStream.unsubscribe();
-    } catch (error) {
-      this.sessionLogger.warn({ err: error }, "Failed to unsubscribe terminal stream");
-    }
-    if (options?.emitExit) {
-      this.emit({
-        type: "terminal_stream_exit",
-        payload: {
-          terminalId: activeStream.terminalId,
-        },
-      });
-    }
-    return true;
-  }
-
-  private disposeTerminalSubscriptions(): void {
-    for (const terminalId of Array.from(this.terminalIdToSlot.keys())) {
-      this.detachTerminalStream(terminalId, { emitExit: false });
     }
   }
 }
