@@ -770,6 +770,14 @@ describe("Codex app-server provider", () => {
       turn: { status: "completed", error: null },
     });
 
+    expect(
+      events.some(
+        (event) =>
+          event.type === "timeline" &&
+          event.item.type === "tool_call" &&
+          event.item.detail.type === "plan",
+      ),
+    ).toBe(false);
     expect(events.at(-2)).toEqual({
       type: "permission_requested",
       provider: "codex",
@@ -801,6 +809,51 @@ describe("Codex app-server provider", () => {
       provider: "codex",
       turnId: "test-turn",
       usage: undefined,
+    });
+  });
+
+  test("does not emit Codex plan thread items as timeline cards while plan approval is pending", () => {
+    const session = createSession({
+      featureValues: { plan_mode: true, fast_mode: true },
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("turn/started", {
+      turn: { id: "turn-plan-thread-item" },
+    });
+    asInternals(session).handleNotification("item/completed", {
+      item: {
+        id: "plan-item-1",
+        type: "plan",
+        text: "- Inspect README\n- Add a short note",
+      },
+    });
+    asInternals(session).handleNotification("turn/completed", {
+      turn: { status: "completed", error: null },
+    });
+
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: "timeline",
+        item: expect.objectContaining({
+          type: "tool_call",
+          detail: expect.objectContaining({ type: "plan" }),
+        }),
+      }),
+    );
+    expect(events.at(-2)).toEqual({
+      type: "permission_requested",
+      provider: "codex",
+      turnId: "test-turn",
+      request: expect.objectContaining({
+        provider: "codex",
+        name: "CodexPlanApproval",
+        kind: "plan",
+        input: {
+          plan: "- Inspect README\n- Add a short note",
+        },
+      }),
     });
   });
 

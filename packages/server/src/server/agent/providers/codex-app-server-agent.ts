@@ -3724,6 +3724,12 @@ class CodexAppServerAgentSession implements AgentSession {
     });
     if (timelineItem) {
       this.rememberPlanResult(timelineItem);
+      // In plan mode, the same plan is rendered through the synthetic approval
+      // permission. Keep the remembered text for that card, but do not also
+      // emit a static timeline plan panel.
+      if (this.planModeEnabled) {
+        return;
+      }
       this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
     }
   }
@@ -3883,6 +3889,11 @@ class CodexAppServerAgentSession implements AgentSession {
     if (timelineItem.type === "tool_call") {
       if (timelineItem.detail.type === "plan") {
         this.rememberPlanResult(timelineItem);
+        // Codex can surface plans both as turn/plan updates and as completed
+        // thread items. In plan mode, approval owns the visible plan card.
+        if (this.planModeEnabled) {
+          return;
+        }
       }
       this.warnOnIncompleteEditToolCall(timelineItem, "item_completed", parsed.item);
     }

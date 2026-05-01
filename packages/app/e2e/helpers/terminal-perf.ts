@@ -24,6 +24,10 @@ export interface TerminalPerfDaemonClient {
     cwd: string;
     title?: string;
     modeId?: string;
+    model?: string;
+    thinkingOptionId?: string;
+    featureValues?: Record<string, unknown>;
+    initialPrompt?: string;
   }): Promise<{ id: string; status: string }>;
   sendAgentMessage(agentId: string, text: string): Promise<void>;
   subscribeTerminal(

@@ -1129,6 +1129,7 @@ function PermissionRequestCard({
         description={description}
         text={planMarkdown}
         footer={footer}
+        testID="permission-plan-card"
         disableOuterSpacing
       />
     );
@@ -1141,7 +1142,12 @@ function PermissionRequestCard({
       {description ? <Text style={permissionStyles.description}>{description}</Text> : null}
 
       {planMarkdown ? (
-        <PlanCard title="Proposed plan" text={planMarkdown} disableOuterSpacing />
+        <PlanCard
+          title="Proposed plan"
+          text={planMarkdown}
+          testID="permission-plan-card"
+          disableOuterSpacing
+        />
       ) : null}
 
       {!isPlanRequest ? (

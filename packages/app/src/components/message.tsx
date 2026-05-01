@@ -2973,6 +2973,7 @@ export const ToolCall = memo(function ToolCall({
       <PlanCard
         title="Plan"
         text={effectiveDetail.text}
+        testID="timeline-plan-card"
         disableOuterSpacing={disableOuterSpacing}
       />
     );

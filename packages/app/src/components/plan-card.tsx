@@ -199,12 +199,14 @@ export function PlanCard({
   text,
   footer,
   disableOuterSpacing = false,
+  testID,
 }: {
   title?: string;
   description?: string;
   text: string;
   footer?: ReactNode;
   disableOuterSpacing?: boolean;
+  testID?: string;
 }) {
   const { theme } = useUnistyles();
   const markdownStyles = createMarkdownStyles(theme);
@@ -231,7 +233,7 @@ export function PlanCard({
   );
 
   return (
-    <View style={containerStyle}>
+    <View testID={testID} style={containerStyle}>
       <Text style={titleStyle}>{title}</Text>
       {description ? <Text style={descriptionStyle}>{description}</Text> : null}
       <Markdown style={markdownStyles} rules={markdownRules}>
