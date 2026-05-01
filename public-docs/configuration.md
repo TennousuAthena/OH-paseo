@@ -91,7 +91,7 @@ Legacy fields `log.level` and `log.format` are still supported and map to the ne
 
 ## Password authentication
 
-You can require a password to connect to the daemon. When set, all HTTP and WebSocket clients must authenticate — except the health and status endpoints (`/api/health`, `/api/status`).
+You can require a password to connect to the daemon. When set, all HTTP and WebSocket clients must authenticate. Only the `/api/health` liveness endpoint is exempt, so that process supervisors and load balancers can probe without credentials.
 
 The easiest way to set a password is with the CLI:
 

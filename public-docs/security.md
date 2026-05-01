@@ -89,7 +89,7 @@ Configure via `daemon.hostnames` in `config.json`:
 
 By default, anyone who can reach the daemon's listening address can connect. On localhost this is fine — only local processes have access. But if you bind to a network interface (e.g. your LAN IP or `0.0.0.0`), or if you don't fully trust your local network, you can require a password.
 
-When a password is configured, all HTTP requests must include an `Authorization: Bearer <password>` header and all WebSocket connections must authenticate via subprotocol. Unauthenticated requests receive a `401 Unauthorized` response. The `/api/health` and `/api/status` endpoints are exempt so that health probes and process supervisors continue to work without credentials.
+When a password is configured, all HTTP requests must include an `Authorization: Bearer <password>` header and all WebSocket connections must authenticate via subprotocol. Unauthenticated requests receive a `401 Unauthorized` response. Only the `/api/health` liveness endpoint is exempt, so that process supervisors and load balancers can probe without credentials.
 
 The password is stored as a bcrypt hash in `config.json` — the daemon never stores it in plaintext. See [Configuration](/docs/configuration#password-authentication) for setup instructions.
 
