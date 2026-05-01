@@ -9,6 +9,7 @@ import type {
   ComposerAttachment,
   UserComposerAttachment,
 } from "@/attachments/types";
+import { composerWorkspaceAttachment } from "@/attachments/composer-workspace-attachments";
 import type { AgentAttachment, GitHubSearchItem } from "@server/shared/messages";
 import { Composer } from "./composer";
 import { splitComposerAttachmentsForSubmit } from "./composer-attachments";
@@ -569,6 +570,7 @@ let root: Root | null = null;
 let container: HTMLElement | null = null;
 let queryClient: QueryClient | null = null;
 let latestAttachments: ComposerAttachment[] = [];
+let workspaceBindingRenderCount = 0;
 
 type ReviewComposerAttachment = Extract<ComposerAttachment, { kind: "review" }>;
 type ReviewAttachment = Extract<AgentAttachment, { type: "review" }>;
@@ -614,6 +616,25 @@ function reviewComposerAttachment(body: string): ReviewComposerAttachment {
     reviewDraftKey: `review:${body}`,
     commentCount: 1,
     attachment: reviewAttachment(body),
+  };
+}
+
+function cloneReviewComposerAttachment(
+  attachment: ReviewComposerAttachment,
+): ReviewComposerAttachment {
+  return {
+    ...attachment,
+    attachment: {
+      ...attachment.attachment,
+      comments: attachment.attachment.comments.map((comment) => ({
+        ...comment,
+        context: {
+          ...comment.context,
+          targetLine: { ...comment.context.targetLine },
+          lines: comment.context.lines.map((line) => ({ ...line })),
+        },
+      })),
+    },
   };
 }
 
@@ -670,6 +691,7 @@ beforeEach(() => {
   agentDirectoryStatusMock.mockReset();
   agentDirectoryStatusMock.mockReturnValue("ready");
   appSendBehavior.current = "interrupt";
+  workspaceBindingRenderCount = 0;
   mockSessionState.sessions.server.serverInfo = {
     serverId: "server",
     hostname: "test",
@@ -783,6 +805,20 @@ function renderComposer(
   act(() => {
     root?.render(<ComposerHarness {...input} />);
   });
+}
+
+function WorkspaceAttachmentBindingHarness({
+  workspaceAttachment,
+}: {
+  workspaceAttachment: ReviewComposerAttachment;
+}) {
+  workspaceBindingRenderCount += 1;
+  const { selectedAttachments } = composerWorkspaceAttachment.useBinding({
+    normalAttachments: [],
+    workspaceAttachments: [workspaceAttachment],
+  });
+
+  return <div data-testid="workspace-binding-count">{selectedAttachments.length}</div>;
 }
 
 function click(element: Element) {
@@ -1005,6 +1041,30 @@ describe("Composer attachments", () => {
       images: [],
       attachments: [review.attachment],
     });
+  });
+
+  it("does not enqueue redundant binding renders for equivalent workspace attachments", async () => {
+    const review = reviewComposerAttachment("Stable workspace review.");
+
+    act(() => {
+      root?.render(<WorkspaceAttachmentBindingHarness workspaceAttachment={review} />);
+    });
+    await flushAsyncWork();
+
+    expect(workspaceBindingRenderCount).toBe(1);
+    expect(queryByTestId("workspace-binding-count")?.textContent).toBe("1");
+
+    act(() => {
+      root?.render(
+        <WorkspaceAttachmentBindingHarness
+          workspaceAttachment={cloneReviewComposerAttachment(review)}
+        />,
+      );
+    });
+    await flushAsyncWork();
+
+    expect(workspaceBindingRenderCount).toBe(2);
+    expect(queryByTestId("workspace-binding-count")?.textContent).toBe("1");
   });
 
   it("renders and submits a workspace review attachment pill", async () => {

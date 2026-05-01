@@ -112,9 +112,12 @@ function useWorkspaceAttachmentBinding({
   );
 
   useEffect(() => {
-    setSuppressedKeys((current) =>
-      current.filter((suppressedKey) => workspaceAttachmentKeys.includes(suppressedKey)),
-    );
+    setSuppressedKeys((current) => {
+      const next = current.filter((suppressedKey) =>
+        workspaceAttachmentKeys.includes(suppressedKey),
+      );
+      return next.length === current.length ? current : next;
+    });
   }, [workspaceAttachmentKeys]);
 
   const buildOutgoingAttachments = useCallback(
