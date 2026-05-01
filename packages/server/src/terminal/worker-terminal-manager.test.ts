@@ -199,8 +199,10 @@ it("refreshes cached terminal title after worker title changes", async () => {
   const session = trackTerminal(
     await manager.createTerminal({
       cwd,
-      command: "/bin/sh",
-      args: ["-lc", "printf '\\033]0;Build Output\\007'; sleep 2"],
+      ...nodeTerminalCommand(`
+      process.stdout.write("\\u001b]0;Build Output\\u0007");
+      setTimeout(() => {}, 2000);
+    `),
     }),
   );
 
