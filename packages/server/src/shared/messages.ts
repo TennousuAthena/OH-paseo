@@ -1095,14 +1095,16 @@ export const SetAgentModeRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+const AgentActionResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  agentId: z.string(),
+  accepted: z.boolean(),
+  error: z.string().nullable(),
+});
+
 export const SetAgentModeResponseMessageSchema = z.object({
   type: z.literal("set_agent_mode_response"),
-  payload: z.object({
-    requestId: z.string(),
-    agentId: z.string(),
-    accepted: z.boolean(),
-    error: z.string().nullable(),
-  }),
+  payload: AgentActionResponsePayloadSchema,
 });
 
 export const SetAgentModelRequestMessageSchema = z.object({
@@ -1114,12 +1116,7 @@ export const SetAgentModelRequestMessageSchema = z.object({
 
 export const SetAgentModelResponseMessageSchema = z.object({
   type: z.literal("set_agent_model_response"),
-  payload: z.object({
-    requestId: z.string(),
-    agentId: z.string(),
-    accepted: z.boolean(),
-    error: z.string().nullable(),
-  }),
+  payload: AgentActionResponsePayloadSchema,
 });
 
 export const SetAgentThinkingRequestMessageSchema = z.object({
@@ -1131,12 +1128,7 @@ export const SetAgentThinkingRequestMessageSchema = z.object({
 
 export const SetAgentThinkingResponseMessageSchema = z.object({
   type: z.literal("set_agent_thinking_response"),
-  payload: z.object({
-    requestId: z.string(),
-    agentId: z.string(),
-    accepted: z.boolean(),
-    error: z.string().nullable(),
-  }),
+  payload: AgentActionResponsePayloadSchema,
 });
 
 export const SetAgentFeatureRequestMessageSchema = z.object({
@@ -1149,22 +1141,12 @@ export const SetAgentFeatureRequestMessageSchema = z.object({
 
 export const SetAgentFeatureResponseMessageSchema = z.object({
   type: z.literal("set_agent_feature_response"),
-  payload: z.object({
-    requestId: z.string(),
-    agentId: z.string(),
-    accepted: z.boolean(),
-    error: z.string().nullable(),
-  }),
+  payload: AgentActionResponsePayloadSchema,
 });
 
 export const UpdateAgentResponseMessageSchema = z.object({
   type: z.literal("update_agent_response"),
-  payload: z.object({
-    requestId: z.string(),
-    agentId: z.string(),
-    accepted: z.boolean(),
-    error: z.string().nullable(),
-  }),
+  payload: AgentActionResponsePayloadSchema,
 });
 
 export const SetVoiceModeResponseMessageSchema = z.object({
