@@ -51,6 +51,7 @@ import {
   decodeTerminalResizePayload,
   type TerminalStreamFrame,
 } from "../shared/terminal-stream-protocol.js";
+import { CursorError, decodeCursor, encodeCursor } from "./pagination/cursor.js";
 import { TTSManager } from "./agent/tts-manager.js";
 import { STTManager } from "./agent/stt-manager.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
@@ -431,61 +432,13 @@ function getFirstUserMessageText(timeline: readonly AgentTimelineItem[]): string
   return null;
 }
 
-function parseFetchWorkspacesCursorSort(raw: unknown[]): FetchWorkspacesRequestSort[] {
-  const cursorSort: FetchWorkspacesRequestSort[] = [];
-  for (const item of raw) {
-    if (
-      !item ||
-      typeof item !== "object" ||
-      typeof (item as { key?: unknown }).key !== "string" ||
-      typeof (item as { direction?: unknown }).direction !== "string"
-    ) {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_workspaces cursor");
-    }
-
-    const key = (item as { key: string }).key;
-    const direction = (item as { direction: string }).direction;
-    if (
-      (key !== "status_priority" &&
-        key !== "activity_at" &&
-        key !== "name" &&
-        key !== "project_id") ||
-      (direction !== "asc" && direction !== "desc")
-    ) {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_workspaces cursor");
-    }
-    cursorSort.push({ key, direction });
-  }
-  return cursorSort;
-}
-
-function parseFetchAgentsCursorSort(raw: unknown[]): FetchAgentsRequestSort[] {
-  const cursorSort: FetchAgentsRequestSort[] = [];
-  for (const item of raw) {
-    if (
-      !item ||
-      typeof item !== "object" ||
-      typeof (item as { key?: unknown }).key !== "string" ||
-      typeof (item as { direction?: unknown }).direction !== "string"
-    ) {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
-    }
-
-    const key = (item as { key: string }).key;
-    const direction = (item as { direction: string }).direction;
-    if (
-      (key !== "status_priority" &&
-        key !== "created_at" &&
-        key !== "updated_at" &&
-        key !== "title") ||
-      (direction !== "asc" && direction !== "desc")
-    ) {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
-    }
-    cursorSort.push({ key, direction });
-  }
-  return cursorSort;
-}
+const FETCH_AGENTS_SORT_KEYS = ["status_priority", "created_at", "updated_at", "title"] as const;
+const FETCH_WORKSPACES_SORT_KEYS = [
+  "status_priority",
+  "activity_at",
+  "name",
+  "project_id",
+] as const;
 
 export function resolveWaitForFinishError(options: {
   status: "permission" | "error" | "idle";
@@ -5982,68 +5935,26 @@ export class Session {
     entry: FetchAgentsResponseEntry,
     sort: FetchAgentsRequestSort[],
   ): string {
-    const values: Record<string, string | number | null> = {};
-    for (const spec of sort) {
-      values[spec.key] = this.getFetchAgentsSortValue(entry, spec.key);
-    }
-    return Buffer.from(
-      JSON.stringify({
-        sort,
-        values,
-        id: entry.agent.id,
-      }),
-      "utf8",
-    ).toString("base64url");
+    return encodeCursor(
+      entry,
+      sort,
+      (e) => e.agent.id,
+      (e, key) => this.getFetchAgentsSortValue(e, key),
+    );
   }
 
   private decodeFetchAgentsCursor(
     cursor: string,
     sort: FetchAgentsRequestSort[],
   ): FetchAgentsCursor {
-    let parsed: unknown;
     try {
-      parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-    } catch {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
+      return decodeCursor(cursor, sort, FETCH_AGENTS_SORT_KEYS, "fetch_agents");
+    } catch (error) {
+      if (error instanceof CursorError) {
+        throw new SessionRequestError("invalid_cursor", error.message);
+      }
+      throw error;
     }
-
-    if (!parsed || typeof parsed !== "object") {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
-    }
-
-    const payload = parsed as {
-      sort?: unknown;
-      values?: unknown;
-      id?: unknown;
-    };
-
-    if (!Array.isArray(payload.sort) || typeof payload.id !== "string") {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
-    }
-    if (!payload.values || typeof payload.values !== "object") {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
-    }
-
-    const cursorSort = parseFetchAgentsCursorSort(payload.sort);
-
-    if (
-      cursorSort.length !== sort.length ||
-      cursorSort.some(
-        (entry, index) =>
-          entry.key !== sort[index]?.key || entry.direction !== sort[index]?.direction,
-      )
-    ) {
-      throw new SessionRequestError(
-        "invalid_cursor",
-        "fetch_agents cursor does not match current sort",
-      );
-    }
-
-    return {
-      sort: cursorSort,
-      values: payload.values as Record<string, string | number | null>,
-      id: payload.id,
-    };
   }
 
   private compareAgentWithCursor(
@@ -6561,68 +6472,26 @@ export class Session {
     entry: FetchWorkspacesResponseEntry,
     sort: FetchWorkspacesRequestSort[],
   ): string {
-    const values: Record<string, string | number | null> = {};
-    for (const spec of sort) {
-      values[spec.key] = this.getFetchWorkspacesSortValue(entry, spec.key);
-    }
-    return Buffer.from(
-      JSON.stringify({
-        sort,
-        values,
-        id: entry.id,
-      }),
-      "utf8",
-    ).toString("base64url");
+    return encodeCursor(
+      entry,
+      sort,
+      (e) => e.id,
+      (e, key) => this.getFetchWorkspacesSortValue(e, key),
+    );
   }
 
   private decodeFetchWorkspacesCursor(
     cursor: string,
     sort: FetchWorkspacesRequestSort[],
   ): FetchWorkspacesCursor {
-    let parsed: unknown;
     try {
-      parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-    } catch {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_workspaces cursor");
+      return decodeCursor(cursor, sort, FETCH_WORKSPACES_SORT_KEYS, "fetch_workspaces");
+    } catch (error) {
+      if (error instanceof CursorError) {
+        throw new SessionRequestError("invalid_cursor", error.message);
+      }
+      throw error;
     }
-
-    if (!parsed || typeof parsed !== "object") {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_workspaces cursor");
-    }
-
-    const payload = parsed as {
-      sort?: unknown;
-      values?: unknown;
-      id?: unknown;
-    };
-
-    if (!Array.isArray(payload.sort) || typeof payload.id !== "string") {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_workspaces cursor");
-    }
-    if (!payload.values || typeof payload.values !== "object") {
-      throw new SessionRequestError("invalid_cursor", "Invalid fetch_workspaces cursor");
-    }
-
-    const cursorSort = parseFetchWorkspacesCursorSort(payload.sort);
-
-    if (
-      cursorSort.length !== sort.length ||
-      cursorSort.some(
-        (entry, index) =>
-          entry.key !== sort[index]?.key || entry.direction !== sort[index]?.direction,
-      )
-    ) {
-      throw new SessionRequestError(
-        "invalid_cursor",
-        "fetch_workspaces cursor does not match current sort",
-      );
-    }
-
-    return {
-      sort: cursorSort,
-      values: payload.values as Record<string, string | number | null>,
-      id: String(payload.id),
-    };
   }
 
   private compareWorkspaceWithCursor(
