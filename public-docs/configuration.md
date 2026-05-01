@@ -89,9 +89,52 @@ Daemon logging uses separate console and file sinks by default:
 
 Legacy fields `log.level` and `log.format` are still supported and map to the new destination settings.
 
+## Password authentication
+
+You can require a password to connect to the daemon. When set, all HTTP and WebSocket clients must authenticate — except the health and status endpoints (`/api/health`, `/api/status`).
+
+The easiest way to set a password is with the CLI:
+
+```bash
+paseo daemon set-password
+```
+
+This prompts for a password, writes the bcrypt hash to `config.json`, and tells you to restart the daemon.
+
+Alternatively, set the `PASEO_PASSWORD` environment variable (plaintext — hashed automatically at startup):
+
+```bash
+PASEO_PASSWORD=my-secret paseo daemon start
+```
+
+Or write the hash directly in `config.json`:
+
+```json
+{
+  "daemon": {
+    "auth": {
+      "password": "$2b$12$..."
+    }
+  }
+}
+```
+
+After setting a password, restart the daemon for the change to take effect.
+
+### Connecting with a password
+
+The CLI reads the password from the TCP URI automatically:
+
+```bash
+paseo --host "tcp://192.168.1.10:6767?password=my-secret" ls
+```
+
+In the mobile app, enter the password in the direct connection setup screen.
+
 ## Common env vars
 
 - `PASEO_HOME` — set Paseo home directory
+- `PASEO_PASSWORD` — require a password to connect (plaintext, hashed at startup)
 - `PASEO_LISTEN` — override `daemon.listen`
 - `PASEO_HOSTNAMES` — override/extend `daemon.hostnames`
 - `PASEO_ALLOWED_HOSTS` — deprecated alias for `PASEO_HOSTNAMES`

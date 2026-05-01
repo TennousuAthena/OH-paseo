@@ -85,6 +85,27 @@ Configure via `daemon.hostnames` in `config.json`:
 - `['.example.com']`: allow `example.com` and any subdomain, plus defaults
 - `true`: allow any host (not recommended)
 
+## Password authentication
+
+By default, anyone who can reach the daemon's listening address can connect. On localhost this is fine — only local processes have access. But if you bind to a network interface (e.g. your LAN IP or `0.0.0.0`), or if you don't fully trust your local network, you can require a password.
+
+When a password is configured, all HTTP requests must include an `Authorization: Bearer <password>` header and all WebSocket connections must authenticate via subprotocol. Unauthenticated requests receive a `401 Unauthorized` response. The `/api/health` and `/api/status` endpoints are exempt so that health probes and process supervisors continue to work without credentials.
+
+The password is stored as a bcrypt hash in `config.json` — the daemon never stores it in plaintext. See [Configuration](/docs/configuration#password-authentication) for setup instructions.
+
+### What password auth does and does not do
+
+- **Does:** Prevents unauthorized clients from controlling your agents, even if they can reach the daemon over the network.
+- **Does not:** Encrypt traffic. Password auth protects access, not confidentiality. If you need encrypted connections over an untrusted network, use the relay (which provides end-to-end encryption) or a VPN like Tailscale.
+
+### When to use it
+
+- You want to bind the daemon to a LAN or Tailscale address and restrict who can connect.
+- You don't fully trust your local network (shared office, public Wi-Fi with a VPN, etc.).
+- You're exposing the daemon via a reverse proxy and want an additional authentication layer.
+
+We still recommend the relay for mobile access — it combines authentication with end-to-end encryption out of the box. Password auth is primarily useful for direct LAN or VPN connections where you want access control without the relay.
+
 ## Agent authentication
 
 Paseo wraps agent CLIs (Claude Code, Codex, OpenCode) but does not manage their authentication. Each agent provider handles its own credentials:
@@ -99,5 +120,6 @@ Paseo never stores or transmits provider API keys. Agents run in your user conte
 
 - **Use the relay** for mobile access — it's the simplest option and all traffic is end-to-end encrypted
 - **Treat the QR code like a password** — anyone with the pairing offer can connect to your daemon
-- **Never bind to 0.0.0.0** unless you understand the implications and have proper firewall rules
+- **Set a password** if you bind to a network address — it prevents unauthorized clients from controlling your agents
+- **Never bind to 0.0.0.0 without a password** — without one, any device on your network can connect
 - **Keep your daemon updated** — security improvements are released regularly
