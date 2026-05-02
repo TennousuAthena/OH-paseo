@@ -129,7 +129,7 @@ test("renames an eligible unnamed branch-off worktree once on first agent contex
 
   const first = await attemptFirstAgentBranchAutoName({
     cwd: created.worktree.worktreePath,
-    nameContext: "Build the agent context name",
+    firstAgentContext: { prompt: "Build the agent context name" },
     generateBranchName: deps.generateBranchName,
   });
   const branchAfterFirst = execSync("git branch --show-current", {
@@ -155,7 +155,7 @@ test("renames an eligible unnamed branch-off worktree once on first agent contex
 
   const second = await attemptFirstAgentBranchAutoName({
     cwd: created.worktree.worktreePath,
-    nameContext: "Try another name",
+    firstAgentContext: { prompt: "Try another name" },
     generateBranchName: () => "second-agent-name",
   });
   const branchAfterSecond = execSync("git branch --show-current", {
@@ -167,6 +167,80 @@ test("renames an eligible unnamed branch-off worktree once on first agent contex
 
   expect(second).toEqual({ attempted: false, renamed: false, branchName: null });
   expect(branchAfterSecond).toBe("renamed-from-agent-context");
+});
+
+test("renames the branch even when the app supplies a random placeholder slug", async () => {
+  const { repoDir, tempDir } = createGitRepo();
+  cleanupPaths.push(tempDir);
+  const deps = createDeps({
+    generateBranchName: (seed) =>
+      seed === "Investigate the failing login flow" ? "renamed-from-prompt" : (seed ?? "fallback"),
+  });
+
+  const created = await createPaseoWorktree(
+    {
+      cwd: repoDir,
+      worktreeSlug: "dazzling-yak",
+      firstAgentContext: { prompt: "Investigate the failing login flow" },
+      runSetup: false,
+      paseoHome: path.join(tempDir, ".paseo"),
+    },
+    deps,
+  );
+
+  const branchAfter = execSync("git branch --show-current", {
+    cwd: created.worktree.worktreePath,
+    stdio: "pipe",
+  })
+    .toString()
+    .trim();
+
+  expect(created.worktree.branchName).toBe("renamed-from-prompt");
+  expect(branchAfter).toBe("renamed-from-prompt");
+  expect(created.workspace.displayName).toBe("renamed-from-prompt");
+});
+
+test("renames the branch from a github_pr attachment when no prompt is supplied", async () => {
+  const { repoDir, tempDir } = createGitRepo();
+  cleanupPaths.push(tempDir);
+  const deps = createDeps({
+    generateBranchName: (seed) =>
+      seed?.includes("Investigate flaky checkout test")
+        ? "renamed-from-pr-attachment"
+        : (seed ?? "fallback"),
+  });
+
+  const created = await createPaseoWorktree(
+    {
+      cwd: repoDir,
+      worktreeSlug: "dazzling-yak",
+      firstAgentContext: {
+        attachments: [
+          {
+            type: "github_pr",
+            mimeType: "application/github-pr",
+            number: 42,
+            title: "Investigate flaky checkout test",
+            url: "https://github.com/acme/repo/pull/42",
+          },
+        ],
+      },
+      runSetup: false,
+      paseoHome: path.join(tempDir, ".paseo"),
+    },
+    deps,
+  );
+
+  const branchAfter = execSync("git branch --show-current", {
+    cwd: created.worktree.worktreePath,
+    stdio: "pipe",
+  })
+    .toString()
+    .trim();
+
+  expect(created.worktree.branchName).toBe("renamed-from-pr-attachment");
+  expect(branchAfter).toBe("renamed-from-pr-attachment");
+  expect(created.workspace.displayName).toBe("renamed-from-pr-attachment");
 });
 
 test("does not mark checkout branch worktrees as eligible for first-agent rename", async () => {
@@ -196,7 +270,7 @@ test("does not mark checkout branch worktrees as eligible for first-agent rename
   await expect(
     attemptFirstAgentBranchAutoName({
       cwd: created.worktree.worktreePath,
-      nameContext: "Rename checkout branch",
+      firstAgentContext: { prompt: "Rename checkout branch" },
       generateBranchName: () => "must-not-rename",
     }),
   ).resolves.toEqual({ attempted: false, renamed: false, branchName: null });
@@ -232,7 +306,7 @@ test("does not mark GitHub PR checkout worktrees as eligible for first-agent ren
   await expect(
     attemptFirstAgentBranchAutoName({
       cwd: created.worktree.worktreePath,
-      nameContext: "Rename PR checkout",
+      firstAgentContext: { prompt: "Rename PR checkout" },
       generateBranchName: () => "must-not-rename",
     }),
   ).resolves.toEqual({ attempted: false, renamed: false, branchName: null });

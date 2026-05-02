@@ -1363,12 +1363,16 @@ export const PaseoWorktreeArchiveRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const FirstAgentContextSchema = z.object({
+  prompt: z.string().optional(),
+  attachments: AgentAttachmentsSchema,
+});
+
 export const CreatePaseoWorktreeRequestSchema = z.object({
   type: z.literal("create_paseo_worktree_request"),
   cwd: z.string(),
   worktreeSlug: z.string().optional(),
-  nameContext: z.string().optional(),
-  attachments: AgentAttachmentsSchema,
+  firstAgentContext: FirstAgentContextSchema.optional(),
   refName: z.string().min(1).optional(),
   action: z.enum(["branch-off", "checkout"]).optional(),
   githubPrNumber: z.number().int().positive().optional(),
@@ -3484,6 +3488,7 @@ export type DictationStreamFinishMessage = z.infer<typeof DictationStreamFinishM
 export type DictationStreamCancelMessage = z.infer<typeof DictationStreamCancelMessageSchema>;
 export type CreateAgentRequestMessage = z.infer<typeof CreateAgentRequestMessageSchema>;
 export type AgentAttachment = z.infer<typeof AgentAttachmentSchema>;
+export type FirstAgentContext = z.infer<typeof FirstAgentContextSchema>;
 export type ReviewAttachment = z.infer<typeof ReviewAttachmentSchema>;
 export type ListProviderModelsRequestMessage = z.infer<
   typeof ListProviderModelsRequestMessageSchema

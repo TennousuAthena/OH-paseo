@@ -1,9 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { GitHubService } from "../services/github-service.js";
-import type { AgentAttachment } from "./messages.js";
 import {
-  ConflictingGitHubPullRequestIntentError,
   MissingCheckoutTargetError,
   resolveWorktreeCreationIntent,
 } from "./resolve-worktree-creation-intent.js";
@@ -54,22 +52,6 @@ function createResolverHarness(): ResolverHarness {
     headRefLookups,
     resolveDefaultBranch: async () => "main",
     generateBranchName: (seed) => seed ?? "generated-worktree",
-  };
-}
-
-function createGitHubPrAttachment(params: {
-  number: number;
-  headRefName?: string;
-  baseRefName?: string;
-}): AgentAttachment {
-  return {
-    type: "github_pr",
-    mimeType: "application/github-pr",
-    number: params.number,
-    title: `PR ${params.number}`,
-    url: `https://github.com/acme/repo/pull/${params.number}`,
-    ...(params.headRefName ? { headRefName: params.headRefName } : {}),
-    ...(params.baseRefName ? { baseRefName: params.baseRefName } : {}),
   };
 }
 
@@ -154,81 +136,5 @@ describe("resolveWorktreeCreationIntent", () => {
     await expect(
       resolveWorktreeCreationIntent({ action: "checkout" }, repoRoot, deps),
     ).rejects.toBeInstanceOf(MissingCheckoutTargetError);
-  });
-
-  test("preserves the legacy GitHub PR attachment checkout path", async () => {
-    const deps = createResolverHarness();
-
-    await expect(
-      resolveWorktreeCreationIntent(
-        { attachments: [createGitHubPrAttachment({ number: 5, headRefName: "pr-five" })] },
-        repoRoot,
-        deps,
-      ),
-    ).resolves.toEqual({
-      kind: "checkout-github-pr",
-      githubPrNumber: 5,
-      headRef: "pr-five",
-      baseRefName: "main",
-    });
-    expect(deps.headRefLookups).toEqual([]);
-  });
-
-  test("accepts matching explicit and attachment GitHub PR numbers", async () => {
-    const deps = createResolverHarness();
-
-    await expect(
-      resolveWorktreeCreationIntent(
-        {
-          action: "checkout",
-          githubPrNumber: 5,
-          attachments: [createGitHubPrAttachment({ number: 5, headRefName: "pr-five" })],
-        },
-        repoRoot,
-        deps,
-      ),
-    ).resolves.toEqual({
-      kind: "checkout-github-pr",
-      githubPrNumber: 5,
-      headRef: "pr-five",
-      baseRefName: "main",
-    });
-    expect(deps.headRefLookups).toEqual([]);
-  });
-
-  test("rejects conflicting explicit and attachment GitHub PR numbers", async () => {
-    const deps = createResolverHarness();
-
-    await expect(
-      resolveWorktreeCreationIntent(
-        {
-          action: "checkout",
-          githubPrNumber: 5,
-          attachments: [createGitHubPrAttachment({ number: 7, headRefName: "pr-seven" })],
-        },
-        repoRoot,
-        deps,
-      ),
-    ).rejects.toBeInstanceOf(ConflictingGitHubPullRequestIntentError);
-  });
-
-  test("ignores a GitHub PR attachment for explicit branch-off", async () => {
-    const deps = createResolverHarness();
-
-    await expect(
-      resolveWorktreeCreationIntent(
-        {
-          action: "branch-off",
-          attachments: [createGitHubPrAttachment({ number: 5, headRefName: "pr-five" })],
-        },
-        repoRoot,
-        deps,
-      ),
-    ).resolves.toEqual({
-      kind: "branch-off",
-      baseBranch: "main",
-      newBranchName: "generated-worktree",
-    });
-    expect(deps.headRefLookups).toEqual([]);
   });
 });

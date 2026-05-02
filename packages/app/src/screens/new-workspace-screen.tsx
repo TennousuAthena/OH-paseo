@@ -293,6 +293,7 @@ interface CreateChatAgentInput {
   composerState: ReturnType<typeof useAgentInputDraft>["composerState"];
   ensureWorkspace: (input: {
     cwd: string;
+    prompt: string;
     attachments: AgentAttachment[];
   }) => Promise<ReturnType<typeof normalizeWorkspaceDescriptor>>;
   serverId: string;
@@ -310,7 +311,11 @@ async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
     throw new Error("Select a model");
   }
   const { attachments: reviewAttachments } = splitComposerAttachmentsForSubmit(attachments);
-  const ensuredWorkspace = await ensureWorkspace({ cwd, attachments: reviewAttachments });
+  const ensuredWorkspace = await ensureWorkspace({
+    cwd,
+    prompt: text,
+    attachments: reviewAttachments,
+  });
   submitWorkspaceDraft({
     serverId,
     draftKey,
@@ -588,13 +593,22 @@ export function NewWorkspaceScreen({
   }, []);
 
   const buildCreateWorktreeInput = useCallback(
-    (input: { cwd: string; attachments: AgentAttachment[] }) => {
+    (input: { cwd: string; prompt: string; attachments: AgentAttachment[] }) => {
       const checkoutRequest = pickerItemToCheckoutRequest(selectedItem);
+      const trimmedPrompt = input.prompt.trim();
+      const hasFirstAgentContext = trimmedPrompt.length > 0 || input.attachments.length > 0;
 
       return {
         cwd: input.cwd,
         worktreeSlug: createNameId(),
-        ...(input.attachments.length > 0 ? { attachments: input.attachments } : {}),
+        ...(hasFirstAgentContext
+          ? {
+              firstAgentContext: {
+                ...(trimmedPrompt ? { prompt: trimmedPrompt } : {}),
+                ...(input.attachments.length > 0 ? { attachments: input.attachments } : {}),
+              },
+            }
+          : {}),
         ...checkoutRequest,
       };
     },
@@ -602,7 +616,7 @@ export function NewWorkspaceScreen({
   );
 
   const ensureWorkspace = useCallback(
-    async (input: { cwd: string; attachments: AgentAttachment[] }) => {
+    async (input: { cwd: string; prompt: string; attachments: AgentAttachment[] }) => {
       if (createdWorkspace) {
         return createdWorkspace;
       }

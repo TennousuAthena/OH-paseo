@@ -1,13 +1,9 @@
-import {
-  ConflictingGitHubPullRequestIntentError,
-  MissingCheckoutTargetError,
-} from "./resolve-worktree-creation-intent.js";
+import { MissingCheckoutTargetError } from "./resolve-worktree-creation-intent.js";
 import { BranchAlreadyCheckedOutError, UnknownBranchError } from "../utils/worktree.js";
 
 export type WorktreeWireErrorCode =
   | "branch_already_checked_out"
   | "missing_checkout_target"
-  | "conflicting_github_pull_request_intent"
   | "unknown_branch"
   | "unknown";
 
@@ -32,9 +28,6 @@ export function toWorktreeWireError(error: unknown): WorktreeWireError {
   }
   if (error instanceof MissingCheckoutTargetError) {
     return { code: "missing_checkout_target", message: error.message };
-  }
-  if (error instanceof ConflictingGitHubPullRequestIntentError) {
-    return { code: "conflicting_github_pull_request_intent", message: error.message };
   }
   if (error instanceof UnknownBranchError) {
     return { code: "unknown_branch", message: error.message };

@@ -686,7 +686,9 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
           refName,
           action,
           githubPrNumber,
-          nameContext: topLevelArgs.initialPrompt,
+          ...(topLevelArgs.initialPrompt
+            ? { firstAgentContext: { prompt: topLevelArgs.initialPrompt } }
+            : {}),
           runSetup: false,
           paseoHome: options.paseoHome,
         },
@@ -1761,44 +1763,50 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     "create_worktree",
     {
       title: "Create worktree",
-      description: "Create a Paseo-managed git worktree.",
+      description:
+        "Create a Paseo-managed git worktree. Branch off a new branch, check out an existing branch, or check out a GitHub PR.",
       inputSchema: {
-        cwd: z
-          .string()
-          .optional()
-          .describe("Optional repository cwd. Defaults to the caller agent cwd."),
-        branchName: z.string().optional(),
-        nameContext: z.string().optional(),
-        baseBranch: z.string().optional(),
-        refName: z.string().min(1).optional(),
-        action: z.enum(["branch-off", "checkout"]).optional(),
-        githubPrNumber: z.number().int().positive().optional(),
+        cwd: z.string().optional().describe("Repository directory. Defaults to the agent's cwd."),
+        target: z
+          .discriminatedUnion("mode", [
+            z
+              .object({
+                mode: z.literal("branch-off"),
+                newBranch: z.string().min(1).describe("Name for the new branch."),
+                base: z
+                  .string()
+                  .min(1)
+                  .optional()
+                  .describe("Base ref. Defaults to the repo's default branch."),
+              })
+              .describe("Create a new branch off a base."),
+            z
+              .object({
+                mode: z.literal("checkout-branch"),
+                branch: z.string().min(1).describe("Existing branch to check out."),
+              })
+              .describe("Check out an existing branch."),
+            z
+              .object({
+                mode: z.literal("checkout-pr"),
+                prNumber: z.number().int().positive().describe("Pull request number."),
+              })
+              .describe("Check out a GitHub pull request."),
+          ])
+          .describe("What the worktree should contain."),
       },
       outputSchema: {
         branchName: z.string(),
         worktreePath: z.string(),
       },
     },
-    async ({ cwd, branchName, nameContext, baseBranch, refName, action, githubPrNumber }) => {
-      if (!branchName && !nameContext && !refName && githubPrNumber === undefined) {
-        throw new Error(
-          "create_worktree requires branchName, nameContext, refName, or githubPrNumber",
-        );
-      }
+    async ({ cwd, target }) => {
       const repoRoot = resolveScopedCwd(cwd, { required: true });
+      const mcpInput = mcpCreateWorktreeInput(repoRoot, target, options.paseoHome);
       const createdWorktree = await createMcpWorktree({
-        input: {
-          cwd: repoRoot,
-          worktreeSlug: branchName,
-          nameContext,
-          refName,
-          action,
-          githubPrNumber,
-          runSetup: false,
-          paseoHome: options.paseoHome,
-        },
+        input: mcpInput.input,
         createPaseoWorktree: options.createPaseoWorktree,
-        resolveDefaultBranch: baseBranch ? async () => baseBranch : undefined,
+        resolveDefaultBranch: mcpInput.resolveDefaultBranch,
       });
       const { worktree } = createdWorktree;
 
@@ -2037,6 +2045,38 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   );
 
   return server;
+}
+
+type McpCreateWorktreeTarget =
+  | { mode: "branch-off"; newBranch: string; base?: string }
+  | { mode: "checkout-branch"; branch: string }
+  | { mode: "checkout-pr"; prNumber: number };
+
+function mcpCreateWorktreeInput(
+  repoRoot: string,
+  target: McpCreateWorktreeTarget,
+  paseoHome: string | undefined,
+): { input: CreatePaseoWorktreeInput; resolveDefaultBranch?: (root: string) => Promise<string> } {
+  const base = { cwd: repoRoot, runSetup: false, paseoHome } as const;
+  switch (target.mode) {
+    case "branch-off":
+      return {
+        input: {
+          ...base,
+          worktreeSlug: target.newBranch,
+          action: "branch-off",
+          ...(target.base ? { refName: target.base } : {}),
+        },
+      };
+    case "checkout-branch":
+      return {
+        input: { ...base, action: "checkout", refName: target.branch },
+      };
+    case "checkout-pr":
+      return {
+        input: { ...base, action: "checkout", githubPrNumber: target.prNumber },
+      };
+  }
 }
 
 interface CreateMcpWorktreeOptions {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findGitHubPrAttachment, renderPromptAttachmentAsText } from "./prompt-attachments.js";
+import { buildAgentBranchNameSeed, renderPromptAttachmentAsText } from "./prompt-attachments.js";
 
 describe("prompt attachments", () => {
   it("renders github_pr attachments as readable text", () => {
@@ -85,30 +85,31 @@ describe("prompt attachments", () => {
     ).toContain("GitHub Issue #55: Issue");
   });
 
-  it("finds the first github_pr attachment", () => {
+  it("returns undefined when firstAgentContext is empty", () => {
+    expect(buildAgentBranchNameSeed(undefined)).toBeUndefined();
+    expect(buildAgentBranchNameSeed({})).toBeUndefined();
+    expect(buildAgentBranchNameSeed({ prompt: "   " })).toBeUndefined();
+    expect(buildAgentBranchNameSeed({ attachments: [] })).toBeUndefined();
+  });
+
+  it("joins prompt and rendered attachments into a single seed", () => {
     expect(
-      findGitHubPrAttachment([
-        {
-          type: "github_issue",
-          mimeType: "application/github-issue",
-          number: 55,
-          title: "Issue",
-          url: "https://github.com/getpaseo/paseo/issues/55",
-        },
-        {
-          type: "github_pr",
-          mimeType: "application/github-pr",
-          number: 123,
-          title: "PR",
-          url: "https://github.com/getpaseo/paseo/pull/123",
-        },
-      ]),
-    ).toEqual({
-      type: "github_pr",
-      mimeType: "application/github-pr",
-      number: 123,
-      title: "PR",
-      url: "https://github.com/getpaseo/paseo/pull/123",
-    });
+      buildAgentBranchNameSeed({
+        prompt: "Investigate flaky test",
+        attachments: [
+          {
+            type: "github_pr",
+            mimeType: "application/github-pr",
+            number: 123,
+            title: "Fix worktree naming",
+            url: "https://github.com/getpaseo/paseo/pull/123",
+            baseRefName: "main",
+            headRefName: "fix/worktree-naming",
+          },
+        ],
+      }),
+    ).toBe(
+      "Investigate flaky test\n\nGitHub PR #123: Fix worktree naming\nhttps://github.com/getpaseo/paseo/pull/123\nBase: main\nHead: fix/worktree-naming",
+    );
   });
 });

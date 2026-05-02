@@ -699,6 +699,7 @@ describe("NewWorkspaceScreen picker payload", () => {
     await flush();
 
     expect(mockClient.createPaseoWorktree).toHaveBeenCalledTimes(1);
+    expect(firstCreateWorktreeCall().firstAgentContext?.prompt).toBe("please review this change");
     expect(mockClient.createAgent).not.toHaveBeenCalled();
     expect(saveDraftInputMock).toHaveBeenCalledWith({
       draftKey: "draft:server:draft-new-workspace",
@@ -876,7 +877,7 @@ describe("NewWorkspaceScreen picker payload", () => {
     await flush();
 
     const call = firstCreateWorktreeCall();
-    const attachments = call.attachments ?? [];
+    const attachments = call.firstAgentContext?.attachments ?? [];
     expect(attachments).toHaveLength(1);
     expect(attachments[0]).toMatchObject({ type: "github_pr", number: 202 });
   });
@@ -907,8 +908,11 @@ describe("NewWorkspaceScreen picker payload", () => {
     await flush();
 
     const call = firstCreateWorktreeCall();
-    expect(call.attachments).toHaveLength(1);
-    expect(call.attachments?.[0]).toMatchObject({ type: "github_pr", number: 202 });
+    expect(call.firstAgentContext?.attachments).toHaveLength(1);
+    expect(call.firstAgentContext?.attachments?.[0]).toMatchObject({
+      type: "github_pr",
+      number: 202,
+    });
   });
 
   it("omits PR rows from the picker when GitHub features are disabled", async () => {

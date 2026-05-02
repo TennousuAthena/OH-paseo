@@ -58,16 +58,22 @@ function padLineNumber(lineNumber: number | null): string {
   return (lineNumber?.toString() ?? "-").padStart(2);
 }
 
-export function findGitHubPrAttachment(
-  attachments: readonly AgentAttachment[] | undefined,
-): Extract<AgentAttachment, { type: "github_pr" }> | null {
-  if (!attachments) {
-    return null;
+export function buildAgentBranchNameSeed(
+  firstAgentContext: { prompt?: string; attachments?: readonly AgentAttachment[] } | undefined,
+): string | undefined {
+  if (!firstAgentContext) {
+    return undefined;
   }
-  return (
-    attachments.find(
-      (attachment): attachment is Extract<AgentAttachment, { type: "github_pr" }> =>
-        attachment.type === "github_pr",
-    ) ?? null
-  );
+  const parts: string[] = [];
+  const prompt = firstAgentContext.prompt?.trim();
+  if (prompt) {
+    parts.push(prompt);
+  }
+  for (const attachment of firstAgentContext.attachments ?? []) {
+    const rendered = renderPromptAttachmentAsText(attachment).trim();
+    if (rendered) {
+      parts.push(rendered);
+    }
+  }
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
 }

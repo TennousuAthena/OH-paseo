@@ -3,8 +3,8 @@ import { basename } from "node:path";
 
 import type { AgentSessionConfig } from "./agent/agent-sdk-types.js";
 import {
-  type AgentAttachment,
   type GitSetupOptions,
+  type FirstAgentContext,
   type SessionInboundMessage,
   type SessionOutboundMessage,
   type WorkspaceSetupSnapshot,
@@ -24,7 +24,6 @@ import type { ScriptRouteStore } from "./script-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { GitHubService } from "../services/github-service.js";
 import type { CheckoutExistingBranchResult } from "../utils/checkout-git.js";
-import { renderPromptAttachmentAsText } from "./agent/prompt-attachments.js";
 import { expandTilde } from "../utils/path.js";
 import {
   getWorktreeSetupCommands,
@@ -169,8 +168,7 @@ export async function buildAgentSessionConfig(
   config: AgentSessionConfig,
   gitOptions?: GitSetupOptions,
   legacyWorktreeName?: string,
-  attachments?: AgentAttachment[],
-  nameContext?: string,
+  firstAgentContext?: FirstAgentContext,
 ): Promise<{
   sessionConfig: AgentSessionConfig;
   setupContinuation?: AgentWorktreeSetupContinuation;
@@ -201,8 +199,7 @@ export async function buildAgentSessionConfig(
         refName: normalized.refName,
         action: normalized.action,
         githubPrNumber: normalized.githubPrNumber,
-        nameContext,
-        attachments,
+        firstAgentContext,
         runSetup: false,
         paseoHome: dependencies.paseoHome,
       },
@@ -245,24 +242,6 @@ export async function buildAgentSessionConfig(
     },
     setupContinuation,
   };
-}
-
-export function buildAgentWorktreeNameContext(input: {
-  initialPrompt?: string | null;
-  attachments?: readonly AgentAttachment[];
-}): string | undefined {
-  const parts: string[] = [];
-  const prompt = input.initialPrompt?.trim();
-  if (prompt) {
-    parts.push(prompt);
-  }
-  for (const attachment of input.attachments ?? []) {
-    const rendered = renderPromptAttachmentAsText(attachment).trim();
-    if (rendered) {
-      parts.push(rendered);
-    }
-  }
-  return parts.length > 0 ? parts.join("\n\n") : undefined;
 }
 
 interface ValidateNormalizedGitOptionsInput {
@@ -513,11 +492,10 @@ export async function handleCreatePaseoWorktreeRequest(
     const createdWorktree = await dependencies.createPaseoWorktreeWorkflow({
       cwd: request.cwd,
       worktreeSlug: request.worktreeSlug,
-      nameContext: request.nameContext,
+      firstAgentContext: request.firstAgentContext,
       refName: request.refName,
       action: request.action,
       githubPrNumber: request.githubPrNumber,
-      attachments: request.attachments,
       runSetup: false,
       paseoHome: dependencies.paseoHome,
     });

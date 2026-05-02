@@ -13,6 +13,7 @@ import {
   serializeAgentStreamEvent,
   type AgentSnapshotPayload,
   type AgentAttachment,
+  type FirstAgentContext,
   type SessionInboundMessage,
   type SessionOutboundMessage,
   type FileExplorerRequest,
@@ -200,7 +201,6 @@ import { createWorktreeCoreDeps } from "./worktree-core.js";
 import {
   assertSafeGitRef as assertWorktreeSafeGitRef,
   buildAgentSessionConfig as buildWorktreeAgentSessionConfig,
-  buildAgentWorktreeNameContext,
   createPaseoWorktreeWorkflow as createWorktreeWorkflow,
   type CreatePaseoWorktreeSetupContinuationInput,
   type CreatePaseoWorktreeWorkflowResult,
@@ -2984,16 +2984,15 @@ export class Session {
         ...(provisionalTitle ? { title: provisionalTitle } : {}),
       };
 
-      const agentNameContext = buildAgentWorktreeNameContext({
-        initialPrompt: trimmedPrompt,
-        attachments,
-      });
+      const firstAgentContext: FirstAgentContext = {
+        ...(trimmedPrompt ? { prompt: trimmedPrompt } : {}),
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      };
       const { sessionConfig, setupContinuation } = await this.buildAgentSessionConfig(
         resolvedConfig,
         git,
         worktreeName,
-        attachments,
-        agentNameContext,
+        firstAgentContext,
       );
       let resolvedWorkspace = msg.workspaceId
         ? await this.workspaceRegistry.get(msg.workspaceId)
@@ -3004,7 +3003,7 @@ export class Session {
       }
       resolvedWorkspace = await this.maybeAutoNameWorkspaceBranchForFirstAgent({
         workspace: resolvedWorkspace,
-        nameContext: agentNameContext,
+        firstAgentContext,
       });
       const snapshot = await this.agentManager.createAgent(
         {
@@ -3352,8 +3351,7 @@ export class Session {
     config: AgentSessionConfig,
     gitOptions?: GitSetupOptions,
     legacyWorktreeName?: string,
-    attachments?: AgentAttachment[],
-    nameContext?: string,
+    firstAgentContext?: FirstAgentContext,
   ): Promise<{
     sessionConfig: AgentSessionConfig;
     setupContinuation?: CreatePaseoWorktreeWorkflowResult["setupContinuation"];
@@ -3391,19 +3389,18 @@ export class Session {
       config,
       gitOptions,
       legacyWorktreeName,
-      attachments,
-      nameContext,
+      firstAgentContext,
     );
   }
 
   private async maybeAutoNameWorkspaceBranchForFirstAgent(input: {
     workspace: PersistedWorkspaceRecord;
-    nameContext?: string;
+    firstAgentContext: FirstAgentContext;
   }): Promise<PersistedWorkspaceRecord> {
     const coreDeps = createWorktreeCoreDeps(this.github);
     const result = await attemptFirstAgentBranchAutoName({
       cwd: input.workspace.cwd,
-      nameContext: input.nameContext,
+      firstAgentContext: input.firstAgentContext,
       generateBranchName: coreDeps.generateBranchName,
     });
     if (!result.renamed || !result.branchName) {

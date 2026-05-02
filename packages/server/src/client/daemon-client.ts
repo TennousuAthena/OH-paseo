@@ -251,7 +251,7 @@ export interface CreateAgentRequestOptions extends AgentConfigOverrides {
 
 export interface CreatePaseoWorktreeInput extends Pick<
   CreatePaseoWorktreeRequest,
-  "cwd" | "worktreeSlug" | "nameContext" | "attachments" | "refName" | "action" | "githubPrNumber"
+  "cwd" | "worktreeSlug" | "firstAgentContext" | "refName" | "action" | "githubPrNumber"
 > {}
 
 type CheckoutStatusPayload = CheckoutStatusResponse["payload"];
@@ -2773,9 +2773,8 @@ export class DaemonClient {
         type: "create_paseo_worktree_request",
         cwd: input.cwd,
         worktreeSlug: input.worktreeSlug,
-        ...(input.nameContext !== undefined ? { nameContext: input.nameContext } : {}),
-        ...(input.attachments && input.attachments.length > 0
-          ? { attachments: input.attachments }
+        ...(input.firstAgentContext !== undefined
+          ? { firstAgentContext: input.firstAgentContext }
           : {}),
         ...(input.refName !== undefined ? { refName: input.refName } : {}),
         ...(input.action !== undefined ? { action: input.action } : {}),

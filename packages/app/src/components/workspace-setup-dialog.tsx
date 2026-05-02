@@ -14,11 +14,7 @@ import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { encodeImages } from "@/utils/encode-images";
 import { toErrorMessage } from "@/utils/error-messages";
 import { splitComposerAttachmentsForSubmit } from "@/components/composer-attachments";
-import type {
-  CreateAgentRequestOptions,
-  CreatePaseoWorktreeInput,
-  DaemonClient,
-} from "@server/client/daemon-client";
+import type { CreateAgentRequestOptions, DaemonClient } from "@server/client/daemon-client";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { requireWorkspaceExecutionAuthority } from "@/utils/workspace-execution";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
@@ -73,24 +69,19 @@ function buildChatDraftComposerArgs({
   };
 }
 
-type WorkspaceCreationAttachments = NonNullable<CreatePaseoWorktreeInput["attachments"]>;
-
 async function callWorkspaceCreation({
   creationMethod,
   connectedClient,
   input,
-  wirePayload,
 }: {
   creationMethod: "create_worktree" | "open_project";
   connectedClient: DaemonClient;
   input: { cwd: string };
-  wirePayload: { attachments: WorkspaceCreationAttachments };
 }) {
   if (creationMethod === "create_worktree") {
     return connectedClient.createPaseoWorktree({
       cwd: input.cwd,
       worktreeSlug: createNameId(),
-      ...(wirePayload.attachments.length > 0 ? { attachments: wirePayload.attachments } : {}),
     });
   }
   return connectedClient.openProject(input.cwd);
@@ -228,12 +219,10 @@ export function WorkspaceSetupDialog() {
       }
 
       const connectedClient = withConnectedClient();
-      const wirePayload = splitComposerAttachmentsForSubmit(input.attachments);
       const payload = await callWorkspaceCreation({
         creationMethod: pendingWorkspaceSetup.creationMethod,
         connectedClient,
         input,
-        wirePayload,
       });
 
       if (payload.error || !payload.workspace) {

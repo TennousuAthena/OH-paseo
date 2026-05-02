@@ -226,28 +226,31 @@ describe("shared messages attachments", () => {
     ]);
   });
 
-  it("keeps known attachments and drops unknown worktree-create attachments", () => {
+  it("keeps known firstAgentContext attachments and drops unknown ones", () => {
     const parsed = CreatePaseoWorktreeRequestSchema.parse({
       type: "create_paseo_worktree_request",
       requestId: "req-3",
       cwd: "/tmp/repo",
-      attachments: [
-        {
-          type: "github_pr",
-          mimeType: "application/github-pr",
-          number: 99,
-          title: "Fork-safe PR checkout",
-          url: "https://github.com/getpaseo/paseo/pull/99",
-        },
-        {
-          type: "future_attachment",
-          mimeType: "application/future",
-          foo: "bar",
-        },
-      ],
+      firstAgentContext: {
+        prompt: "Investigate flaky test",
+        attachments: [
+          {
+            type: "github_pr",
+            mimeType: "application/github-pr",
+            number: 99,
+            title: "Fork-safe PR checkout",
+            url: "https://github.com/getpaseo/paseo/pull/99",
+          },
+          {
+            type: "future_attachment",
+            mimeType: "application/future",
+            foo: "bar",
+          },
+        ],
+      },
     });
 
-    expect(parsed.attachments).toEqual([
+    expect(parsed.firstAgentContext?.attachments).toEqual([
       {
         type: "github_pr",
         mimeType: "application/github-pr",
@@ -256,21 +259,20 @@ describe("shared messages attachments", () => {
         url: "https://github.com/getpaseo/paseo/pull/99",
       },
     ]);
+    expect(parsed.firstAgentContext?.prompt).toBe("Investigate flaky test");
   });
 
-  it("parses old-shape create-worktree payloads without the new intent fields", () => {
+  it("parses worktree-create payloads without a firstAgentContext", () => {
     const parsed = CreatePaseoWorktreeRequestSchema.parse({
       type: "create_paseo_worktree_request",
       requestId: "req-4",
       cwd: "/tmp/repo",
-      attachments: [],
     });
 
     expect(parsed).toEqual({
       type: "create_paseo_worktree_request",
       requestId: "req-4",
       cwd: "/tmp/repo",
-      attachments: [],
     });
   });
 
@@ -279,7 +281,6 @@ describe("shared messages attachments", () => {
       type: "create_paseo_worktree_request",
       requestId: "req-5",
       cwd: "/tmp/repo",
-      attachments: [],
       action: "checkout",
       refName: "feature/ref-picker",
       githubPrNumber: 42,
@@ -290,7 +291,6 @@ describe("shared messages attachments", () => {
       type: "create_paseo_worktree_request",
       requestId: "req-5",
       cwd: "/tmp/repo",
-      attachments: [],
       action: "checkout",
       refName: "feature/ref-picker",
       githubPrNumber: 42,

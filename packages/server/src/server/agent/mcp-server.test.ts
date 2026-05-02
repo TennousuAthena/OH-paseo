@@ -478,42 +478,28 @@ describe("create_agent MCP tool", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("accepts optional worktree intent fields in create_worktree input validation", async () => {
+  it("accepts each create_worktree target mode", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = registeredTool(server, "create_worktree");
 
-    const parsed = await tool.inputSchema.safeParseAsync({
-      cwd: existingCwd,
-      action: "checkout",
-      refName: "head-ref",
-      githubPrNumber: 42,
-    });
-
-    expect(parsed.success).toBe(true);
+    for (const target of [
+      { mode: "branch-off", newBranch: "feature-x", base: "main" },
+      { mode: "checkout-branch", branch: "head-ref" },
+      { mode: "checkout-pr", prNumber: 42 },
+    ] as const) {
+      const parsed = await tool.inputSchema.safeParseAsync({ cwd: existingCwd, target });
+      expect(parsed.success).toBe(true);
+    }
   });
 
-  it("accepts optional name context in create_worktree input validation", async () => {
+  it("rejects create_worktree without a target", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = registeredTool(server, "create_worktree");
 
-    const parsed = await tool.inputSchema.safeParseAsync({
-      cwd: existingCwd,
-      nameContext: "Fix workspace creation naming",
-    });
-
-    expect(parsed.success).toBe(true);
-  });
-
-  it("rejects create_worktree without a branch name or checkout intent", async () => {
-    const { agentManager, agentStorage } = createTestDeps();
-    const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
-    const tool = registeredTool(server, "create_worktree");
-
-    await expect(tool.callback({})).rejects.toThrow(
-      "create_worktree requires branchName, nameContext, refName, or githubPrNumber",
-    );
+    const parsed = await tool.inputSchema.safeParseAsync({});
+    expect(parsed.success).toBe(false);
   });
 
   it("surfaces createAgent validation failures", async () => {
@@ -913,7 +899,7 @@ describe("create_agent MCP tool", () => {
     expect(createPaseoWorktree).toHaveBeenCalledWith(
       expect.objectContaining({
         githubPrNumber: 123,
-        nameContext: "Rename this PR branch from prompt",
+        firstAgentContext: { prompt: "Rename this PR branch from prompt" },
       }),
       expect.objectContaining({
         setupContinuation: expect.objectContaining({ kind: "agent" }),
@@ -968,8 +954,7 @@ describe("create_agent MCP tool", () => {
       const tool = registeredTool(server, "create_worktree");
       const response = await tool.callback({
         cwd: repoDir,
-        branchName: "tool-worktree",
-        baseBranch: "main",
+        target: { mode: "branch-off", newBranch: "tool-worktree", base: "main" },
       });
 
       expect(response.structuredContent.branchName).toBe("tool-worktree");
@@ -978,106 +963,6 @@ describe("create_agent MCP tool", () => {
       expect(setupContinuations).toEqual([undefined]);
       expect(broadcasts).toHaveLength(1);
       expect(broadcasts[0]).toContain("tool-worktree");
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  it("auto-names a standalone branch-off worktree from create_worktree name context", async () => {
-    const { agentManager, agentStorage, spies } = createTestDeps();
-    const tempDir = await mkdtemp(join(tmpdir(), "paseo-mcp-create-worktree-name-context-"));
-    const repoDir = join(tempDir, "repo");
-    const paseoHome = join(tempDir, ".paseo");
-    const broadcasts: string[] = [];
-
-    try {
-      execSync(`git init ${JSON.stringify(repoDir)}`, { stdio: "pipe" });
-      execSync("git config user.email test@example.com", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config user.name Test", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config commit.gpgsign false", { cwd: repoDir, stdio: "pipe" });
-      await writeFile(join(repoDir, "README.md"), "hello\n");
-      execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
-      execSync("git commit -m init", { cwd: repoDir, stdio: "pipe" });
-      execSync("git branch -M main", { cwd: repoDir, stdio: "pipe" });
-
-      const server = await createAgentMcpServer({
-        agentManager,
-        agentStorage,
-        paseoHome,
-        createPaseoWorktree: createPaseoWorktreeForMcpTest({ paseoHome, broadcasts }),
-        logger,
-      });
-      const tool = registeredTool(server, "create_worktree");
-      const response = await tool.callback({
-        cwd: repoDir,
-        nameContext: "Fix workspace creation naming",
-        baseBranch: "main",
-      });
-
-      expect(response.structuredContent.branchName).toBe("fix-workspace-creation-naming");
-      expect(
-        execSync("git branch --show-current", {
-          cwd: response.structuredContent.worktreePath as string,
-          stdio: "pipe",
-        })
-          .toString()
-          .trim(),
-      ).toBe("fix-workspace-creation-naming");
-      expect(spies.agentManager.createAgent).not.toHaveBeenCalled();
-      expect(broadcasts).toHaveLength(1);
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  it("does not rename checkout-created worktrees from create_worktree name context", async () => {
-    const { agentManager, agentStorage, spies } = createTestDeps();
-    const tempDir = await mkdtemp(join(tmpdir(), "paseo-mcp-checkout-worktree-name-context-"));
-    const repoDir = join(tempDir, "repo");
-    const paseoHome = join(tempDir, ".paseo");
-    const broadcasts: string[] = [];
-
-    try {
-      execSync(`git init ${JSON.stringify(repoDir)}`, { stdio: "pipe" });
-      execSync("git config user.email test@example.com", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config user.name Test", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config commit.gpgsign false", { cwd: repoDir, stdio: "pipe" });
-      await writeFile(join(repoDir, "README.md"), "hello\n");
-      execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
-      execSync("git commit -m init", { cwd: repoDir, stdio: "pipe" });
-      execSync("git branch -M main", { cwd: repoDir, stdio: "pipe" });
-      execSync("git checkout -b existing-feature", { cwd: repoDir, stdio: "pipe" });
-      await writeFile(join(repoDir, "feature.txt"), "feature\n");
-      execSync("git add feature.txt", { cwd: repoDir, stdio: "pipe" });
-      execSync("git commit -m feature", { cwd: repoDir, stdio: "pipe" });
-      execSync("git checkout main", { cwd: repoDir, stdio: "pipe" });
-
-      const server = await createAgentMcpServer({
-        agentManager,
-        agentStorage,
-        paseoHome,
-        createPaseoWorktree: createPaseoWorktreeForMcpTest({ paseoHome, broadcasts }),
-        logger,
-      });
-      const tool = registeredTool(server, "create_worktree");
-      const response = await tool.callback({
-        cwd: repoDir,
-        action: "checkout",
-        refName: "existing-feature",
-        nameContext: "Should Not Rename Checkout",
-      });
-
-      expect(response.structuredContent.branchName).toBe("existing-feature");
-      expect(
-        execSync("git branch --show-current", {
-          cwd: response.structuredContent.worktreePath as string,
-          stdio: "pipe",
-        })
-          .toString()
-          .trim(),
-      ).toBe("existing-feature");
-      expect(spies.agentManager.createAgent).not.toHaveBeenCalled();
-      expect(broadcasts).toHaveLength(1);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -1128,8 +1013,7 @@ describe("create_agent MCP tool", () => {
       const archiveTool = registeredTool(server, "archive_worktree");
       const created = await createTool.callback({
         cwd: repoDir,
-        branchName: "archive-tool-worktree",
-        baseBranch: "main",
+        target: { mode: "branch-off", newBranch: "archive-tool-worktree", base: "main" },
       });
       workspaceGitService.getSnapshot.mockClear();
 

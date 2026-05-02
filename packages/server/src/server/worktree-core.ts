@@ -13,11 +13,12 @@ import {
   type ResolveWorktreeCreationIntentInput,
   type WorktreeCreationIntent,
 } from "./resolve-worktree-creation-intent.js";
+import type { FirstAgentContext } from "../shared/messages.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 
 export interface CreateWorktreeCoreInput extends ResolveWorktreeCreationIntentInput {
   cwd: string;
-  nameContext?: string;
+  firstAgentContext?: FirstAgentContext;
   paseoHome?: string;
   runSetup?: boolean;
 }

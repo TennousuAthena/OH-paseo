@@ -16,7 +16,6 @@ import type { SessionOutboundMessage, WorkspaceDescriptorPayload } from "./messa
 import { archivePaseoWorktree } from "./paseo-worktree-archive-service.js";
 import {
   buildAgentSessionConfig,
-  buildAgentWorktreeNameContext,
   createPaseoWorktreeWorkflow,
   handlePaseoWorktreeArchiveRequest,
   handlePaseoWorktreeListRequest,
@@ -1158,7 +1157,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
     }
   });
 
-  test("checks out the GitHub PR branch when a github_pr attachment is present", async () => {
+  test("checks out the GitHub PR branch when githubPrNumber is supplied", async () => {
     const { tempDir, repoDir } = createGitHubPrRemoteRepo();
     cleanupPaths.push(tempDir);
 
@@ -1180,17 +1179,9 @@ describe("handleCreatePaseoWorktreeRequest", () => {
         requestId: "req-pr-worktree",
         cwd: repoDir,
         worktreeSlug: "review-pr-123",
-        attachments: [
-          {
-            type: "github_pr",
-            mimeType: "application/github-pr",
-            number: 123,
-            title: "Review branch",
-            url: "https://github.com/getpaseo/paseo/pull/123",
-            baseRefName: "main",
-            headRefName: "feature/review-pr",
-          },
-        ],
+        action: "checkout",
+        githubPrNumber: 123,
+        refName: "feature/review-pr",
       },
     );
 
@@ -1228,6 +1219,10 @@ describe("handleCreatePaseoWorktreeRequest", () => {
       {
         paseoHome: path.join(tempDir, ".paseo"),
         sessionLogger: createLogger(),
+        workspaceGitService: {
+          resolveRepoRoot: vi.fn(async () => repoDir),
+          resolveDefaultBranch: vi.fn(async () => "main"),
+        } as unknown as WorkspaceGitService,
         createPaseoWorktree: createPaseoWorktreeForTest({
           paseoHome: path.join(tempDir, ".paseo"),
           events,
@@ -1246,19 +1241,10 @@ describe("handleCreatePaseoWorktreeRequest", () => {
       {
         createWorktree: true,
         worktreeSlug: "agent-review-pr-123",
+        action: "checkout",
+        githubPrNumber: 123,
+        refName: "feature/review-pr",
       },
-      undefined,
-      [
-        {
-          type: "github_pr",
-          mimeType: "application/github-pr",
-          number: 123,
-          title: "Review branch",
-          url: "https://github.com/getpaseo/paseo/pull/123",
-          baseRefName: "main",
-          headRefName: "feature/review-pr",
-        },
-      ],
     );
 
     expect(result.sessionConfig.cwd).toContain("agent-review-pr-123");
@@ -1332,11 +1318,11 @@ describe("handleCreatePaseoWorktreeRequest", () => {
       repoRoot: "/tmp/repo",
       created: true,
     }));
-    const nameContext = buildAgentWorktreeNameContext({
-      initialPrompt: "Create a worktree name from this prompt",
+    const firstAgentContext = {
+      prompt: "Create a worktree name from this prompt",
       attachments: [
         {
-          type: "github_pr",
+          type: "github_pr" as const,
           mimeType: "application/github-pr",
           number: 123,
           title: "Fix worktree naming",
@@ -1345,7 +1331,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
           headRefName: "fix/worktree-naming",
         },
       ],
-    });
+    };
 
     const result = await buildAgentSessionConfig(
       {
@@ -1370,24 +1356,12 @@ describe("handleCreatePaseoWorktreeRequest", () => {
         action: "branch-off",
       },
       undefined,
-      [
-        {
-          type: "github_pr",
-          mimeType: "application/github-pr",
-          number: 123,
-          title: "Fix worktree naming",
-          url: "https://github.com/getpaseo/paseo/pull/123",
-          baseRefName: "main",
-          headRefName: "fix/worktree-naming",
-        },
-      ],
-      nameContext,
+      firstAgentContext,
     );
 
     expect(createPaseoWorktree).toHaveBeenCalledWith(
       expect.objectContaining({
-        nameContext:
-          "Create a worktree name from this prompt\n\nGitHub PR #123: Fix worktree naming\nhttps://github.com/getpaseo/paseo/pull/123\nBase: main\nHead: fix/worktree-naming",
+        firstAgentContext,
       }),
       expect.anything(),
     );
@@ -1641,7 +1615,6 @@ describe("handleCreatePaseoWorktreeRequest", () => {
           type: "create_paseo_worktree_request",
           cwd: repoDir,
           action: "checkout",
-          attachments: [],
           requestId: "req-missing-target",
         },
       );
@@ -1681,7 +1654,6 @@ describe("handleCreatePaseoWorktreeRequest", () => {
           cwd: repoDir,
           action: "checkout",
           refName: "missing-branch",
-          attachments: [],
           requestId: "req-unknown-branch",
         },
       );
