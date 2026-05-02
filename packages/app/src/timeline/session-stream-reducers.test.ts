@@ -1099,6 +1099,48 @@ describe("processAgentStreamEvents", () => {
     expect(finalAssistantItems).toHaveLength(1);
     expect(finalAssistantItems[0]?.text).toBe(`${seq186Text}${seq187Text}`);
   });
+
+  it("does not split an assistant sentence between hydrated tail and live head", () => {
+    const hydrated = processTimelineResponse({
+      ...baseTimelineInput,
+      isInitializing: true,
+      hasActiveInitDeferred: true,
+      initRequestDirection: "tail",
+      payload: {
+        agentId: "agent-1",
+        direction: "tail",
+        reset: false,
+        epoch: "epoch-1",
+        startCursor: { seq: 10 },
+        endCursor: { seq: 10 },
+        entries: [makeTimelineEntry(10, "Call-site API — exactly one primitive. Not")],
+        error: null,
+        hasNewer: false,
+        hasOlder: false,
+      },
+    });
+
+    const liveContinuation = processAgentStreamEvent({
+      ...baseStreamInput,
+      event: makeTimelineEvent(" gateValue, not filterEnum."),
+      seq: 11,
+      epoch: "epoch-1",
+      currentTail: hydrated.tail,
+      currentHead: hydrated.head,
+      currentCursor: hydrated.cursor ?? undefined,
+      timestamp: new Date("2026-05-02T10:00:00.011Z"),
+    });
+
+    const finalAssistantItems = [...liveContinuation.tail, ...liveContinuation.head].filter(
+      (item): item is Extract<StreamItem, { kind: "assistant_message" }> =>
+        item.kind === "assistant_message",
+    );
+
+    expect(finalAssistantItems).toHaveLength(1);
+    expect(finalAssistantItems[0]?.text).toBe(
+      "Call-site API — exactly one primitive. Not gateValue, not filterEnum.",
+    );
+  });
 });
 
 describe("createAgentStreamReducerQueue", () => {

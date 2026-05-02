@@ -991,6 +991,16 @@ export function applyStreamEvent(params: {
     flushHead();
   }
 
+  if (incomingKind === "assistant_message" && nextHead.length === 0) {
+    const tailAssistant = nextTail.at(-1);
+    if (tailAssistant?.kind === "assistant_message") {
+      nextTail = nextTail.slice(0, -1);
+      nextHead = [tailAssistant];
+      changedTail = true;
+      changedHead = true;
+    }
+  }
+
   // For streamable kinds, apply to head
   if (incomingKind !== null && isStreamableKind(incomingKind)) {
     const reduced = reduceStreamUpdate(nextHead, event, timestamp, { source });
