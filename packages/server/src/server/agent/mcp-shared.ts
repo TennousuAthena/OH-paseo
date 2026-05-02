@@ -8,6 +8,7 @@ import type {
 } from "./agent-sdk-types.js";
 import type { AgentManager, ManagedAgent, WaitForAgentResult } from "./agent-manager.js";
 import { curateAgentActivity } from "./activity-curator.js";
+import { selectItemsByProjectedLimit } from "./timeline-projection.js";
 import type { AgentStorage } from "./agent-storage.js";
 import { ensureAgentLoaded } from "./agent-loading.js";
 import { serializeAgentSnapshot } from "../messages.js";
@@ -147,7 +148,12 @@ export async function waitForAgentWithTimeout(
     if (error instanceof Error && error.message === "wait timeout") {
       const snapshot = agentManager.getAgent(agentId);
       const timeline = agentManager.getTimeline(agentId);
-      const recentActivity = curateAgentActivity(timeline.slice(-5));
+      const recent = selectItemsByProjectedLimit({
+        items: timeline,
+        direction: "tail",
+        limit: 5,
+      });
+      const recentActivity = curateAgentActivity(recent.items);
       const waitedSeconds = Math.round(AGENT_WAIT_TIMEOUT_MS / 1000);
       const message = `Awaiting the agent timed out after ${waitedSeconds}s. This does not mean the agent failed - call wait_for_agent again to continue waiting.\n\nRecent activity:\n${recentActivity}`;
       return {

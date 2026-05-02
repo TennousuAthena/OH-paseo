@@ -2009,4 +2009,68 @@ describe("agent snapshot MCP serialization", () => {
       "archived-activity-agent",
     );
   });
+
+  it("get_agent_activity limit counts projected messages, not raw deltas", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    const snapshot = createManagedAgent({ id: "live-activity-agent", currentModeId: "default" });
+    spies.agentManager.getAgent.mockReturnValue(snapshot);
+    spies.agentManager.getTimeline.mockReturnValue([
+      { type: "user_message", text: "Say hi" },
+      { type: "assistant_message", text: "Hello " },
+      { type: "assistant_message", text: "world" },
+      { type: "assistant_message", text: "." },
+      { type: "assistant_message", text: " How" },
+      { type: "assistant_message", text: " are" },
+      { type: "assistant_message", text: " you?" },
+    ]);
+
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      logger: createTestLogger(),
+      providerRegistry: {
+        claude: createProviderDefinition({}),
+      } as unknown as Record<AgentProvider, ProviderDefinition>,
+    });
+    const tool = registeredTool(server, "get_agent_activity");
+    const response = await tool.callback({ agentId: "live-activity-agent", limit: 1 });
+
+    const content = String(response.structuredContent.content);
+    expect(content).toContain("Hello world. How are you?");
+  });
+
+  it("get_agent_activity limit=2 returns the last two projected entries whole", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    const snapshot = createManagedAgent({ id: "live-activity-agent-2", currentModeId: "default" });
+    spies.agentManager.getAgent.mockReturnValue(snapshot);
+    spies.agentManager.getTimeline.mockReturnValue([
+      { type: "user_message", text: "u1" },
+      { type: "assistant_message", text: "first " },
+      { type: "assistant_message", text: "answer" },
+      { type: "user_message", text: "u2" },
+      { type: "assistant_message", text: "second " },
+      { type: "assistant_message", text: "answer" },
+      { type: "user_message", text: "u3" },
+      { type: "assistant_message", text: "third " },
+      { type: "assistant_message", text: "answer" },
+    ]);
+
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      logger: createTestLogger(),
+      providerRegistry: {
+        claude: createProviderDefinition({}),
+      } as unknown as Record<AgentProvider, ProviderDefinition>,
+    });
+    const tool = registeredTool(server, "get_agent_activity");
+    const response = await tool.callback({ agentId: "live-activity-agent-2", limit: 2 });
+
+    const content = String(response.structuredContent.content);
+    expect(content).toContain("[User] u3");
+    expect(content).toContain("third answer");
+    expect(content).not.toContain("[User] u2");
+    expect(content).not.toContain("second answer");
+    expect(content).not.toContain("first answer");
+  });
 });

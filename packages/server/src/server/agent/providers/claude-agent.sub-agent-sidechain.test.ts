@@ -301,7 +301,7 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
       timestamp: `2026-02-01T00:00:0${index}.000Z`,
       item,
     }));
-    const projected = projectTimelineRows(rows, "claude", "projected");
+    const projected = projectTimelineRows({ rows, mode: "projected" });
     const projectedTaskCalls = projected.filter(
       (entry) => entry.item.type === "tool_call" && entry.item.callId === "task-call-1",
     );

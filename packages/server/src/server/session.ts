@@ -7313,7 +7313,6 @@ export class Session {
     direction: AgentTimelineFetchDirection;
     cursor: AgentTimelineCursor | undefined;
     requestedLimit: number;
-    provider: AgentSnapshotPayload["provider"];
     timeline: ReturnType<AgentManager["fetchTimeline"]>;
   }): {
     timeline: ReturnType<AgentManager["fetchTimeline"]>;
@@ -7321,13 +7320,12 @@ export class Session {
     minSeq: number | null;
     maxSeq: number | null;
   } {
-    const { agentId, direction, cursor, requestedLimit, provider } = params;
+    const { agentId, direction, cursor, requestedLimit } = params;
     let timeline = params.timeline;
     const projectedLimit = Math.max(1, Math.floor(requestedLimit));
     let fetchLimit = projectedLimit;
     let projectedWindow = selectTimelineWindowByProjectedLimit({
       rows: timeline.rows,
-      provider,
       direction,
       limit: projectedLimit,
       collapseToolLifecycle: false,
@@ -7362,7 +7360,6 @@ export class Session {
       });
       projectedWindow = selectTimelineWindowByProjectedLimit({
         rows: timeline.rows,
-        provider,
         direction,
         limit: projectedLimit,
         collapseToolLifecycle: false,
@@ -7424,11 +7421,10 @@ export class Session {
           direction,
           cursor,
           requestedLimit,
-          provider: snapshot.provider,
           timeline,
         });
         timeline = projectedResult.timeline;
-        entries = projectTimelineRows(projectedResult.selectedRows, snapshot.provider, projection);
+        entries = projectTimelineRows({ rows: projectedResult.selectedRows, mode: projection });
         if (projectedResult.minSeq !== null && projectedResult.maxSeq !== null) {
           startCursor = { epoch: timeline.epoch, seq: projectedResult.minSeq };
           endCursor = { epoch: timeline.epoch, seq: projectedResult.maxSeq };
@@ -7440,7 +7436,7 @@ export class Session {
         const lastRow = timeline.rows[timeline.rows.length - 1];
         startCursor = firstRow ? { epoch: timeline.epoch, seq: firstRow.seq } : null;
         endCursor = lastRow ? { epoch: timeline.epoch, seq: lastRow.seq } : null;
-        entries = projectTimelineRows(timeline.rows, snapshot.provider, projection);
+        entries = projectTimelineRows({ rows: timeline.rows, mode: projection });
       }
 
       this.emit({
@@ -7460,7 +7456,15 @@ export class Session {
           endCursor,
           hasOlder,
           hasNewer,
-          entries,
+          entries: entries.map((entry) => ({
+            provider: snapshot.provider,
+            item: entry.item,
+            timestamp: entry.timestamp,
+            seqStart: entry.seqStart,
+            seqEnd: entry.seqEnd,
+            sourceSeqRanges: entry.sourceSeqRanges,
+            collapsed: entry.collapsed,
+          })),
           error: null,
         },
       });

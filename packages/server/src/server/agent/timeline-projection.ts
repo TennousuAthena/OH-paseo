@@ -1,4 +1,4 @@
-import type { AgentProvider, AgentTimelineItem, ToolCallDetail } from "./agent-sdk-types.js";
+import type { AgentTimelineItem, ToolCallDetail } from "./agent-sdk-types.js";
 import type { AgentTimelineRow } from "./agent-manager.js";
 
 export type TimelineProjectionMode = "canonical" | "projected";
@@ -8,11 +8,10 @@ export interface TimelineSeqRange {
   endSeq: number;
 }
 
-export type TimelineProjectionKind = "assistant_merge" | "tool_lifecycle";
+export type TimelineProjectionKind = "assistant_merge" | "reasoning_merge" | "tool_lifecycle";
 export type TimelineLimitDirection = "tail" | "before" | "after";
 
 export interface TimelineProjectionEntry {
-  provider: AgentProvider;
   item: AgentTimelineItem;
   timestamp: string;
   seqStart: number;
@@ -100,12 +99,8 @@ function mergeToolCallItems(
   return merged;
 }
 
-function makeCanonicalEntries(
-  rows: readonly AgentTimelineRow[],
-  provider: AgentProvider,
-): WorkingEntry[] {
+function makeCanonicalEntries(rows: readonly AgentTimelineRow[]): WorkingEntry[] {
   return rows.map((row) => ({
-    provider,
     item: row.item,
     timestamp: row.timestamp,
     seqStart: row.seq,
@@ -156,6 +151,45 @@ function collapseToolLifecycle(entries: readonly WorkingEntry[]): WorkingEntry[]
   return output;
 }
 
+function mergeReasoningChunks(entries: readonly WorkingEntry[]): WorkingEntry[] {
+  const output: WorkingEntry[] = [];
+
+  for (const entry of entries) {
+    const previous = output[output.length - 1];
+    const shouldMerge =
+      previous &&
+      previous.item.type === "reasoning" &&
+      entry.item.type === "reasoning" &&
+      previous.seqEnd + 1 === entry.seqStart;
+
+    if (!shouldMerge || !previous) {
+      output.push(entry);
+      continue;
+    }
+    const previousReasoning = previous.item as Extract<AgentTimelineItem, { type: "reasoning" }>;
+    const entryReasoning = entry.item as Extract<AgentTimelineItem, { type: "reasoning" }>;
+
+    const collapsedKinds = new Set<TimelineProjectionKind>([
+      ...previous.collapsed,
+      ...entry.collapsed,
+      "reasoning_merge",
+    ]);
+
+    output[output.length - 1] = {
+      ...previous,
+      item: {
+        type: "reasoning",
+        text: `${previousReasoning.text}${entryReasoning.text}`,
+      },
+      seqEnd: entry.seqEnd,
+      sourceSeqRanges: mergeSeqRanges(previous.sourceSeqRanges, entry.sourceSeqRanges),
+      collapsed: Array.from(collapsedKinds),
+    };
+  }
+
+  return output;
+}
+
 function mergeAssistantChunks(entries: readonly WorkingEntry[]): WorkingEntry[] {
   const output: WorkingEntry[] = [];
 
@@ -198,18 +232,18 @@ function mergeAssistantChunks(entries: readonly WorkingEntry[]): WorkingEntry[] 
   return output;
 }
 
-export function projectTimelineRows(
-  rows: readonly AgentTimelineRow[],
-  provider: AgentProvider,
-  mode: TimelineProjectionMode,
-): TimelineProjectionEntry[] {
-  const canonical = makeCanonicalEntries(rows, provider);
-  if (mode === "canonical") {
+export function projectTimelineRows(input: {
+  rows: readonly AgentTimelineRow[];
+  mode: TimelineProjectionMode;
+}): TimelineProjectionEntry[] {
+  const canonical = makeCanonicalEntries(input.rows);
+  if (input.mode === "canonical") {
     return canonical;
   }
 
   const toolCollapsed = collapseToolLifecycle(canonical);
-  return mergeAssistantChunks(toolCollapsed);
+  const assistantMerged = mergeAssistantChunks(toolCollapsed);
+  return mergeReasoningChunks(assistantMerged);
 }
 
 /**
@@ -219,17 +253,16 @@ export function projectTimelineRows(
  */
 export function selectTimelineWindowByProjectedLimit(input: {
   rows: readonly AgentTimelineRow[];
-  provider: AgentProvider;
   direction: TimelineLimitDirection;
   limit: number;
   collapseToolLifecycle?: boolean;
 }): ProjectedWindowSelection {
-  const { rows, provider, direction } = input;
+  const { rows, direction } = input;
   const limit = Math.max(0, Math.floor(input.limit));
   const collapseTools = input.collapseToolLifecycle ?? true;
-  const canonical = makeCanonicalEntries(rows, provider);
-  const projectedAll = mergeAssistantChunks(
-    collapseTools ? collapseToolLifecycle(canonical) : canonical,
+  const canonical = makeCanonicalEntries(rows);
+  const projectedAll = mergeReasoningChunks(
+    mergeAssistantChunks(collapseTools ? collapseToolLifecycle(canonical) : canonical),
   );
 
   if (projectedAll.length === 0) {
@@ -306,5 +339,39 @@ export function selectTimelineWindowByProjectedLimit(input: {
     selectedRows,
     minSeq: Number.isFinite(minSeq) ? minSeq : null,
     maxSeq: Number.isFinite(maxSeq) ? maxSeq : null,
+  };
+}
+
+/**
+ * Apply a projected-count limit to a flat AgentTimelineItem[] without seq metadata.
+ * Used by callers that only have items in hand (e.g. MCP tools reading
+ * `agentManager.getTimeline`). Index position is treated as canonical seq.
+ */
+export interface ProjectedItemSelection {
+  items: AgentTimelineItem[];
+  totalProjected: number;
+  shownProjected: number;
+}
+
+export function selectItemsByProjectedLimit(input: {
+  items: readonly AgentTimelineItem[];
+  direction: TimelineLimitDirection;
+  limit: number;
+}): ProjectedItemSelection {
+  const rows: AgentTimelineRow[] = input.items.map((item, index) => ({
+    seq: index + 1,
+    timestamp: "",
+    item,
+  }));
+  const projectedAll = projectTimelineRows({ rows, mode: "projected" });
+  const window = selectTimelineWindowByProjectedLimit({
+    rows,
+    direction: input.direction,
+    limit: input.limit,
+  });
+  return {
+    items: window.selectedRows.map((row) => row.item),
+    totalProjected: projectedAll.length,
+    shownProjected: window.projectedEntries.length,
   };
 }

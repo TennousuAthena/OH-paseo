@@ -20,6 +20,7 @@ import {
   toAgentPayload,
 } from "./agent-projections.js";
 import { curateAgentActivity } from "./activity-curator.js";
+import { selectItemsByProjectedLimit } from "./timeline-projection.js";
 import type { AgentStorage } from "./agent-storage.js";
 import { ensureAgentLoaded } from "./agent-loading.js";
 import { isStoredAgentProviderAvailable } from "../persistence-hooks.js";
@@ -1935,18 +1936,19 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       const timeline = agentManager.getTimeline(agentId);
       const snapshot = agentManager.getAgent(agentId);
 
-      const activitiesToCurate = limit ? timeline.slice(-limit) : timeline;
+      const selection = selectItemsByProjectedLimit({
+        items: timeline,
+        direction: "tail",
+        limit: limit ?? 0,
+      });
+      const curatedContent = curateAgentActivity(selection.items);
+      const { totalProjected, shownProjected } = selection;
 
-      const curatedContent = curateAgentActivity(activitiesToCurate);
-      const totalCount = timeline.length;
-      const shownCount = activitiesToCurate.length;
-
-      let countHeader: string;
-      if (limit && shownCount < totalCount) {
-        countHeader = `Showing ${shownCount} of ${totalCount} ${totalCount === 1 ? "activity" : "activities"} (limited to ${limit})`;
-      } else {
-        countHeader = `Showing all ${totalCount} ${totalCount === 1 ? "activity" : "activities"}`;
-      }
+      const noun = totalProjected === 1 ? "activity" : "activities";
+      const countHeader =
+        limit && shownProjected < totalProjected
+          ? `Showing ${shownProjected} of ${totalProjected} ${noun} (limited to ${limit})`
+          : `Showing all ${totalProjected} ${noun}`;
 
       const contentWithCount = `${countHeader}\n\n${curatedContent}`;
 
