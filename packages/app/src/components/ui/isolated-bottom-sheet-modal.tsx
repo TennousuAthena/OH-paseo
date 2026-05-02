@@ -41,7 +41,7 @@ export const IsolatedBottomSheetModal = forwardRef<
     <GorhomBottomSheetModal
       {...bottomSheetProps}
       ref={ref}
-      enableDismissOnClose={false}
+      enableDismissOnClose
       stackBehavior={isNestedSheet ? "push" : "replace"}
     >
       {scopedChildren}
@@ -68,39 +68,92 @@ export function useIsolatedBottomSheetVisibility({
   isEnabled?: boolean;
   onClose: () => void;
 }) {
-  const sheetRef = useRef<IsolatedBottomSheetModalRef>(null);
-  const hasPresentedRef = useRef(false);
+  const sheetRef = useRef<IsolatedBottomSheetModalRef | null>(null);
+  const visibleRef = useRef(visible);
+  const isEnabledRef = useRef(isEnabled);
+  const isPresentedRef = useRef(false);
+  const hasNotifiedCloseRef = useRef(false);
+
+  visibleRef.current = visible;
+  isEnabledRef.current = isEnabled;
+
+  const presentSheet = useCallback((sheet: IsolatedBottomSheetModalRef) => {
+    if (isPresentedRef.current) {
+      return;
+    }
+
+    isPresentedRef.current = true;
+    hasNotifiedCloseRef.current = false;
+    sheet.present();
+  }, []);
+
+  const dismissSheet = useCallback((sheet: IsolatedBottomSheetModalRef) => {
+    if (!isPresentedRef.current) {
+      return;
+    }
+
+    isPresentedRef.current = false;
+    sheet.dismiss();
+  }, []);
+
+  const notifyClose = useCallback(() => {
+    if (hasNotifiedCloseRef.current) {
+      return;
+    }
+
+    hasNotifiedCloseRef.current = true;
+    onClose();
+  }, [onClose]);
+
+  const handleSheetDismiss = useCallback(() => {
+    isPresentedRef.current = false;
+    if (visibleRef.current) {
+      notifyClose();
+      return;
+    }
+    hasNotifiedCloseRef.current = false;
+  }, [notifyClose]);
+
+  const handleSheetChange = useCallback(
+    (index: number) => {
+      if (index === -1 && visibleRef.current) {
+        notifyClose();
+      }
+    },
+    [notifyClose],
+  );
+
+  const setSheetRef = useCallback(
+    (instance: IsolatedBottomSheetModalRef | null) => {
+      sheetRef.current = instance;
+      if (instance && visibleRef.current && isEnabledRef.current !== false) {
+        presentSheet(instance);
+      }
+    },
+    [presentSheet],
+  );
 
   useEffect(() => {
     if (isEnabled === false) return;
 
+    const sheet = sheetRef.current;
     if (visible) {
-      if (hasPresentedRef.current) {
-        sheetRef.current?.snapToIndex(0);
+      if (!sheet) {
         return;
       }
 
-      hasPresentedRef.current = true;
-      sheetRef.current?.present();
+      presentSheet(sheet);
       return;
     }
 
-    if (hasPresentedRef.current) {
-      sheetRef.current?.close();
+    if (sheet) {
+      dismissSheet(sheet);
     }
-  }, [isEnabled, visible]);
-
-  const handleSheetChange = useCallback(
-    (index: number) => {
-      if (index === -1 && visible) {
-        onClose();
-      }
-    },
-    [onClose, visible],
-  );
+  }, [dismissSheet, isEnabled, presentSheet, visible]);
 
   return {
-    sheetRef,
+    sheetRef: setSheetRef,
     handleSheetChange,
+    handleSheetDismiss,
   };
 }

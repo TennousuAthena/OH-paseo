@@ -400,7 +400,11 @@ export function ContextMenuContent({
     setOpen(false);
   }, [setOpen]);
 
-  const { sheetRef: bottomSheetRef, handleSheetChange } = useIsolatedBottomSheetVisibility({
+  const {
+    sheetRef: bottomSheetRef,
+    handleSheetChange,
+    handleSheetDismiss,
+  } = useIsolatedBottomSheetVisibility({
     visible: open,
     isEnabled: useMobileSheet,
     onClose: handleClose,
@@ -534,6 +538,7 @@ export function ContextMenuContent({
           snapPoints={sheetSnapPoints}
           enableDynamicSizing={false}
           onChange={handleSheetChange}
+          onDismiss={handleSheetDismiss}
           backdropComponent={renderSheetBackdrop}
           enablePanDownToClose
           backgroundStyle={sheetBackgroundStyle}

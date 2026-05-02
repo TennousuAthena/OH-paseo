@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useCallback, useMemo, useRef, ReactNode } from "react";
+import React, { createContext, useContext, useCallback, useMemo } from "react";
+import type { ReactNode } from "react";
 import { View, Text, Pressable } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import Animated from "react-native-reanimated";
@@ -11,7 +12,7 @@ import { X } from "lucide-react-native";
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
 import {
   IsolatedBottomSheetModal,
-  type IsolatedBottomSheetModalRef,
+  useIsolatedBottomSheetVisibility,
 } from "@/components/ui/isolated-bottom-sheet-modal";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
 import { ToolCallDetailsContent } from "./tool-call-details";
@@ -63,32 +64,33 @@ interface ToolCallSheetProviderProps {
 
 export function ToolCallSheetProvider({ children }: ToolCallSheetProviderProps) {
   const { theme } = useUnistyles();
-  const bottomSheetRef = useRef<IsolatedBottomSheetModalRef>(null);
-  const hasPresentedRef = useRef(false);
   const [sheetData, setSheetData] = React.useState<ToolCallSheetData | null>(null);
+  const [isSheetOpen, setIsSheetOpen] = React.useState(false);
 
   const snapPoints = useMemo(() => ["60%", "95%"], []);
 
   const openToolCall = useCallback((data: ToolCallSheetData) => {
     setSheetData(data);
-    if (hasPresentedRef.current) {
-      requestAnimationFrame(() => bottomSheetRef.current?.snapToIndex(0));
-      return;
-    }
-
-    hasPresentedRef.current = true;
-    bottomSheetRef.current?.present();
+    setIsSheetOpen(true);
   }, []);
 
   const closeToolCall = useCallback(() => {
-    bottomSheetRef.current?.close();
+    setIsSheetOpen(false);
   }, []);
 
-  const handleSheetChange = useCallback((index: number) => {
-    if (index === -1) {
-      setSheetData(null);
-    }
-  }, []);
+  const {
+    sheetRef: bottomSheetRef,
+    handleSheetChange,
+    handleSheetDismiss,
+  } = useIsolatedBottomSheetVisibility({
+    visible: isSheetOpen,
+    onClose: closeToolCall,
+  });
+
+  const handleToolCallSheetDismiss = useCallback(() => {
+    handleSheetDismiss();
+    setSheetData(null);
+  }, [handleSheetDismiss]);
 
   const renderBackdrop = useCallback(
     (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
@@ -116,6 +118,7 @@ export function ToolCallSheetProvider({ children }: ToolCallSheetProviderProps) 
         index={0}
         enableDynamicSizing={false}
         onChange={handleSheetChange}
+        onDismiss={handleToolCallSheetDismiss}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
         backgroundComponent={CustomSheetBackground}

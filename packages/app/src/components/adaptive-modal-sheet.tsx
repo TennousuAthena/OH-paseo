@@ -196,7 +196,7 @@ export function AdaptiveModalSheet({
     () => ({ backgroundColor: theme.colors.surface2 }),
     [theme.colors.surface2],
   );
-  const { sheetRef, handleSheetChange } = useIsolatedBottomSheetVisibility({
+  const { sheetRef, handleSheetChange, handleSheetDismiss } = useIsolatedBottomSheetVisibility({
     visible,
     isEnabled: isMobile,
     onClose,
@@ -228,6 +228,7 @@ export function AdaptiveModalSheet({
         index={0}
         enableDynamicSizing={false}
         onChange={handleSheetChange}
+        onDismiss={handleSheetDismiss}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
         backgroundComponent={SheetBackground}

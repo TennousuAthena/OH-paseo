@@ -14,7 +14,12 @@ const SNAP_POINTS_90: (string | number)[] = ["90%"];
 
 function noop(): void {}
 
-const { modalMethods, modalProps } = vi.hoisted(() => ({
+interface CapturedModalProps {
+  onChange?: (index: number) => void;
+  onDismiss?: () => void;
+}
+
+const { modalMethods, modalProps, shouldExposeModalRef } = vi.hoisted(() => ({
   modalMethods: {
     present: vi.fn(),
     close: vi.fn(),
@@ -22,6 +27,7 @@ const { modalMethods, modalProps } = vi.hoisted(() => ({
     dismiss: vi.fn(),
   },
   modalProps: vi.fn(),
+  shouldExposeModalRef: { current: true },
 }));
 
 vi.mock("@gorhom/bottom-sheet", async () => {
@@ -29,7 +35,7 @@ vi.mock("@gorhom/bottom-sheet", async () => {
   const MockBottomSheetModal = React.forwardRef(
     (props: Record<string, unknown>, ref: React.ForwardedRef<unknown>) => {
       modalProps(props);
-      React.useImperativeHandle(ref, () => modalMethods);
+      React.useImperativeHandle(ref, () => (shouldExposeModalRef.current ? modalMethods : null));
       return React.createElement(
         "div",
         { "data-testid": "bottom-sheet" },
@@ -54,7 +60,7 @@ vi.mock("@gorhom/portal", async () => {
 });
 
 function Harness({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { sheetRef, handleSheetChange } = useIsolatedBottomSheetVisibility({
+  const { sheetRef, handleSheetChange, handleSheetDismiss } = useIsolatedBottomSheetVisibility({
     visible,
     onClose,
   });
@@ -65,26 +71,34 @@ function Harness({ visible, onClose }: { visible: boolean; onClose: () => void }
       index={0}
       snapPoints={SNAP_POINTS_50}
       onChange={handleSheetChange}
+      onDismiss={handleSheetDismiss}
     >
       <div>Sheet content</div>
     </IsolatedBottomSheetModal>
   );
 }
 
+function latestModalProps(): CapturedModalProps {
+  const props = modalProps.mock.lastCall?.[0];
+  expect(props).toBeDefined();
+  return props as CapturedModalProps;
+}
+
 describe("IsolatedBottomSheetModal", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    shouldExposeModalRef.current = true;
   });
 
-  it("forces sheet isolation and keeps modal content mounted while hidden", () => {
+  it("forces sheet isolation and uses the modal dismissal lifecycle", () => {
     const onClose = vi.fn();
     const { getByTestId, rerender } = render(<Harness visible={false} onClose={onClose} />);
 
     expect(getByTestId("app-portal").getAttribute("data-host")).toBe("root");
     expect(modalProps).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        enableDismissOnClose: false,
+        enableDismissOnClose: true,
         stackBehavior: "replace",
       }),
     );
@@ -94,26 +108,59 @@ describe("IsolatedBottomSheetModal", () => {
     expect(modalMethods.present).toHaveBeenCalledTimes(1);
 
     rerender(<Harness visible={false} onClose={onClose} />);
-    expect(modalMethods.close).toHaveBeenCalledTimes(1);
-    expect(modalMethods.dismiss).not.toHaveBeenCalled();
+    expect(modalMethods.dismiss).toHaveBeenCalledTimes(1);
+    expect(modalMethods.close).not.toHaveBeenCalled();
 
     rerender(<Harness visible onClose={onClose} />);
-    expect(modalMethods.present).toHaveBeenCalledTimes(1);
-    expect(modalMethods.snapToIndex).toHaveBeenCalledWith(0);
+    expect(modalMethods.present).toHaveBeenCalledTimes(2);
+    expect(modalMethods.snapToIndex).not.toHaveBeenCalled();
   });
 
   it("only reports a user close when the sheet was visible", () => {
     const onClose = vi.fn();
     const { rerender } = render(<Harness visible onClose={onClose} />);
 
-    const latestProps = modalProps.mock.lastCall?.[0] as { onChange: (index: number) => void };
-    latestProps.onChange(-1);
+    latestModalProps().onChange?.(-1);
     expect(onClose).toHaveBeenCalledTimes(1);
 
     rerender(<Harness visible={false} onClose={onClose} />);
-    const closedProps = modalProps.mock.lastCall?.[0] as { onChange: (index: number) => void };
-    closedProps.onChange(-1);
+    latestModalProps().onChange?.(-1);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a dismiss while visible as a close request", () => {
+    const onClose = vi.fn();
+    render(<Harness visible onClose={onClose} />);
+
+    latestModalProps().onDismiss?.();
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("deduplicates close notifications from change and dismiss callbacks", () => {
+    const onClose = vi.fn();
+    render(<Harness visible onClose={onClose} />);
+
+    const props = latestModalProps();
+    props.onChange?.(-1);
+    props.onDismiss?.();
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("presents when the sheet ref becomes available after opening", () => {
+    shouldExposeModalRef.current = false;
+    const onClose = vi.fn();
+    const { rerender } = render(<Harness visible onClose={onClose} />);
+
+    expect(modalMethods.present).not.toHaveBeenCalled();
+    expect(modalMethods.snapToIndex).not.toHaveBeenCalled();
+
+    shouldExposeModalRef.current = true;
+    rerender(<Harness visible onClose={onClose} />);
+
+    expect(modalMethods.present).toHaveBeenCalledTimes(1);
+    expect(modalMethods.snapToIndex).not.toHaveBeenCalled();
   });
 
   it("allows nested sheets inside a parent sheet without creating a sibling provider", () => {

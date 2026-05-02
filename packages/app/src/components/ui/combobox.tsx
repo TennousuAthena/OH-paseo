@@ -910,10 +910,13 @@ function resolveInitialActiveIndex(
   return selectedIndex >= 0 ? selectedIndex : fallbackIndex;
 }
 
+type BottomSheetVisibility = ReturnType<typeof useIsolatedBottomSheetVisibility>;
+
 interface MobileBodyProps {
-  bottomSheetRef: ReturnType<typeof useIsolatedBottomSheetVisibility>["sheetRef"];
+  bottomSheetRef: BottomSheetVisibility["sheetRef"];
   snapPoints: string[];
-  handleSheetChange: ReturnType<typeof useIsolatedBottomSheetVisibility>["handleSheetChange"];
+  handleSheetChange: BottomSheetVisibility["handleSheetChange"];
+  handleSheetDismiss: BottomSheetVisibility["handleSheetDismiss"];
   handleIndicatorStyle: { backgroundColor: string };
   titleColor: string;
   title: string;
@@ -971,6 +974,7 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
       index={0}
       enableDynamicSizing={false}
       onChange={props.handleSheetChange}
+      onDismiss={props.handleSheetDismiss}
       backdropComponent={renderBackdrop}
       enablePanDownToClose
       backgroundComponent={ComboboxSheetBackground}
@@ -1298,7 +1302,11 @@ export function Combobox({
     referenceWidth,
   });
 
-  const { sheetRef: bottomSheetRef, handleSheetChange } = useIsolatedBottomSheetVisibility({
+  const {
+    sheetRef: bottomSheetRef,
+    handleSheetChange,
+    handleSheetDismiss,
+  } = useIsolatedBottomSheetVisibility({
     visible: isOpen,
     isEnabled: isMobile,
     onClose: handleClose,
@@ -1454,6 +1462,7 @@ export function Combobox({
         bottomSheetRef={bottomSheetRef}
         snapPoints={snapPoints}
         handleSheetChange={handleSheetChange}
+        handleSheetDismiss={handleSheetDismiss}
         handleIndicatorStyle={handleIndicatorStyle}
         titleColor={titleColor}
         title={title}
