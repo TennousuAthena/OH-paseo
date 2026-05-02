@@ -22,7 +22,6 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     onPermanentFailure,
     canStart,
     canConfirm,
-    autoStopWhenHidden,
     enableDuration = false,
   } = options;
 
@@ -424,46 +423,6 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     setStatus("idle");
     clearStreamingState();
   }, [clearStreamingState, stopDurationTracking]);
-
-  const cancelRef = useRef<(() => void) | null>(null);
-  useEffect(() => {
-    cancelRef.current = () => {
-      void cancelDictation();
-    };
-  }, [cancelDictation]);
-
-  const visibilityRef = useRef<boolean | null>(
-    typeof autoStopWhenHidden?.isVisible === "boolean" ? autoStopWhenHidden.isVisible : null,
-  );
-  useEffect(() => {
-    const nextVisible =
-      typeof autoStopWhenHidden?.isVisible === "boolean" ? autoStopWhenHidden.isVisible : null;
-    const prevVisible = visibilityRef.current;
-    visibilityRef.current = nextVisible;
-
-    if (prevVisible === true && nextVisible === false) {
-      attemptGuardRef.current.cancel();
-
-      if (isRecordingRef.current) {
-        cancelRef.current?.();
-        return;
-      }
-
-      if (isProcessingRef.current) {
-        stopDurationTracking();
-        setDuration(0);
-        setIsProcessing(false);
-        isProcessingRef.current = false;
-        setError(null);
-        if (senderRef.current?.hasSegments()) {
-          setStatus("failed");
-        } else {
-          setStatus("idle");
-          clearStreamingState();
-        }
-      }
-    }
-  }, [autoStopWhenHidden?.isVisible, clearStreamingState, stopDurationTracking]);
 
   useEffect(() => {
     const attemptGuard = attemptGuardRef.current;

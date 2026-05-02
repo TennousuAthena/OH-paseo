@@ -8,7 +8,6 @@ export interface UseDictationOptions {
   onPermanentFailure?: (error: Error, context: { requestId: string }) => void;
   canStart?: () => boolean;
   canConfirm?: () => boolean;
-  autoStopWhenHidden?: { isVisible: boolean };
   enableDuration?: boolean;
 }
 

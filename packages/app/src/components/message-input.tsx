@@ -1328,7 +1328,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onError: handleDictationError,
       canStart: canStartDictation,
       canConfirm: canConfirmDictation,
-      autoStopWhenHidden: { isVisible: isPaneFocused },
       enableDuration: true,
     });
 
