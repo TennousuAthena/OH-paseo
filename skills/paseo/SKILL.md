@@ -68,7 +68,11 @@ If the file is missing, use sensible defaults and tell the user once.
 
 ## Waiting
 
-`create_agent` and `send_agent_prompt` block by default — trust them. Real tasks take 10–30+ minutes routinely. Don't poll `list_agents` or `get_agent_status` to "check on" a blocking call. To work in parallel, pass `background: true` and call `wait_for_agent` later.
+Agents take time — 10–30+ minutes is routine. Favor asynchronous workflows.
+
+For every `create_agent` or `send_agent_prompt`, pass `background: true` and `notifyOnFinish: true`. Paseo delivers a notification to your conversation when the agent finishes, errors, or needs permission. **You must not call `wait_for_agent` on a notify-on-finish agent.** Move on to other work. The notification arrives on its own.
+
+Don't poll `list_agents` or `get_agent_status` to "check on" a running agent. The notification will tell you.
 
 ## CLI parity
 
