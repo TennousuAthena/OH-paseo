@@ -9,6 +9,11 @@ import { homedir } from "node:os";
 import { z } from "zod";
 import type { ToolSet } from "ai";
 import {
+  CLIENT_CAPS,
+  readDeclaredClientCapabilities,
+  type ClientCapability,
+} from "../shared/client-capabilities.js";
+import {
   isLegacyEditorTargetId,
   serializeAgentStreamEvent,
   type AgentSnapshotPayload,
@@ -552,6 +557,7 @@ interface VoiceTranscriptionResultPayload {
 export interface SessionOptions {
   clientId: string;
   appVersion?: string | null;
+  clientCapabilities?: Record<string, unknown> | null;
   onMessage: (msg: SessionOutboundMessage) => void;
   onBinaryMessage?: (frame: Uint8Array) => void;
   onLifecycleIntent?: (intent: SessionLifecycleIntent) => void;
@@ -725,6 +731,22 @@ function convertPCMToWavBuffer(
   return wavBuffer;
 }
 
+class ClientCapabilities {
+  private readonly supported: ReadonlySet<ClientCapability>;
+
+  constructor(capabilities: Iterable<ClientCapability>) {
+    this.supported = new Set(capabilities);
+  }
+
+  static fromHello(capabilities: Record<string, unknown> | null | undefined): ClientCapabilities {
+    return new ClientCapabilities(readDeclaredClientCapabilities(capabilities));
+  }
+
+  supports(capability: ClientCapability): boolean {
+    return this.supported.has(capability);
+  }
+}
+
 /**
  * Session represents a single connected client session.
  * It owns all state management, orchestration logic, and message processing.
@@ -733,6 +755,7 @@ function convertPCMToWavBuffer(
 export class Session {
   private readonly clientId: string;
   private appVersion: string | null;
+  private clientCapabilities: ClientCapabilities;
   private readonly sessionId: string;
   private readonly onMessage: (msg: SessionOutboundMessage) => void;
   private readonly onBinaryMessage: ((frame: Uint8Array) => void) | null;
@@ -849,6 +872,7 @@ export class Session {
     const {
       clientId,
       appVersion,
+      clientCapabilities,
       onMessage,
       onBinaryMessage,
       onLifecycleIntent,
@@ -888,6 +912,7 @@ export class Session {
     } = options;
     this.clientId = clientId;
     this.appVersion = appVersion ?? null;
+    this.clientCapabilities = ClientCapabilities.fromHello(clientCapabilities);
     this.sessionId = uuidv4();
     this.onMessage = onMessage;
     this.onBinaryMessage = onBinaryMessage ?? null;
@@ -957,6 +982,14 @@ export class Session {
     if (appVersion && appVersion !== this.appVersion) {
       this.appVersion = appVersion;
     }
+  }
+
+  updateClientCapabilities(capabilities: Record<string, unknown> | null): void {
+    this.clientCapabilities = ClientCapabilities.fromHello(capabilities);
+  }
+
+  supports(capability: ClientCapability): boolean {
+    return this.clientCapabilities.supports(capability);
   }
 
   async syncWorkspaceGitObserverForWorkspace(workspace: PersistedWorkspaceRecord): Promise<void> {
@@ -7204,7 +7237,9 @@ export class Session {
             seqStart: entry.seqStart,
             seqEnd: entry.seqEnd,
             sourceSeqRanges: entry.sourceSeqRanges,
-            collapsed: entry.collapsed,
+            collapsed: this.supports(CLIENT_CAPS.reasoningMergeEnum)
+              ? entry.collapsed
+              : entry.collapsed.filter((value) => value !== "reasoning_merge"),
           })),
           error: null,
         },

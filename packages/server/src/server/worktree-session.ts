@@ -163,6 +163,23 @@ interface HandleCreatePaseoWorktreeRequestDependencies {
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
 }
 
+function normalizeFirstAgentContext(
+  request: Extract<SessionInboundMessage, { type: "create_paseo_worktree_request" }>,
+): FirstAgentContext | undefined {
+  if (request.firstAgentContext) {
+    return request.firstAgentContext;
+  }
+
+  if (request.attachments || request.nameContext) {
+    return {
+      attachments: request.attachments ?? [],
+      ...(request.nameContext ? { prompt: request.nameContext } : {}),
+    };
+  }
+
+  return undefined;
+}
+
 export async function buildAgentSessionConfig(
   dependencies: BuildAgentSessionConfigDependencies,
   config: AgentSessionConfig,
@@ -492,7 +509,7 @@ export async function handleCreatePaseoWorktreeRequest(
     const createdWorktree = await dependencies.createPaseoWorktreeWorkflow({
       cwd: request.cwd,
       worktreeSlug: request.worktreeSlug,
-      firstAgentContext: request.firstAgentContext,
+      firstAgentContext: normalizeFirstAgentContext(request),
       refName: request.refName,
       action: request.action,
       githubPrNumber: request.githubPrNumber,

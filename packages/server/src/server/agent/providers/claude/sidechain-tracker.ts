@@ -99,6 +99,7 @@ export class ClaudeSidechainTracker {
           action.summary ? `[${action.toolName}] ${action.summary}` : `[${action.toolName}]`,
         )
         .join("\n"),
+      actions: [],
     };
 
     return [

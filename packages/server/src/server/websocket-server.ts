@@ -264,6 +264,7 @@ interface SessionConnection {
   session: Session;
   clientId: string;
   appVersion: string | null;
+  clientCapabilities: Record<string, unknown> | null;
   connectionLogger: pino.Logger;
   sockets: Set<WebSocketLike>;
   externalDisconnectCleanupTimeout: ReturnType<typeof setTimeout> | null;
@@ -874,14 +875,16 @@ export class VoiceAssistantWebSocketServer {
     ws: WebSocketLike;
     clientId: string;
     appVersion: string | null;
+    clientCapabilities: Record<string, unknown> | null;
     connectionLogger: pino.Logger;
   }): SessionConnection {
-    const { ws, clientId, appVersion, connectionLogger } = params;
+    const { ws, clientId, appVersion, clientCapabilities, connectionLogger } = params;
     let connection: SessionConnection | null = null;
 
     const session = new Session({
       clientId,
       appVersion,
+      clientCapabilities,
       onMessage: (msg) => {
         if (!connection) {
           return;
@@ -958,6 +961,7 @@ export class VoiceAssistantWebSocketServer {
       session,
       clientId,
       appVersion,
+      clientCapabilities,
       connectionLogger,
       sockets: new Set([ws]),
       externalDisconnectCleanupTimeout: null,
@@ -1027,6 +1031,14 @@ export class VoiceAssistantWebSocketServer {
         existing.appVersion = newAppVersion;
         existing.session.updateAppVersion(newAppVersion);
       }
+      const newClientCapabilities = message.capabilities ?? null;
+      if (
+        JSON.stringify(existing.clientCapabilities ?? null) !==
+        JSON.stringify(newClientCapabilities ?? null)
+      ) {
+        existing.clientCapabilities = newClientCapabilities;
+        existing.session.updateClientCapabilities(newClientCapabilities);
+      }
       existing.sockets.add(ws);
       this.sessions.set(ws, existing);
       this.sendToClient(ws, this.createServerInfoMessage());
@@ -1047,6 +1059,7 @@ export class VoiceAssistantWebSocketServer {
       ws,
       clientId,
       appVersion: message.appVersion ?? null,
+      clientCapabilities: message.capabilities ?? null,
       connectionLogger,
     });
     this.sessions.set(ws, connection);

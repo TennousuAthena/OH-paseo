@@ -851,6 +851,7 @@ function mapCollabAgentToolCallItem(
     subAgentType: "Sub-agent",
     ...(item.prompt ? { description: item.prompt } : {}),
     log: "",
+    actions: [],
   };
 
   if (status === "failed") {

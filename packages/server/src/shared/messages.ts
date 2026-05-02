@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
 import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "../server/agent/agent-title-limits.js";
 import { AgentProviderSchema } from "../server/agent/provider-manifest.js";
@@ -414,6 +415,15 @@ const ToolCallDetailPayloadSchema: z.ZodType<ToolCallDetail, z.ZodTypeDef, unkno
       description: z.string().optional(),
       childSessionId: z.string().optional(),
       log: z.string(),
+      actions: z
+        .array(
+          z.object({
+            index: z.number().int().positive(),
+            toolName: z.string(),
+            summary: z.string().optional(),
+          }),
+        )
+        .optional(),
     }),
     z.object({
       type: z.literal("plain_text"),
@@ -1374,6 +1384,8 @@ export const CreatePaseoWorktreeRequestSchema = z.object({
   type: z.literal("create_paseo_worktree_request"),
   cwd: z.string(),
   worktreeSlug: z.string().optional(),
+  nameContext: z.string().optional(),
+  attachments: AgentAttachmentsSchema.optional(),
   firstAgentContext: FirstAgentContextSchema.optional(),
   refName: z.string().min(1).optional(),
   action: z.enum(["branch-off", "checkout"]).optional(),
@@ -3661,6 +3673,7 @@ export const WSHelloMessageSchema = z.object({
     .object({
       voice: z.boolean().optional(),
       pushNotifications: z.boolean().optional(),
+      [CLIENT_CAPS.reasoningMergeEnum]: z.boolean().optional(),
     })
     .passthrough()
     .optional(),

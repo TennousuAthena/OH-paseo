@@ -237,6 +237,11 @@ export type ToolCallDetail =
       description?: string;
       childSessionId?: string;
       log: string;
+      actions?: Array<{
+        index: number;
+        toolName: string;
+        summary?: string;
+      }>;
     }
   | {
       type: "plain_text";

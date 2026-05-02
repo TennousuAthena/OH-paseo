@@ -111,6 +111,7 @@ function deriveOpencodeTaskDetail(
     ...(description ? { description } : {}),
     ...(childSessionId ? { childSessionId } : {}),
     log,
+    actions: [],
   };
 }
 
