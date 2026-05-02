@@ -1,21 +1,27 @@
 # Changelog
 
-## 0.1.65-beta.3 - 2026-05-01
+## 0.1.65-beta.4 - 2026-05-02
 
 ### Added
 
-- **Windows:** Native ARM64 builds are now available for Snapdragon X / Copilot+ PCs.
+- **In-app browser** — open a real web browser in any workspace and click any element on the page to send it to the agent as context. ([#670](https://github.com/getpaseo/paseo/pull/670) by [@jasonkneen](https://github.com/jasonkneen))
+- Inline review comments in the git diff pane, including tap a line number to start a comment. ([#530](https://github.com/getpaseo/paseo/pull/530))
+- Sub-agent activity now streams into the timeline as nested tool calls — Codex sub-agents, OpenCode sub-agents, and Claude sub-agents all show their work inline. ([#672](https://github.com/getpaseo/paseo/pull/672), [#658](https://github.com/getpaseo/paseo/pull/658) by [@thisisryanswift](https://github.com/thisisryanswift))
+- Pull and push your branch in one step from the git actions menu in the changes pane.
+- Resume existing agent sessions with `paseo import --provider <name> <id>`. ([#632](https://github.com/getpaseo/paseo/pull/632))
 - Connect directly via TCP URI with SSL and optional password auth. ([#635](https://github.com/getpaseo/paseo/pull/635))
 - Connect to a daemon via relay using a pairing offer URL from the CLI. ([#639](https://github.com/getpaseo/paseo/pull/639))
-- Resume existing agent sessions with `paseo import --provider <name> <id>`. ([#632](https://github.com/getpaseo/paseo/pull/632))
-- Inline review comments in the git diff pane. ([#530](https://github.com/getpaseo/paseo/pull/530))
-- Pull and push your branch in one step from the git actions menu in the changes pane.
+- **Windows:** Native ARM64 builds are now available for Snapdragon X / Copilot+ PCs.
 - Images in assistant messages show a loading spinner while they load and an "Image unavailable" fallback if they fail, instead of a blank space.
+- Bundled Paseo skills now refresh automatically on desktop app launch.
 
 ### Improved
 
 - Codex streaming feels more responsive — message boundaries are preserved and output arrives sooner.
 - Terminal sessions run in a dedicated worker process for better stability.
+- New worktree branch names are derived from your prompt and attachments instead of a generic placeholder.
+- Review comment UI is cleaner and easier to scan.
+- The daemon's `/api/status` endpoint is now protected by password auth when one is configured.
 
 ### Fixed
 
@@ -24,6 +30,9 @@
 - **Windows:** Git diff commands no longer break on paths with special characters. ([#629](https://github.com/getpaseo/paseo/pull/629))
 - Cursor CLI and other ACP custom providers launch reliably. ([#628](https://github.com/getpaseo/paseo/pull/628))
 - Daemon stays up when WebSocket clients disconnect mid-stream, and crashes now write a fatal log entry instead of disappearing silently. ([#613](https://github.com/getpaseo/paseo/pull/613) by [@yuruiz](https://github.com/yuruiz))
+- Long agent timelines reconnect cleanly over the relay instead of looping through disconnects while catching up. ([#657](https://github.com/getpaseo/paseo/pull/657) by [@fireblue](https://github.com/fireblue))
+- Voice dictation keeps recording when the agent tab loses focus.
+- OpenCode mode picker now lists agents available in every mode. ([#606](https://github.com/getpaseo/paseo/pull/606) by [@thisisryanswift](https://github.com/thisisryanswift))
 - Codex plan approval panels no longer duplicate.
 - Imported agents display the correct title immediately.
 - OpenCode surfaces invalid mode/model errors instead of hanging.
@@ -33,6 +42,9 @@
 - Tool detail rows on the timeline are selectable again.
 - `paseo.json` parse errors in setup, teardown, and terminal actions now surface a clear error instead of failing silently.
 - Diff gutter line numbers were shifted one row out of alignment in some cases on web.
+- Streamed agent output reconciles cleanly when the timeline hydrates mid-turn. ([#663](https://github.com/getpaseo/paseo/pull/663))
+- Browser pane keyboard handling no longer steals shortcuts from the rest of the app.
+- Isolated bottom sheet modals close and re-open without getting stuck.
 
 ## 0.1.64 - 2026-04-28
 
