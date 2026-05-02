@@ -46,6 +46,7 @@ import {
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
 import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
+import { terminateProcessTree } from "../../../utils/process-tree.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
 import { spawnProcess } from "../../../utils/spawn.js";
 import { buildToolCallDisplayModel } from "../../../shared/tool-call-display.js";
@@ -109,6 +110,8 @@ type OpenCodeMcpConfig =
 
 const MCP_ALREADY_PRESENT_ERROR_TOKENS = ["already", "exists", "connected"] as const;
 const OPENCODE_PROVIDER_LIST_TIMEOUT_MS = 30_000;
+const OPENCODE_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS = 5_000;
+const OPENCODE_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS = 1_000;
 const OPENCODE_HANDLED_BUILTIN_SLASH_COMMANDS: AgentSlashCommand[] = [
   { name: "compact", description: "Compact the current session", argumentHint: "" },
   { name: "summarize", description: "Compact the current session", argumentHint: "" },
@@ -888,6 +891,7 @@ export class OpenCodeServerManager {
         launchPrefix.command,
         [...launchPrefix.args, "serve", "--port", String(port)],
         {
+          detached: process.platform !== "win32",
           stdio: ["ignore", "pipe", "pipe"],
           ...createProviderEnvSpec({ runtimeSettings: this.runtimeSettings }),
         },
@@ -990,24 +994,22 @@ export class OpenCodeServerManager {
     if (server.process.killed) {
       return;
     }
-    await new Promise<void>((resolve) => {
-      let pendingResolve: (() => void) | null = resolve;
-      const settle = () => {
-        if (!pendingResolve) return;
-        const fn = pendingResolve;
-        pendingResolve = null;
-        fn();
-      };
-      const timeout = setTimeout(() => {
-        server.process.kill("SIGKILL");
-        settle();
-      }, 5000);
-      server.process.on("exit", () => {
-        clearTimeout(timeout);
-        settle();
-      });
-      server.process.kill("SIGTERM");
+    const result = await terminateProcessTree(server.process, {
+      gracefulTimeoutMs: OPENCODE_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS,
+      forceTimeoutMs: OPENCODE_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS,
+      onForceSignal: () => {
+        this.logger.warn(
+          { timeoutMs: OPENCODE_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS },
+          "OpenCode server did not exit after SIGTERM; sending SIGKILL",
+        );
+      },
     });
+    if (result === "kill-timeout") {
+      this.logger.warn(
+        { timeoutMs: OPENCODE_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS },
+        "OpenCode server did not report exit after SIGKILL",
+      );
+    }
   }
 }
 

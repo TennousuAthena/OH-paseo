@@ -50,6 +50,7 @@ import {
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
 import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
+import { terminateProcessTree } from "../../../utils/process-tree.js";
 import { spawnProcess } from "../../../utils/spawn.js";
 import { extractCodexTerminalSessionId, nonEmptyString } from "./tool-call-mapper-utils.js";
 import { buildCodexFeatures, codexModelSupportsFastMode } from "./codex-feature-definitions.js";
@@ -602,17 +603,12 @@ class CodexAppServerClient {
   private nextId = 1;
   private disposed = false;
   private stderrBuffer = "";
-  private readonly exitPromise: Promise<void>;
-  private resolveExitPromise: (() => void) | null = null;
 
   constructor(
     private readonly child: ChildProcessWithoutNullStreams,
     private readonly logger: Logger,
   ) {
     this.rl = readline.createInterface({ input: child.stdout });
-    this.exitPromise = new Promise<void>((resolve) => {
-      this.resolveExitPromise = resolve;
-    });
     this.rl.on("line", (line) => this.handleLine(line));
 
     child.stderr.on("data", (chunk) => {
@@ -630,8 +626,6 @@ class CodexAppServerClient {
       }
       this.pending.clear();
       this.disposed = true;
-      this.resolveExitPromise?.();
-      this.resolveExitPromise = null;
     });
 
     child.on("exit", (code, signal) => {
@@ -646,8 +640,6 @@ class CodexAppServerClient {
       }
       this.pending.clear();
       this.disposed = true;
-      this.resolveExitPromise?.();
-      this.resolveExitPromise = null;
     });
   }
 
@@ -704,39 +696,21 @@ class CodexAppServerClient {
     } catch {
       // ignore
     }
-    signalChildProcessTree(this.child, "SIGTERM");
-    if (await this.waitForExit(APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS)) {
-      return;
-    }
-
-    this.logger.warn(
-      { timeoutMs: APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS },
-      "Codex app-server did not exit after SIGTERM; sending SIGKILL",
-    );
-    signalChildProcessTree(this.child, "SIGKILL");
-    if (await this.waitForExit(APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS)) {
-      return;
-    }
-
-    this.logger.warn(
-      { timeoutMs: APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS },
-      "Codex app-server did not report exit after SIGKILL",
-    );
-  }
-
-  private async waitForExit(timeoutMs: number): Promise<boolean> {
-    let timer: NodeJS.Timeout | null = null;
-    try {
-      return await Promise.race([
-        this.exitPromise.then(() => true),
-        new Promise<boolean>((resolve) => {
-          timer = setTimeout(() => resolve(false), timeoutMs);
-        }),
-      ]);
-    } finally {
-      if (timer) {
-        clearTimeout(timer);
-      }
+    const result = await terminateProcessTree(this.child, {
+      gracefulTimeoutMs: APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS,
+      forceTimeoutMs: APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS,
+      onForceSignal: () => {
+        this.logger.warn(
+          { timeoutMs: APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS },
+          "Codex app-server did not exit after SIGTERM; sending SIGKILL",
+        );
+      },
+    });
+    if (result === "kill-timeout") {
+      this.logger.warn(
+        { timeoutMs: APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS },
+        "Codex app-server did not report exit after SIGKILL",
+      );
     }
   }
 
@@ -786,30 +760,6 @@ class CodexAppServerClient {
       const notification = msg as JsonRpcNotification;
       this.notificationHandler?.(notification.method, notification.params);
     }
-  }
-}
-
-function signalChildProcessTree(
-  child: ChildProcessWithoutNullStreams,
-  signal: NodeJS.Signals,
-): void {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return;
-  }
-
-  if (process.platform !== "win32" && typeof child.pid === "number" && child.pid > 0) {
-    try {
-      process.kill(-child.pid, signal);
-      return;
-    } catch {
-      // Fall back to the direct child when no separate process group exists.
-    }
-  }
-
-  try {
-    child.kill(signal);
-  } catch {
-    // ignore
   }
 }
 
