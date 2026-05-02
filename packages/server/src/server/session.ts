@@ -8,11 +8,7 @@ import { basename, resolve, sep } from "path";
 import { homedir } from "node:os";
 import { z } from "zod";
 import type { ToolSet } from "ai";
-import {
-  CLIENT_CAPS,
-  readDeclaredClientCapabilities,
-  type ClientCapability,
-} from "../shared/client-capabilities.js";
+import { CLIENT_CAPS, type ClientCapability } from "../shared/client-capabilities.js";
 import {
   isLegacyEditorTargetId,
   serializeAgentStreamEvent,
@@ -731,20 +727,18 @@ function convertPCMToWavBuffer(
   return wavBuffer;
 }
 
-class ClientCapabilities {
-  private readonly supported: ReadonlySet<ClientCapability>;
-
-  constructor(capabilities: Iterable<ClientCapability>) {
-    this.supported = new Set(capabilities);
+function parseClientCapabilities(
+  capabilities: Record<string, unknown> | null | undefined,
+): ReadonlySet<ClientCapability> {
+  if (!capabilities) {
+    return new Set();
   }
-
-  static fromHello(capabilities: Record<string, unknown> | null | undefined): ClientCapabilities {
-    return new ClientCapabilities(readDeclaredClientCapabilities(capabilities));
-  }
-
-  supports(capability: ClientCapability): boolean {
-    return this.supported.has(capability);
-  }
+  const known = new Set<ClientCapability>(Object.values(CLIENT_CAPS));
+  return new Set(
+    Object.entries(capabilities).flatMap(([key, value]) =>
+      value === true && known.has(key as ClientCapability) ? [key as ClientCapability] : [],
+    ),
+  );
 }
 
 /**
@@ -755,7 +749,7 @@ class ClientCapabilities {
 export class Session {
   private readonly clientId: string;
   private appVersion: string | null;
-  private clientCapabilities: ClientCapabilities;
+  private clientCapabilities: ReadonlySet<ClientCapability>;
   private readonly sessionId: string;
   private readonly onMessage: (msg: SessionOutboundMessage) => void;
   private readonly onBinaryMessage: ((frame: Uint8Array) => void) | null;
@@ -912,7 +906,7 @@ export class Session {
     } = options;
     this.clientId = clientId;
     this.appVersion = appVersion ?? null;
-    this.clientCapabilities = ClientCapabilities.fromHello(clientCapabilities);
+    this.clientCapabilities = parseClientCapabilities(clientCapabilities);
     this.sessionId = uuidv4();
     this.onMessage = onMessage;
     this.onBinaryMessage = onBinaryMessage ?? null;
@@ -985,11 +979,11 @@ export class Session {
   }
 
   updateClientCapabilities(capabilities: Record<string, unknown> | null): void {
-    this.clientCapabilities = ClientCapabilities.fromHello(capabilities);
+    this.clientCapabilities = parseClientCapabilities(capabilities);
   }
 
   supports(capability: ClientCapability): boolean {
-    return this.clientCapabilities.supports(capability);
+    return this.clientCapabilities.has(capability);
   }
 
   async syncWorkspaceGitObserverForWorkspace(workspace: PersistedWorkspaceRecord): Promise<void> {

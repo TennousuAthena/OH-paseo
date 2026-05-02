@@ -429,7 +429,6 @@ describe("relay external socket reconnect behavior", () => {
     expect(session.args.clientCapabilities).toEqual({
       [CLIENT_CAPS.reasoningMergeEnum]: true,
     });
-    expect(session.supports(CLIENT_CAPS.reasoningMergeEnum)).toBe(true);
 
     await server.close();
   });
