@@ -1013,10 +1013,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
   },
-  newTabTooltipShortcut: {
-    backgroundColor: theme.colors.surface3,
-    borderColor: theme.colors.borderAccent,
-  },
+  newTabTooltipShortcut: {},
   tooltipAgentRow: {
     flexDirection: "row",
     alignItems: "center",

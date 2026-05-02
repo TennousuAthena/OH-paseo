@@ -43,6 +43,7 @@ const {
     fontSize: { xs: 11, sm: 13, base: 15, lg: 18 },
     fontWeight: { normal: "400", medium: "500" },
     lineHeight: { diff: 18 },
+    opacity: { 50: 0.5 },
     shadow: { md: {} },
     colors: {
       surface0: "#000",
@@ -226,6 +227,7 @@ vi.mock("lucide-react-native", () => {
     AudioLines: createIcon("AudioLines"),
     CircleDot: createIcon("CircleDot"),
     GitPullRequest: createIcon("GitPullRequest"),
+    MessageSquareCode: createIcon("MessageSquareCode"),
     X: createIcon("X"),
     Mic: createIcon("Mic"),
     MicOff: createIcon("MicOff"),

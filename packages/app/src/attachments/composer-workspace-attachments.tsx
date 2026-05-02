@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { CircleDot } from "lucide-react-native";
+import { MessageSquareCode } from "lucide-react-native";
 import type {
   ComposerAttachment,
   UserComposerAttachment,
@@ -237,7 +237,7 @@ function WorkspaceAttachmentPill({
     >
       <View style={styles.pillBody}>
         <View style={styles.pillIcon}>
-          <ThemedCircleDot size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
+          <ThemedMessageSquareCode size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
         </View>
         <Text style={styles.pillText} numberOfLines={1}>
           {label}
@@ -279,5 +279,5 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
 })) as unknown as Record<string, object>;
 
-const ThemedCircleDot = withUnistyles(CircleDot);
+const ThemedMessageSquareCode = withUnistyles(MessageSquareCode);
 const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
