@@ -12,7 +12,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { isNative, isWeb } from "@/constants/platform";
+import { isWeb } from "@/constants/platform";
 import { useReviewDraftComments, useReviewDraftStore, type ReviewDraftComment } from "./store";
 import { buildReviewableDiffTargetKey, type ReviewableDiffTarget } from "@/utils/diff-layout";
 
@@ -44,7 +44,6 @@ export interface InlineReviewEditorState {
 export interface InlineReviewActions {
   commentsByTarget: ReadonlyMap<string, ReviewDraftComment[]>;
   editor: InlineReviewEditorState | null;
-  showPersistentAction: boolean;
   onStartComment: (target: ReviewableDiffTarget) => void;
   onEditComment: (target: ReviewableDiffTarget, comment: ReviewDraftComment) => void;
   onCancelEditor: () => void;
@@ -63,10 +62,7 @@ export function groupInlineReviewCommentsByTarget(
   return grouped;
 }
 
-export function useInlineReviewController(input: {
-  reviewDraftKey: string;
-  showPersistentAction: boolean;
-}): InlineReviewActions {
+export function useInlineReviewController(input: { reviewDraftKey: string }): InlineReviewActions {
   const reviewComments = useReviewDraftComments(input.reviewDraftKey);
   const commentsByTarget = useMemo(
     () => groupInlineReviewCommentsByTarget(reviewComments),
@@ -137,7 +133,6 @@ export function useInlineReviewController(input: {
     () => ({
       commentsByTarget,
       editor,
-      showPersistentAction: input.showPersistentAction,
       onStartComment: handleStartComment,
       onEditComment: handleEditComment,
       onCancelEditor: handleCancelEditor,
@@ -152,7 +147,6 @@ export function useInlineReviewController(input: {
       handleEditComment,
       handleSaveEditor,
       handleStartComment,
-      input.showPersistentAction,
     ],
   );
 }
@@ -235,7 +229,6 @@ export function InlineReviewGutterCell({
   reviewTarget,
   comments,
   isEditorOpen,
-  showPersistentAction,
   onStartComment,
   style,
 }: {
@@ -243,7 +236,6 @@ export function InlineReviewGutterCell({
   reviewTarget: ReviewableDiffTarget | null | undefined;
   comments: readonly ReviewDraftComment[];
   isEditorOpen: boolean;
-  showPersistentAction: boolean;
   onStartComment: (target: ReviewableDiffTarget) => void;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -280,9 +272,7 @@ export function InlineReviewGutterCell({
       style={pressableStyle}
     >
       {({ hovered, pressed }) => {
-        const showAction =
-          canComment &&
-          (hovered || pressed || isNative || showPersistentAction || hasComments || isEditorOpen);
+        const showAction = canComment && (hovered || pressed || hasComments || isEditorOpen);
         return (
           <View style={styles.gutterInner}>
             <View style={labelStyle}>

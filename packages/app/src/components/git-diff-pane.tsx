@@ -6,6 +6,7 @@ import {
   useRef,
   memo,
   type ReactElement,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { useRouter } from "expo-router";
@@ -230,6 +231,40 @@ const EMPTY_COMMENTS: readonly ReviewDraftComment[] = [];
 
 function noopStartComment(): void {}
 
+const LONG_PRESS_COMMENT_DELAY_MS = 350;
+
+function LongPressableLine({
+  reviewTarget,
+  reviewActions,
+  style,
+  children,
+}: {
+  reviewTarget: ReviewableDiffTarget | null | undefined;
+  reviewActions: InlineReviewActions | undefined;
+  style: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  const onStartComment = reviewActions?.onStartComment;
+  const handleLongPress = useCallback(() => {
+    if (reviewTarget && onStartComment) {
+      onStartComment(reviewTarget);
+    }
+  }, [reviewTarget, onStartComment]);
+
+  if (!isNative || !reviewTarget || !onStartComment) {
+    return <View style={style}>{children}</View>;
+  }
+  return (
+    <Pressable
+      onLongPress={handleLongPress}
+      delayLongPress={LONG_PRESS_COMMENT_DELAY_MS}
+      style={style}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
 function lineTypeBackground(type: DiffLine["type"] | undefined | null) {
   if (!type) return styles.emptySplitCell;
   if (type === "add") return styles.addLineContainer;
@@ -280,7 +315,6 @@ function DiffGutterCell({
       reviewTarget={reviewTarget}
       comments={comments}
       isEditorOpen={isEditorOpen}
-      showPersistentAction={reviewActions?.showPersistentAction ?? false}
       onStartComment={onStartComment}
       style={containerStyle}
     >
@@ -291,7 +325,17 @@ function DiffGutterCell({
   );
 }
 
-function DiffTextLine({ line, wrapLines }: { line: DiffLine; wrapLines: boolean }) {
+function DiffTextLine({
+  line,
+  wrapLines,
+  reviewTarget,
+  reviewActions,
+}: {
+  line: DiffLine;
+  wrapLines: boolean;
+  reviewTarget?: ReviewableDiffTarget | null;
+  reviewActions?: InlineReviewActions;
+}) {
   const visibleTokens = hasVisibleDiffTokens(line.tokens) ? line.tokens : null;
 
   const containerStyle = useMemo(
@@ -311,22 +355,28 @@ function DiffTextLine({ line, wrapLines }: { line: DiffLine; wrapLines: boolean 
   );
 
   return (
-    <View style={containerStyle}>
+    <LongPressableLine
+      reviewTarget={reviewTarget}
+      reviewActions={reviewActions}
+      style={containerStyle}
+    >
       {line.type !== "header" && visibleTokens ? (
         <HighlightedText tokens={visibleTokens} wrapLines={wrapLines} />
       ) : (
         <Text style={textStyle}>{formatDiffContentText(line.content)}</Text>
       )}
-    </View>
+    </LongPressableLine>
   );
 }
 
 function SplitTextLine({
   line,
   wrapLines,
+  reviewActions,
 }: {
   line: SplitDiffDisplayLine | null;
   wrapLines: boolean;
+  reviewActions?: InlineReviewActions;
 }) {
   const visibleTokens = line && hasVisibleDiffTokens(line.tokens) ? line.tokens : null;
 
@@ -347,13 +397,17 @@ function SplitTextLine({
   );
 
   return (
-    <View style={containerStyle}>
+    <LongPressableLine
+      reviewTarget={line?.reviewTarget}
+      reviewActions={reviewActions}
+      style={containerStyle}
+    >
       {visibleTokens ? (
         <HighlightedText tokens={visibleTokens} wrapLines={wrapLines} />
       ) : (
         <Text style={textStyle}>{formatDiffContentText(line?.content)}</Text>
       )}
-    </View>
+    </LongPressableLine>
   );
 }
 
@@ -391,7 +445,11 @@ function DiffLineView({
   );
 
   return (
-    <View style={containerStyle}>
+    <LongPressableLine
+      reviewTarget={reviewTarget}
+      reviewActions={reviewActions}
+      style={containerStyle}
+    >
       <DiffGutterCell
         lineNumber={lineNumber}
         type={line.type}
@@ -405,7 +463,7 @@ function DiffLineView({
       ) : (
         <Text style={textStyle}>{formatDiffContentText(line.content)}</Text>
       )}
-    </View>
+    </LongPressableLine>
   );
 }
 
@@ -439,7 +497,11 @@ function SplitDiffLine({
   );
 
   return (
-    <View style={containerStyle}>
+    <LongPressableLine
+      reviewTarget={line?.reviewTarget}
+      reviewActions={reviewActions}
+      style={containerStyle}
+    >
       <DiffGutterCell
         lineNumber={line?.lineNumber ?? null}
         type={line?.type}
@@ -453,7 +515,7 @@ function SplitDiffLine({
       ) : (
         <Text style={textStyle}>{formatDiffContentText(line?.content)}</Text>
       )}
-    </View>
+    </LongPressableLine>
   );
 }
 
@@ -686,7 +748,7 @@ function SplitDiffColumn({
             });
             return (
               <View key={key}>
-                <SplitTextLine line={line} wrapLines={false} />
+                <SplitTextLine line={line} wrapLines={false} reviewActions={reviewActions} />
                 <InlineReviewThreadContent
                   reviewTarget={line?.reviewTarget}
                   reviewActions={reviewActions}
@@ -931,7 +993,12 @@ function DiffFileBody({
               <View style={linesContainerRowStyle}>
                 {computedLines.map(({ line, key, reviewTarget }) => (
                   <View key={key}>
-                    <DiffTextLine line={line} wrapLines={false} />
+                    <DiffTextLine
+                      line={line}
+                      wrapLines={false}
+                      reviewTarget={reviewTarget}
+                      reviewActions={reviewActions}
+                    />
                     <InlineReviewThreadContent
                       reviewTarget={reviewTarget}
                       reviewActions={reviewActions}
@@ -1872,7 +1939,6 @@ export function GitDiffPane({
 
   const reviewActions = useInlineReviewController({
     reviewDraftKey,
-    showPersistentAction: isMobile,
   });
   const reviewAttachment = useReviewAttachmentSnapshot({
     key: reviewDraftKey,

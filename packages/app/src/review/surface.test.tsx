@@ -130,12 +130,12 @@ function target(overrides: Partial<ReviewableDiffTarget> = {}): ReviewableDiffTa
 }
 
 const EMPTY_COMMENTS: ReviewDraftComment[] = [];
+const COMMENT_LIST: ReviewDraftComment[] = [comment()];
 
 function buildReviewActions(overrides: Partial<InlineReviewActions> = {}): InlineReviewActions {
   return {
     commentsByTarget: new Map(),
     editor: null,
-    showPersistentAction: false,
     onStartComment: vi.fn(),
     onEditComment: vi.fn(),
     onCancelEditor: vi.fn(),
@@ -173,12 +173,9 @@ describe("useInlineReviewController", () => {
     const firstKey = "review:key-1";
     const secondKey = "review:key-2";
     const { result, rerender } = renderHook(
-      ({ reviewDraftKey }) =>
-        useInlineReviewController({ reviewDraftKey, showPersistentAction: true }),
+      ({ reviewDraftKey }) => useInlineReviewController({ reviewDraftKey }),
       { initialProps: { reviewDraftKey: firstKey } },
     );
-
-    expect(result.current.showPersistentAction).toBe(true);
 
     act(() => result.current.onStartComment(reviewTarget));
     expect(result.current.editor).toEqual({ target: reviewTarget, commentId: null, body: "" });
@@ -243,16 +240,7 @@ describe("git diff inline review helpers", () => {
     expect(
       getInlineReviewThreadState({
         reviewTarget: target(),
-        reviewActions: {
-          commentsByTarget,
-          editor: null,
-          showPersistentAction: false,
-          onStartComment: vi.fn(),
-          onEditComment: vi.fn(),
-          onCancelEditor: vi.fn(),
-          onSaveEditor: vi.fn(),
-          onDeleteComment: vi.fn(),
-        },
+        reviewActions: buildReviewActions({ commentsByTarget }),
       })?.comments,
     ).toEqual([comments[0]]);
   });
@@ -261,16 +249,10 @@ describe("git diff inline review helpers", () => {
     const leftTarget = target({ side: "old", lineNumber: 8, oldLineNumber: 8 });
     const rightTarget = target();
     const rightComment = comment();
-    const actions: InlineReviewActions = {
+    const actions = buildReviewActions({
       commentsByTarget: groupInlineReviewCommentsByTarget([rightComment]),
       editor: { target: rightTarget, commentId: null, body: "" },
-      showPersistentAction: false,
-      onStartComment: vi.fn(),
-      onEditComment: vi.fn(),
-      onCancelEditor: vi.fn(),
-      onSaveEditor: vi.fn(),
-      onDeleteComment: vi.fn(),
-    };
+    });
 
     const rowState = getSplitInlineReviewThreadState({
       left: leftTarget,
@@ -292,7 +274,7 @@ describe("git diff inline review helpers", () => {
     ).toEqual([{ position: "sticky", left: 0 }, { width: 320 }]);
   });
 
-  it("keeps the gutter add-comment target accessible", () => {
+  it("keeps the gutter add-comment target accessible and clicking opens the editor", () => {
     const onStartComment = vi.fn();
     const reviewTarget = target();
     const { getByLabelText } = render(
@@ -300,7 +282,6 @@ describe("git diff inline review helpers", () => {
         reviewTarget={reviewTarget}
         comments={EMPTY_COMMENTS}
         isEditorOpen={false}
-        showPersistentAction={false}
         onStartComment={onStartComment}
       >
         <span>2</span>
@@ -312,14 +293,41 @@ describe("git diff inline review helpers", () => {
     expect(pressablePropsByLabel.get("Add review comment")?.hitSlop).toBe(SMALL_ACTION_HIT_SLOP);
   });
 
-  it("replaces the line number with the message icon in the same gutter cell", () => {
+  it("shows the line number by default and replaces it with the icon when comments exist or the editor is open", () => {
     const reviewTarget = target();
-    const { container, queryByText } = render(
+    const { container, queryByText, rerender } = render(
       <InlineReviewGutterCell
         reviewTarget={reviewTarget}
         comments={EMPTY_COMMENTS}
         isEditorOpen={false}
-        showPersistentAction
+        onStartComment={vi.fn()}
+      >
+        <span>2</span>
+      </InlineReviewGutterCell>,
+    );
+
+    expect(queryByText("2")).toBeTruthy();
+    expect(container.querySelector("[data-icon='MessageCircle']")).toBeNull();
+
+    rerender(
+      <InlineReviewGutterCell
+        reviewTarget={reviewTarget}
+        comments={COMMENT_LIST}
+        isEditorOpen={false}
+        onStartComment={vi.fn()}
+      >
+        <span>2</span>
+      </InlineReviewGutterCell>,
+    );
+
+    expect(queryByText("2")).toBeNull();
+    expect(container.querySelector("[data-icon='MessageCircle']")).toBeTruthy();
+
+    rerender(
+      <InlineReviewGutterCell
+        reviewTarget={reviewTarget}
+        comments={EMPTY_COMMENTS}
+        isEditorOpen
         onStartComment={vi.fn()}
       >
         <span>2</span>
