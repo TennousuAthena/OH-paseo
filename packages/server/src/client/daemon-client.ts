@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { CLIENT_CAPS } from "../shared/client-capabilities.js";
 import {
   AgentCreateFailedStatusPayloadSchema,
   AgentCreatedStatusPayloadSchema,
@@ -3877,6 +3878,9 @@ export class DaemonClient {
           clientId: this.config.clientId,
           clientType: this.config.clientType ?? "cli",
           protocolVersion: 1,
+          capabilities: {
+            [CLIENT_CAPS.reasoningMergeEnum]: true,
+          },
           ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
         }),
       );

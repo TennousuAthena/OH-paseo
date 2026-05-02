@@ -60,10 +60,12 @@ function createMockTransport() {
   return {
     transport,
     sent,
-    triggerOpen: () => {
+    triggerOpen: (options?: { preserveSent?: boolean }) => {
       onOpen();
-      // Ignore HELLO handshake payloads in assertions.
-      sent.length = 0;
+      if (!options?.preserveSent) {
+        // Ignore HELLO handshake payloads in assertions.
+        sent.length = 0;
+      }
       onMessage(
         JSON.stringify({
           type: "session",
@@ -211,6 +213,35 @@ test("passes password as HTTP bearer header and WebSocket subprotocol", async ()
     url: "ws://test",
     headers: { Authorization: "Bearer shared-secret" },
     protocols: ["paseo.bearer.shared-secret"],
+  });
+});
+
+test("advertises reasoning_merge_enum in hello", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen({ preserveSent: true });
+  await connectPromise;
+
+  expect(mock.sent).toHaveLength(1);
+  expect(JSON.parse(mock.sent[0] as string)).toEqual({
+    type: "hello",
+    clientId: "clsk_unit_test",
+    clientType: "cli",
+    protocolVersion: 1,
+    capabilities: {
+      reasoning_merge_enum: true,
+    },
   });
 });
 

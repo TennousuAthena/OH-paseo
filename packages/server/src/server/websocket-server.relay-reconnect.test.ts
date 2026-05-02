@@ -15,6 +15,7 @@ import {
   encodeTerminalStreamFrame,
   TerminalStreamOpcode,
 } from "../shared/terminal-stream-protocol.js";
+import { CLIENT_CAPS } from "../shared/client-capabilities.js";
 
 type SocketListener = (...args: unknown[]) => void;
 
@@ -47,6 +48,7 @@ const sessionMock = vi.hoisted(() => {
     cleanup = vi.fn(async () => {});
     handleMessage = vi.fn(async () => {});
     handleBinaryFrame = vi.fn((_frame: unknown) => {});
+    supports = vi.fn((capability: string) => this.args.clientCapabilities?.[capability] === true);
     getClientActivity = vi.fn(() => null);
     resetPeakInflight = vi.fn(() => {});
     getRuntimeMetrics = vi.fn(() => ({
@@ -293,12 +295,16 @@ function createDownloadInProgressSpeechReadinessSnapshot(): SpeechReadinessSnaps
   };
 }
 
-function createHelloMessage(clientId: string) {
+function createHelloMessage(
+  clientId: string,
+  options?: { capabilities?: Record<string, boolean> },
+) {
   return {
     type: "hello" as const,
     clientId,
     clientType: "cli" as const,
     protocolVersion: 1,
+    ...(options?.capabilities ? { capabilities: options.capabilities } : {}),
   };
 }
 
@@ -396,6 +402,34 @@ describe("relay external socket reconnect behavior", () => {
 
     await vi.advanceTimersByTimeAsync(20_000);
     expect(session.cleanup).not.toHaveBeenCalled();
+
+    await server.close();
+  });
+
+  test("passes hello capabilities through to the created session", async () => {
+    const server = createServer();
+    const socket = new MockSocket();
+
+    await (server as unknown as WebSocketServerInternals).attachSocket(
+      socket,
+      createDirectRequest(),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify(
+        createHelloMessage("client-capabilities", {
+          capabilities: { [CLIENT_CAPS.reasoningMergeEnum]: true },
+        }),
+      ),
+    );
+    await Promise.resolve();
+
+    expect(sessionMock.instances).toHaveLength(1);
+    const session = sessionMock.instances[0]!;
+    expect(session.args.clientCapabilities).toEqual({
+      [CLIENT_CAPS.reasoningMergeEnum]: true,
+    });
+    expect(session.supports(CLIENT_CAPS.reasoningMergeEnum)).toBe(true);
 
     await server.close();
   });
