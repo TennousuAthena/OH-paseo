@@ -8,7 +8,7 @@ import {
   createElement,
 } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { ArrowLeft, ArrowRight, MousePointer2, RefreshCw } from "lucide-react-native";
+import { ArrowLeft, ArrowRight, MousePointer2, RotateCw } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
   buildWorkspaceAttachmentScopeKey,
@@ -336,12 +336,26 @@ export function BrowserPane({
   const updateBrowserRef = useRef(updateBrowser);
   updateBrowserRef.current = updateBrowser;
 
-  const focusUrlBar = useCallback(() => {
-    urlInputRef.current?.focus();
+  const selectUrlBar = useCallback(() => {
     window.setTimeout(() => {
       getTextInputNativeElement(urlInputRef.current)?.select();
     }, 0);
   }, []);
+
+  const markActivePane = useCallback(() => {
+    if (!isElectronRuntime()) return;
+    void getDesktopHost()?.browser?.setActivePane?.(browserIdRef.current);
+  }, []);
+
+  const handleUrlBarFocus = useCallback(() => {
+    markActivePane();
+    selectUrlBar();
+  }, [markActivePane, selectUrlBar]);
+
+  const focusUrlBar = useCallback(() => {
+    urlInputRef.current?.focus();
+    selectUrlBar();
+  }, [selectUrlBar]);
 
   const syncNavigationState = useCallback((input?: { syncUrl?: boolean }) => {
     const webview = webviewRef.current;
@@ -466,6 +480,7 @@ export function BrowserPane({
     };
     const handleWebviewFocus = () => {
       onFocusPane?.();
+      markActivePane();
     };
 
     webview.addEventListener("did-start-loading", handleStartLoading);
@@ -937,7 +952,7 @@ export function BrowserPane({
             onPress={handleRefresh}
             style={baseIconButtonStyle}
           >
-            <RefreshCw size={16} color={theme.colors.foregroundMuted} />
+            <RotateCw size={16} color={theme.colors.foregroundMuted} />
           </Pressable>
         </View>
         <View style={styles.urlBarWrap}>
@@ -946,6 +961,7 @@ export function BrowserPane({
             autoCapitalize="none"
             autoCorrect={false}
             onChangeText={setDraftUrl}
+            onFocus={handleUrlBarFocus}
             onSubmitEditing={handleNavigateDraftUrl}
             placeholder="Enter URL"
             placeholderTextColor={theme.colors.foregroundMuted}

@@ -36,6 +36,7 @@ import { setupApplicationMenu } from "./features/menu.js";
 import {
   getPaseoBrowserIdForWebContents,
   registerPaseoBrowserWebContents,
+  setActivePaseoBrowserPaneId,
 } from "./features/browser-webviews.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
 import { getDesktopSettingsStore } from "./settings/desktop-settings-electron.js";
@@ -76,6 +77,33 @@ function preventUnsafeBrowserWebviewNavigation(
 }
 const OPEN_PROJECT_EVENT = "paseo:event:open-project";
 const BROWSER_SHORTCUT_EVENT = "paseo:event:browser-shortcut";
+const BROWSER_FORWARDED_KEY_EVENT = "paseo:event:browser-forwarded-key";
+
+const FORWARDED_PASEO_SHORTCUT_KEYS = new Set([
+  "b",
+  "e",
+  "w",
+  "t",
+  "k",
+  "/",
+  "\\",
+  ",",
+  ".",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "enter",
+  "arrowleft",
+  "arrowright",
+  "arrowup",
+  "arrowdown",
+]);
 const DESKTOP_SMOKE_ENV = "PASEO_DESKTOP_SMOKE";
 const DESKTOP_SMOKE_STOP_REQUEST = "paseo-smoke-stop";
 app.setName("Paseo");
@@ -103,6 +131,16 @@ function isBrowserLocationInput(input: Electron.Input): boolean {
     return false;
   }
   return (input.meta || input.control) && input.key.toLowerCase() === "l";
+}
+
+function isForwardablePaseoShortcutInput(input: Electron.Input): boolean {
+  if (input.type !== "keyDown") {
+    return false;
+  }
+  if (!input.meta && !input.control) {
+    return false;
+  }
+  return FORWARDED_PASEO_SHORTCUT_KEYS.has(input.key.toLowerCase());
 }
 
 // In dev mode, detect git worktrees and isolate each instance so multiple
@@ -175,6 +213,10 @@ ipcMain.handle("paseo:get-pending-open-project", () => {
   const result = pendingOpenProjectPath;
   pendingOpenProjectPath = null;
   return result;
+});
+
+ipcMain.handle("paseo:browser:set-active-pane", (_event, browserId: unknown) => {
+  setActivePaseoBrowserPaneId(typeof browserId === "string" ? browserId : null);
 });
 
 protocol.registerSchemesAsPrivileged([
@@ -316,6 +358,18 @@ async function createMainWindow(): Promise<void> {
         mainWindow.webContents.send(BROWSER_SHORTCUT_EVENT, {
           action: "focus-url",
           ...(focusedBrowserId ? { browserId: focusedBrowserId } : {}),
+        });
+        return;
+      }
+      if (isForwardablePaseoShortcutInput(input)) {
+        event.preventDefault();
+        mainWindow.webContents.send(BROWSER_FORWARDED_KEY_EVENT, {
+          key: input.key,
+          code: input.code,
+          meta: input.meta,
+          control: input.control,
+          shift: input.shift,
+          alt: input.alt,
         });
       }
     });

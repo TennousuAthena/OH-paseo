@@ -1,5 +1,8 @@
 import { app, Menu, BrowserWindow, ipcMain, webContents } from "electron";
-import { getPaseoBrowserIdForWebContents } from "./browser-webviews.js";
+import {
+  getActivePaseoBrowserWebContents,
+  getPaseoBrowserIdForWebContents,
+} from "./browser-webviews.js";
 
 interface ShowContextMenuInput {
   kind?: "terminal";
@@ -20,8 +23,12 @@ function getFocusedPaseoBrowserWebContents(): Electron.WebContents | null {
   return getPaseoBrowserIdForWebContents(focusedContents) ? focusedContents : null;
 }
 
+function getReloadTargetBrowserWebContents(): Electron.WebContents | null {
+  return getFocusedPaseoBrowserWebContents() ?? getActivePaseoBrowserWebContents();
+}
+
 function reloadFocusedContentsOrWindow(win: BrowserWindow, options?: { ignoreCache?: boolean }) {
-  const browserContents = getFocusedPaseoBrowserWebContents();
+  const browserContents = getReloadTargetBrowserWebContents();
   if (browserContents) {
     if (options?.ignoreCache) {
       browserContents.reloadIgnoringCache();

@@ -74,6 +74,10 @@ export interface DesktopBrowserShortcutEvent {
   action: "focus-url";
 }
 
+export interface DesktopBrowserBridge {
+  setActivePane?: (browserId: string | null) => Promise<void>;
+}
+
 export interface DesktopInvokeBridge {
   invoke?: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 }
@@ -88,6 +92,7 @@ export interface DesktopHostBridge {
   notification?: DesktopNotificationBridge;
   opener?: DesktopOpenerBridge;
   menu?: DesktopMenuBridge;
+  browser?: DesktopBrowserBridge;
 }
 
 declare global {

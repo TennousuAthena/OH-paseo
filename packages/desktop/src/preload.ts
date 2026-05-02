@@ -57,4 +57,8 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     showContextMenu: (input?: Record<string, unknown>) =>
       ipcRenderer.invoke("paseo:menu:showContextMenu", input),
   },
+  browser: {
+    setActivePane: (browserId: string | null) =>
+      ipcRenderer.invoke("paseo:browser:set-active-pane", browserId),
+  },
 });

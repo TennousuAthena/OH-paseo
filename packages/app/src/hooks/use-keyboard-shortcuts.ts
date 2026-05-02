@@ -24,6 +24,7 @@ import { getShortcutOs } from "@/utils/shortcut-platform";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import { isNative } from "@/constants/platform";
+import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
 import { isImeComposingKeyboardEvent } from "@/utils/keyboard-ime";
 import { getRelativeSidebarShortcutTarget } from "@/utils/sidebar-shortcuts";
 import { useActiveServerId } from "@/hooks/use-active-server-id";
@@ -418,6 +419,26 @@ export function useKeyboardShortcuts({
     window.addEventListener("keyup", handleKeyUp, true);
     window.addEventListener("blur", handleBlurOrHide);
     document.addEventListener("visibilitychange", handleBlurOrHide);
+
+    const forwardedKeySubscription = isElectronRuntime()
+      ? getDesktopHost()?.events?.on?.("browser-forwarded-key", (payload) => {
+          if (!payload || typeof payload !== "object") return;
+          const p = payload as Record<string, unknown>;
+          if (typeof p.key !== "string") return;
+          window.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: p.key,
+              code: typeof p.code === "string" ? p.code : "",
+              metaKey: p.meta === true,
+              ctrlKey: p.control === true,
+              shiftKey: p.shift === true,
+              altKey: p.alt === true,
+              bubbles: true,
+            }),
+          );
+        })
+      : null;
+
     return () => {
       if (chordStateRef.current.timeoutId !== null) {
         clearTimeout(chordStateRef.current.timeoutId);
@@ -431,6 +452,11 @@ export function useKeyboardShortcuts({
       window.removeEventListener("keyup", handleKeyUp, true);
       window.removeEventListener("blur", handleBlurOrHide);
       document.removeEventListener("visibilitychange", handleBlurOrHide);
+      if (typeof forwardedKeySubscription === "function") {
+        forwardedKeySubscription();
+      } else {
+        void forwardedKeySubscription?.then((dispose) => dispose());
+      }
     };
   }, [
     bindings,
