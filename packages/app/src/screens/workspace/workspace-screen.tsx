@@ -129,10 +129,7 @@ import {
   resolveWorkspaceRouteState,
   type WorkspaceRouteState,
 } from "@/screens/workspace/workspace-route-state";
-import {
-  renderWorkspaceReconnectIndicator,
-  renderWorkspaceRouteGate,
-} from "@/screens/workspace/workspace-route-state-views";
+import { renderWorkspaceRouteGate } from "@/screens/workspace/workspace-route-state-views";
 import {
   deriveWorkspaceAgentVisibility,
   workspaceAgentVisibilityEqual,
@@ -2929,10 +2926,6 @@ function WorkspaceScreenContent({
     gate: workspaceScreenGate,
     workspaceKey: persistenceKey,
   });
-  const reconnectBanner = renderWorkspaceReconnectIndicator({
-    state: workspaceRouteState,
-    onRetryHost: handleRetryHost,
-  });
 
   const headerRight = useMemo(
     () => (
@@ -3175,7 +3168,6 @@ function WorkspaceScreenContent({
           />
           <View style={styles.threePaneRow}>
             <View style={styles.centerColumn}>
-              {reconnectBanner}
               {showScreenHeader && (
                 <ScreenHeader
                   onRowLayout={onHeaderLayout}

@@ -708,7 +708,10 @@ function ChatAgentContent({
 
   useEffect(() => {
     if (connectionStatus === "online") {
-      reconnectToastArmedRef.current = false;
+      if (reconnectToastArmedRef.current) {
+        reconnectToastArmedRef.current = false;
+        panelToast.dismiss();
+      }
       return;
     }
     if (connectionStatus === "idle") {
@@ -717,11 +720,11 @@ function ChatAgentContent({
     if (!reconnectToastArmedRef.current) {
       reconnectToastArmedRef.current = true;
       panelToast.api.show("Reconnecting...", {
-        durationMs: 2200,
+        durationMs: null,
         testID: "agent-reconnecting-toast",
       });
     }
-  }, [connectionStatus, panelToast.api]);
+  }, [connectionStatus, panelToast]);
 
   useEffect(() => {
     if (!isPaneFocused || !agentId || !isConnected || !hasSession) {

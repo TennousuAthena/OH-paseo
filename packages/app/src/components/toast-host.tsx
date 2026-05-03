@@ -18,7 +18,7 @@ export type ToastVariant = "default" | "success" | "error";
 export interface ToastShowOptions {
   icon?: ReactNode;
   variant?: ToastVariant;
-  durationMs?: number;
+  durationMs?: number | null;
   nativeAndroid?: boolean;
   testID?: string;
 }
@@ -29,7 +29,7 @@ export interface ToastState {
   nativeMessage: string | null;
   icon?: ReactNode;
   variant: ToastVariant;
-  durationMs: number;
+  durationMs: number | null;
   testID?: string;
 }
 
@@ -59,11 +59,12 @@ export function useToastHost(): {
     }
 
     const variant = options?.variant ?? "default";
-    const durationMs = options?.durationMs ?? DEFAULT_DURATION_MS;
+    const durationMs = options?.durationMs === undefined ? DEFAULT_DURATION_MS : options.durationMs;
     const nativeAndroid = options?.nativeAndroid ?? false;
 
     if (Platform.OS === "android" && nativeAndroid && nativeMessage) {
-      const duration = durationMs <= 2500 ? ToastAndroid.SHORT : ToastAndroid.LONG;
+      const duration =
+        durationMs !== null && durationMs <= 2500 ? ToastAndroid.SHORT : ToastAndroid.LONG;
       ToastAndroid.showWithGravity(nativeMessage, duration, ToastAndroid.TOP);
       return;
     }
@@ -148,8 +149,13 @@ export function ToastViewport({
   }, [clearTimer, onDismiss, opacity, translateY]);
 
   const scheduleDismiss = useCallback(
-    (durationMs: number) => {
+    (durationMs: number | null) => {
       clearTimer();
+      if (durationMs === null) {
+        remainingDurationRef.current = 0;
+        dismissDeadlineRef.current = null;
+        return;
+      }
       const nextDurationMs = Math.max(0, durationMs);
       remainingDurationRef.current = nextDurationMs;
       dismissDeadlineRef.current = Date.now() + nextDurationMs;
@@ -169,7 +175,7 @@ export function ToastViewport({
   }, [clearTimer]);
 
   const resumeDismiss = useCallback(() => {
-    if (!toast) {
+    if (!toast || toast.durationMs === null) {
       return;
     }
     scheduleDismiss(remainingDurationRef.current || toast.durationMs);
@@ -204,7 +210,6 @@ export function ToastViewport({
       }),
     ]).start();
 
-    remainingDurationRef.current = toast.durationMs;
     scheduleDismiss(toast.durationMs);
 
     return () => {

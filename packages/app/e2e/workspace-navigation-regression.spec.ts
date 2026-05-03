@@ -157,7 +157,7 @@ test.describe("Workspace navigation regression", () => {
       });
 
       await daemonGate.drop();
-      await expect(page.getByTestId("workspace-reconnect-banner")).toBeVisible({
+      await expect(page.getByTestId("agent-reconnecting-toast")).toBeVisible({
         timeout: 30_000,
       });
       await expectWorkspaceHeader(page, {
@@ -172,7 +172,7 @@ test.describe("Workspace navigation regression", () => {
         label: "host reconnect",
       });
       daemonGate.restore();
-      await expect(page.getByTestId("workspace-reconnect-banner")).toHaveCount(0, {
+      await expect(page.getByTestId("agent-reconnecting-toast")).toHaveCount(0, {
         timeout: 30_000,
       });
       await monitorReconnect;

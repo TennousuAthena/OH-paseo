@@ -41,16 +41,6 @@ export function renderWorkspaceRouteGate(input: {
   }
 }
 
-export function renderWorkspaceReconnectIndicator(input: {
-  state: WorkspaceRouteState;
-  onRetryHost: () => void;
-}): React.ReactNode {
-  if (input.state.kind !== "reconnecting") {
-    return null;
-  }
-  return <WorkspaceReconnectBanner state={input.state} onRetry={input.onRetryHost} />;
-}
-
 function getWorkspaceHostStateTitle(
   state: Extract<WorkspaceRouteState, { kind: "unreachable" }>,
 ): string {
@@ -61,15 +51,6 @@ function getWorkspaceHostStateTitle(
     return `${state.hostName} is offline`;
   }
   return `Cannot reach ${state.hostName}`;
-}
-
-function getReconnectBannerCopy(
-  state: Extract<WorkspaceRouteState, { kind: "reconnecting" }>,
-): string {
-  if (state.connectionStatus === "connecting" || state.connectionStatus === "idle") {
-    return `Reconnecting to ${state.hostName}...`;
-  }
-  return `${state.hostName} is offline`;
 }
 
 function WorkspaceConnecting({ hostName }: { hostName: string }) {
@@ -135,33 +116,6 @@ function WorkspaceUnreachable({
   );
 }
 
-function WorkspaceReconnectBanner({
-  state,
-  onRetry,
-}: {
-  state: Extract<WorkspaceRouteState, { kind: "reconnecting" }>;
-  onRetry: () => void;
-}) {
-  const { theme } = useUnistyles();
-  const canRetry = state.connectionStatus === "offline" || state.connectionStatus === "error";
-  const showSpinner = state.connectionStatus === "connecting" || state.connectionStatus === "idle";
-  const isErrorState = state.connectionStatus === "offline" || state.connectionStatus === "error";
-
-  return (
-    <View style={styles.reconnectBanner} testID="workspace-reconnect-banner">
-      {showSpinner ? <LoadingSpinner size="small" color={theme.colors.foregroundMuted} /> : null}
-      <Text style={isErrorState ? styles.reconnectTextDestructive : styles.reconnectText}>
-        {getReconnectBannerCopy(state)}
-      </Text>
-      {canRetry ? (
-        <Button size="sm" variant="outline" leftIcon={RotateCw} onPress={onRetry}>
-          Retry
-        </Button>
-      ) : null}
-    </View>
-  );
-}
-
 function WorkspaceMissing({ hostName, onDismiss }: { hostName: string; onDismiss: () => void }) {
   return (
     <View style={styles.emptyState}>
@@ -219,29 +173,5 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     flexWrap: "wrap",
     gap: theme.spacing[2],
-  },
-  reconnectBanner: {
-    minHeight: 32,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.border,
-    backgroundColor: theme.colors.surface1,
-  },
-  reconnectText: {
-    minWidth: 0,
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    flexShrink: 1,
-  },
-  reconnectTextDestructive: {
-    minWidth: 0,
-    color: theme.colors.destructive,
-    fontSize: theme.fontSize.sm,
-    flexShrink: 1,
   },
 }));
