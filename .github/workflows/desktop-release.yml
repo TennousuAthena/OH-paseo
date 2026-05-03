@@ -52,7 +52,6 @@ env:
   CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.checkout_ref || github.ref_name) || github.ref_name }}
   SHOULD_PUBLISH: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false' }}
   ROLLOUT_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.rollout_hours || '24' }}
-  DESKTOP_WORKSPACE: "@getpaseo/desktop"
   DESKTOP_PACKAGE_PATH: "packages/desktop"
 
 jobs:
@@ -148,9 +147,6 @@ jobs:
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
 
-      - name: Build web app for desktop
-        run: npm run build:web --workspace=@getpaseo/app
-
       - name: Build desktop release
         shell: bash
         env:
@@ -167,7 +163,7 @@ jobs:
           build_args=(-- --publish never --mac --${{ matrix.electron_arch }})
           build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
           build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
-          npm run build --workspace="$DESKTOP_WORKSPACE" "${build_args[@]}"
+          npm run build:desktop "${build_args[@]}"
 
       - name: Upload desktop artifacts to release
         if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
@@ -243,9 +239,6 @@ jobs:
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
 
-      - name: Build web app for desktop
-        run: npm run build:web --workspace=@getpaseo/app
-
       - name: Install Linux smoke display
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
@@ -260,7 +253,7 @@ jobs:
           build_args=(-- --publish never --linux --x64)
           build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
           build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
-          npm run build --workspace="$DESKTOP_WORKSPACE" "${build_args[@]}"
+          npm run build:desktop "${build_args[@]}"
 
       - name: Upload desktop artifacts to release
         if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
@@ -336,17 +329,6 @@ jobs:
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
 
-      - name: Build workspace dependencies
-        run: npm run build:workspace-deps --workspace=@getpaseo/app
-
-      - name: Build web app for desktop
-        shell: pwsh
-        run: |
-          $patchPath = (Get-Item "$env:GITHUB_WORKSPACE/scripts/metro-config-windows-loader-patch.cjs").FullName
-          $env:NODE_OPTIONS = "--require=$patchPath"
-          npx expo export --platform web
-        working-directory: packages/app
-
       - name: Build desktop release
         shell: bash
         env:
@@ -358,7 +340,7 @@ jobs:
           build_args=(-- --publish never --win --x64 --arm64)
           build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
           build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
-          npm run build --workspace="$DESKTOP_WORKSPACE" "${build_args[@]}"
+          npm run build:desktop "${build_args[@]}"
 
       - name: Upload desktop artifacts to release
         if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
