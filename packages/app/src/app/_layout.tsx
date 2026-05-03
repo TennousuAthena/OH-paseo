@@ -60,6 +60,7 @@ import { UpdateCalloutSource } from "@/desktop/updates/update-callout-source";
 import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-action";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useLatchedBoolean } from "@/hooks/use-latched-boolean";
 import { useOpenProject } from "@/hooks/use-open-project";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useStableEvent } from "@/hooks/use-stable-event";
@@ -349,8 +350,9 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const splashError = !anyOnlineHostServerId ? daemonStartError : null;
-  const storeReady =
+  const isCurrentlyStoreReady =
     Boolean(anyOnlineHostServerId) || Boolean(splashError) || hasGivenUpWaitingForHost;
+  const storeReady = useLatchedBoolean(isCurrentlyStoreReady);
 
   const state = useMemo<HostRuntimeBootstrapState>(
     () => ({ splashError, retry, hasGivenUpWaitingForHost, storeReady }),
