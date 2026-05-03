@@ -10,7 +10,7 @@ import {
 } from "@/utils/agent-initialization";
 import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
 
-const INIT_TIMEOUT_MS = 5 * 60_000;
+const INIT_TIMEOUT_MS = 30_000;
 
 export function useAgentInitialization({
   serverId,

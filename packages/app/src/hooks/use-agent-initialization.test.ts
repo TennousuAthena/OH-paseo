@@ -72,6 +72,34 @@ describe("useAgentInitialization", () => {
     expect(getInitDeferred(getInitKey(serverId, agentId))?.requestDirection).toBe("tail");
   });
 
+  it("times out initialization after 30 seconds", async () => {
+    vi.useFakeTimers();
+    const client = makeClient();
+    useSessionStore.getState().initializeSession(serverId, client as never);
+
+    const { result } = renderHook(() =>
+      useAgentInitialization({ serverId, client: client as never }),
+    );
+
+    const promise = result.current.ensureAgentIsInitialized(agentId);
+
+    act(() => {
+      vi.advanceTimersByTime(29_999);
+    });
+    expect(getInitDeferred(getInitKey(serverId, agentId))).toBeDefined();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    await expect(promise).rejects.toThrow("History sync timed out after 30s");
+    expect(getInitDeferred(getInitKey(serverId, agentId))).toBeUndefined();
+    expect(useSessionStore.getState().sessions[serverId]?.initializingAgents.get(agentId)).toBe(
+      false,
+    );
+    vi.useRealTimers();
+  });
+
   it("refresh fetches a bounded canonical tail after refreshing the agent", async () => {
     const client = makeClient();
     const { result } = renderHook(() =>
