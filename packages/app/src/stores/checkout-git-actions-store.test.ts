@@ -10,6 +10,10 @@ import {
   isLocalWorktreeArchivePending,
   useCheckoutGitActionsStore,
 } from "@/stores/checkout-git-actions-store";
+import {
+  clearWorkspaceArchivePending,
+  isWorkspaceArchivePending,
+} from "@/contexts/session-workspace-upserts";
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
@@ -53,6 +57,8 @@ describe("checkout-git-actions-store", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     __resetCheckoutGitActionsStoreForTests();
+    clearWorkspaceArchivePending({ serverId, workspaceId: cwd });
+    clearWorkspaceArchivePending({ serverId, workspaceId: "ws-feature" });
     appQueryClient.clear();
     useSessionStore.setState((state) => ({ ...state, sessions: {} }));
   });
@@ -60,6 +66,8 @@ describe("checkout-git-actions-store", () => {
   afterEach(() => {
     vi.useRealTimers();
     __resetCheckoutGitActionsStoreForTests();
+    clearWorkspaceArchivePending({ serverId, workspaceId: cwd });
+    clearWorkspaceArchivePending({ serverId, workspaceId: "ws-feature" });
     appQueryClient.clear();
     useSessionStore.setState((state) => ({ ...state, sessions: {} }));
   });
@@ -210,6 +218,36 @@ describe("checkout-git-actions-store", () => {
       { worktreePath: "/tmp/other" },
     ]);
     expect(isLocalWorktreeArchivePending({ serverId, cwd })).toBe(true);
+
+    deferred.resolve({});
+    await archive;
+
+    expect(
+      isWorkspaceArchivePending({
+        serverId,
+        workspaceId: cwd,
+      }),
+    ).toBe(true);
+  });
+
+  it("hides an archived worktree when the workspace map is keyed by opaque id", async () => {
+    const deferred = createDeferred<Record<string, never>>();
+    const client = {
+      archivePaseoWorktree: vi.fn(() => deferred.promise),
+    };
+    const featureWorkspace = workspace({
+      id: "ws-feature",
+      name: "feature",
+      workspaceDirectory: cwd,
+    });
+    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
+    useSessionStore.getState().setWorkspaces(serverId, new Map([["ws-feature", featureWorkspace]]));
+
+    const archive = useCheckoutGitActionsStore
+      .getState()
+      .archiveWorktree({ serverId, cwd, worktreePath: cwd });
+
+    expect(useSessionStore.getState().sessions[serverId]?.workspaces.has("ws-feature")).toBe(false);
 
     deferred.resolve({});
     await archive;

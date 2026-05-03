@@ -15,7 +15,6 @@ interface ResolverHarness {
   github: GitHubService;
   headRefLookups: GitHubHeadRefLookup[];
   resolveDefaultBranch: (repoRoot: string) => Promise<string>;
-  generateBranchName: (seed: string | undefined) => string;
 }
 
 function createResolverHarness(): ResolverHarness {
@@ -51,7 +50,6 @@ function createResolverHarness(): ResolverHarness {
     github,
     headRefLookups,
     resolveDefaultBranch: async () => "main",
-    generateBranchName: (seed) => seed ?? "generated-worktree",
   };
 }
 
@@ -61,10 +59,12 @@ describe("resolveWorktreeCreationIntent", () => {
   test("branches off the repo default branch when no explicit fields are set", async () => {
     const deps = createResolverHarness();
 
-    await expect(resolveWorktreeCreationIntent({}, repoRoot, deps)).resolves.toEqual({
+    await expect(
+      resolveWorktreeCreationIntent({ worktreeSlug: "generated-worktree" }, repoRoot, deps),
+    ).resolves.toEqual({
       kind: "branch-off",
       baseBranch: "main",
-      newBranchName: "generated-worktree",
+      branchName: "generated-worktree",
     });
     expect(deps.headRefLookups).toEqual([]);
   });
@@ -81,7 +81,7 @@ describe("resolveWorktreeCreationIntent", () => {
     ).resolves.toEqual({
       kind: "branch-off",
       baseBranch: "dev",
-      newBranchName: "feature",
+      branchName: "feature",
     });
     expect(deps.headRefLookups).toEqual([]);
   });

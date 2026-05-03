@@ -1,6 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
-import { shouldSuppressWorkspaceUpsertForLocalArchive } from "@/contexts/session-workspace-upserts";
+import {
+  clearWorkspaceArchivePending,
+  isWorkspaceArchivePending,
+  markWorkspaceArchivePending,
+  shouldSuppressWorkspaceForLocalArchive,
+} from "@/contexts/session-workspace-upserts";
 
 const baseWorkspace: WorkspaceDescriptor = {
   id: "/repo/worktree",
@@ -21,40 +26,83 @@ function workspace(input?: Partial<WorkspaceDescriptor>): WorkspaceDescriptor {
   return { ...baseWorkspace, ...input };
 }
 
-describe("shouldSuppressWorkspaceUpsertForLocalArchive", () => {
-  it("suppresses archiving upserts for a locally pending archive", () => {
-    const isArchivePending = vi.fn(() => true);
+describe("workspace archive pending suppression", () => {
+  it("tracks a locally pending workspace archive by id and directory", () => {
+    markWorkspaceArchivePending({
+      serverId: "server-1",
+      workspaceId: "/repo/worktree",
+      workspaceDirectory: "/repo/worktree",
+    });
 
     expect(
-      shouldSuppressWorkspaceUpsertForLocalArchive({
+      isWorkspaceArchivePending({
         serverId: "server-1",
-        workspace: workspace({ workspaceDirectory: "/repo/worktree" }),
-        isArchivePending,
+        workspaceId: "/repo/worktree",
       }),
     ).toBe(true);
-    expect(isArchivePending).toHaveBeenCalledWith({
-      serverId: "server-1",
-      cwd: "/repo/worktree",
-    });
-  });
-
-  it("allows archiving upserts when this client did not start the archive", () => {
     expect(
-      shouldSuppressWorkspaceUpsertForLocalArchive({
+      isWorkspaceArchivePending({
         serverId: "server-1",
-        workspace: workspace(),
-        isArchivePending: () => false,
+        workspaceDirectory: "/repo/worktree",
       }),
-    ).toBe(false);
-  });
-
-  it("allows normal upserts while a local archive is pending", () => {
+    ).toBe(true);
     expect(
-      shouldSuppressWorkspaceUpsertForLocalArchive({
+      shouldSuppressWorkspaceForLocalArchive({
         serverId: "server-1",
         workspace: workspace({ archivingAt: null }),
-        isArchivePending: () => true,
+      }),
+    ).toBe(true);
+
+    clearWorkspaceArchivePending({ serverId: "server-1", workspaceId: "/repo/worktree" });
+
+    expect(
+      isWorkspaceArchivePending({
+        serverId: "server-1",
+        workspaceId: "/repo/worktree",
       }),
     ).toBe(false);
+  });
+
+  it("suppresses upserts for a locally pending archive", () => {
+    markWorkspaceArchivePending({
+      serverId: "server-1",
+      workspaceId: "/repo/worktree",
+      workspaceDirectory: "/repo/worktree",
+    });
+
+    expect(
+      shouldSuppressWorkspaceForLocalArchive({
+        serverId: "server-1",
+        workspace: workspace({ workspaceDirectory: "/repo/worktree" }),
+      }),
+    ).toBe(true);
+
+    clearWorkspaceArchivePending({ serverId: "server-1", workspaceId: "/repo/worktree" });
+  });
+
+  it("allows upserts when this client did not start the archive", () => {
+    expect(
+      shouldSuppressWorkspaceForLocalArchive({
+        serverId: "server-1",
+        workspace: workspace(),
+      }),
+    ).toBe(false);
+  });
+
+  it("suppresses stale normal upserts while a local archive is pending", () => {
+    markWorkspaceArchivePending({
+      serverId: "server-1",
+      workspaceId: "/repo/worktree",
+      workspaceDirectory: "/repo/worktree",
+    });
+
+    expect(
+      shouldSuppressWorkspaceForLocalArchive({
+        serverId: "server-1",
+        workspace: workspace({ archivingAt: null }),
+      }),
+    ).toBe(true);
+
+    clearWorkspaceArchivePending({ serverId: "server-1", workspaceId: "/repo/worktree" });
   });
 });

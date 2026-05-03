@@ -23,6 +23,7 @@ import type {
   WorkspaceDescriptorPayload,
 } from "@server/shared/messages";
 import { normalizeWorkspaceOpaqueId } from "@/utils/workspace-identity";
+import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-execution";
 import {
   createAgentLastActivityCoalescer,
   type AgentLastActivityCommitter,
@@ -1114,11 +1115,15 @@ export const useSessionStore = create<SessionStore>()(
       removeWorkspace: (serverId, workspaceId) => {
         set((prev) => {
           const session = prev.sessions[serverId];
-          if (!session || !session.workspaces.has(workspaceId)) {
+          const workspaceKey = resolveWorkspaceMapKeyByIdentity({
+            workspaces: session?.workspaces,
+            workspaceId,
+          });
+          if (!session || !workspaceKey) {
             return prev;
           }
           const next = new Map(session.workspaces);
-          next.delete(workspaceId);
+          next.delete(workspaceKey);
           return {
             ...prev,
             sessions: {

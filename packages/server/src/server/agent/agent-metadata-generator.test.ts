@@ -38,7 +38,7 @@ function createLegacyWorktreeForTest(
     source: {
       kind: "branch-off",
       baseBranch: options.baseBranch,
-      newBranchName: options.branchName,
+      branchName: options.branchName,
     },
     runSetup: options.runSetup ?? true,
     paseoHome: options.paseoHome,

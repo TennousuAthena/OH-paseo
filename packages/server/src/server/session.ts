@@ -207,7 +207,7 @@ import {
   type CreatePaseoWorktreeInput,
   type CreatePaseoWorktreeResult,
 } from "./paseo-worktree-service.js";
-import { createWorktreeCoreDeps } from "./worktree-core.js";
+import { generateBranchNameFromFirstAgentContext } from "./worktree-branch-name-generator.js";
 import {
   assertSafeGitRef as assertWorktreeSafeGitRef,
   buildAgentSessionConfig as buildWorktreeAgentSessionConfig,
@@ -3002,7 +3002,7 @@ export class Session {
       if (!resolvedWorkspace) {
         throw new Error(`Workspace not found: ${msg.workspaceId}`);
       }
-      resolvedWorkspace = await this.maybeAutoNameWorkspaceBranchForFirstAgent({
+      this.scheduleAutoNameWorkspaceBranchForFirstAgent({
         workspace: resolvedWorkspace,
         firstAgentContext,
       });
@@ -3394,15 +3394,35 @@ export class Session {
     );
   }
 
+  private scheduleAutoNameWorkspaceBranchForFirstAgent(input: {
+    workspace: PersistedWorkspaceRecord;
+    firstAgentContext: FirstAgentContext;
+  }): void {
+    setTimeout(() => {
+      void this.maybeAutoNameWorkspaceBranchForFirstAgent(input).catch((error) => {
+        this.sessionLogger.warn(
+          { err: error, cwd: input.workspace.cwd },
+          "Failed to auto-name worktree branch",
+        );
+      });
+    }, 0);
+  }
+
   private async maybeAutoNameWorkspaceBranchForFirstAgent(input: {
     workspace: PersistedWorkspaceRecord;
     firstAgentContext: FirstAgentContext;
   }): Promise<PersistedWorkspaceRecord> {
-    const coreDeps = createWorktreeCoreDeps(this.github);
     const result = await attemptFirstAgentBranchAutoName({
       cwd: input.workspace.cwd,
       firstAgentContext: input.firstAgentContext,
-      generateBranchName: coreDeps.generateBranchName,
+      generateBranchNameFromContext: ({ cwd, firstAgentContext }) => {
+        return generateBranchNameFromFirstAgentContext({
+          agentManager: this.agentManager,
+          cwd,
+          firstAgentContext,
+          logger: this.sessionLogger,
+        });
+      },
     });
     if (!result.renamed || !result.branchName) {
       return input.workspace;
@@ -6373,9 +6393,8 @@ export class Session {
       resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
     },
   ): Promise<CreatePaseoWorktreeResult> {
-    const coreDeps = createWorktreeCoreDeps(this.github);
     const result = await createPaseoWorktree(input, {
-      ...coreDeps,
+      github: this.github,
       ...(options?.resolveDefaultBranch
         ? { resolveDefaultBranch: options.resolveDefaultBranch }
         : {}),
@@ -6970,6 +6989,8 @@ export class Session {
         createPaseoWorktree: (workflowInput, serviceOptions) =>
           this.createPaseoWorktree(workflowInput, serviceOptions),
         warmWorkspaceGitData: (workspace) => this.warmWorkspaceGitDataForWorkspace(workspace),
+        autoNameWorkspaceBranchForFirstAgent: (autoNameInput) =>
+          this.scheduleAutoNameWorkspaceBranchForFirstAgent(autoNameInput),
         emitWorkspaceUpdateForCwd: (cwd, emitOptions) =>
           this.emitWorkspaceUpdateForCwd(cwd, emitOptions),
         cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) => {

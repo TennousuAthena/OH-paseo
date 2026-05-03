@@ -21,7 +21,6 @@ import {
   type CreatePaseoWorktreeInput,
 } from "../paseo-worktree-service.js";
 import type { CreatePaseoWorktreeWorkflowFn } from "../worktree-session.js";
-import { createWorktreeCoreDeps } from "../worktree-core.js";
 import { WorkspaceGitServiceImpl } from "../workspace-git-service.js";
 import type { GitHubService } from "../../services/github-service.js";
 
@@ -307,9 +306,8 @@ function createPaseoWorktreeForMcpTest(options: {
 
   return async (input, serviceOptions) => {
     options.setupContinuations?.push(serviceOptions?.setupContinuation?.kind);
-    const coreDeps = createWorktreeCoreDeps(github);
     const result = await createPaseoWorktreeService(input, {
-      ...coreDeps,
+      github,
       ...(serviceOptions?.resolveDefaultBranch
         ? { resolveDefaultBranch: serviceOptions.resolveDefaultBranch }
         : {}),

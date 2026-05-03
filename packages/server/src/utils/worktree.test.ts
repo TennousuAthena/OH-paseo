@@ -62,7 +62,7 @@ function createLegacyWorktreeForTest(
     source: {
       kind: "branch-off",
       baseBranch: options.baseBranch,
-      newBranchName: options.branchName,
+      branchName: options.branchName,
     },
     runSetup: options.runSetup ?? true,
     paseoHome: options.paseoHome,
@@ -182,7 +182,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
     const result = await createLegacyWorktreeForTest({
       cwd: repoDir,
       worktreeSlug: "my-feature",
-      source: { kind: "branch-off", baseBranch: "main", newBranchName: "feature/x" },
+      source: { kind: "branch-off", baseBranch: "main", branchName: "feature/x" },
       runSetup: true,
       paseoHome,
     });
@@ -796,7 +796,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
     const result = await createLegacyWorktreeForTest({
       cwd: repoDir,
       worktreeSlug: "seed-uncommitted",
-      source: { kind: "branch-off", baseBranch: "main", newBranchName: "feature/seed" },
+      source: { kind: "branch-off", baseBranch: "main", branchName: "feature/seed" },
       runSetup: false,
       paseoHome,
     });
@@ -824,7 +824,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
     const result = await createLegacyWorktreeForTest({
       cwd: repoDir,
       worktreeSlug: "preserve-committed",
-      source: { kind: "branch-off", baseBranch: "main", newBranchName: "feature/preserve" },
+      source: { kind: "branch-off", baseBranch: "main", branchName: "feature/preserve" },
       runSetup: false,
       paseoHome,
     });
@@ -839,7 +839,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
     const result = await createLegacyWorktreeForTest({
       cwd: repoDir,
       worktreeSlug: "no-config",
-      source: { kind: "branch-off", baseBranch: "main", newBranchName: "feature/no-config" },
+      source: { kind: "branch-off", baseBranch: "main", branchName: "feature/no-config" },
       runSetup: false,
       paseoHome,
     });

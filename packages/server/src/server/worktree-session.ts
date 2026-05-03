@@ -115,6 +115,10 @@ interface CreatePaseoWorktreeWorkflowDependencies extends CreatePaseoWorktreeInB
     },
   ) => Promise<CreatePaseoWorktreeResult>;
   warmWorkspaceGitData: (workspace: PersistedWorkspaceRecord) => Promise<void>;
+  autoNameWorkspaceBranchForFirstAgent?: (input: {
+    workspace: PersistedWorkspaceRecord;
+    firstAgentContext: FirstAgentContext;
+  }) => void;
 }
 
 interface AgentWorktreeSetupContinuationInput {
@@ -576,6 +580,12 @@ export async function createPaseoWorktreeWorkflow(
   const setupContinuation = options?.setupContinuation ?? { kind: "workspace" };
 
   setTimeout(() => {
+    if (input.firstAgentContext) {
+      dependencies.autoNameWorkspaceBranchForFirstAgent?.({
+        workspace,
+        firstAgentContext: input.firstAgentContext,
+      });
+    }
     void dependencies.warmWorkspaceGitData(workspace).catch((error) => {
       dependencies.sessionLogger.warn(
         { err: error, workspaceId: workspace.workspaceId },

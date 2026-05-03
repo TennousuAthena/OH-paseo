@@ -39,7 +39,6 @@ import {
   createPaseoWorktree as createPaseoWorktreeService,
   type CreatePaseoWorktreeFn,
 } from "./paseo-worktree-service.js";
-import { createWorktreeCoreDeps } from "./worktree-core.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 
@@ -65,7 +64,7 @@ function createLegacyWorktreeForTest(
     source: {
       kind: "branch-off",
       baseBranch: options.baseBranch,
-      newBranchName: options.branchName,
+      branchName: options.branchName,
     },
     runSetup: options.runSetup ?? true,
     paseoHome: options.paseoHome,
@@ -262,9 +261,8 @@ function createPaseoWorktreeForTest(options: {
   });
 
   return (input, serviceOptions) => {
-    const coreDeps = createWorktreeCoreDeps(createGitHubServiceStub());
     return createPaseoWorktreeService(input, {
-      ...coreDeps,
+      github: createGitHubServiceStub(),
       ...(serviceOptions?.resolveDefaultBranch
         ? { resolveDefaultBranch: serviceOptions.resolveDefaultBranch }
         : {}),
@@ -1303,7 +1301,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
       intent: {
         kind: "branch-off" as const,
         baseBranch: "main",
-        newBranchName: "fix-attached-pr-context",
+        branchName: "fix-attached-pr-context",
       },
       workspace: {
         workspaceId: "/tmp/worktrees/fix-attached-pr-context",
@@ -1445,7 +1443,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
     expect(result.intent).toMatchObject({
       kind: "branch-off",
       baseBranch: "main",
-      newBranchName: "resolver-feature",
+      branchName: "resolver-feature",
     });
     expect(resolveDefaultBranch).toHaveBeenCalledWith(repoDir);
   });

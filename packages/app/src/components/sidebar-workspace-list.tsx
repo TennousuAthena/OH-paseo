@@ -104,9 +104,14 @@ import {
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
+import {
+  clearWorkspaceArchivePending,
+  markWorkspaceArchivePending,
+} from "@/contexts/session-workspace-upserts";
 import { openExternalUrl } from "@/utils/open-external-url";
 import {
   requireWorkspaceExecutionDirectory,
+  resolveWorkspaceMapKeyByIdentity,
   resolveWorkspaceExecutionDirectory,
 } from "@/utils/workspace-execution";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
@@ -123,6 +128,36 @@ function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): 
 const workspaceKeyExtractor = (workspace: SidebarWorkspaceEntry) => workspace.workspaceKey;
 
 const projectKeyExtractor = (project: SidebarProjectEntry) => project.projectKey;
+
+function hideWorkspaceOptimistically(workspace: SidebarWorkspaceEntry): WorkspaceDescriptor | null {
+  const workspaces = useSessionStore.getState().sessions[workspace.serverId]?.workspaces;
+  const workspaceKey = resolveWorkspaceMapKeyByIdentity({
+    workspaces,
+    workspaceId: workspace.workspaceId,
+  });
+  const snapshot = workspaceKey ? (workspaces?.get(workspaceKey) ?? null) : null;
+  markWorkspaceArchivePending({
+    serverId: workspace.serverId,
+    workspaceId: workspace.workspaceId,
+    workspaceDirectory: workspace.workspaceDirectory,
+  });
+  useSessionStore.getState().removeWorkspace(workspace.serverId, workspace.workspaceId);
+  return snapshot;
+}
+
+function restoreOptimisticallyHiddenWorkspace(input: {
+  serverId: string;
+  workspaceId: string;
+  snapshot: WorkspaceDescriptor | null;
+}): void {
+  clearWorkspaceArchivePending({
+    serverId: input.serverId,
+    workspaceId: input.workspaceId,
+  });
+  if (input.snapshot) {
+    useSessionStore.getState().mergeWorkspaces(input.serverId, [input.snapshot]);
+  }
+}
 const WORKSPACE_STATUS_DOT_WIDTH = 14;
 const DEFAULT_STATUS_DOT_SIZE = 7;
 const EMPHASIZED_STATUS_DOT_SIZE = 9;
@@ -1514,16 +1549,7 @@ function WorkspaceRowWithMenu({
         toast.error(message);
       });
     })();
-  }, [
-    archiveWorktree,
-    isArchiving,
-    redirectAfterArchive,
-    toast,
-    workspace.name,
-    workspace.workspaceDirectory,
-    workspace.serverId,
-    workspace.workspaceId,
-  ]);
+  }, [archiveWorktree, isArchiving, redirectAfterArchive, toast, workspace]);
 
   const handleArchiveWorkspace = useCallback(() => {
     if (isArchivingWorkspace) {
@@ -1549,6 +1575,7 @@ function WorkspaceRowWithMenu({
       }
 
       setIsArchivingWorkspace(true);
+      const snapshot = hideWorkspaceOptimistically(workspace);
       redirectAfterArchive();
 
       void (async () => {
@@ -1558,20 +1585,18 @@ function WorkspaceRowWithMenu({
             throw new Error(payload.error);
           }
         } catch (error) {
+          restoreOptimisticallyHiddenWorkspace({
+            serverId: workspace.serverId,
+            workspaceId: workspace.workspaceId,
+            snapshot,
+          });
           toast.error(error instanceof Error ? error.message : "Failed to hide workspace");
         } finally {
           setIsArchivingWorkspace(false);
         }
       })();
     })();
-  }, [
-    isArchivingWorkspace,
-    redirectAfterArchive,
-    toast,
-    workspace.name,
-    workspace.serverId,
-    workspace.workspaceId,
-  ]);
+  }, [isArchivingWorkspace, redirectAfterArchive, toast, workspace]);
 
   const handleCopyPath = useCallback(() => {
     let copyTargetDirectory: string;
@@ -1693,6 +1718,7 @@ function NonGitProjectRowWithMenuContent({
       }
 
       setIsArchivingWorkspace(true);
+      const snapshot = hideWorkspaceOptimistically(workspace);
       redirectAfterArchive();
 
       void (async () => {
@@ -1702,20 +1728,18 @@ function NonGitProjectRowWithMenuContent({
             throw new Error(payload.error);
           }
         } catch (error) {
+          restoreOptimisticallyHiddenWorkspace({
+            serverId: workspace.serverId,
+            workspaceId: workspace.workspaceId,
+            snapshot,
+          });
           toast.error(error instanceof Error ? error.message : "Failed to hide workspace");
         } finally {
           setIsArchivingWorkspace(false);
         }
       })();
     })();
-  }, [
-    isArchivingWorkspace,
-    redirectAfterArchive,
-    toast,
-    workspace.name,
-    workspace.serverId,
-    workspace.workspaceId,
-  ]);
+  }, [isArchivingWorkspace, redirectAfterArchive, toast, workspace]);
 
   return (
     <>
@@ -2120,13 +2144,28 @@ function ProjectBlock({
       }
 
       setIsRemovingProject(true);
+      const snapshots = new Map(
+        project.workspaces.map((workspace) => [
+          workspace.workspaceId,
+          hideWorkspaceOptimistically(workspace),
+        ]),
+      );
 
       const isRejected = (r: PromiseSettledResult<unknown>) => r.status === "rejected";
       void Promise.allSettled(
         project.workspaces.map(async (ws) => {
-          const payload = await client.archiveWorkspace(ws.workspaceId);
-          if (payload.error) {
-            throw new Error(payload.error);
+          try {
+            const payload = await client.archiveWorkspace(ws.workspaceId);
+            if (payload.error) {
+              throw new Error(payload.error);
+            }
+          } catch (error) {
+            restoreOptimisticallyHiddenWorkspace({
+              serverId,
+              workspaceId: ws.workspaceId,
+              snapshot: snapshots.get(ws.workspaceId) ?? null,
+            });
+            throw error;
           }
         }),
       ).then((results) => {

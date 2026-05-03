@@ -44,17 +44,13 @@ function createGitHubServiceStub(): GitHubService {
   };
 }
 
-function createCoreDeps(options?: {
-  github?: GitHubService;
-  generateBranchName?: (seed: string | undefined) => string;
-}) {
+function createCoreDeps(options?: { github?: GitHubService }) {
   return {
     github: options?.github ?? createGitHubServiceStub(),
     workspaceGitService: {
       resolveRepoRoot: async (cwd: string) => cwd,
     },
     resolveDefaultBranch: async () => "main",
-    generateBranchName: options?.generateBranchName ?? ((seed) => seed ?? "generated-worktree"),
   };
 }
 
@@ -191,10 +187,30 @@ describe.skipIf(process.platform === "win32")("createWorktreeCore", () => {
     expect(result.intent).toEqual({
       kind: "branch-off",
       baseBranch: "main",
-      newBranchName: "legacy-rpc",
+      branchName: "legacy-rpc",
     });
     expect(result.created).toBe(true);
     expect(result.worktree.branchName).toBe("legacy-rpc");
+    expect(existsSync(result.worktree.worktreePath)).toBe(true);
+  });
+
+  test("creates a branch-off worktree with a mnemonic slug when no slug is supplied", async () => {
+    const { tempDir, repoDir, paseoHome } = createGitRepo();
+    cleanupPaths.push(tempDir);
+
+    const result = await createCoreWorktree(
+      {
+        cwd: repoDir,
+        paseoHome,
+        runSetup: false,
+      },
+      createCoreDeps(),
+    );
+
+    expect(result.intent.kind).toBe("branch-off");
+    expect(result.created).toBe(true);
+    expect(result.worktree.branchName).toMatch(/^[a-z0-9]+-[a-z0-9]+$/);
+    expect(result.worktree.branchName).toBe(path.basename(result.worktree.worktreePath));
     expect(existsSync(result.worktree.worktreePath)).toBe(true);
   });
 
@@ -259,7 +275,7 @@ describe.skipIf(process.platform === "win32")("createWorktreeCore", () => {
     expect(result.intent).toEqual({
       kind: "branch-off",
       baseBranch: "main",
-      newBranchName: "mcp-standalone",
+      branchName: "mcp-standalone",
     });
     expect(result.worktree.branchName).toBe("mcp-standalone");
   });
@@ -290,7 +306,7 @@ describe.skipIf(process.platform === "win32")("createWorktreeCore", () => {
     expect(result.intent).toEqual({
       kind: "branch-off",
       baseBranch: "dev",
-      newBranchName: "from-dev",
+      branchName: "from-dev",
     });
     expect(mergeBase).toBe(devTip);
   });
@@ -500,7 +516,7 @@ describe.skipIf(process.platform === "win32")("createWorktreeCore", () => {
     expect(result.intent).toEqual({
       kind: "branch-off",
       baseBranch: "main",
-      newBranchName: "agent-worktree",
+      branchName: "agent-worktree",
     });
     expect(result.worktree.branchName).toBe("agent-worktree");
   });

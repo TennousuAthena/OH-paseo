@@ -55,7 +55,7 @@ async function createBootstrapWorktreeForTest(
     source: {
       kind: "branch-off",
       baseBranch: options.baseBranch,
-      newBranchName: options.branchName,
+      branchName: options.branchName,
     },
     runSetup: false,
     paseoHome: options.paseoHome,

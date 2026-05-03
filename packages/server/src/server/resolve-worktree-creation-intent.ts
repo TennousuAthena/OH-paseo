@@ -3,17 +3,29 @@ import type { WorktreeSource } from "../utils/worktree.js";
 
 export type WorktreeCreationIntent = WorktreeSource;
 
-export interface ResolveWorktreeCreationIntentInput {
-  worktreeSlug?: string;
-  refName?: string;
-  action?: "branch-off" | "checkout";
-  githubPrNumber?: number;
-}
+export type ResolveWorktreeCreationIntentInput =
+  | {
+      worktreeSlug: string;
+      refName?: string;
+      action?: "branch-off";
+      githubPrNumber?: undefined;
+    }
+  | {
+      worktreeSlug?: string;
+      refName?: string;
+      action: "checkout";
+      githubPrNumber?: number;
+    }
+  | {
+      worktreeSlug?: string;
+      refName?: string;
+      action?: undefined;
+      githubPrNumber: number;
+    };
 
 export interface ResolveWorktreeCreationIntentDeps {
   github: GitHubService;
   resolveDefaultBranch: (repoRoot: string) => Promise<string>;
-  generateBranchName: (seed: string | undefined) => string;
 }
 
 export class MissingCheckoutTargetError extends Error {
@@ -34,7 +46,7 @@ export async function resolveWorktreeCreationIntent(
     return {
       kind: "branch-off",
       baseBranch: input.refName?.trim() || (await resolveDefaultBranch(repoRoot, deps)),
-      newBranchName: deps.generateBranchName(input.worktreeSlug),
+      branchName: input.worktreeSlug,
     };
   }
 
@@ -72,14 +84,14 @@ export async function resolveWorktreeCreationIntent(
     return {
       kind: "branch-off",
       baseBranch: input.refName.trim(),
-      newBranchName: deps.generateBranchName(input.worktreeSlug),
+      branchName: input.worktreeSlug,
     };
   }
 
   return {
     kind: "branch-off",
     baseBranch: await resolveDefaultBranch(repoRoot, deps),
-    newBranchName: deps.generateBranchName(input.worktreeSlug),
+    branchName: input.worktreeSlug,
   };
 }
 

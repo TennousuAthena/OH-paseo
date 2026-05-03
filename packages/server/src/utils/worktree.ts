@@ -150,7 +150,7 @@ export interface PaseoWorktreeOwnership {
 }
 
 export type WorktreeSource =
-  | { kind: "branch-off"; baseBranch: string; newBranchName: string }
+  | { kind: "branch-off"; baseBranch: string; branchName: string }
   | { kind: "checkout-branch"; branchName: string }
   | {
       kind: "checkout-github-pr";
@@ -1292,7 +1292,7 @@ async function resolveWorktreeSourcePlan({
 }: ResolveWorktreeSourcePlanOptions): Promise<WorktreeSourcePlan> {
   switch (source.kind) {
     case "branch-off": {
-      const branchName = source.newBranchName;
+      const branchName = source.branchName;
       validateWorktreeBranchName(branchName);
       const normalizedBaseBranch = normalizeRequiredBaseBranch(source.baseBranch);
       const resolvedBaseBranch = await resolveBaseBranchForWorktree(cwd, normalizedBaseBranch);

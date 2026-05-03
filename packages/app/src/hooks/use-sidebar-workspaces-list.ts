@@ -11,6 +11,7 @@ import {
 } from "@/stores/session-store-hooks";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
+import { shouldSuppressWorkspaceForLocalArchive } from "@/contexts/session-workspace-upserts";
 
 const EMPTY_ORDER: string[] = [];
 const EMPTY_PROJECTS: SidebarProjectEntry[] = [];
@@ -288,6 +289,9 @@ export function useSidebarWorkspacesList(options?: {
           });
           for (const entry of payload.entries) {
             const workspace = toWorkspaceDescriptor(entry);
+            if (shouldSuppressWorkspaceForLocalArchive({ serverId, workspace })) {
+              continue;
+            }
             next.set(workspace.id, workspace);
           }
           if (!payload.pageInfo.hasMore || !payload.pageInfo.nextCursor) {

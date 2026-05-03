@@ -90,7 +90,6 @@ import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
 import { createGitHubService } from "../services/github-service.js";
 import { createPaseoWorktree as createRegisteredPaseoWorktree } from "./paseo-worktree-service.js";
 import { createPaseoWorktreeWorkflow } from "./worktree-session.js";
-import { createWorktreeCoreDeps } from "./worktree-core.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
 import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
@@ -575,9 +574,8 @@ export async function createPaseoDaemon(
             {
               paseoHome: config.paseoHome,
               createPaseoWorktree: async (workflowInput, workflowOptions) => {
-                const coreDeps = createWorktreeCoreDeps(github);
                 return createRegisteredPaseoWorktree(workflowInput, {
-                  ...coreDeps,
+                  github,
                   ...(workflowOptions?.resolveDefaultBranch
                     ? {
                         resolveDefaultBranch: workflowOptions.resolveDefaultBranch,

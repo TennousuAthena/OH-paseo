@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from "uuid";
+import { createNameId } from "mnemonic-id";
 
 import type { GitHubService } from "../services/github-service.js";
 import {
@@ -16,8 +16,12 @@ import {
 import type { FirstAgentContext } from "../shared/messages.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 
-export interface CreateWorktreeCoreInput extends ResolveWorktreeCreationIntentInput {
+export interface CreateWorktreeCoreInput {
   cwd: string;
+  worktreeSlug?: string;
+  refName?: string;
+  action?: "branch-off" | "checkout";
+  githubPrNumber?: number;
   firstAgentContext?: FirstAgentContext;
   paseoHome?: string;
   runSetup?: boolean;
@@ -27,7 +31,6 @@ export interface CreateWorktreeCoreDeps {
   github: GitHubService;
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot" | "resolveDefaultBranch">;
   resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
-  generateBranchName: (seed: string | undefined) => string;
 }
 
 export interface CreateWorktreeCoreResult {
@@ -42,31 +45,51 @@ export async function createWorktreeCore(
   deps: CreateWorktreeCoreDeps,
 ): Promise<CreateWorktreeCoreResult> {
   const repoRoot = await resolveWorktreeRepoRoot(input, deps.workspaceGitService);
-  const requestedSlug = input.worktreeSlug ? slugify(input.worktreeSlug) : undefined;
+  const requestedWorktreeSlug = input.worktreeSlug
+    ? normalizeWorktreeSlug(input.worktreeSlug)
+    : undefined;
 
-  const intent = await resolveWorktreeCreationIntent(
-    { ...input, worktreeSlug: requestedSlug },
-    repoRoot,
-    {
-      ...deps,
-      resolveDefaultBranch: (root) => resolveDefaultBranch(root, deps),
-    },
-  );
+  let intentInput: ResolveWorktreeCreationIntentInput;
+  if (input.action === "checkout") {
+    intentInput = {
+      action: "checkout",
+      refName: input.refName,
+      githubPrNumber: input.githubPrNumber,
+      worktreeSlug: requestedWorktreeSlug,
+    };
+  } else if (input.githubPrNumber !== undefined) {
+    intentInput = {
+      githubPrNumber: input.githubPrNumber,
+      refName: input.refName,
+      worktreeSlug: requestedWorktreeSlug,
+    };
+  } else {
+    const worktreeSlug = requestedWorktreeSlug ?? normalizeWorktreeSlug(createNameId());
+    intentInput = {
+      action: "branch-off",
+      refName: input.refName,
+      worktreeSlug,
+    };
+  }
+
+  const intent = await resolveWorktreeCreationIntent(intentInput, repoRoot, {
+    ...deps,
+    resolveDefaultBranch: (root) => resolveDefaultBranch(root, deps),
+  });
   let normalizedSlug: string;
 
   switch (intent.kind) {
     case "branch-off": {
-      normalizedSlug = validateWorktreeSlug(requestedSlug ?? slugify(intent.newBranchName));
+      normalizedSlug = intent.branchName;
       break;
     }
     case "checkout-branch": {
-      normalizedSlug = validateWorktreeSlug(requestedSlug ?? slugify(intent.branchName));
+      normalizedSlug = requestedWorktreeSlug ?? normalizeWorktreeSlug(intent.branchName);
       break;
     }
     case "checkout-github-pr": {
-      normalizedSlug = validateWorktreeSlug(
-        requestedSlug ?? slugify(intent.localBranchName ?? intent.headRef),
-      );
+      normalizedSlug =
+        requestedWorktreeSlug ?? normalizeWorktreeSlug(intent.localBranchName ?? intent.headRef);
       break;
     }
   }
@@ -91,13 +114,6 @@ export async function createWorktreeCore(
     intent,
     repoRoot,
     created: true,
-  };
-}
-
-export function createWorktreeCoreDeps(github: GitHubService): CreateWorktreeCoreDeps {
-  return {
-    github,
-    generateBranchName: (seed) => slugify(seed ?? uuidv4()),
   };
 }
 
@@ -131,4 +147,8 @@ function validateWorktreeSlug(slug: string): string {
     throw new Error(`Invalid worktree name: ${validation.error}`);
   }
   return slug;
+}
+
+function normalizeWorktreeSlug(value: string): string {
+  return validateWorktreeSlug(slugify(value));
 }

@@ -42,7 +42,6 @@ import {
   normalizeWorkspaceDescriptor,
 } from "@/stores/session-store";
 import { useDraftStore } from "@/stores/draft-store";
-import { isLocalWorktreeArchivePending } from "@/stores/checkout-git-actions-store";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { sendOsNotification } from "@/utils/os-notifications";
 import { getIsAppActivelyVisible } from "@/utils/app-visibility";
@@ -60,7 +59,10 @@ import type { AttachmentMetadata } from "@/attachments/types";
 import { splitComposerAttachmentsForSubmit } from "@/components/composer-attachments";
 import { reconcilePreviousAgentStatuses } from "@/contexts/session-status-tracking";
 import { patchWorkspaceScripts } from "@/contexts/session-workspace-scripts";
-import { shouldSuppressWorkspaceUpsertForLocalArchive } from "@/contexts/session-workspace-upserts";
+import {
+  clearWorkspaceArchivePending,
+  shouldSuppressWorkspaceForLocalArchive,
+} from "@/contexts/session-workspace-upserts";
 import { isNative } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
@@ -543,6 +545,9 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
         for (const entry of payload.entries) {
           const workspace = normalizeWorkspaceDescriptor(entry);
+          if (shouldSuppressWorkspaceForLocalArchive({ serverId, workspace })) {
+            continue;
+          }
           workspaces.set(workspace.id, workspace);
         }
 
@@ -1239,18 +1244,16 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     const unsubWorkspaceUpdate = client.on("workspace_update", (message) => {
       if (message.type !== "workspace_update") return;
       if (message.payload.kind === "remove") {
+        clearWorkspaceArchivePending({
+          serverId,
+          workspaceId: String(message.payload.id),
+        });
         removeWorkspaceSetup({ serverId, workspaceId: String(message.payload.id) });
         removeWorkspace(serverId, String(message.payload.id));
         return;
       }
       const workspace = normalizeWorkspaceDescriptor(message.payload.workspace);
-      if (
-        shouldSuppressWorkspaceUpsertForLocalArchive({
-          serverId,
-          workspace,
-          isArchivePending: isLocalWorktreeArchivePending,
-        })
-      ) {
+      if (shouldSuppressWorkspaceForLocalArchive({ serverId, workspace })) {
         return;
       }
       mergeWorkspaces(serverId, [workspace]);
