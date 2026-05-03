@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.67 - 2026-05-03
+
+### Fixed
+
+- Archiving a worktree or workspace feels instant instead of waiting on the daemon, with automatic rollback if it fails.
+- The built-in daemon toggle in desktop settings now actually takes effect.
+- Desktop settings no longer reset on app launch after a legacy migration.
+- Desktop daemon startup failures now surface on the splash screen and respond to retry, instead of leaving the app silently stuck.
+- Internal LLM calls (branch names, commit messages, PR text) no longer leave behind ephemeral agent sessions in your provider history.
+
 ## 0.1.66 - 2026-05-03
 
 ### Fixed
