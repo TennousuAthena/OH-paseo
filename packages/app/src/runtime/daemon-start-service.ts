@@ -53,6 +53,10 @@ export class DaemonStartService {
     return this.lastError;
   }
 
+  recordError(message: string): void {
+    this.setLastError(message);
+  }
+
   isRunning(): boolean {
     return this.inFlightCount > 0;
   }

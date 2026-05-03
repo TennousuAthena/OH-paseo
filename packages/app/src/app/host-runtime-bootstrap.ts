@@ -17,6 +17,7 @@ export interface StartHostRuntimeBootstrapInput {
   store: HostRuntimeBootstrapStore;
   daemonStartService: HostRuntimeBootstrapDaemonStartService;
   shouldStartDaemon: HostRuntimeBootstrapStartGate;
+  onGateError?: (message: string) => void;
 }
 
 export function startHostRuntimeBootstrap(input: StartHostRuntimeBootstrapInput): void {
@@ -24,26 +25,35 @@ export function startHostRuntimeBootstrap(input: StartHostRuntimeBootstrapInput)
   startDaemonIfGateAllows({
     daemonStartService: input.daemonStartService,
     shouldStartDaemon: input.shouldStartDaemon,
+    onGateError: input.onGateError,
   });
 }
 
 export function startDaemonIfGateAllows(input: {
   daemonStartService: HostRuntimeBootstrapDaemonStartService;
   shouldStartDaemon: HostRuntimeBootstrapStartGate;
+  onGateError?: (message: string) => void;
 }): void {
-  if (typeof input.shouldStartDaemon === "boolean") {
-    if (input.shouldStartDaemon) {
+  const gate = input.shouldStartDaemon;
+  if (typeof gate === "boolean") {
+    if (gate) {
       void input.daemonStartService.start();
     }
     return;
   }
 
-  void Promise.resolve(input.shouldStartDaemon()).then((shouldStartDaemon) => {
-    if (shouldStartDaemon) {
-      void input.daemonStartService.start();
-    }
-    return;
-  });
+  void Promise.resolve()
+    .then(() => gate())
+    .then((shouldStartDaemon) => {
+      if (shouldStartDaemon) {
+        void input.daemonStartService.start();
+      }
+      return null;
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      input.onGateError?.(`Failed to evaluate desktop daemon settings: ${message}`);
+    });
 }
 
 export const WELCOME_ROUTE: Href = "/welcome";

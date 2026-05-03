@@ -188,6 +188,21 @@ describe("DaemonStartService", () => {
     expect(service.getLastError()).toBeNull();
   });
 
+  it("recordError surfaces an external error and notifies subscribers", () => {
+    const fake = createFakeStore();
+    const service = new DaemonStartService({
+      store: fake.store,
+      startDesktopDaemon: async () => makeStatus(),
+    });
+    const notifications = vi.fn();
+    service.subscribe(notifications);
+
+    service.recordError("settings file unreadable");
+
+    expect(service.getLastError()).toBe("settings file unreadable");
+    expect(notifications).toHaveBeenCalledTimes(1);
+  });
+
   it("stops notifying after a subscriber unsubscribes", async () => {
     const fake = createFakeStore();
     let notifications = 0;

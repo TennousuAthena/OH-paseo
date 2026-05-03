@@ -329,6 +329,7 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
       store,
       daemonStartService,
       shouldStartDaemon: shouldStartBuiltInDaemon,
+      onGateError: (message) => daemonStartService.recordError(message),
     });
   }, []);
 
@@ -355,9 +356,11 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   }, [anyOnlineHostServerId, daemonStartError, daemonStartIsRunning, hasGivenUpWaitingForHost]);
 
   const retry = useCallback(() => {
+    const daemonStartService = getDaemonStartService({ store: getHostRuntimeStore() });
     startDaemonIfGateAllows({
-      daemonStartService: getDaemonStartService({ store: getHostRuntimeStore() }),
+      daemonStartService,
       shouldStartDaemon: shouldStartBuiltInDaemon,
+      onGateError: (message) => daemonStartService.recordError(message),
     });
   }, []);
 
