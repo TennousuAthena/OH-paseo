@@ -155,6 +155,15 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Build highlight dependency
+        run: npm run build --workspace=@getpaseo/highlight
+
+      - name: Build relay dependency
+        run: npm run build --workspace=@getpaseo/relay
+
+      - name: Build server dependency
+        run: npm run build --workspace=@getpaseo/server
+
       - name: Run desktop tests
         run: npm run test --workspace=@getpaseo/desktop
 
