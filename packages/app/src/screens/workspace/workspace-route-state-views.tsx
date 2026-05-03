@@ -45,7 +45,7 @@ function getWorkspaceHostStateTitle(
   state: Extract<WorkspaceRouteState, { kind: "unreachable" }>,
 ): string {
   if (state.connectionStatus === "connecting" || state.connectionStatus === "idle") {
-    return `Connecting to ${state.hostName}`;
+    return "Connecting";
   }
   if (state.connectionStatus === "offline") {
     return `${state.hostName} is offline`;
@@ -87,7 +87,9 @@ function WorkspaceUnreachable({
       <View style={styles.textStack}>
         <Text style={styles.title}>{getWorkspaceHostStateTitle(state)}</Text>
         <Text style={styles.description}>
-          Host status: {formatConnectionStatus(state.connectionStatus)}
+          {state.connectionStatus === "connecting" || state.connectionStatus === "idle"
+            ? state.hostName
+            : `Host status: ${formatConnectionStatus(state.connectionStatus)}`}
         </Text>
         {state.lastError ? (
           <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
