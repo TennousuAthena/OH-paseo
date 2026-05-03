@@ -21,8 +21,22 @@ export interface DesktopDialogOpenOptions {
   }>;
 }
 
+export interface DesktopDialogAskWithCheckboxOptions extends DesktopDialogAskOptions {
+  checkboxLabel: string;
+  checkboxChecked?: boolean;
+}
+
+export interface DesktopDialogAskWithCheckboxResult {
+  confirmed: boolean;
+  dontAskAgain: boolean;
+}
+
 export interface DesktopDialogBridge {
   ask?: (message: string, options?: DesktopDialogAskOptions) => Promise<boolean>;
+  askWithCheckbox?: (
+    message: string,
+    options: DesktopDialogAskWithCheckboxOptions,
+  ) => Promise<DesktopDialogAskWithCheckboxResult>;
   open?: (options?: DesktopDialogOpenOptions) => Promise<string | string[] | null>;
 }
 
@@ -76,6 +90,7 @@ export interface DesktopBrowserShortcutEvent {
 
 export interface DesktopBrowserBridge {
   setActivePane?: (browserId: string | null) => Promise<void>;
+  clearPartition?: (browserId: string) => Promise<void>;
 }
 
 export interface DesktopInvokeBridge {

@@ -97,7 +97,8 @@ import { upsertTerminalListEntry } from "@/utils/terminal-list";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { createWorkspaceBrowser } from "@/stores/browser-store";
+import { createWorkspaceBrowser, useBrowserStore } from "@/stores/browser-store";
+import { getDesktopHost } from "@/desktop/host";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
 import {
@@ -1785,6 +1786,11 @@ function WorkspaceScreenContent({
         unpinWorkspaceAgent(persistenceKey, input.target.agentId);
         hideWorkspaceAgent(persistenceKey, input.target.agentId);
       }
+      if (input.target?.kind === "browser") {
+        const { browserId } = input.target;
+        useBrowserStore.getState().removeBrowser(browserId);
+        void getDesktopHost()?.browser?.clearPartition?.(browserId);
+      }
       closeWorkspaceTab(persistenceKey, normalizedTabId);
     },
     [closeWorkspaceTab, hideWorkspaceAgent, persistenceKey, unpinWorkspaceAgent],
@@ -2160,6 +2166,17 @@ function WorkspaceScreenContent({
     [focusWorkspacePane, openWorkspaceTabFocused, persistenceKey],
   );
 
+  const handleOpenUrlInBrowserTab = useCallback(
+    (url: string) => {
+      if (!persistenceKey || !getIsElectron()) {
+        return;
+      }
+      const { browserId } = createWorkspaceBrowser({ initialUrl: url });
+      openWorkspaceTabFocused(persistenceKey, { kind: "browser", browserId });
+    },
+    [openWorkspaceTabFocused, persistenceKey],
+  );
+
   const handleSelectSwitcherTab = useCallback(
     (key: string) => {
       navigateToTabId(key);
@@ -2271,11 +2288,14 @@ function WorkspaceScreenContent({
   );
 
   const handleCloseDraftOrFileTab = useCallback(
-    function handleCloseDraftOrFileTab(tabId: string) {
-      setHoveredTabKey((current) => (current === tabId ? null : current));
-      setHoveredCloseTabKey((current) => (current === tabId ? null : current));
+    function handleCloseDraftOrFileTab(input: {
+      tabId: string;
+      target?: WorkspaceTabTarget | null;
+    }) {
+      setHoveredTabKey((current) => (current === input.tabId ? null : current));
+      setHoveredCloseTabKey((current) => (current === input.tabId ? null : current));
       if (persistenceKey) {
-        closeWorkspaceTabWithCleanup({ tabId });
+        closeWorkspaceTabWithCleanup({ tabId: input.tabId, target: input.target });
       }
     },
     [closeWorkspaceTabWithCleanup, persistenceKey],
@@ -2295,7 +2315,7 @@ function WorkspaceScreenContent({
         await handleCloseAgentTab({ tabId, agentId: tab.target.agentId });
         return;
       }
-      handleCloseDraftOrFileTab(tabId);
+      handleCloseDraftOrFileTab({ tabId, target: tab.target });
     },
     [allTabDescriptorsById, handleCloseAgentTab, handleCloseDraftOrFileTab, handleCloseTerminalTab],
   );
@@ -2925,6 +2945,7 @@ function WorkspaceScreenContent({
             liveTerminalIds={liveTerminalIds}
             onScriptTerminalStarted={handleScriptTerminalStarted}
             onViewTerminal={handleViewScriptTerminal}
+            onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
             hideLabels={showCompactButtonLabels}
           />
         ) : null}
@@ -3041,6 +3062,7 @@ function WorkspaceScreenContent({
       liveTerminalIds,
       handleScriptTerminalStarted,
       handleViewScriptTerminal,
+      handleOpenUrlInBrowserTab,
       showCompactButtonLabels,
       isGitCheckout,
       handleToggleExplorer,

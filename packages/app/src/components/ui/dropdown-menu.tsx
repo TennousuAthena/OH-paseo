@@ -62,6 +62,11 @@ interface DropdownMenuContextValue {
 
 const DropdownMenuContext = createContext<DropdownMenuContextValue | null>(null);
 
+export function useDropdownMenuClose(): () => void {
+  const { setOpen } = useDropdownMenuContext("useDropdownMenuClose");
+  return useCallback(() => setOpen(false), [setOpen]);
+}
+
 function useDropdownMenuContext(componentName: string): DropdownMenuContextValue {
   const ctx = useContext(DropdownMenuContext);
   if (!ctx) {

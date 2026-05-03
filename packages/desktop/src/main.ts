@@ -9,7 +9,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { app, BrowserWindow, ipcMain, nativeImage, net, protocol } from "electron";
+import { app, BrowserWindow, ipcMain, nativeImage, net, protocol, session } from "electron";
 import { createDaemonCommandHandlers, registerDaemonManager } from "./daemon/daemon-manager.js";
 import {
   parseCliPassthroughArgsFromArgv,
@@ -217,6 +217,14 @@ ipcMain.handle("paseo:get-pending-open-project", () => {
 
 ipcMain.handle("paseo:browser:set-active-pane", (_event, browserId: unknown) => {
   setActivePaseoBrowserPaneId(typeof browserId === "string" ? browserId : null);
+});
+
+ipcMain.handle("paseo:browser:clear-partition", async (_event, browserId: unknown) => {
+  if (typeof browserId !== "string" || browserId.trim().length === 0) {
+    return;
+  }
+  const partition = `persist:paseo-browser-${browserId}`;
+  await session.fromPartition(partition).clearStorageData();
 });
 
 protocol.registerSchemesAsPrivileged([

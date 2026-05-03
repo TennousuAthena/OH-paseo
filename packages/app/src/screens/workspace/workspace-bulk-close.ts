@@ -4,7 +4,7 @@ import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-
 export interface BulkClosableTabGroups {
   agentTabs: Array<{ tabId: string; agentId: string }>;
   terminalTabs: Array<{ tabId: string; terminalId: string }>;
-  otherTabs: Array<{ tabId: string }>;
+  otherTabs: Array<{ tabId: string; target: WorkspaceTabDescriptor["target"] }>;
 }
 
 interface CloseWorkspaceTabWithCleanupInput {
@@ -37,7 +37,7 @@ export function classifyBulkClosableTabs(tabs: WorkspaceTabDescriptor[]): BulkCl
       groups.terminalTabs.push({ tabId: tab.tabId, terminalId: tab.target.terminalId });
       continue;
     }
-    groups.otherTabs.push({ tabId: tab.tabId });
+    groups.otherTabs.push({ tabId: tab.tabId, target: tab.target });
   }
 
   return groups;
@@ -103,9 +103,9 @@ export async function closeBulkWorkspaceTabs(input: CloseBulkWorkspaceTabsInput)
     });
   }
 
-  for (const { tabId } of groups.otherTabs) {
+  for (const { tabId, target } of groups.otherTabs) {
     void closeTab(tabId, async () => {
-      closeWorkspaceTabWithCleanup({ tabId });
+      closeWorkspaceTabWithCleanup({ tabId, target });
     });
   }
 }

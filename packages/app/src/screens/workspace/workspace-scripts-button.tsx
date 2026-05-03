@@ -12,10 +12,11 @@ import {
   DropdownMenuContent,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  useDropdownMenuClose,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/contexts/toast-context";
 import { isNative } from "@/constants/platform";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openServiceUrl } from "@/utils/open-service-url";
 import { resolveWorkspaceScriptLink } from "@/utils/workspace-script-links";
 import type { Theme } from "@/styles/theme";
 
@@ -28,6 +29,7 @@ interface WorkspaceScriptsButtonProps {
   liveTerminalIds?: readonly string[];
   onScriptTerminalStarted?: (terminalId: string) => void;
   onViewTerminal?: (terminalId: string) => void;
+  onOpenUrlInBrowserTab?: (url: string) => void;
   hideLabels?: boolean;
 }
 
@@ -136,6 +138,7 @@ interface HostLinkProps {
   label: string;
   url: string | null;
   scriptName: string;
+  onOpenInBrowserTab?: (url: string) => void;
 }
 
 interface HostLinkChildrenProps {
@@ -161,15 +164,18 @@ function HostLinkChildren({ hovered, disabled, label }: HostLinkChildrenProps): 
   );
 }
 
-function HostLinkRow({ label, url, scriptName }: HostLinkProps): ReactElement {
+function HostLinkRow({ label, url, scriptName, onOpenInBrowserTab }: HostLinkProps): ReactElement {
   const disabled = !url;
+  const closeMenu = useDropdownMenuClose();
 
   const handlePress = useCallback(
     (event: GestureResponderEvent) => {
       event.stopPropagation();
-      if (url) void openExternalUrl(url);
+      if (!url) return;
+      closeMenu();
+      void openServiceUrl(url, { openInApp: onOpenInBrowserTab });
     },
-    [url],
+    [url, onOpenInBrowserTab, closeMenu],
   );
 
   const renderChildren = useCallback(
@@ -219,6 +225,7 @@ interface ScriptRowProps {
   isStartPending: boolean;
   onStartScript: (scriptName: string) => void;
   onViewTerminal?: (terminalId: string) => void;
+  onOpenUrlInBrowserTab?: (url: string) => void;
 }
 
 function resolveScriptIconColorMapping(args: {
@@ -244,6 +251,7 @@ function ScriptRow({
   isStartPending,
   onStartScript,
   onViewTerminal,
+  onOpenUrlInBrowserTab,
 }: ScriptRowProps): ReactElement {
   const isRunning = script.lifecycle === "running";
   const isService = (script.type ?? "service") === "service";
@@ -340,6 +348,7 @@ function ScriptRow({
               label={link.label}
               url={link.url}
               scriptName={script.scriptName}
+              onOpenInBrowserTab={onOpenUrlInBrowserTab}
             />
           ))}
         </View>
@@ -355,6 +364,7 @@ export function WorkspaceScriptsButton({
   liveTerminalIds = [],
   onScriptTerminalStarted,
   onViewTerminal,
+  onOpenUrlInBrowserTab,
   hideLabels,
 }: WorkspaceScriptsButtonProps): ReactElement | null {
   const toast = useToast();
@@ -438,6 +448,7 @@ export function WorkspaceScriptsButton({
                     isStartPending={startScriptMutation.isPending}
                     onStartScript={handleStartScript}
                     onViewTerminal={onViewTerminal}
+                    onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
                   />
                 </Fragment>
               ))}

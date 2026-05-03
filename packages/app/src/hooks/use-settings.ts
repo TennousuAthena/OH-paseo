@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryClient as appQueryClient } from "@/query/query-client";
 import {
   DEFAULT_DESKTOP_SETTINGS,
   loadDesktopSettings,
@@ -16,12 +17,15 @@ const APP_SETTINGS_QUERY_KEY = ["app-settings"];
 
 export type SendBehavior = "interrupt" | "queue";
 export type ReleaseChannel = "stable" | "beta";
+export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 
 const VALID_THEMES = new Set<string>([...Object.keys(THEME_TO_UNISTYLES), "auto"]);
+const VALID_SERVICE_URL_BEHAVIORS = new Set<ServiceUrlBehavior>(["ask", "in-app", "external"]);
 
 export interface AppSettings {
   theme: ThemeName | "auto";
   sendBehavior: SendBehavior;
+  serviceUrlBehavior: ServiceUrlBehavior;
 }
 
 export interface Settings extends AppSettings {
@@ -32,6 +36,7 @@ export interface Settings extends AppSettings {
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   theme: "auto",
   sendBehavior: "interrupt",
+  serviceUrlBehavior: "ask",
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -114,6 +119,9 @@ export function useSettings(): UseSettingsReturn {
       if (updates.sendBehavior !== undefined) {
         appUpdates.sendBehavior = updates.sendBehavior;
       }
+      if (updates.serviceUrlBehavior !== undefined) {
+        appUpdates.serviceUrlBehavior = updates.serviceUrlBehavior;
+      }
 
       const promises: Promise<void>[] = [];
       if (Object.keys(appUpdates).length > 0) {
@@ -160,6 +168,15 @@ export function useSettings(): UseSettingsReturn {
     updateSettings,
     resetSettings,
   };
+}
+
+export async function persistAppSettings(updates: Partial<AppSettings>): Promise<void> {
+  const current =
+    appQueryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY) ??
+    (await loadAppSettingsFromStorage());
+  const next = { ...current, ...updates };
+  appQueryClient.setQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY, next);
+  await AsyncStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(next));
 }
 
 export async function loadAppSettingsFromStorage(): Promise<AppSettings> {
@@ -222,6 +239,12 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   }
   if (stored.sendBehavior === "interrupt" || stored.sendBehavior === "queue") {
     result.sendBehavior = stored.sendBehavior;
+  }
+  if (
+    typeof stored.serviceUrlBehavior === "string" &&
+    VALID_SERVICE_URL_BEHAVIORS.has(stored.serviceUrlBehavior as ServiceUrlBehavior)
+  ) {
+    result.serviceUrlBehavior = stored.serviceUrlBehavior as ServiceUrlBehavior;
   }
   return result;
 }

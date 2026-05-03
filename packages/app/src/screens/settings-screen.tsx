@@ -39,6 +39,7 @@ import {
   useSettings,
   type AppSettings,
   type SendBehavior,
+  type ServiceUrlBehavior,
   type Settings as EffectiveSettings,
 } from "@/hooks/use-settings";
 import { THEME_SWATCHES } from "@/styles/theme";
@@ -190,14 +191,24 @@ const RELEASE_CHANNEL_OPTIONS = [
   { value: "beta" as const, label: "Beta" },
 ];
 
+const SERVICE_URL_BEHAVIOR_LABELS: Record<ServiceUrlBehavior, string> = {
+  ask: "Ask",
+  "in-app": "In Paseo",
+  external: "External browser",
+};
+
+const SERVICE_URL_BEHAVIOR_VALUES: ServiceUrlBehavior[] = ["ask", "in-app", "external"];
+
 // ---------------------------------------------------------------------------
 // Section components
 // ---------------------------------------------------------------------------
 
 interface GeneralSectionProps {
   settings: AppSettings;
+  isDesktopApp: boolean;
   handleThemeChange: (theme: AppSettings["theme"]) => void;
   handleSendBehaviorChange: (behavior: SendBehavior) => void;
+  handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
 }
 
 interface ThemeMenuItemProps {
@@ -229,10 +240,33 @@ function ThemeMenuItem({
   );
 }
 
+interface ServiceUrlBehaviorMenuItemProps {
+  value: ServiceUrlBehavior;
+  selected: boolean;
+  onChange: (value: ServiceUrlBehavior) => void;
+}
+
+function ServiceUrlBehaviorMenuItem({
+  value,
+  selected,
+  onChange,
+}: ServiceUrlBehaviorMenuItemProps) {
+  const handleSelect = useCallback(() => {
+    onChange(value);
+  }, [onChange, value]);
+  return (
+    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
+      {SERVICE_URL_BEHAVIOR_LABELS[value]}
+    </DropdownMenuItem>
+  );
+}
+
 function GeneralSection({
   settings,
+  isDesktopApp,
   handleThemeChange,
   handleSendBehaviorChange,
+  handleServiceUrlBehaviorChange,
 }: GeneralSectionProps) {
   const { theme } = useUnistyles();
   const iconSize = theme.iconSize.md;
@@ -290,6 +324,32 @@ function GeneralSection({
             options={SEND_BEHAVIOR_OPTIONS}
           />
         </View>
+        {isDesktopApp ? (
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Service URLs</Text>
+              <Text style={settingsStyles.rowHint}>Where to open URLs from running scripts</Text>
+            </View>
+            <DropdownMenu>
+              <DropdownMenuTrigger style={themeTriggerStyle}>
+                <Text style={styles.themeTriggerText}>
+                  {SERVICE_URL_BEHAVIOR_LABELS[settings.serviceUrlBehavior]}
+                </Text>
+                <ChevronDown size={theme.iconSize.sm} color={iconColor} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="bottom" align="end" width={200}>
+                {SERVICE_URL_BEHAVIOR_VALUES.map((value) => (
+                  <ServiceUrlBehaviorMenuItem
+                    key={value}
+                    value={value}
+                    selected={settings.serviceUrlBehavior === value}
+                    onChange={handleServiceUrlBehaviorChange}
+                  />
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </View>
+        ) : null}
       </View>
     </SettingsSection>
   );
@@ -768,6 +828,13 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
     [updateSettings],
   );
 
+  const handleServiceUrlBehaviorChange = useCallback(
+    (behavior: ServiceUrlBehavior) => {
+      void updateSettings({ serviceUrlBehavior: behavior });
+    },
+    [updateSettings],
+  );
+
   const handlePlaybackTest = useCallback(async () => {
     if (!voiceAudioEngine || isPlaybackTestRunning) {
       return;
@@ -949,8 +1016,10 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
           return (
             <GeneralSection
               settings={settings}
+              isDesktopApp={isDesktopApp}
               handleThemeChange={handleThemeChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
+              handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
             />
           );
         case "shortcuts":
