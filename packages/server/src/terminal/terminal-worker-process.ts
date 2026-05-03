@@ -9,7 +9,6 @@ import type {
 
 const manager = createTerminalManager();
 const unsubscribeByTerminalId = new Map<string, Array<() => void>>();
-const stateFlushTimeoutByTerminalId = new Map<string, ReturnType<typeof setTimeout>>();
 let ipcClosing = false;
 
 function sendToParent(message: TerminalWorkerToParentMessage): void {
@@ -37,11 +36,6 @@ function toTerminalInfo(session: TerminalSession): WorkerTerminalInfo {
 }
 
 function clearTerminalSubscriptions(terminalId: string): void {
-  const stateFlushTimeout = stateFlushTimeoutByTerminalId.get(terminalId);
-  if (stateFlushTimeout) {
-    clearTimeout(stateFlushTimeout);
-    stateFlushTimeoutByTerminalId.delete(terminalId);
-  }
   const subscriptions = unsubscribeByTerminalId.get(terminalId);
   if (subscriptions) {
     for (const unsubscribe of subscriptions) {
@@ -55,40 +49,10 @@ function clearTerminalSubscriptions(terminalId: string): void {
   unsubscribeByTerminalId.delete(terminalId);
 }
 
-function flushTerminalState(session: TerminalSession): void {
-  const stateFlushTimeout = stateFlushTimeoutByTerminalId.get(session.id);
-  if (stateFlushTimeout) {
-    clearTimeout(stateFlushTimeout);
-    stateFlushTimeoutByTerminalId.delete(session.id);
-  }
-  sendToParent({
-    type: "terminalStateUpdated",
-    terminalId: session.id,
-    state: session.getState(),
-  });
-}
-
-function scheduleTerminalStateFlush(session: TerminalSession): void {
-  const existingTimeout = stateFlushTimeoutByTerminalId.get(session.id);
-  if (existingTimeout) {
-    clearTimeout(existingTimeout);
-  }
-  stateFlushTimeoutByTerminalId.set(
-    session.id,
-    setTimeout(() => {
-      stateFlushTimeoutByTerminalId.delete(session.id);
-      flushTerminalState(session);
-    }, 16),
-  );
-}
-
 function watchTerminal(session: TerminalSession): void {
   clearTerminalSubscriptions(session.id);
 
   const unsubscribeMessage = session.subscribe((message) => {
-    if (message.type === "output") {
-      scheduleTerminalStateFlush(session);
-    }
     sendToParent({
       type: "terminalMessage",
       terminalId: session.id,
@@ -150,10 +114,11 @@ async function handleRequest(message: TerminalWorkerRequest): Promise<void> {
     case "createTerminal": {
       const session = await manager.createTerminal(message.options);
       watchTerminal(session);
+      const initialSnapshot = session.getStateSnapshot();
       sendToParent({
         type: "terminalCreated",
         terminal: toTerminalInfo(session),
-        state: session.getState(),
+        state: initialSnapshot.state,
       });
       sendToParent({
         type: "response",
@@ -161,7 +126,7 @@ async function handleRequest(message: TerminalWorkerRequest): Promise<void> {
         ok: true,
         result: {
           terminal: toTerminalInfo(session),
-          state: session.getState(),
+          state: initialSnapshot.state,
         },
       });
       return;
@@ -205,6 +170,17 @@ async function handleRequest(message: TerminalWorkerRequest): Promise<void> {
       return;
     }
 
+    case "getTerminalState": {
+      const session = manager.getTerminal(message.terminalId);
+      sendToParent({
+        type: "response",
+        requestId: message.requestId,
+        ok: true,
+        result: session?.getStateSnapshot() ?? null,
+      });
+      return;
+    }
+
     case "listDirectories": {
       sendToParent({
         type: "response",
@@ -245,9 +221,6 @@ async function handleRequest(message: TerminalWorkerRequest): Promise<void> {
     case "send": {
       const session = manager.getTerminal(message.terminalId);
       session?.send(message.message);
-      if (session && message.message.type === "resize") {
-        flushTerminalState(session);
-      }
       sendToParent({ type: "response", requestId: message.requestId, ok: true });
       return;
     }

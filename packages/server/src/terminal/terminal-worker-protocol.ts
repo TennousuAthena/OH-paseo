@@ -1,4 +1,9 @@
-import type { TerminalExitInfo, ServerMessage, ClientMessage } from "./terminal.js";
+import type {
+  TerminalExitInfo,
+  ServerMessage,
+  ClientMessage,
+  TerminalStateSnapshot,
+} from "./terminal.js";
 import type { TerminalState } from "../shared/messages.js";
 import type { CaptureTerminalLinesResult } from "./terminal.js";
 
@@ -51,6 +56,11 @@ export type TerminalWorkerRequest =
       requestId: string;
       terminalId: string;
       options?: WorkerKillAndWaitOptions;
+    }
+  | {
+      type: "getTerminalState";
+      requestId: string;
+      terminalId: string;
     }
   | {
       type: "captureTerminal";
@@ -106,11 +116,6 @@ export type TerminalWorkerEvent =
       message: ServerMessage;
     }
   | {
-      type: "terminalStateUpdated";
-      terminalId: string;
-      state: TerminalState;
-    }
-  | {
       type: "terminalExit";
       terminalId: string;
       info: TerminalExitInfo;
@@ -136,3 +141,4 @@ export type TerminalWorkerEvent =
 export type TerminalWorkerToParentMessage = TerminalWorkerResponse | TerminalWorkerEvent;
 
 export type TerminalWorkerCaptureResult = CaptureTerminalLinesResult;
+export type TerminalWorkerStateResult = TerminalStateSnapshot | null;

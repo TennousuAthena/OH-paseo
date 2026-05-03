@@ -27,14 +27,19 @@ export interface TerminalCommandFinishedInfo {
   exitCode: number | null;
 }
 
+export interface TerminalStateSnapshot {
+  state: TerminalState;
+  revision: number;
+}
+
 export type ClientMessage =
   | { type: "input"; data: string }
   | { type: "resize"; rows: number; cols: number }
   | { type: "mouse"; row: number; col: number; button: number; action: "down" | "up" | "move" };
 
 export type ServerMessage =
-  | { type: "output"; data: string }
-  | { type: "snapshot"; state: TerminalState }
+  | { type: "output"; data: string; revision?: number }
+  | { type: "snapshot"; state: TerminalState; revision?: number }
   | { type: "titleChange"; title?: string };
 
 export interface TerminalSession {
@@ -48,6 +53,7 @@ export interface TerminalSession {
   onTitleChange(listener: (title?: string) => void): () => void;
   getSize(): { rows: number; cols: number };
   getState(): TerminalState;
+  getStateSnapshot(): TerminalStateSnapshot;
   getTitle(): string | undefined;
   getExitInfo(): TerminalExitInfo | null;
   kill(): void;
@@ -605,6 +611,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   let titleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingInput = "";
   let inputFlushImmediate: ReturnType<typeof setImmediate> | null = null;
+  let stateRevision = 0;
 
   // Create xterm.js headless terminal
   const terminal = new Terminal({
@@ -751,6 +758,18 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     titleChangeListeners.clear();
   }
 
+  function writeOutputToHeadless(data: string): void {
+    terminal.write(data, () => {
+      if (disposed || killed) {
+        return;
+      }
+      stateRevision += 1;
+      for (const listener of listeners) {
+        listener({ type: "output", data, revision: stateRevision });
+      }
+    });
+  }
+
   // Pipe PTY output to terminal emulator
   ptyProcess.onData((data) => {
     if (killed) return;
@@ -758,14 +777,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     if (recentOutputText.length > TERMINAL_EXIT_OUTPUT_CHAR_LIMIT) {
       recentOutputText = recentOutputText.slice(-TERMINAL_EXIT_OUTPUT_CHAR_LIMIT);
     }
-    terminal.write(data, () => {
-      if (disposed || killed) {
-        return;
-      }
-      for (const listener of listeners) {
-        listener({ type: "output", data });
-      }
-    });
+    writeOutputToHeadless(data);
   });
 
   ptyProcess.onExit((event) => {
@@ -796,6 +808,13 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       scrollback: extractScrollback(terminal),
       cursor: extractCursorState(terminal),
       ...(title ? { title } : {}),
+    };
+  }
+
+  function getStateSnapshot(): TerminalStateSnapshot {
+    return {
+      state: getState(),
+      revision: stateRevision,
     };
   }
 
@@ -846,6 +865,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
         flushPendingInput();
         terminal.resize(msg.cols, msg.rows);
         ptyProcess.resize(msg.cols, msg.rows);
+        stateRevision += 1;
         break;
       case "mouse":
         // Mouse events can be sent as escape sequences if terminal supports it
@@ -859,7 +879,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
 
     terminal.write("", () => {
       if (!disposed && listeners.has(listener)) {
-        listener({ type: "snapshot", state: getState() });
+        listener({ type: "snapshot", ...getStateSnapshot() });
       }
     });
 
@@ -999,6 +1019,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     onTitleChange,
     getSize,
     getState,
+    getStateSnapshot,
     getTitle,
     getExitInfo,
     kill,

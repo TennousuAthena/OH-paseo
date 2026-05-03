@@ -9,6 +9,7 @@ import type {
   TerminalCommandFinishedInfo,
   TerminalExitInfo,
   TerminalSession,
+  TerminalStateSnapshot,
 } from "./terminal.js";
 import type {
   TerminalListItem,
@@ -21,6 +22,7 @@ import type {
   TerminalWorkerResponse,
   TerminalWorkerToParentMessage,
   WorkerCreateTerminalOptions,
+  TerminalWorkerStateResult,
   WorkerTerminalInfo,
 } from "./terminal-worker-protocol.js";
 
@@ -186,15 +188,17 @@ export function createWorkerTerminalManager(
         return record.info.cwd;
       },
       send(message: ClientMessage): void {
+        if (message.type === "resize") {
+          record.state = {
+            ...record.state,
+            rows: message.rows,
+            cols: message.cols,
+          };
+        }
         sendBestEffortRequest({ type: "send", terminalId: record.info.id, message });
       },
       subscribe(listener: (msg: ServerMessage) => void): () => void {
         record.messageListeners.add(listener);
-        queueMicrotask(() => {
-          if (record.messageListeners.has(listener)) {
-            listener({ type: "snapshot", state: record.state });
-          }
-        });
         return () => {
           record.messageListeners.delete(listener);
         };
@@ -236,6 +240,12 @@ export function createWorkerTerminalManager(
       },
       getState(): TerminalState {
         return record.state;
+      },
+      getStateSnapshot(): TerminalStateSnapshot {
+        return {
+          state: record.state,
+          revision: 0,
+        };
       },
       getTitle(): string | undefined {
         return record.info.title;
@@ -295,16 +305,6 @@ export function createWorkerTerminalManager(
     for (const listener of Array.from(record.messageListeners)) {
       listener(message.message);
     }
-  }
-
-  function handleTerminalStateUpdatedEvent(
-    message: Extract<TerminalWorkerToParentMessage, { type: "terminalStateUpdated" }>,
-  ): void {
-    const record = recordsById.get(message.terminalId);
-    if (!record) {
-      return;
-    }
-    record.state = message.state;
   }
 
   function handleTerminalExitEvent(
@@ -397,11 +397,6 @@ export function createWorkerTerminalManager(
 
       case "terminalMessage": {
         handleTerminalMessageEvent(message);
-        return;
-      }
-
-      case "terminalStateUpdated": {
-        handleTerminalStateUpdatedEvent(message);
         return;
       }
 
@@ -523,6 +518,13 @@ export function createWorkerTerminalManager(
 
     getTerminal(id: string): TerminalSession | undefined {
       return recordsById.get(id)?.session;
+    },
+
+    async getTerminalState(id: string): Promise<TerminalStateSnapshot | null> {
+      return (await sendRequest({
+        type: "getTerminalState",
+        terminalId: id,
+      })) as TerminalWorkerStateResult;
     },
 
     killTerminal(id: string): void {

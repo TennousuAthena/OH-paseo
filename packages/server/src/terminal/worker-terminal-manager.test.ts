@@ -20,13 +20,13 @@ function nodeTerminalCommand(script: string): { command: string; args: string[] 
 }
 
 async function waitForCondition(
-  predicate: () => boolean,
+  predicate: () => boolean | Promise<boolean>,
   timeoutMs: number,
   intervalMs = 25,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (predicate()) {
+    if (await predicate()) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
@@ -35,9 +35,12 @@ async function waitForCondition(
 }
 
 function getVisibleText(session: TerminalSession): string {
-  return session
-    .getState()
-    .grid.map((row) =>
+  return getVisibleTextFromState(session.getState());
+}
+
+function getVisibleTextFromState(state: TerminalState): string {
+  return state.grid
+    .map((row) =>
       row
         .map((cell) => cell.char)
         .join("")
@@ -173,7 +176,7 @@ it("creates a terminal through the worker and streams output", async () => {
   expect(snapshots).toBe(snapshotsBeforeOutput);
 });
 
-it("refreshes cached terminal state after worker output", async () => {
+it("pulls fresh terminal state from the worker authority", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-state-"));
   temporaryDirs.push(cwd);
   manager = createWorkerTerminalManager();
@@ -187,9 +190,14 @@ it("refreshes cached terminal state after worker output", async () => {
     }),
   );
 
-  await waitForCondition(() => getVisibleText(session).includes("worker-state-ready"), 10000);
+  let visibleText = "";
+  await waitForCondition(async () => {
+    const snapshot = await manager!.getTerminalState(session.id);
+    visibleText = snapshot ? getVisibleTextFromState(snapshot.state) : "";
+    return visibleText.includes("worker-state-ready");
+  }, 10000);
 
-  expect(getVisibleText(session)).toContain("worker-state-ready");
+  expect(visibleText).toContain("worker-state-ready");
 });
 
 it("refreshes cached terminal title after worker title changes", async () => {
@@ -236,9 +244,12 @@ it("captures terminal output from the worker authority", async () => {
 
   session.send({ type: "input", data: "echo hello world\r" });
 
-  await waitForCondition(() => getVisibleText(session).includes("hello world"), 10000);
+  let capture = await manager.captureTerminal(session.id);
+  await waitForCondition(async () => {
+    capture = await manager!.captureTerminal(session.id);
+    return capture.lines.join("\n").includes("hello world");
+  }, 10000);
 
-  const capture = await manager.captureTerminal(session.id);
   expect(capture.lines.join("\n")).toContain("hello world");
   expect(capture.totalLines).toBeGreaterThan(0);
 });

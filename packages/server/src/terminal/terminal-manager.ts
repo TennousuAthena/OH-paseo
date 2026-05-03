@@ -3,6 +3,7 @@ import {
   createTerminal,
   type CaptureTerminalLinesResult,
   type TerminalSession,
+  type TerminalStateSnapshot,
 } from "./terminal.js";
 import { resolve, sep, win32, posix } from "node:path";
 
@@ -33,6 +34,7 @@ export interface TerminalManager {
   }): Promise<TerminalSession>;
   registerCwdEnv(options: { cwd: string; env: Record<string, string> }): void;
   getTerminal(id: string): TerminalSession | undefined;
+  getTerminalState(id: string): Promise<TerminalStateSnapshot | null>;
   killTerminal(id: string): void;
   killTerminalAndWait(
     id: string,
@@ -208,6 +210,10 @@ export function createTerminalManager(): TerminalManager {
 
     getTerminal(id: string): TerminalSession | undefined {
       return terminalsById.get(id);
+    },
+
+    async getTerminalState(id: string): Promise<TerminalStateSnapshot | null> {
+      return terminalsById.get(id)?.getStateSnapshot() ?? null;
     },
 
     killTerminal(id: string): void {

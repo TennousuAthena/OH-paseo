@@ -380,6 +380,271 @@ function getFrameText(frame: TerminalStreamFrame): string {
   return "";
 }
 
+interface TimedTerminalOutputFrame {
+  receivedAtMs: number;
+  payloadBytes: number;
+  text: string;
+}
+
+interface TerminalOutputCapture {
+  frames: TimedTerminalOutputFrame[];
+  snapshotCount: number;
+  stop: () => void;
+}
+
+interface TerminalOutputCadenceSummary {
+  frameCount: number;
+  maxGapMs: number;
+  p95GapMs: number;
+  lastOutputAfterStopMs: number;
+  payloadBytes: number[];
+}
+
+interface TerminalRepeatCadenceMeasurement {
+  enterSummary: TerminalOutputCadenceSummary;
+  keySummary: TerminalOutputCadenceSummary;
+  snapshotCount: number;
+}
+
+function startTerminalOutputCapture(ws: WebSocket, slot: number): TerminalOutputCapture {
+  const decoder = new TextDecoder();
+  const frames: TimedTerminalOutputFrame[] = [];
+  let snapshotCount = 0;
+
+  const onMessage = (raw: WebSocket.RawData, isBinary: boolean) => {
+    if (!isBinary) {
+      return;
+    }
+    const buffer = toWsBuffer(raw);
+    if (!buffer) {
+      return;
+    }
+    const frame = decodeTerminalStreamFrame(new Uint8Array(buffer));
+    if (!frame || frame.slot !== slot) {
+      return;
+    }
+    if (frame.opcode === TerminalStreamOpcode.Snapshot) {
+      snapshotCount += 1;
+      return;
+    }
+    if (frame.opcode !== TerminalStreamOpcode.Output || frame.payload.byteLength === 0) return;
+    frames.push({
+      receivedAtMs: performance.now(),
+      payloadBytes: frame.payload.byteLength,
+      text: decoder.decode(frame.payload),
+    });
+  };
+
+  ws.on("message", onMessage);
+  return {
+    frames,
+    get snapshotCount() {
+      return snapshotCount;
+    },
+    stop: () => {
+      ws.off("message", onMessage);
+    },
+  };
+}
+
+function sendRawTerminalInput(ws: WebSocket, slot: number, data: string): void {
+  ws.send(
+    encodeTerminalStreamFrame({
+      opcode: TerminalStreamOpcode.Input,
+      slot,
+      payload: data,
+    }),
+  );
+}
+
+async function repeatRawTerminalInput(input: {
+  ws: WebSocket;
+  slot: number;
+  data: string;
+  count: number;
+  intervalMs: number;
+}): Promise<{
+  stoppedAtMs: number;
+}> {
+  for (let index = 0; index < input.count; index += 1) {
+    sendRawTerminalInput(input.ws, input.slot, input.data);
+    await new Promise((resolve) => setTimeout(resolve, input.intervalMs));
+  }
+  return {
+    stoppedAtMs: performance.now(),
+  };
+}
+
+async function waitForTerminalOutputQuiet(
+  capture: TerminalOutputCapture,
+  quietMs: number,
+  timeoutMs: number,
+): Promise<void> {
+  let lastCount = capture.frames.length;
+  let quietStartedAtMs = performance.now();
+  const startedAtMs = quietStartedAtMs;
+
+  while (performance.now() - startedAtMs < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    if (capture.frames.length !== lastCount) {
+      lastCount = capture.frames.length;
+      quietStartedAtMs = performance.now();
+      continue;
+    }
+    if (performance.now() - quietStartedAtMs >= quietMs) {
+      return;
+    }
+  }
+}
+
+function summarizeTerminalOutputCadence(input: {
+  frames: TimedTerminalOutputFrame[];
+  stoppedAtMs: number;
+}): TerminalOutputCadenceSummary {
+  const gaps = input.frames
+    .slice(1)
+    .map((frame, index) => frame.receivedAtMs - input.frames[index]!.receivedAtMs)
+    .sort((a, b) => a - b);
+  const p95Index =
+    gaps.length === 0 ? -1 : Math.min(gaps.length - 1, Math.ceil(gaps.length * 0.95) - 1);
+  const lastFrame = input.frames.at(-1);
+
+  return {
+    frameCount: input.frames.length,
+    maxGapMs: gaps.at(-1) ?? 0,
+    p95GapMs: p95Index === -1 ? 0 : gaps[p95Index]!,
+    lastOutputAfterStopMs: lastFrame ? lastFrame.receivedAtMs - input.stoppedAtMs : 0,
+    payloadBytes: input.frames.map((frame) => frame.payloadBytes),
+  };
+}
+
+function getTerminalOutputCadenceFailures(
+  label: string,
+  summary: TerminalOutputCadenceSummary,
+  limits: {
+    minFrames: number;
+    maxP95GapMs: number;
+    maxLastOutputAfterStopMs: number;
+  },
+): string[] {
+  const failures: string[] = [];
+  if (summary.frameCount < limits.minFrames) {
+    failures.push(`${label}: frameCount ${summary.frameCount} < ${limits.minFrames}`);
+  }
+  if (summary.p95GapMs >= limits.maxP95GapMs) {
+    failures.push(`${label}: p95GapMs ${summary.p95GapMs.toFixed(1)} >= ${limits.maxP95GapMs}`);
+  }
+  if (summary.lastOutputAfterStopMs >= limits.maxLastOutputAfterStopMs) {
+    failures.push(
+      `${label}: lastOutputAfterStopMs ${summary.lastOutputAfterStopMs.toFixed(1)} >= ${limits.maxLastOutputAfterStopMs}`,
+    );
+  }
+  return failures;
+}
+
+function expectTerminalOutputCadences(input: {
+  enterSummary: TerminalOutputCadenceSummary;
+  keySummary: TerminalOutputCadenceSummary;
+  snapshotCount: number;
+}): void {
+  const failures = [
+    ...getTerminalOutputCadenceFailures("enter-repeat", input.enterSummary, {
+      minFrames: 20,
+      maxP95GapMs: 120,
+      maxLastOutputAfterStopMs: Number.POSITIVE_INFINITY,
+    }),
+    ...getTerminalOutputCadenceFailures("key-repeat-after-enter-repeat", input.keySummary, {
+      minFrames: 40,
+      maxP95GapMs: 60,
+      maxLastOutputAfterStopMs: 150,
+    }),
+  ];
+  if (input.snapshotCount > 0) {
+    failures.push(`unexpected live snapshot count ${input.snapshotCount} > 0`);
+  }
+  if (failures.length === 0) {
+    return;
+  }
+  throw new Error(
+    `terminal output cadence failed: ${failures.join("; ")}\n${JSON.stringify(input)}`,
+  );
+}
+
+async function measureRepeatCadenceForTerminal(input: {
+  cwd: string;
+  name: string;
+  options?: { command?: string; args?: string[] };
+  setupInput?: string;
+}): Promise<TerminalRepeatCadenceMeasurement> {
+  const created = await ctx.client.createTerminal(input.cwd, input.name, undefined, input.options);
+  const terminalId = created.terminal!.id;
+  const ws = await connectRawWebSocket(ctx.daemon.port);
+
+  try {
+    const slot = await subscribeRawTerminal(ws, terminalId, `sub-repeat-cadence-${input.name}`);
+    await waitForRawBinaryFrame(
+      ws,
+      (frame) => frame.slot === slot && frame.opcode === TerminalStreamOpcode.Snapshot,
+      10000,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (input.setupInput) {
+      sendRawTerminalInput(ws, slot, input.setupInput);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    const enterCapture = startTerminalOutputCapture(ws, slot);
+    const enterRepeat = await repeatRawTerminalInput({
+      ws,
+      slot,
+      data: "\r",
+      count: 120,
+      intervalMs: 15,
+    });
+    await waitForTerminalOutputQuiet(enterCapture, 700, 10000);
+    enterCapture.stop();
+    const enterSummary = summarizeTerminalOutputCadence({
+      frames: enterCapture.frames,
+      stoppedAtMs: enterRepeat.stoppedAtMs,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const keyCapture = startTerminalOutputCapture(ws, slot);
+    const keyRepeat = await repeatRawTerminalInput({
+      ws,
+      slot,
+      data: "k",
+      count: 80,
+      intervalMs: 15,
+    });
+    await waitForTerminalOutputQuiet(keyCapture, 250, 3000);
+    keyCapture.stop();
+    const keySummary = summarizeTerminalOutputCadence({
+      frames: keyCapture.frames,
+      stoppedAtMs: keyRepeat.stoppedAtMs,
+    });
+
+    return {
+      enterSummary,
+      keySummary,
+      snapshotCount: enterCapture.snapshotCount + keyCapture.snapshotCount,
+    };
+  } finally {
+    await closeWebSocket(ws);
+  }
+}
+
+async function expectRepeatCadenceForTerminal(input: {
+  cwd: string;
+  name: string;
+  options?: { command?: string; args?: string[] };
+  setupInput?: string;
+}): Promise<void> {
+  const measurement = await measureRepeatCadenceForTerminal(input);
+  expectTerminalOutputCadences(measurement);
+}
+
 async function subscribeRawTerminal(
   ws: WebSocket,
   terminalId: string,
@@ -611,6 +876,13 @@ test("client sends input and receives output as raw bytes", async () => {
   expect(await outputPromise).toContain("binary-stream");
 
   rmSync(cwd, { recursive: true, force: true });
+}, 30000);
+
+test("default zsh terminal does not eagerly flush full state during repeat bursts", async () => {
+  await expectRepeatCadenceForTerminal({
+    cwd: process.cwd(),
+    name: "default-zsh-repeat-cadence",
+  });
 }, 30000);
 
 test("one client can stream two terminals concurrently", async () => {

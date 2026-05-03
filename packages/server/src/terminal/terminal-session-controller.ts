@@ -26,11 +26,18 @@ import type { TerminalManager, TerminalsChangedEvent } from "./terminal-manager.
 
 const MAX_TERMINAL_STREAM_SLOTS = 256;
 
+interface BufferedTerminalOutput {
+  data: string;
+  revision?: number;
+}
+
 interface ActiveTerminalStream {
   terminalId: string;
   slot: number;
   unsubscribe: () => void;
   needsSnapshot: boolean;
+  snapshotInFlight: boolean;
+  bufferedOutputs: BufferedTerminalOutput[];
   outputCoalescer: TerminalOutputCoalescer;
 }
 
@@ -480,7 +487,7 @@ export class TerminalSessionController {
 
     const activeStream = this.activeStreams.get(slot);
     if (activeStream) {
-      this.trySendSnapshot(activeStream);
+      void this.trySendSnapshot(activeStream);
     }
   }
 
@@ -613,6 +620,8 @@ export class TerminalSessionController {
       slot,
       unsubscribe: () => {},
       needsSnapshot: true,
+      snapshotInFlight: false,
+      bufferedOutputs: [],
       outputCoalescer: new TerminalOutputCoalescer({
         timers: { setTimeout, clearTimeout },
         onFlush: ({ payload }) => {
@@ -640,13 +649,20 @@ export class TerminalSessionController {
       if (message.type === "snapshot") {
         activeStream.outputCoalescer.flush();
         activeStream.needsSnapshot = true;
-        this.trySendSnapshot(activeStream);
+        void this.trySendSnapshot(activeStream);
         return;
       }
       if (message.type === "titleChange") {
         return;
       }
-      if (activeStream.needsSnapshot || message.data.length === 0) {
+      if (message.data.length === 0) {
+        return;
+      }
+      if (activeStream.needsSnapshot || activeStream.snapshotInFlight) {
+        activeStream.bufferedOutputs.push({
+          data: message.data,
+          revision: message.revision,
+        });
         return;
       }
       activeStream.outputCoalescer.handle(message.data);
@@ -654,26 +670,60 @@ export class TerminalSessionController {
     return slot;
   }
 
-  private trySendSnapshot(activeStream: ActiveTerminalStream): void {
-    if (this.activeStreams.get(activeStream.slot) !== activeStream || !activeStream.needsSnapshot) {
+  private async trySendSnapshot(activeStream: ActiveTerminalStream): Promise<void> {
+    if (
+      this.activeStreams.get(activeStream.slot) !== activeStream ||
+      !activeStream.needsSnapshot ||
+      activeStream.snapshotInFlight
+    ) {
       return;
     }
 
-    const terminal = this.terminalManager?.getTerminal(activeStream.terminalId);
-    if (!terminal) {
+    if (!this.terminalManager?.getTerminal(activeStream.terminalId)) {
       this.detachStream(activeStream.terminalId, { emitExit: true });
       return;
     }
 
     activeStream.outputCoalescer.flush();
-    activeStream.needsSnapshot = false;
-    this.emitBinary(
-      encodeTerminalStreamFrame({
-        opcode: TerminalStreamOpcode.Snapshot,
-        slot: activeStream.slot,
-        payload: encodeTerminalSnapshotPayload(terminal.getState()),
-      }),
-    );
+    activeStream.snapshotInFlight = true;
+    try {
+      const snapshot = await this.terminalManager.getTerminalState(activeStream.terminalId);
+      if (this.activeStreams.get(activeStream.slot) !== activeStream) {
+        return;
+      }
+      if (!snapshot) {
+        this.detachStream(activeStream.terminalId, { emitExit: true });
+        return;
+      }
+
+      this.emitBinary(
+        encodeTerminalStreamFrame({
+          opcode: TerminalStreamOpcode.Snapshot,
+          slot: activeStream.slot,
+          payload: encodeTerminalSnapshotPayload(snapshot.state),
+        }),
+      );
+
+      const bufferedOutputs = activeStream.bufferedOutputs.splice(
+        0,
+        activeStream.bufferedOutputs.length,
+      );
+      for (const output of bufferedOutputs) {
+        if (output.revision !== undefined && output.revision <= snapshot.revision) {
+          continue;
+        }
+        activeStream.outputCoalescer.handle(output.data);
+      }
+      activeStream.needsSnapshot = false;
+    } catch (error) {
+      this.sessionLogger.warn(
+        { err: error, terminalId: activeStream.terminalId },
+        "Failed to pull terminal snapshot",
+      );
+      activeStream.needsSnapshot = true;
+    } finally {
+      activeStream.snapshotInFlight = false;
+    }
   }
 
   private allocateSlot(): number | null {
@@ -699,6 +749,7 @@ export class TerminalSessionController {
       return false;
     }
     activeStream.outputCoalescer.flush();
+    activeStream.bufferedOutputs.length = 0;
     this.activeStreams.delete(slot);
     this.idToSlot.delete(terminalId);
     try {
