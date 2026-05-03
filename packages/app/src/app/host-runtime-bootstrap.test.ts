@@ -55,6 +55,21 @@ describe("startHostRuntimeBootstrap", () => {
     expect(daemonStartService.start).not.toHaveBeenCalled();
   });
 
+  it("skips daemon-start when the startup gate resolves false", async () => {
+    const store = createFakeStore();
+    const daemonStartService = createFakeDaemonStartService();
+
+    startHostRuntimeBootstrap({
+      store,
+      daemonStartService,
+      shouldStartDaemon: async () => false,
+    });
+    await Promise.resolve();
+
+    expect(store.boot).toHaveBeenCalledTimes(1);
+    expect(daemonStartService.start).not.toHaveBeenCalled();
+  });
+
   it("does not await the daemon-start promise", () => {
     const store = createFakeStore();
     let resolveStart: ((value: { ok: true }) => void) | undefined;

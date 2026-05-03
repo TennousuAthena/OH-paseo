@@ -14,6 +14,7 @@ import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import {
   getCliDaemonStatus,
   shouldUseDesktopDaemon,
+  startDesktopDaemon,
   stopDesktopDaemon,
 } from "@/desktop/daemon/desktop-daemon";
 import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
@@ -41,6 +42,12 @@ function useDaemonManagementToggle(args: {
     if (!settings.manageBuiltInDaemon) {
       setIsUpdatingDaemonManagement(true);
       void updateSettings({ manageBuiltInDaemon: true })
+        .then(() => startDesktopDaemon())
+        .then((newStatus) => {
+          setStatus(newStatus);
+          refetch();
+          return;
+        })
         .catch((error) => {
           console.error("[Settings] Failed to update built-in daemon management", error);
           Alert.alert("Error", "Unable to update built-in daemon management.");
@@ -66,25 +73,29 @@ function useDaemonManagementToggle(args: {
 
         setIsUpdatingDaemonManagement(true);
 
-        const stopPromise =
-          daemonStatus?.status === "running"
-            ? stopDesktopDaemon()
-            : Promise.resolve(daemonStatus ?? null);
-
-        void stopPromise
+        void updateSettings({ manageBuiltInDaemon: false })
+          .then(() => {
+            if (daemonStatus?.status === "running" && daemonStatus.desktopManaged) {
+              return stopDesktopDaemon();
+            }
+            return daemonStatus ?? null;
+          })
           .then((newStatus) => {
             if (newStatus) {
               setStatus(newStatus);
             }
-            return updateSettings({ manageBuiltInDaemon: false });
+            return;
           })
           .then(() => {
             refetch();
             return;
           })
           .catch((error) => {
-            console.error("[Settings] Failed to pause built-in daemon management", error);
-            Alert.alert("Error", "Unable to pause built-in daemon management.");
+            console.error("[Settings] Failed to stop built-in daemon", error);
+            Alert.alert(
+              "Error",
+              "Built-in daemon management was paused, but Paseo could not stop the daemon.",
+            );
           })
           .finally(() => {
             setIsUpdatingDaemonManagement(false);

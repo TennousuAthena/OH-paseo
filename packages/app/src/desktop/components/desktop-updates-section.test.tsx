@@ -208,12 +208,14 @@ vi.mock("@/desktop/updates/desktop-updates", () => ({
 
 const daemonCommandMocks = vi.hoisted(() => ({
   getCliDaemonStatusMock: vi.fn(),
+  startDesktopDaemonMock: vi.fn(),
   stopDesktopDaemonMock: vi.fn(),
 }));
 
 vi.mock("@/desktop/daemon/desktop-daemon", () => ({
   getCliDaemonStatus: daemonCommandMocks.getCliDaemonStatusMock,
   shouldUseDesktopDaemon: vi.fn(() => true),
+  startDesktopDaemon: daemonCommandMocks.startDesktopDaemonMock,
   stopDesktopDaemon: daemonCommandMocks.stopDesktopDaemonMock,
 }));
 
@@ -234,8 +236,15 @@ describe("LocalDaemonSection", () => {
     settingsState.updateSettings.mockReset();
     settingsState.updateSettings.mockResolvedValue();
     daemonStatusState.data.status.status = "running";
+    daemonStatusState.data.status.desktopManaged = true;
     daemonStatusState.setStatus.mockReset();
     daemonStatusState.refetch.mockReset();
+    daemonCommandMocks.startDesktopDaemonMock.mockReset();
+    daemonCommandMocks.startDesktopDaemonMock.mockResolvedValue({
+      ...daemonStatusState.data.status,
+      status: "running",
+      desktopManaged: true,
+    });
     daemonCommandMocks.stopDesktopDaemonMock.mockReset();
     daemonCommandMocks.stopDesktopDaemonMock.mockResolvedValue({
       ...daemonStatusState.data.status,
@@ -295,6 +304,59 @@ describe("LocalDaemonSection", () => {
       daemon: {
         manageBuiltInDaemon: false,
       },
+    });
+  });
+
+  it("persists paused management before stopping the desktop-managed daemon", async () => {
+    confirmDialogMock.mockResolvedValue(true);
+    const screen = render(<LocalDaemonSection />);
+
+    fireEvent.click(screen.getByRole("switch", { name: "Manage built-in daemon" }));
+
+    await waitFor(() => {
+      expect(daemonCommandMocks.stopDesktopDaemonMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(settingsState.updateSettings.mock.invocationCallOrder[0]).toBeLessThan(
+      daemonCommandMocks.stopDesktopDaemonMock.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("does not stop a manually managed daemon when pausing built-in daemon management", async () => {
+    confirmDialogMock.mockResolvedValue(true);
+    daemonStatusState.data.status.desktopManaged = false;
+    const screen = render(<LocalDaemonSection />);
+
+    fireEvent.click(screen.getByRole("switch", { name: "Manage built-in daemon" }));
+
+    await waitFor(() => {
+      expect(settingsState.updateSettings).toHaveBeenCalledWith({
+        daemon: {
+          manageBuiltInDaemon: false,
+        },
+      });
+    });
+    expect(daemonCommandMocks.stopDesktopDaemonMock).not.toHaveBeenCalled();
+  });
+
+  it("starts the built-in daemon when management is re-enabled", async () => {
+    settingsState.settings.daemon.manageBuiltInDaemon = false;
+    const screen = render(<LocalDaemonSection />);
+
+    fireEvent.click(screen.getByRole("switch", { name: "Manage built-in daemon" }));
+
+    await waitFor(() => {
+      expect(daemonCommandMocks.startDesktopDaemonMock).toHaveBeenCalledTimes(1);
+    });
+    expect(settingsState.updateSettings).toHaveBeenCalledWith({
+      daemon: {
+        manageBuiltInDaemon: true,
+      },
+    });
+    expect(daemonStatusState.setStatus).toHaveBeenCalledWith({
+      ...daemonStatusState.data.status,
+      status: "running",
+      desktopManaged: true,
     });
   });
 });

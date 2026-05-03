@@ -50,11 +50,12 @@ import {
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
 import { ToastProvider } from "@/contexts/toast-context";
 import { VoiceProvider } from "@/contexts/voice-context";
-import { startHostRuntimeBootstrap } from "@/app/host-runtime-bootstrap";
+import { startDaemonIfGateAllows, startHostRuntimeBootstrap } from "@/app/host-runtime-bootstrap";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { updateDesktopWindowControls } from "@/desktop/electron/window";
 import { getDesktopHost } from "@/desktop/host";
+import { loadDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { RosettaCalloutSource } from "@/desktop/updates/rosetta-callout-source";
 import { UpdateCalloutSource } from "@/desktop/updates/update-callout-source";
 import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-action";
@@ -312,6 +313,14 @@ function useDaemonStartIsRunning(): boolean {
 
 const STARTUP_GIVE_UP_TIMEOUT_MS = 5_000;
 
+async function shouldStartBuiltInDaemon(): Promise<boolean> {
+  if (!shouldUseDesktopDaemon()) {
+    return false;
+  }
+  const settings = await loadDesktopSettings();
+  return settings.daemon.manageBuiltInDaemon;
+}
+
 function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const store = getHostRuntimeStore();
@@ -319,7 +328,7 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
     startHostRuntimeBootstrap({
       store,
       daemonStartService,
-      shouldStartDaemon: shouldUseDesktopDaemon(),
+      shouldStartDaemon: shouldStartBuiltInDaemon,
     });
   }, []);
 
@@ -346,7 +355,10 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   }, [anyOnlineHostServerId, daemonStartError, daemonStartIsRunning, hasGivenUpWaitingForHost]);
 
   const retry = useCallback(() => {
-    void getDaemonStartService({ store: getHostRuntimeStore() }).start();
+    startDaemonIfGateAllows({
+      daemonStartService: getDaemonStartService({ store: getHostRuntimeStore() }),
+      shouldStartDaemon: shouldStartBuiltInDaemon,
+    });
   }, []);
 
   const splashError = !anyOnlineHostServerId ? daemonStartError : null;

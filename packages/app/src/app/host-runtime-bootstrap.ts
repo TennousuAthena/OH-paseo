@@ -11,17 +11,39 @@ export interface HostRuntimeBootstrapDaemonStartService {
   start: () => Promise<DaemonStartResult>;
 }
 
+type HostRuntimeBootstrapStartGate = boolean | (() => boolean | Promise<boolean>);
+
 export interface StartHostRuntimeBootstrapInput {
   store: HostRuntimeBootstrapStore;
   daemonStartService: HostRuntimeBootstrapDaemonStartService;
-  shouldStartDaemon: boolean;
+  shouldStartDaemon: HostRuntimeBootstrapStartGate;
 }
 
 export function startHostRuntimeBootstrap(input: StartHostRuntimeBootstrapInput): void {
   input.store.boot();
-  if (input.shouldStartDaemon) {
-    void input.daemonStartService.start();
+  startDaemonIfGateAllows({
+    daemonStartService: input.daemonStartService,
+    shouldStartDaemon: input.shouldStartDaemon,
+  });
+}
+
+export function startDaemonIfGateAllows(input: {
+  daemonStartService: HostRuntimeBootstrapDaemonStartService;
+  shouldStartDaemon: HostRuntimeBootstrapStartGate;
+}): void {
+  if (typeof input.shouldStartDaemon === "boolean") {
+    if (input.shouldStartDaemon) {
+      void input.daemonStartService.start();
+    }
+    return;
   }
+
+  void Promise.resolve(input.shouldStartDaemon()).then((shouldStartDaemon) => {
+    if (shouldStartDaemon) {
+      void input.daemonStartService.start();
+    }
+    return;
+  });
 }
 
 export const WELCOME_ROUTE: Href = "/welcome";

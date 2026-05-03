@@ -38,6 +38,7 @@ import {
   createDesktopSettingsCommandHandlers,
   type DesktopCommandHandler,
 } from "../settings/desktop-settings-commands.js";
+import type { DesktopSettings } from "../settings/desktop-settings.js";
 import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
 import { isRunningUnderARM64Translation } from "../system/arm64-translation.js";
 
@@ -285,6 +286,12 @@ function shouldRestartForVersion(current: DesktopDaemonStatus): boolean {
   return Boolean(appVersion && daemonVersion && appVersion !== daemonVersion);
 }
 
+function assertBuiltInDaemonManagementEnabled(settings: DesktopSettings): void {
+  if (!settings.daemon.manageBuiltInDaemon) {
+    throw new Error("Built-in daemon management is disabled.");
+  }
+}
+
 function buildStartupFailureError(
   result: { code: number | null; signal: string | null; error?: Error },
   stdout: string,
@@ -322,6 +329,8 @@ async function pollForRunningDaemon(): Promise<DesktopDaemonStatus> {
 }
 
 async function startDaemon(): Promise<DesktopDaemonStatus> {
+  assertBuiltInDaemonManagementEnabled(await getDesktopSettingsStore().get());
+
   const current = await resolveDesktopDaemonStatus();
   logDesktopDaemonLifecycle("initial status check before start", {
     status: current.status,
@@ -457,6 +466,7 @@ export async function stopDesktopDaemon(): Promise<DesktopDaemonStatus> {
 }
 
 async function restartDaemon(): Promise<DesktopDaemonStatus> {
+  assertBuiltInDaemonManagementEnabled(await getDesktopSettingsStore().get());
   await stopDesktopDaemon();
   return startDaemon();
 }
