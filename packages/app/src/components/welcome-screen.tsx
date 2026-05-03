@@ -248,8 +248,6 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
         },
       ];
 
-  const isConnectingToSavedHosts = hosts.length > 0 && !anyOnlineServerId;
-
   const scrollContentContainerStyle = useMemo(
     () => [styles.container, { paddingBottom: theme.spacing[6] + insets.bottom }],
     [theme.spacing, insets.bottom],
@@ -266,20 +264,14 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
         <View style={styles.content}>
           <PaseoLogo size={96} />
           <View style={styles.copyBlock}>
-            {isConnectingToSavedHosts ? (
-              <Text style={styles.subtitle}>Connecting…</Text>
-            ) : (
-              <>
-                <Text style={styles.title}>Welcome to Paseo</Text>
-                <Text style={styles.subtitle}>Connect your computer to get started</Text>
-                {isNative ? (
-                  <Pressable style={styles.setupLink} onPress={handleOpenPaseoSite}>
-                    <Text style={styles.setupLinkText}>paseo.sh</Text>
-                    <ExternalLink size={14} color={theme.colors.accent} />
-                  </Pressable>
-                ) : null}
-              </>
-            )}
+            <Text style={styles.title}>Welcome to Paseo</Text>
+            <Text style={styles.subtitle}>Connect your computer to get started</Text>
+            {isNative ? (
+              <Pressable style={styles.setupLink} onPress={handleOpenPaseoSite}>
+                <Text style={styles.setupLinkText}>paseo.sh</Text>
+                <ExternalLink size={14} color={theme.colors.accent} />
+              </Pressable>
+            ) : null}
           </View>
 
           <View style={styles.actions}>
