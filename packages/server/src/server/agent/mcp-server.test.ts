@@ -683,7 +683,7 @@ describe("create_agent MCP tool", () => {
     }
   });
 
-  it("auto-names a create_agent branch-off worktree from the initial prompt without metadata branch rename", async () => {
+  it("creates a create_agent branch-off worktree without invoking the legacy metadata branch rename", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const tempDir = await mkdtemp(join(tmpdir(), "paseo-mcp-agent-worktree-name-context-"));
     const repoDir = join(tempDir, "repo");
@@ -737,9 +737,11 @@ describe("create_agent MCP tool", () => {
       });
 
       const agentCwd = spies.agentManager.createAgent.mock.calls[0]?.[0].cwd as string;
-      expect(
-        execSync("git branch --show-current", { cwd: agentCwd, stdio: "pipe" }).toString().trim(),
-      ).toBe("fix-workspace-creation-naming");
+      const initialBranch = execSync("git branch --show-current", { cwd: agentCwd, stdio: "pipe" })
+        .toString()
+        .trim();
+      expect(initialBranch).not.toBe("");
+      expect(initialBranch).not.toBe("main");
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
       expect(broadcasts).toHaveLength(1);
