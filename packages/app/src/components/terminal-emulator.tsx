@@ -18,6 +18,7 @@ import type { ITheme } from "@xterm/xterm";
 import type { TerminalState } from "@server/shared/messages";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import { TerminalEmulatorRuntime } from "../terminal/runtime/terminal-emulator-runtime";
+import type { TerminalRendererReadyChange } from "../utils/terminal-renderer-readiness";
 import { openExternalUrl } from "../utils/open-external-url";
 import { focusWithRetries } from "../utils/web-focus";
 import {
@@ -127,6 +128,7 @@ interface TerminalEmulatorProps {
     meta: boolean;
   }) => Promise<void> | void;
   onPendingModifiersConsumed?: () => Promise<void> | void;
+  onRendererReadyChange?: (change: TerminalRendererReadyChange) => void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;
   resizeRequestToken?: number;
@@ -181,6 +183,7 @@ export default function TerminalEmulator({
   onResize,
   onTerminalKey,
   onPendingModifiersConsumed,
+  onRendererReadyChange,
   pendingModifiers = { ctrl: false, shift: false, alt: false },
   focusRequestToken = 0,
   resizeRequestToken = 0,
@@ -198,6 +201,8 @@ export default function TerminalEmulator({
   const themeKey = useMemo(() => buildXtermThemeKey(xtermTheme), [xtermTheme]);
   const xtermThemeRef = useRef(xtermTheme);
   xtermThemeRef.current = xtermTheme;
+  const onRendererReadyChangeRef = useRef(onRendererReadyChange);
+  onRendererReadyChangeRef.current = onRendererReadyChange;
   const mountCallbacksRef = useRef({
     onInput,
     onResize,
@@ -389,9 +394,11 @@ export default function TerminalEmulator({
       initialSnapshot: initialSnapshotRef.current,
       theme: mountedThemeRef.current,
     });
+    onRendererReadyChangeRef.current?.({ streamKey, isReady: true });
 
     return () => {
       runtime.unmount();
+      onRendererReadyChangeRef.current?.({ streamKey, isReady: false });
       if (runtimeRef.current === runtime) {
         runtimeRef.current = null;
       }

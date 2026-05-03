@@ -28,6 +28,12 @@ import { usePanelStore } from "@/stores/panel-store";
 import { toXtermTheme } from "@/utils/to-xterm-theme";
 import TerminalEmulator, { type TerminalEmulatorHandle } from "./terminal-emulator";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import {
+  applyTerminalRendererReadyChange,
+  shouldReplayTerminalSnapshotForRenderer,
+  shouldShowTerminalLoadingOverlay,
+  type TerminalRendererReadyChange,
+} from "@/utils/terminal-renderer-readiness";
 
 interface TerminalPaneProps {
   serverId: string;
@@ -164,6 +170,7 @@ export function TerminalPane({
   const isConnected = useHostRuntimeIsConnected(serverId);
 
   const scopeKey = useMemo(() => terminalScopeKey({ serverId, cwd }), [serverId, cwd]);
+  const terminalStreamKey = useMemo(() => `${scopeKey}:${terminalId}`, [scopeKey, terminalId]);
   // Keep the latest measured size for whichever client currently owns the pane,
   // but only dedupe resizes that this specific client has already pushed.
   const measuredTerminalSizeRef = useRef<{ rows: number; cols: number } | null>(null);
@@ -175,6 +182,7 @@ export function TerminalPane({
   );
   const [isAttaching, setIsAttaching] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [rendererReadyStreamKey, setRendererReadyStreamKey] = useState<string | null>(null);
   const [modifiers, setModifiers] = useState<ModifierState>(EMPTY_MODIFIERS);
   const [focusRequestToken, setFocusRequestToken] = useState(0);
   const [resizeRequestToken, setResizeRequestToken] = useState(0);
@@ -195,6 +203,20 @@ export function TerminalPane({
   const requestTerminalReflow = useCallback(() => {
     setResizeRequestToken((current) => current + 1);
   }, []);
+  const handleRendererReadyChange = useCallback(
+    (change: TerminalRendererReadyChange) => {
+      setRendererReadyStreamKey((current) => applyTerminalRendererReadyChange(current, change));
+      if (!shouldReplayTerminalSnapshotForRenderer({ change, terminalStreamKey })) {
+        return;
+      }
+
+      const snapshot = workspaceTerminalSession.snapshots.get({ terminalId });
+      if (snapshot) {
+        emulatorRef.current?.renderSnapshot(snapshot);
+      }
+    },
+    [terminalId, terminalStreamKey, workspaceTerminalSession.snapshots],
+  );
 
   useEffect(() => {
     if (isMobile || !isWorkspaceFocused || !isPaneFocused || !terminalId) {
@@ -617,6 +639,13 @@ export function TerminalPane({
     if (!swipeGesturesEnabled) return;
     onOpenFileExplorer();
   }, [swipeGesturesEnabled, onOpenFileExplorer]);
+  const showLoadingOverlay = shouldShowTerminalLoadingOverlay({
+    isWorkspaceFocused,
+    hasStreamError: Boolean(streamError),
+    isAttaching,
+    rendererReadyStreamKey,
+    terminalStreamKey,
+  });
 
   if (!client || !isConnected) {
     return (
@@ -634,11 +663,12 @@ export function TerminalPane({
             <TerminalEmulator
               ref={emulatorRef}
               dom={TERMINAL_EMULATOR_DOM_PROPS}
-              streamKey={`${scopeKey}:${terminalId}`}
+              streamKey={terminalStreamKey}
               testId="terminal-surface"
               xtermTheme={xtermTheme}
               swipeGesturesEnabled={swipeGesturesEnabled}
               initialSnapshot={initialSnapshot}
+              onRendererReadyChange={handleRendererReadyChange}
               onSwipeRight={handleSwipeRight}
               onSwipeLeft={handleSwipeLeft}
               onInput={handleTerminalData}
@@ -654,7 +684,7 @@ export function TerminalPane({
           <View style={styles.terminalGestureContainer} />
         )}
 
-        {isAttaching && isWorkspaceFocused ? (
+        {showLoadingOverlay ? (
           <View style={styles.attachOverlay} pointerEvents="none" testID="terminal-attach-loading">
             <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
           </View>
