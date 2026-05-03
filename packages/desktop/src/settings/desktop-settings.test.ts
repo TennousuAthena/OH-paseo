@@ -94,6 +94,58 @@ describe("desktop-settings", () => {
     expect(files).toEqual(["desktop-settings.json"]);
   });
 
+  it("does not let stale legacy renderer settings override an explicit desktop patch", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+    const store = createDesktopSettingsStore({ userDataPath });
+
+    const patched = await store.patch({
+      daemon: {
+        manageBuiltInDaemon: false,
+      },
+    });
+    const migrated = await store.migrateLegacyRendererSettings({
+      manageBuiltInDaemon: true,
+      releaseChannel: "beta",
+    });
+    const persisted = JSON.parse(await readFile(settingsFilePath(userDataPath), "utf8")) as {
+      migrations: { legacyRendererSettingsImported: boolean };
+      settings: DesktopSettings;
+    };
+
+    expect(patched.daemon.manageBuiltInDaemon).toBe(false);
+    expect(migrated.daemon.manageBuiltInDaemon).toBe(false);
+    expect(migrated.releaseChannel).toBe("stable");
+    expect(persisted.migrations.legacyRendererSettingsImported).toBe(true);
+    expect(persisted.settings.daemon.manageBuiltInDaemon).toBe(false);
+  });
+
+  it("does not rewrite existing settings while reading them", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+    const raw = JSON.stringify({
+      version: 1,
+      settings: {
+        releaseChannel: "stable",
+        daemon: {
+          manageBuiltInDaemon: false,
+          keepRunningAfterQuit: true,
+        },
+      },
+      migrations: {
+        legacyRendererSettingsImported: false,
+      },
+    });
+    await writeFile(settingsFilePath(userDataPath), raw);
+    const store = createDesktopSettingsStore({ userDataPath });
+
+    const settings = await store.get();
+    const persisted = await readFile(settingsFilePath(userDataPath), "utf8");
+
+    expect(settings.daemon.manageBuiltInDaemon).toBe(false);
+    expect(persisted).toBe(raw);
+  });
+
   it("migrates desktop-owned values from legacy renderer settings once", async () => {
     const userDataPath = await createTempUserDataDir();
     directories.add(userDataPath);
