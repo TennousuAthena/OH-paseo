@@ -793,6 +793,10 @@ function createAssistantBlockId(params: { groupId: string; blockIndex: number })
   return `${params.groupId}:block:${params.blockIndex}`;
 }
 
+function getTrailingNewlineSuffix(text: string): string {
+  return /\n+$/.exec(text)?.[0] ?? "";
+}
+
 function getActiveAssistantHeadIndex(head: StreamItem[]): number {
   for (let index = head.length - 1; index >= 0; index -= 1) {
     if (head[index]?.kind === "assistant_message") {
@@ -832,7 +836,7 @@ function promoteCompletedAssistantBlocks(params: { tail: StreamItem[]; head: Str
   const blockGroupId = activeItem.blockGroupId ?? activeItem.id;
   const firstBlockIndex = activeItem.blockIndex ?? 0;
   const completedBlocks = blocks.slice(0, -1);
-  const liveBlock = blocks[blocks.length - 1] ?? "";
+  const liveBlock = `${blocks[blocks.length - 1] ?? ""}${getTrailingNewlineSuffix(activeItem.text)}`;
   const promotedItems = completedBlocks.map<AssistantMessageItem>((block, offset) => ({
     kind: "assistant_message",
     id: createAssistantBlockId({

@@ -955,6 +955,38 @@ describe("processAgentStreamEvents", () => {
     });
   });
 
+  it("preserves a live block trailing newline after promoting completed markdown blocks", () => {
+    const result = processAgentStreamEvents({
+      events: [
+        makeStreamReducerEvent(
+          makeTimelineEvent(
+            "Done. I added `[TimelineMerge] ...` logging around the suspicious merge",
+          ),
+          238,
+        ),
+        makeStreamReducerEvent(makeTimelineEvent("/reconcile paths.\n\nChanged:\n"), 239),
+        makeStreamReducerEvent(makeTimelineEvent("- [timeline-debug.ts]"), 240),
+      ],
+      currentTail: [],
+      currentHead: [],
+      currentCursor: undefined,
+      currentAgent: null,
+    });
+
+    expect(result.changedTail).toBe(true);
+    expect(result.changedHead).toBe(true);
+    expect(result.tail).toHaveLength(1);
+    expect(result.tail[0]).toMatchObject({
+      kind: "assistant_message",
+      text: "Done. I added `[TimelineMerge] ...` logging around the suspicious merge/reconcile paths.",
+    });
+    expect(result.head).toHaveLength(1);
+    expect(result.head[0]).toMatchObject({
+      kind: "assistant_message",
+      text: "Changed:\n- [timeline-debug.ts]",
+    });
+  });
+
   it("does not promote a markdown block that is still inside an open code fence", () => {
     const result = processAgentStreamEvents({
       events: [
