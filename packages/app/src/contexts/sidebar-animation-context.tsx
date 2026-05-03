@@ -7,10 +7,11 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { useWindowDimensions } from "react-native";
+import { Keyboard, useWindowDimensions } from "react-native";
 import { useSharedValue, withTiming, Easing, type SharedValue } from "react-native-reanimated";
 import { type GestureType } from "react-native-gesture-handler";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { isNative } from "@/constants/platform";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import {
   getLeftSidebarAnimationTargets,
@@ -65,9 +66,14 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
     const previousIsOpen = prevIsOpen.current;
     prevIsOpen.current = isOpen;
     prevWindowWidth.current = windowWidth;
+    const didOpen = !previousIsOpen && isOpen;
 
     if (!didStateChange) {
       return;
+    }
+
+    if (didOpen && isCompactLayout && isNative) {
+      Keyboard.dismiss();
     }
 
     // Gesture onEnd already started the animation on the UI thread — skip to avoid
@@ -99,7 +105,7 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
 
     translateX.value = targets.translateX;
     backdropOpacity.value = targets.backdropOpacity;
-  }, [isOpen, translateX, backdropOpacity, windowWidth, isGesturing]);
+  }, [isOpen, translateX, backdropOpacity, windowWidth, isGesturing, isCompactLayout]);
 
   const animateToOpen = useCallback(() => {
     "worklet";
