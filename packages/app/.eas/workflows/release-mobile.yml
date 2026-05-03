@@ -46,8 +46,6 @@ jobs:
     steps:
       - uses: eas/checkout
       - name: Install fastlane
-        working_directory: ./packages/app
         run: bundle install
       - name: Submit for review
-        working_directory: ./packages/app
         run: bundle exec fastlane ios submit_review
