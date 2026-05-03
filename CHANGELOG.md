@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.65-beta.4 - 2026-05-02
+## 0.1.65-beta.5 - 2026-05-03
 
 ### Added
 
@@ -31,6 +31,9 @@
 - Cursor CLI and other ACP custom providers launch reliably. ([#628](https://github.com/getpaseo/paseo/pull/628))
 - Daemon stays up when WebSocket clients disconnect mid-stream, and crashes now write a fatal log entry instead of disappearing silently. ([#613](https://github.com/getpaseo/paseo/pull/613) by [@yuruiz](https://github.com/yuruiz))
 - Long agent timelines reconnect cleanly over the relay instead of looping through disconnects while catching up. ([#657](https://github.com/getpaseo/paseo/pull/657) by [@fireblue](https://github.com/fireblue))
+- Agent timelines refresh with smaller catch-up requests when you reopen an agent.
+- Terminal snapshots flush reliably before clients reconnect.
+- Workspace reconnects avoid unnecessary refresh work when the focused workspace is already current.
 - Voice dictation keeps recording when the agent tab loses focus.
 - OpenCode mode picker now lists agents available in every mode. ([#606](https://github.com/getpaseo/paseo/pull/606) by [@thisisryanswift](https://github.com/thisisryanswift))
 - Codex plan approval panels no longer duplicate.

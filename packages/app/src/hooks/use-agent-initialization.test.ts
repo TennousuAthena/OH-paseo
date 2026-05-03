@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe("useAgentInitialization", () => {
-  it("always requests a canonical tail bootstrap even with an authoritative cursor", () => {
+  it("requests bounded canonical catch-up after the current cursor when authoritative history is loaded", () => {
     const client = makeClient();
     useSessionStore.getState().initializeSession(serverId, client as never);
     useSessionStore
@@ -34,6 +34,27 @@ describe("useAgentInitialization", () => {
         new Map([[agentId, { epoch: "epoch-1", startSeq: 1, endSeq: 42 }]]),
       );
     useSessionStore.getState().setAgentAuthoritativeHistoryApplied(serverId, agentId, true);
+
+    const { result } = renderHook(() =>
+      useAgentInitialization({ serverId, client: client as never }),
+    );
+
+    act(() => {
+      void result.current.ensureAgentIsInitialized(agentId);
+    });
+
+    expect(client.fetchAgentTimeline).toHaveBeenCalledWith(agentId, {
+      direction: "after",
+      cursor: { epoch: "epoch-1", seq: 42 },
+      limit: TIMELINE_FETCH_PAGE_SIZE,
+      projection: "canonical",
+    });
+    expect(getInitDeferred(getInitKey(serverId, agentId))?.requestDirection).toBe("after");
+  });
+
+  it("requests a bounded canonical tail when no authoritative cursor is available", () => {
+    const client = makeClient();
+    useSessionStore.getState().initializeSession(serverId, client as never);
 
     const { result } = renderHook(() =>
       useAgentInitialization({ serverId, client: client as never }),

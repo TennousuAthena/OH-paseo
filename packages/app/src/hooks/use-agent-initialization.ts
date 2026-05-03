@@ -42,13 +42,25 @@ export function useAgentInitialization({
         return existing.promise;
       }
 
-      const timelineRequest = {
-        direction: "tail" as const,
-        limit: TIMELINE_FETCH_PAGE_SIZE,
-        projection: "canonical" as const,
-      };
+      const session = useSessionStore.getState().sessions[serverId];
+      const cursor = session?.agentTimelineCursor.get(agentId);
+      const hasAuthoritativeHistory =
+        session?.agentAuthoritativeHistoryApplied.get(agentId) === true;
+      const timelineRequest =
+        hasAuthoritativeHistory && cursor
+          ? {
+              direction: "after" as const,
+              cursor: { epoch: cursor.epoch, seq: cursor.endSeq },
+              limit: TIMELINE_FETCH_PAGE_SIZE,
+              projection: "canonical" as const,
+            }
+          : {
+              direction: "tail" as const,
+              limit: TIMELINE_FETCH_PAGE_SIZE,
+              projection: "canonical" as const,
+            };
 
-      const deferred = createInitDeferred(key, "tail");
+      const deferred = createInitDeferred(key, timelineRequest.direction);
       const timeoutId = setTimeout(() => {
         setAgentInitializing(agentId, false);
         rejectInitDeferred(

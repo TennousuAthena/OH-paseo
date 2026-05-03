@@ -1749,7 +1749,7 @@ test("reloadAgentSession cancels active run and resumes existing session once th
   }
 });
 
-test("fetchTimeline returns full timeline with reset when cursor epoch is stale", async () => {
+test("fetchTimeline returns a bounded reset window when cursor epoch is stale", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-timeline-stale-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -1798,9 +1798,10 @@ test("fetchTimeline returns full timeline with reset when cursor epoch is stale"
   expect(result.reset).toBe(true);
   expect(result.staleCursor).toBe(true);
   expect(result.gap).toBe(false);
-  expect(result.rows).toHaveLength(3);
-  expect(result.rows[0]?.seq).toBe(1);
+  expect(result.rows).toHaveLength(1);
+  expect(result.rows[0]?.seq).toBe(3);
   expect(result.rows[result.rows.length - 1]?.seq).toBe(3);
+  expect(result.hasOlder).toBe(true);
 });
 
 test("getTimelineRows falls back to the in-memory timeline when no durable store is configured", async () => {

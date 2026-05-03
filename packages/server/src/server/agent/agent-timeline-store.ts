@@ -121,6 +121,28 @@ function fetchBefore(ctx: FetchContext): AgentTimelineFetchResult {
   };
 }
 
+function fetchReset(
+  ctx: FetchContext,
+  flags: { staleCursor: boolean; gap: boolean },
+): AgentTimelineFetchResult {
+  const { state, direction, limit, selectAll, minSeq, window } = ctx;
+  const rows =
+    selectAll || limit >= state.rows.length
+      ? state.rows.map(cloneRow)
+      : state.rows.slice(state.rows.length - limit).map(cloneRow);
+  return {
+    epoch: state.epoch,
+    direction,
+    reset: true,
+    staleCursor: flags.staleCursor,
+    gap: flags.gap,
+    window,
+    hasOlder: rows.length > 0 && rows[0]!.seq > minSeq,
+    hasNewer: false,
+    rows,
+  };
+}
+
 export class InMemoryAgentTimelineStore {
   private readonly states = new Map<string, AgentTimelineState>();
 
@@ -176,32 +198,23 @@ export class InMemoryAgentTimelineStore {
       nextSeq: state.nextSeq,
     };
 
+    const ctx: FetchContext = {
+      state,
+      direction,
+      limit,
+      selectAll,
+      cursor,
+      minSeq,
+      maxSeq,
+      window,
+    };
+
     if (cursor && typeof cursor.epoch === "string" && cursor.epoch !== state.epoch) {
-      return {
-        epoch: state.epoch,
-        direction,
-        reset: true,
-        staleCursor: true,
-        gap: false,
-        window,
-        hasOlder: false,
-        hasNewer: false,
-        rows: state.rows.map(cloneRow),
-      };
+      return fetchReset(ctx, { staleCursor: true, gap: false });
     }
 
     if (direction === "after" && cursor && state.rows.length > 0 && cursor.seq < minSeq - 1) {
-      return {
-        epoch: state.epoch,
-        direction,
-        reset: true,
-        staleCursor: false,
-        gap: true,
-        window,
-        hasOlder: false,
-        hasNewer: false,
-        rows: state.rows.map(cloneRow),
-      };
+      return fetchReset(ctx, { staleCursor: false, gap: true });
     }
 
     if (state.rows.length === 0) {
@@ -217,17 +230,6 @@ export class InMemoryAgentTimelineStore {
         rows: [],
       };
     }
-
-    const ctx: FetchContext = {
-      state,
-      direction,
-      limit,
-      selectAll,
-      cursor,
-      minSeq,
-      maxSeq,
-      window,
-    };
 
     if (direction === "tail") {
       return fetchTail(ctx);
