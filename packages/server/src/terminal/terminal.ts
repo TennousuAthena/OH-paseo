@@ -670,6 +670,29 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     }
     return false;
   });
+  terminal.parser.registerCsiHandler({ final: "n" }, (params) => {
+    if (params.length !== 1) {
+      return false;
+    }
+    if (params[0] === 5) {
+      ptyProcess.write("\x1b[0n");
+      return true;
+    }
+    if (params[0] === 6) {
+      const buffer = terminal.buffer.active;
+      ptyProcess.write(`\x1b[${buffer.cursorY + 1};${buffer.cursorX + 1}R`);
+      return true;
+    }
+    return false;
+  });
+  terminal.parser.registerCsiHandler({ prefix: "?", final: "n" }, (params) => {
+    if (params.length !== 1 || params[0] !== 6) {
+      return false;
+    }
+    const buffer = terminal.buffer.active;
+    ptyProcess.write(`\x1b[?${buffer.cursorY + 1};${buffer.cursorX + 1}R`);
+    return true;
+  });
 
   let disposeTitleChangeSubscription: { dispose(): void } | null = null;
   if (!lockedTitle) {

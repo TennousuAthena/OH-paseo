@@ -999,6 +999,33 @@ process.stdin.on("data", (chunk) => {
 process.stdout.write("\\x1b[c");
 `;
 
+const DSR_HELPER_SCRIPT = `process.stdin.setRawMode(true);
+process.stdin.resume();
+const mode = process.argv[2] || "cursor";
+const query = mode === "private-cursor" ? "\\x1b[?6n" : mode === "status" ? "\\x1b[5n" : "\\x1b[6n";
+const pattern = mode === "private-cursor" ? /\\x1b\\[\\?(\\d+);(\\d+)R/ : mode === "status" ? /\\x1b\\[0n/ : /\\x1b\\[(\\d+);(\\d+)R/;
+let buf = "";
+const timer = setTimeout(() => {
+  process.stdout.write("DSR_TIMEOUT\\n");
+  process.exit(2);
+}, 2500);
+process.stdin.on("data", (chunk) => {
+  buf += chunk.toString("binary");
+  const match = buf.match(pattern);
+  if (!match) {
+    return;
+  }
+  clearTimeout(timer);
+  if (mode === "status") {
+    process.stdout.write("DSR_OK:status\\n");
+  } else {
+    process.stdout.write("DSR_OK:" + match[1] + ":" + match[2] + "\\n");
+  }
+  process.exit(0);
+});
+process.stdout.write(query);
+`;
+
 function writeDaHelper(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   temporaryDirs.push(dir);
@@ -1007,12 +1034,28 @@ function writeDaHelper(prefix: string): string {
   return path;
 }
 
+function writeDsrHelper(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  temporaryDirs.push(dir);
+  const path = join(dir, "helper.cjs");
+  writeFileSync(path, DSR_HELPER_SCRIPT);
+  return path;
+}
+
 function isDaOkLine(line: string): boolean {
   return line.startsWith("DA_OK:");
 }
 
+function isDsrOkLine(line: string): boolean {
+  return line.startsWith("DSR_OK:");
+}
+
 function hasDaOkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
   return getLines(state).some(isDaOkLine);
+}
+
+function hasDsrOkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
+  return getLines(state).some(isDsrOkLine);
 }
 
 function lastNonEmptyLineIsPrompt(state: ReturnType<TerminalSession["getState"]>): boolean {
@@ -1058,6 +1101,63 @@ describe("terminal protocol queries", () => {
     session.send({ type: "input", data: `${process.execPath} ${helperPath}\r` });
     await waitForState(session, hasDaOkLine);
     await waitForState(session, lastNonEmptyLineIsPrompt);
+  });
+
+  it("delivers public DSR cursor-position replies to a foreground app on stdin", async () => {
+    const helperPath = writeDsrHelper("terminal-dsr-helper-");
+
+    const session = trackSession(
+      await createTerminal({
+        cwd: "/tmp",
+        shell: "/bin/sh",
+        env: { PS1: "$ " },
+      }),
+    );
+    await waitForLines(session, ["$"]);
+
+    session.send({ type: "input", data: `${process.execPath} ${helperPath} cursor\r` });
+    await waitForState(session, hasDsrOkLine);
+
+    const ack = getLines(session.getState()).find(isDsrOkLine) ?? "";
+    expect(ack).toMatch(/^DSR_OK:\d+:\d+$/);
+  });
+
+  it("delivers private DSR cursor-position replies to a foreground app on stdin", async () => {
+    const helperPath = writeDsrHelper("terminal-dsr-private-helper-");
+
+    const session = trackSession(
+      await createTerminal({
+        cwd: "/tmp",
+        shell: "/bin/sh",
+        env: { PS1: "$ " },
+      }),
+    );
+    await waitForLines(session, ["$"]);
+
+    session.send({ type: "input", data: `${process.execPath} ${helperPath} private-cursor\r` });
+    await waitForState(session, hasDsrOkLine);
+
+    const ack = getLines(session.getState()).find(isDsrOkLine) ?? "";
+    expect(ack).toMatch(/^DSR_OK:\d+:\d+$/);
+  });
+
+  it("delivers DSR terminal-status replies to a foreground app on stdin", async () => {
+    const helperPath = writeDsrHelper("terminal-dsr-status-helper-");
+
+    const session = trackSession(
+      await createTerminal({
+        cwd: "/tmp",
+        shell: "/bin/sh",
+        env: { PS1: "$ " },
+      }),
+    );
+    await waitForLines(session, ["$"]);
+
+    session.send({ type: "input", data: `${process.execPath} ${helperPath} status\r` });
+    await waitForState(session, hasDsrOkLine);
+
+    const ack = getLines(session.getState()).find(isDsrOkLine) ?? "";
+    expect(ack).toBe("DSR_OK:status");
   });
 });
 
