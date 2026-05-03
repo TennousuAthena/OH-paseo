@@ -16,7 +16,7 @@ describe("MockLoadTestAgentClient", () => {
     vi.useRealTimers();
   });
 
-  test("default model is a five minute foreground stream", async () => {
+  test("default model is a five minute foreground stream with token-rate intervals", async () => {
     const client = new MockLoadTestAgentClient();
 
     const models = await client.listModels({ cwd: "/tmp/mock-models", force: false });
@@ -26,12 +26,12 @@ describe("MockLoadTestAgentClient", () => {
       isDefault: true,
       metadata: {
         durationMs: 300_000,
-        intervalMs: 1000,
+        intervalMs: 40,
       },
     });
   });
 
-  test("emits repeated markdown, reasoning, and tool calls during a foreground turn", async () => {
+  test("emits sub-word tokens, reasoning, and sequential tool calls during a foreground turn", async () => {
     vi.useFakeTimers();
     const client = new MockLoadTestAgentClient();
     const session = await client.createSession({
@@ -65,39 +65,43 @@ describe("MockLoadTestAgentClient", () => {
     const timelineItems = events.flatMap((event): AgentTimelineItem[] =>
       event.type === "timeline" ? [event.item] : [],
     );
-    expect(timelineItems.find((item) => item.type === "reasoning")).toMatchObject({
-      type: "reasoning",
-      text: expect.stringContaining("Thinking chunk 1"),
+
+    const assistantTokens = timelineItems.filter((item) => item.type === "assistant_message");
+    const reasoningTokens = timelineItems.filter((item) => item.type === "reasoning");
+    const toolCalls = timelineItems.filter((item) => item.type === "tool_call");
+
+    // Many small token deltas, not a few big chunks.
+    expect(assistantTokens.length).toBeGreaterThan(200);
+    expect(reasoningTokens.length).toBeGreaterThan(20);
+
+    // Average token length should be sub-word (a few characters).
+    const avgTokenLength =
+      assistantTokens.reduce(
+        (sum, item) => sum + (item.type === "assistant_message" ? item.text.length : 0),
+        0,
+      ) / assistantTokens.length;
+    expect(avgTokenLength).toBeLessThan(10);
+
+    // First assistant token starts the cycle header.
+    expect(assistantTokens[0]).toMatchObject({
+      type: "assistant_message",
+      text: expect.stringContaining("##"),
     });
-    expect(
-      timelineItems.filter(
-        (item) =>
-          item.type === "assistant_message" && item.text.startsWith("## Synthetic Load Cycle 1\n"),
-      ),
-    ).toHaveLength(1);
-    expect(
-      timelineItems.filter((item) => item.type === "assistant_message" && item.text.length > 0)
-        .length,
-    ).toBeGreaterThan(4);
-    expect(
-      timelineItems.filter(
-        (item) =>
-          item.type === "tool_call" &&
-          item.name === "edit" &&
-          item.status === "running" &&
-          item.detail.type === "edit",
-      ),
-    ).toHaveLength(40);
-    expect(
-      timelineItems.filter(
-        (item) =>
-          item.type === "tool_call" &&
-          item.name === "bash" &&
-          item.status === "completed" &&
-          item.detail.type === "shell" &&
-          item.detail.output?.includes("mock load cycle"),
-      ),
-    ).toHaveLength(40);
+
+    // Sequential tool calls fire: read, grep, edit, bash.
+    const toolNames = toolCalls
+      .filter((item) => item.type === "tool_call" && item.status === "running")
+      .map((item) => (item.type === "tool_call" ? item.name : ""));
+    expect(toolNames.slice(0, 4)).toEqual(["read", "grep", "edit", "bash"]);
+
+    // Each tool transitions running → completed.
+    const completedNames = toolCalls
+      .filter((item) => item.type === "tool_call" && item.status === "completed")
+      .map((item) => (item.type === "tool_call" ? item.name : ""));
+    expect(completedNames).toContain("read");
+    expect(completedNames).toContain("grep");
+    expect(completedNames).toContain("edit");
+    expect(completedNames).toContain("bash");
   });
 
   test("interrupt cancels the active foreground turn and stops future chunks", async () => {
@@ -127,7 +131,7 @@ describe("MockLoadTestAgentClient", () => {
     expect(events).toHaveLength(eventCountAfterInterrupt);
   });
 
-  test("agent manager coalesces adjacent markdown chunks from the mock provider", async () => {
+  test("agent manager coalesces adjacent assistant tokens into fewer messages", async () => {
     vi.useFakeTimers();
     const workdir = mkdtempSync(join(tmpdir(), "paseo-mock-load-test-"));
     try {
@@ -155,20 +159,36 @@ describe("MockLoadTestAgentClient", () => {
       await resultPromise;
 
       const timeline = manager.getTimeline(agent.id);
-      const loadCycleDocuments = timeline.filter(
-        (item): item is Extract<AgentTimelineItem, { type: "assistant_message" }> =>
-          item.type === "assistant_message" && item.text.startsWith("## Synthetic Load Cycle "),
-      );
-      const editToolCalls = timeline.filter(
-        (item) => item.type === "tool_call" && item.name === "edit",
-      );
+      const assistantMessages = timeline.filter((item) => item.type === "assistant_message");
+      const toolCalls = timeline.filter((item) => item.type === "tool_call");
 
-      expect(loadCycleDocuments).toHaveLength(40);
-      expect(loadCycleDocuments[0]?.text).toContain("This paragraph is intentionally stable");
-      expect(editToolCalls).toHaveLength(40);
-      expect(
-        editToolCalls.every((item) => item.type === "tool_call" && item.status === "completed"),
-      ).toBe(true);
+      // The provider streams sub-word tokens; the coalescer batches them within
+      // its flush window, so the timeline must contain materially fewer messages
+      // than the underlying token deltas would suggest, and each message must
+      // hold multiple tokens worth of text.
+      expect(assistantMessages.length).toBeGreaterThan(0);
+      const totalAssistantChars = assistantMessages.reduce(
+        (sum, item) => sum + (item.type === "assistant_message" ? item.text.length : 0),
+        0,
+      );
+      const avgMessageLength = totalAssistantChars / assistantMessages.length;
+      expect(avgMessageLength).toBeGreaterThan(8);
+      const longestMessage = assistantMessages
+        .map((item) => (item.type === "assistant_message" ? item.text.length : 0))
+        .reduce((max, length) => Math.max(max, length), 0);
+      expect(longestMessage).toBeGreaterThan(20);
+
+      // First message includes the cycle header.
+      expect(assistantMessages[0]).toMatchObject({
+        type: "assistant_message",
+        text: expect.stringContaining("## Cycle 1"),
+      });
+
+      // Tool calls land in expected order at least once.
+      const runningTools = toolCalls
+        .filter((item) => item.type === "tool_call" && item.status === "completed")
+        .map((item) => (item.type === "tool_call" ? item.name : ""));
+      expect(runningTools).toEqual(expect.arrayContaining(["read", "grep", "edit", "bash"]));
     } finally {
       rmSync(workdir, { recursive: true, force: true });
     }

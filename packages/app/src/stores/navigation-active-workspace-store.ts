@@ -265,6 +265,7 @@ export function activateNavigationWorkspaceSelection(
   next: ActiveWorkspaceSelection,
   options: ActivateWorkspaceSelectionOptions = {},
 ) {
+  setLastWorkspaceRouteSelection(next);
   writeBrowserWorkspaceUrl(next, options);
   emitIfChanged(next);
 }

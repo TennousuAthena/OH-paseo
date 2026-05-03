@@ -24,6 +24,7 @@ import type {
   ListModelsOptions,
   ListPersistedAgentsOptions,
   PersistedAgentDescriptor,
+  ToolCallDetail,
   ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
 import { getAgentProviderDefinition } from "../provider-manifest.js";
@@ -32,7 +33,7 @@ export const MOCK_LOAD_TEST_PROVIDER_ID = "mock";
 export const MOCK_LOAD_TEST_DEFAULT_MODEL_ID = "five-minute-stream";
 const MOCK_LOAD_TEST_MODE_ID = "load-test";
 const MOCK_LOAD_TEST_DURATION_MS = 5 * 60 * 1000;
-const MOCK_LOAD_TEST_INTERVAL_MS = 1000;
+const MOCK_LOAD_TEST_INTERVAL_MS = 40;
 
 const CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -48,7 +49,8 @@ const MODELS: AgentModelDefinition[] = [
     provider: MOCK_LOAD_TEST_PROVIDER_ID,
     id: MOCK_LOAD_TEST_DEFAULT_MODEL_ID,
     label: "Five minute stream",
-    description: "Repeats synthetic markdown and tool-call timeline traffic for five minutes.",
+    description:
+      "Realistic agent flow streamed as sub-word tokens for five minutes (good for scroll/coalesce debugging).",
     isDefault: true,
     metadata: {
       durationMs: MOCK_LOAD_TEST_DURATION_MS,
@@ -57,22 +59,32 @@ const MODELS: AgentModelDefinition[] = [
   },
   {
     provider: MOCK_LOAD_TEST_PROVIDER_ID,
+    id: "thirty-minute-stream",
+    label: "Thirty minute stream",
+    description: "Long-running realistic stream for extended scroll-anchor debugging.",
+    metadata: {
+      durationMs: 30 * 60 * 1000,
+      intervalMs: 50,
+    },
+  },
+  {
+    provider: MOCK_LOAD_TEST_PROVIDER_ID,
     id: "one-minute-stream",
     label: "One minute stream",
-    description: "Shorter synthetic load stream for quick manual checks.",
+    description: "Shorter realistic stream for quick manual checks.",
     metadata: {
       durationMs: 60_000,
-      intervalMs: 500,
+      intervalMs: 40,
     },
   },
   {
     provider: MOCK_LOAD_TEST_PROVIDER_ID,
     id: "ten-second-stream",
     label: "Ten second stream",
-    description: "Fast synthetic load stream for tests and smoke checks.",
+    description: "Fast realistic stream for tests and smoke checks.",
     metadata: {
       durationMs: 10_000,
-      intervalMs: 250,
+      intervalMs: 5,
     },
   },
 ];
@@ -81,13 +93,23 @@ interface ActiveTurn {
   turnId: string;
   prompt: AgentPromptInput;
   startedAt: number;
-  iteration: number;
+  cycle: number;
   durationMs: number;
   intervalMs: number;
   timer: ReturnType<typeof setTimeout> | null;
   resolve: (result: AgentRunResult) => void;
   completed: Promise<AgentRunResult>;
+  queue: CycleEvent[];
+  emittedTokens: number;
+  turnStarted: boolean;
 }
+
+type CycleEvent =
+  | { kind: "assistant_token"; text: string }
+  | { kind: "reasoning_token"; text: string }
+  | { kind: "tool_running"; callId: string; name: string; detail: ToolCallDetail }
+  | { kind: "tool_completed"; callId: string; name: string; detail: ToolCallDetail }
+  | { kind: "usage" };
 
 interface LargeAgentStreamPayloadRequest {
   bytes: number;
@@ -175,47 +197,175 @@ function buildRepeatedPayload(bytes: number, prefix: string): string {
   return output.slice(0, bytes);
 }
 
-function buildMarkdownDocument(iteration: number, prompt: AgentPromptInput): string {
-  const promptPreview = promptToText(prompt).slice(0, 160) || "No prompt text supplied.";
+function tokenize(text: string): string[] {
+  const tokens: string[] = [];
+  const regex = /(\s*)(\S+)|(\s+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const [, leadingWs, word, lonelyWs] = match;
+    if (lonelyWs !== undefined) {
+      tokens.push(lonelyWs);
+      continue;
+    }
+    const ws = leadingWs ?? "";
+    const w = word ?? "";
+    if (w.length <= 5) {
+      tokens.push(ws + w);
+      continue;
+    }
+    tokens.push(ws + w.slice(0, 4));
+    for (let i = 4; i < w.length; i += 4) {
+      tokens.push(w.slice(i, i + 4));
+    }
+  }
+  return tokens;
+}
+
+function buildIntroParagraph(cycle: number): string {
   return [
-    `## Synthetic Load Cycle ${iteration}`,
+    `## Cycle ${cycle}`,
     "",
-    `Prompt preview: ${promptPreview}`,
-    "",
-    "| Signal | Value |",
-    "| --- | --- |",
-    `| cycle | ${iteration} |`,
-    "| stream | markdown + reasoning + tools |",
-    "",
-    "```ts",
-    `const cycle = ${iteration};`,
-    'const purpose = "exercise app parsing and terminal rendering under load";',
-    "```",
-    "",
-    "This paragraph is intentionally stable so repeated cycles produce predictable UI pressure.",
-    "",
+    "I'll take a look at the scroll anchor behavior you described. Let me start by walking through how the conversation list currently handles streaming updates and where the auto-scroll logic actually lives. My instinct is that the anchor is supposed to pin to the bottom only when the user is already there, but I want to confirm that against the code rather than guess. This kind of behavior is usually a thin layout effect over a ref, and the bugs tend to come from event ordering rather than the math itself, so the first useful step is to read the relevant files.",
   ].join("\n");
 }
 
-function splitText(text: string, chunks: number): string[] {
-  const size = Math.ceil(text.length / chunks);
-  const parts: string[] = [];
-  for (let index = 0; index < text.length; index += size) {
-    parts.push(text.slice(index, index + size));
+function buildReasoningText(): string {
+  return "Need to find the scroll container, the layout effect that watches for new messages, and any gesture handler that might fight with programmatic scrolling. Probably a ref on the FlatList plus a near-bottom threshold.";
+}
+
+function buildMidParagraph(): string {
+  return [
+    "Now I have a clearer picture. The auto-scroll uses a ref on the FlatList and tracks whether the user has scrolled away from the bottom by comparing the offset against the content size. There are a few subtle issues worth flagging before we change anything:",
+    "",
+    "- The threshold for 'near the bottom' is hardcoded at 80px, which feels too tight on dense content where headers and tool calls take up a lot of vertical space.",
+    "- We rely on `onContentSizeChange` to detect new content, but that fires after layout, not as the streaming delta arrives, so we end up scrolling one frame late on fast streams.",
+    "- The gesture handler does not pause scroll-to-bottom while the user is actively dragging, which means a drag in progress can be visually overridden mid-frame.",
+    "- Coalescing happens upstream, so the FlatList sees fewer updates than the wire — but each batch can still cause a relayout.",
+    "",
+    "Let me make a small adjustment to the threshold and add a flag for active gestures, then run a quick command to confirm the order of events when streaming is fast.",
+  ].join("\n");
+}
+
+function buildClosingParagraph(): string {
+  return "The change should keep scroll-to-bottom working when the user is at the bottom while not yanking the viewport when they are reading earlier messages. The bash output confirms the `userIsAtBottom` flag flips correctly during a simulated streaming burst, and the gesture flag suppresses scroll while a drag is active. If you want, I can follow up with a regression test that drives the FlatList with synthetic deltas at high frequency to lock in the behavior. For now, I'll stop here so you can take a look.";
+}
+
+function buildEditDiff(filePath: string): string {
+  return [
+    `diff --git a/${filePath} b/${filePath}`,
+    `--- a/${filePath}`,
+    `+++ b/${filePath}`,
+    "@@ -42,7 +42,9 @@",
+    "   const ref = useRef<FlatList>(null);",
+    "   const [userIsAtBottom, setUserIsAtBottom] = useState(true);",
+    "-  const NEAR_BOTTOM_PX = 80;",
+    "+  const NEAR_BOTTOM_PX = 160;",
+    "+  const isDraggingRef = useRef(false);",
+    "",
+    "-  if (userIsAtBottom) ref.current?.scrollToEnd({ animated: true });",
+    "+  if (userIsAtBottom && !isDraggingRef.current) {",
+    "+    ref.current?.scrollToEnd({ animated: true });",
+    "+  }",
+  ].join("\n");
+}
+
+function buildCycleQueue(turnId: string, cycle: number): CycleEvent[] {
+  const queue: CycleEvent[] = [];
+
+  for (const tok of tokenize(buildIntroParagraph(cycle))) {
+    queue.push({ kind: "assistant_token", text: tok });
   }
-  return parts;
+
+  for (const tok of tokenize(buildReasoningText())) {
+    queue.push({ kind: "reasoning_token", text: tok });
+  }
+
+  const readDetail: ToolCallDetail = {
+    type: "read",
+    filePath: "packages/app/src/components/conversation-list.tsx",
+  };
+  const readId = `${turnId}:read:${cycle}`;
+  queue.push({ kind: "tool_running", callId: readId, name: "read", detail: readDetail });
+  queue.push({
+    kind: "tool_completed",
+    callId: readId,
+    name: "read",
+    detail: {
+      ...readDetail,
+      content:
+        "export function ConversationList() {\n  const ref = useRef<FlatList>(null);\n  // ...\n}",
+    },
+  });
+
+  const grepDetail: ToolCallDetail = {
+    type: "search",
+    query: "scrollToEnd",
+    toolName: "grep",
+    mode: "files_with_matches",
+  };
+  const grepId = `${turnId}:grep:${cycle}`;
+  queue.push({ kind: "tool_running", callId: grepId, name: "grep", detail: grepDetail });
+  queue.push({
+    kind: "tool_completed",
+    callId: grepId,
+    name: "grep",
+    detail: {
+      ...grepDetail,
+      filePaths: [
+        "packages/app/src/components/conversation-list.tsx",
+        "packages/app/src/hooks/use-scroll-anchor.ts",
+      ],
+      numFiles: 2,
+      numMatches: 5,
+    },
+  });
+
+  for (const tok of tokenize(buildMidParagraph())) {
+    queue.push({ kind: "assistant_token", text: tok });
+  }
+
+  const editFile = "packages/app/src/hooks/use-scroll-anchor.ts";
+  const editDetail: ToolCallDetail = {
+    type: "edit",
+    filePath: editFile,
+    oldString: "const NEAR_BOTTOM_PX = 80;",
+    newString: "const NEAR_BOTTOM_PX = 160;",
+    unifiedDiff: buildEditDiff(editFile),
+  };
+  const editId = `${turnId}:edit:${cycle}`;
+  queue.push({ kind: "tool_running", callId: editId, name: "edit", detail: editDetail });
+  queue.push({ kind: "tool_completed", callId: editId, name: "edit", detail: editDetail });
+
+  const shellDetail: ToolCallDetail = {
+    type: "shell",
+    command: "node scripts/simulate-stream-burst.mjs",
+    cwd: "/tmp/paseo-mock-load",
+    output:
+      "[burst] tick 1 userIsAtBottom=true\n[burst] tick 2 userIsAtBottom=true\n[burst] drag-start isDragging=true\n[burst] tick 3 suppressed\n[burst] drag-end isDragging=false\n",
+    exitCode: 0,
+  };
+  const shellId = `${turnId}:bash:${cycle}`;
+  queue.push({ kind: "tool_running", callId: shellId, name: "bash", detail: shellDetail });
+  queue.push({ kind: "tool_completed", callId: shellId, name: "bash", detail: shellDetail });
+
+  for (const tok of tokenize(buildClosingParagraph())) {
+    queue.push({ kind: "assistant_token", text: tok });
+  }
+
+  queue.push({ kind: "usage" });
+
+  return queue;
 }
 
 function createToolCall(input: {
-  turnId: string;
-  iteration: number;
+  callId: string;
   name: string;
   status: ToolCallTimelineItem["status"];
-  detail: ToolCallTimelineItem["detail"];
+  detail: ToolCallDetail;
 }): ToolCallTimelineItem {
   return {
     type: "tool_call",
-    callId: `${input.turnId}:${input.name}:${input.iteration}`,
+    callId: input.callId,
     name: input.name,
     status: input.status,
     error: null,
@@ -330,12 +480,15 @@ export class MockLoadTestAgentSession implements AgentSession {
       turnId,
       prompt,
       startedAt: Date.now(),
-      iteration: 0,
+      cycle: 0,
       durationMs: profile.durationMs,
       intervalMs: profile.intervalMs,
       timer: null,
       resolve,
       completed,
+      queue: [],
+      emittedTokens: 0,
+      turnStarted: false,
     };
     this.activeTurn = turn;
 
@@ -608,8 +761,7 @@ export class MockLoadTestAgentSession implements AgentSession {
       this.emitTimeline(
         turn.turnId,
         createToolCall({
-          turnId: turn.turnId,
-          iteration: 0,
+          callId: `${turn.turnId}:edit:large`,
           name: "edit",
           status: "completed",
           detail: {
@@ -623,8 +775,7 @@ export class MockLoadTestAgentSession implements AgentSession {
       this.emitTimeline(
         turn.turnId,
         createToolCall({
-          turnId: turn.turnId,
-          iteration: 0,
+          callId: `${turn.turnId}:read:large`,
           name: "read",
           status: "completed",
           detail: {
@@ -669,7 +820,8 @@ export class MockLoadTestAgentSession implements AgentSession {
     }
 
     this.clearTurnTimer(turn);
-    if (turn.iteration === 0) {
+    if (!turn.turnStarted) {
+      turn.turnStarted = true;
       this.emit({
         type: "turn_started",
         provider: this.provider,
@@ -683,103 +835,71 @@ export class MockLoadTestAgentSession implements AgentSession {
       return;
     }
 
-    turn.iteration += 1;
-    this.emitIteration(turn);
+    if (turn.queue.length === 0) {
+      turn.cycle += 1;
+      turn.queue = buildCycleQueue(turn.turnId, turn.cycle);
+    }
+
+    const event = turn.queue.shift();
+    if (event) {
+      this.dispatchCycleEvent(turn, event);
+    }
+
     this.schedule(turn, turn.intervalMs);
   }
 
-  private emitIteration(turn: ActiveTurn): void {
-    const { turnId, iteration, prompt } = turn;
-    this.emitTimeline(turnId, {
-      type: "reasoning",
-      text: `Thinking chunk ${iteration}: simulate planning pressure before rendering markdown.\n`,
-    });
-
-    for (const chunk of splitText(buildMarkdownDocument(iteration, prompt), 4)) {
-      this.emitTimeline(turnId, {
-        type: "assistant_message",
-        text: chunk,
-      });
+  private dispatchCycleEvent(turn: ActiveTurn, event: CycleEvent): void {
+    switch (event.kind) {
+      case "assistant_token": {
+        turn.emittedTokens += 1;
+        this.emitTimeline(turn.turnId, {
+          type: "assistant_message",
+          text: event.text,
+        });
+        return;
+      }
+      case "reasoning_token": {
+        turn.emittedTokens += 1;
+        this.emitTimeline(turn.turnId, {
+          type: "reasoning",
+          text: event.text,
+        });
+        return;
+      }
+      case "tool_running":
+      case "tool_completed": {
+        this.emitTimeline(
+          turn.turnId,
+          createToolCall({
+            callId: event.callId,
+            name: event.name,
+            status: event.kind === "tool_running" ? "running" : "completed",
+            detail: event.detail,
+          }),
+        );
+        return;
+      }
+      case "usage": {
+        this.emit({
+          type: "usage_updated",
+          provider: this.provider,
+          turnId: turn.turnId,
+          usage: {
+            inputTokens: turn.cycle * 32,
+            outputTokens: turn.emittedTokens,
+            contextWindowUsedTokens: turn.emittedTokens * 2,
+            contextWindowMaxTokens: 128_000,
+          },
+        });
+        return;
+      }
     }
-
-    const editDetail = {
-      type: "edit" as const,
-      filePath: `src/load-test-${iteration}.ts`,
-      oldString: "before",
-      newString: "after",
-      unifiedDiff: [
-        `diff --git a/src/load-test-${iteration}.ts b/src/load-test-${iteration}.ts`,
-        "@@",
-        "-before",
-        "+after",
-      ].join("\n"),
-    };
-    this.emitTimeline(
-      turnId,
-      createToolCall({
-        turnId,
-        iteration,
-        name: "edit",
-        status: "running",
-        detail: editDetail,
-      }),
-    );
-    this.emitTimeline(
-      turnId,
-      createToolCall({
-        turnId,
-        iteration,
-        name: "edit",
-        status: "completed",
-        detail: editDetail,
-      }),
-    );
-
-    const shellDetail = {
-      type: "shell" as const,
-      command: `printf 'mock load cycle ${iteration}\\n'`,
-      cwd: "/tmp/paseo-mock-load",
-      output: `mock load cycle ${iteration}\n`,
-      exitCode: 0,
-    };
-    this.emitTimeline(
-      turnId,
-      createToolCall({
-        turnId,
-        iteration,
-        name: "bash",
-        status: "running",
-        detail: shellDetail,
-      }),
-    );
-    this.emitTimeline(
-      turnId,
-      createToolCall({
-        turnId,
-        iteration,
-        name: "bash",
-        status: "completed",
-        detail: shellDetail,
-      }),
-    );
-
-    this.emit({
-      type: "usage_updated",
-      provider: this.provider,
-      turnId,
-      usage: {
-        inputTokens: iteration * 32,
-        outputTokens: iteration * 128,
-        contextWindowUsedTokens: iteration * 160,
-        contextWindowMaxTokens: 128_000,
-      },
-    });
   }
 
   private finishTurn(turn: ActiveTurn): void {
     this.emitTimeline(turn.turnId, {
       type: "assistant_message",
-      text: "## Synthetic load test complete\n\nThe mock provider finished its foreground turn.\n",
+      text: "\n\n_(end of synthetic stream)_\n",
     });
     this.finishTurnWithText(turn, "Synthetic load test complete");
   }
@@ -787,9 +907,9 @@ export class MockLoadTestAgentSession implements AgentSession {
   private finishTurnWithText(turn: ActiveTurn, finalText: string): void {
     this.activeTurn = null;
     const usage = {
-      inputTokens: turn.iteration * 32,
-      outputTokens: turn.iteration * 128,
-      contextWindowUsedTokens: turn.iteration * 160,
+      inputTokens: turn.cycle * 32,
+      outputTokens: turn.emittedTokens,
+      contextWindowUsedTokens: turn.emittedTokens * 2,
       contextWindowMaxTokens: 128_000,
     };
     this.emit({
