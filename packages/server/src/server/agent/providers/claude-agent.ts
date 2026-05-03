@@ -49,6 +49,7 @@ import type {
   AgentPermissionAction,
   AgentCapabilityFlags,
   AgentClient,
+  AgentCreateSessionOptions,
   AgentLaunchContext,
   AgentMetadata,
   AgentMode,
@@ -177,6 +178,7 @@ interface ClaudeAgentSessionOptions {
   runtimeSettings?: ProviderRuntimeSettings;
   handle?: AgentPersistenceHandle;
   launchEnv?: Record<string, string>;
+  persistSession?: boolean;
   logger: Logger;
   queryFactory?: typeof query;
 }
@@ -316,6 +318,7 @@ interface ClaudeOptionsLogSummary {
   hasSpawnOverride: boolean;
   hasStderrHandler: boolean;
   pathToClaudeCodeExecutable: string | null;
+  persistSession: boolean | null;
 }
 
 const MAX_RECENT_STDERR_CHARS = 4000;
@@ -363,6 +366,7 @@ function summarizeClaudeOptionsForLog(options: ClaudeOptions): ClaudeOptionsLogS
       typeof options.pathToClaudeCodeExecutable === "string"
         ? options.pathToClaudeCodeExecutable
         : null,
+    persistSession: typeof options.persistSession === "boolean" ? options.persistSession : null,
   };
 }
 
@@ -1151,12 +1155,14 @@ export class ClaudeAgentClient implements AgentClient {
   async createSession(
     config: AgentSessionConfig,
     launchContext?: AgentLaunchContext,
+    options?: AgentCreateSessionOptions,
   ): Promise<AgentSession> {
     const claudeConfig = this.assertConfig(config);
     return new ClaudeAgentSession(claudeConfig, {
       defaults: this.defaults,
       runtimeSettings: this.runtimeSettings,
       launchEnv: launchContext?.env,
+      persistSession: options?.persistSession,
       logger: this.logger,
       queryFactory: this.queryFactory,
     });
@@ -1441,6 +1447,7 @@ class ClaudeAgentSession implements AgentSession {
   private readonly launchEnv?: Record<string, string>;
   private readonly defaults?: { agents?: Record<string, AgentDefinition> };
   private readonly runtimeSettings?: ProviderRuntimeSettings;
+  private readonly persistSession?: boolean;
   private readonly logger: Logger;
   private readonly queryFactory: typeof query;
   private query: Query | null = null;
@@ -1488,6 +1495,7 @@ class ClaudeAgentSession implements AgentSession {
     this.launchEnv = options.launchEnv;
     this.defaults = options.defaults;
     this.runtimeSettings = options.runtimeSettings;
+    this.persistSession = options.persistSession;
     this.logger = options.logger;
     this.queryFactory = options.queryFactory ?? query;
     const handle = options.handle;
@@ -2216,6 +2224,7 @@ class ClaudeAgentSession implements AgentSession {
       ...(thinking ? { thinking } : {}),
       ...(effort ? { effort } : {}),
       ...extraClaudeOptions,
+      ...(this.persistSession === undefined ? {} : { persistSession: this.persistSession }),
       env: sdkEnv,
     };
 

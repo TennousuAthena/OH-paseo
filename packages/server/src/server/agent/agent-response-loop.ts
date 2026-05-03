@@ -70,6 +70,7 @@ export interface StructuredAgentGenerationOptions<T> {
   manager: AgentManager;
   agentConfig: AgentSessionConfig;
   agentId?: string;
+  persistSession?: boolean;
   prompt: string;
   schema: z.ZodType<T> | JsonSchema;
   maxRetries?: number;
@@ -86,6 +87,7 @@ export interface StructuredAgentGenerationWithFallbackOptions<T> {
     AgentSessionConfig,
     "provider" | "cwd" | "model" | "thinkingOptionId"
   >;
+  persistSession?: boolean;
   maxRetries?: number;
   schemaName?: string;
   runner?: <TResult>(options: StructuredAgentGenerationOptions<TResult>) => Promise<TResult>;
@@ -339,12 +341,15 @@ export async function getStructuredAgentResponse<T>(
 export async function generateStructuredAgentResponse<T>(
   options: StructuredAgentGenerationOptions<T>,
 ): Promise<T> {
-  const { manager, agentConfig, agentId, prompt, schema, maxRetries, schemaName } = options;
+  const { manager, agentConfig, agentId, persistSession, prompt, schema, maxRetries, schemaName } =
+    options;
   const modeId =
     agentConfig.modeId ??
     getAgentProviderDefinition(agentConfig.provider).defaultModeId ??
     undefined;
-  const agent = await manager.createAgent({ ...agentConfig, modeId }, agentId);
+  const agent = await manager.createAgent({ ...agentConfig, modeId }, agentId, {
+    persistSession,
+  });
   try {
     const caller: AgentCaller = async (nextPrompt) => {
       const result = await manager.runAgent(agent.id, nextPrompt);
@@ -388,6 +393,7 @@ export async function generateStructuredAgentResponseWithFallback<T>(
     schema,
     providers,
     agentConfigOverrides,
+    persistSession,
     maxRetries,
     schemaName,
     runner,
@@ -423,6 +429,7 @@ export async function generateStructuredAgentResponseWithFallback<T>(
         schema,
         maxRetries,
         schemaName,
+        persistSession,
         agentConfig: {
           ...agentConfigOverrides,
           provider: candidate.provider,

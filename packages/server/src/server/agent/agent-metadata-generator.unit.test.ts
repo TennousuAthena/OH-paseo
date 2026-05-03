@@ -86,7 +86,10 @@ describe("agent metadata generator auto-title", () => {
     });
 
     expect(generateStructured).toHaveBeenCalledWith(
-      expect.objectContaining({ cwd: "/tmp/repo/metadata-worktree" }),
+      expect.objectContaining({
+        cwd: "/tmp/repo/metadata-worktree",
+        persistSession: false,
+      }),
     );
     expect(setTitle).toHaveBeenCalledWith("agent-suppressed-branch", "Generated title");
   });

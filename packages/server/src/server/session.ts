@@ -3897,6 +3897,7 @@ export class Session {
         schemaName: "CommitMessage",
         maxRetries: 2,
         providers: DEFAULT_STRUCTURED_GENERATION_PROVIDERS,
+        persistSession: false,
         agentConfigOverrides: {
           title: "Commit generator",
           internal: true,
@@ -3963,6 +3964,7 @@ export class Session {
         schemaName: "PullRequest",
         maxRetries: 2,
         providers: DEFAULT_STRUCTURED_GENERATION_PROVIDERS,
+        persistSession: false,
         agentConfigOverrides: {
           title: "PR generator",
           internal: true,

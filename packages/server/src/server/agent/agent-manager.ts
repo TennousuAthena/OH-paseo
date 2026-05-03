@@ -12,6 +12,7 @@ import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import type {
   AgentCapabilityFlags,
   AgentClient,
+  AgentCreateSessionOptions,
   AgentFeature,
   AgentLaunchContext,
   AgentSlashCommand,
@@ -727,6 +728,7 @@ export class AgentManager {
       labels?: Record<string, string>;
       workspaceId?: string;
       initialPrompt?: string;
+      persistSession?: boolean;
     },
   ): Promise<ManagedAgent> {
     const resolvedAgentId = validateAgentId(agentId ?? this.idFactory(), "createAgent");
@@ -749,11 +751,20 @@ export class AgentManager {
     const client = await this.requireAvailableClient({
       provider: normalizedConfig.provider,
     });
-    const session = await client.createSession(normalizedConfig, launchContext);
+    const createOptions = this.buildCreateSessionOptions(options);
+    const session = await client.createSession(normalizedConfig, launchContext, createOptions);
     return this.registerSession(session, normalizedConfig, resolvedAgentId, {
       labels: options?.labels,
       workspaceId: options?.workspaceId,
     });
+  }
+
+  private buildCreateSessionOptions(options?: {
+    persistSession?: boolean;
+  }): AgentCreateSessionOptions | undefined {
+    return options?.persistSession === undefined
+      ? undefined
+      : { persistSession: options.persistSession };
   }
 
   // Reconstruct an agent from provider persistence. Callers should explicitly

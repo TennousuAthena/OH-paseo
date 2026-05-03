@@ -9,6 +9,7 @@ import { AgentManager } from "./agent-manager.js";
 import { AgentStorage } from "./agent-storage.js";
 import type {
   AgentClient,
+  AgentCreateSessionOptions,
   AgentFeature,
   AgentLaunchContext,
   AgentProvider,
@@ -703,6 +704,48 @@ test("createAgent passes daemon launch env through the provider launch context",
       PASEO_AGENT_ID: snapshot.id,
     },
   });
+});
+
+test("createAgent passes persistSession to provider create options", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+
+  class CaptureClient extends TestAgentClient {
+    lastCreateOptions: AgentCreateSessionOptions | undefined;
+
+    override async createSession(
+      config: AgentSessionConfig,
+      _launchContext?: AgentLaunchContext,
+      options?: AgentCreateSessionOptions,
+    ): Promise<AgentSession> {
+      this.lastCreateOptions = options;
+      return new TestAgentSession(config);
+    }
+  }
+
+  const client = new CaptureClient();
+  const manager = new AgentManager({
+    clients: {
+      codex: client,
+    },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000104",
+  });
+
+  await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+    },
+    undefined,
+    { persistSession: false },
+  );
+
+  expect(client.lastCreateOptions).toEqual({ persistSession: false });
+
+  rmSync(workdir, { recursive: true, force: true });
 });
 
 test("createAgent injects paseo MCP server when manager has an MCP base URL", async () => {

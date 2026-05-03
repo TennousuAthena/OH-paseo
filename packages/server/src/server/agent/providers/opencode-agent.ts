@@ -16,6 +16,7 @@ import { z } from "zod";
 import type {
   AgentCapabilityFlags,
   AgentClient,
+  AgentCreateSessionOptions,
   AgentLaunchContext,
   AgentMode,
   AgentModelDefinition,
@@ -1039,6 +1040,7 @@ export class OpenCodeAgentClient implements AgentClient {
   async createSession(
     config: AgentSessionConfig,
     _launchContext?: AgentLaunchContext,
+    options?: AgentCreateSessionOptions,
   ): Promise<AgentSession> {
     const openCodeConfig = this.assertConfig(config);
     const acquisition = await this.serverManager.acquire({ force: false });
@@ -1073,6 +1075,7 @@ export class OpenCodeAgentClient implements AgentClient {
         this.logger,
         new Map(this.modelContextWindows),
         acquisition.release,
+        options?.persistSession,
       );
     } catch (error) {
       acquisition.release();
@@ -2218,6 +2221,8 @@ class OpenCodeAgentSession implements AgentSession {
   private pendingChildToolPartsBySessionId = new Map<string, OpenCodeToolPartEventPart[]>();
   private selectedModelContextWindowMaxTokens: number | undefined;
   private releaseServer: (() => void) | null;
+  private readonly persistSession: boolean;
+  private deletedFromProvider = false;
   constructor(
     config: OpenCodeAgentConfig,
     client: OpencodeClient,
@@ -2225,6 +2230,7 @@ class OpenCodeAgentSession implements AgentSession {
     logger: Logger,
     modelContextWindowsByModelKey: ReadonlyMap<string, number> = new Map(),
     releaseServer?: () => void,
+    persistSession = true,
   ) {
     this.config = config;
     this.client = client;
@@ -2233,6 +2239,7 @@ class OpenCodeAgentSession implements AgentSession {
     this.modelContextWindowsByModelKey = modelContextWindowsByModelKey;
     this.currentMode = normalizeOpenCodeModeId(config.modeId);
     this.releaseServer = releaseServer ?? null;
+    this.persistSession = persistSession;
     this.selectedModelContextWindowMaxTokens = this.resolveConfiguredModelContextWindowMaxTokens(
       config.model,
     );
@@ -2831,11 +2838,33 @@ class OpenCodeAgentSession implements AgentSession {
         directory: this.config.cwd,
         logger: this.logger,
       });
+      await this.deleteProviderSessionIfEphemeral();
       this.subscribers.clear();
       this.activeForegroundTurnId = null;
     } finally {
       this.releaseServer?.();
       this.releaseServer = null;
+    }
+  }
+
+  private async deleteProviderSessionIfEphemeral(): Promise<void> {
+    if (this.persistSession || this.deletedFromProvider) {
+      return;
+    }
+    this.deletedFromProvider = true;
+    try {
+      const response = await this.client.session.delete({
+        sessionID: this.sessionId,
+        directory: this.config.cwd,
+      });
+      if (response.error) {
+        throw new Error(`OpenCode session.delete failed: ${JSON.stringify(response.error)}`);
+      }
+    } catch (error) {
+      this.logger.debug(
+        { err: error, sessionId: this.sessionId },
+        "Failed to delete non-persistent OpenCode session",
+      );
     }
   }
 

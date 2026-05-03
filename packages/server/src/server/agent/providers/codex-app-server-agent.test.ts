@@ -83,6 +83,66 @@ function asInternals(session: CodexTestSession): CodexSessionTestAccess {
 }
 
 describe("Codex app-server provider", () => {
+  test("passes ephemeral: true to thread/start when constructed as ephemeral", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const fakeClient: CodexClientLike = {
+      async request(method: string, params?: unknown) {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "ephemeral-thread" } };
+        }
+        return null;
+      },
+    };
+
+    const session = new __codexAppServerInternals.CodexAppServerAgentSession(
+      createConfig({ thinkingOptionId: "medium" }),
+      null,
+      createTestLogger(),
+      () => {
+        throw new Error("Test session cannot spawn Codex app-server");
+      },
+      {},
+      true,
+    );
+    (session as unknown as { client: CodexClientLike }).client = fakeClient;
+
+    await (session as unknown as { ensureThread: () => Promise<void> }).ensureThread();
+
+    const startCall = requests.find((req) => req.method === "thread/start");
+    expect(startCall).toBeDefined();
+    expect(startCall?.params).toMatchObject({ ephemeral: true });
+  });
+
+  test("omits ephemeral from thread/start by default", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const fakeClient: CodexClientLike = {
+      async request(method: string, params?: unknown) {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "persistent-thread" } };
+        }
+        return null;
+      },
+    };
+
+    const session = new __codexAppServerInternals.CodexAppServerAgentSession(
+      createConfig({ thinkingOptionId: "medium" }),
+      null,
+      createTestLogger(),
+      () => {
+        throw new Error("Test session cannot spawn Codex app-server");
+      },
+    );
+    (session as unknown as { client: CodexClientLike }).client = fakeClient;
+
+    await (session as unknown as { ensureThread: () => Promise<void> }).ensureThread();
+
+    const startCall = requests.find((req) => req.method === "thread/start");
+    expect(startCall).toBeDefined();
+    expect((startCall!.params as Record<string, unknown>).ephemeral).toBeUndefined();
+  });
+
   test("disposes an unresponsive app-server child with SIGKILL", async () => {
     vi.useFakeTimers();
     const child = new EventEmitter() as ChildProcessWithoutNullStreams;

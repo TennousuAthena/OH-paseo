@@ -472,6 +472,14 @@ export interface AgentLaunchContext {
   env?: Record<string, string>;
 }
 
+export interface AgentCreateSessionOptions {
+  /**
+   * Whether the provider should leave a durable native session behind.
+   * Defaults to true. Providers that cannot honor false should no-op.
+   */
+  persistSession?: boolean;
+}
+
 /**
  * Returned by respondToPermission when the permission resolution requires
  * a follow-up turn (e.g. Codex plan approval → implementation).
@@ -523,6 +531,7 @@ export interface AgentClient {
   createSession(
     config: AgentSessionConfig,
     launchContext?: AgentLaunchContext,
+    options?: AgentCreateSessionOptions,
   ): Promise<AgentSession>;
   resumeSession(
     handle: AgentPersistenceHandle,

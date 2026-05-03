@@ -61,6 +61,7 @@ export async function generateBranchNameFromFirstAgentContext(
       schemaName: "BranchName",
       maxRetries: 2,
       providers: DEFAULT_STRUCTURED_GENERATION_PROVIDERS,
+      persistSession: false,
       agentConfigOverrides: {
         title: "Branch name generator",
         internal: true,

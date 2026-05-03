@@ -566,6 +566,54 @@ describe("OpenCode adapter context-window normalization", () => {
 });
 
 describe("OpenCode adapter startTurn error handling", () => {
+  test("deletes provider session on close when persistence is disabled", async () => {
+    const fakeClient = {
+      session: {
+        abort: vi.fn().mockResolvedValue({ error: null }),
+        update: vi.fn().mockResolvedValue({ error: null }),
+        delete: vi.fn().mockResolvedValue({ error: null }),
+      },
+    } as never;
+
+    const session = new __openCodeInternals.OpenCodeAgentSession(
+      { provider: "opencode", cwd: "/tmp/test" },
+      fakeClient,
+      "ses_unit_test",
+      createTestLogger(),
+      new Map(),
+      undefined,
+      false,
+    );
+
+    await session.close();
+
+    expect(fakeClient.session.delete).toHaveBeenCalledWith({
+      sessionID: "ses_unit_test",
+      directory: "/tmp/test",
+    });
+  });
+
+  test("does not delete provider session on close by default", async () => {
+    const fakeClient = {
+      session: {
+        abort: vi.fn().mockResolvedValue({ error: null }),
+        update: vi.fn().mockResolvedValue({ error: null }),
+        delete: vi.fn().mockResolvedValue({ error: null }),
+      },
+    } as never;
+
+    const session = new __openCodeInternals.OpenCodeAgentSession(
+      { provider: "opencode", cwd: "/tmp/test" },
+      fakeClient,
+      "ses_unit_test",
+      createTestLogger(),
+    );
+
+    await session.close();
+
+    expect(fakeClient.session.delete).not.toHaveBeenCalled();
+  });
+
   test("emits turn_failed when client.session.promptAsync throws synchronously", async () => {
     // Async iterable that never yields and never resolves. The IIFE in
     // startTurn synchronously hits the promptAsync throw and finishes the

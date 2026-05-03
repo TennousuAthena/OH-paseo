@@ -1292,6 +1292,15 @@ describe("session checkout commit handling", () => {
       mode: "uncommitted",
       includeStructured: true,
     });
+    expect(agentResponseMocks.generateStructuredAgentResponseWithFallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        persistSession: false,
+        agentConfigOverrides: expect.objectContaining({
+          title: "Commit generator",
+          internal: true,
+        }),
+      }),
+    );
     expect(checkoutGitMocks.commitChanges).toHaveBeenCalledWith("/tmp/request-worktree", {
       message: "Update file",
       addAll: true,
@@ -1381,6 +1390,15 @@ describe("session checkout pull request creation", () => {
       baseRef: "main",
       includeStructured: true,
     });
+    expect(agentResponseMocks.generateStructuredAgentResponseWithFallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        persistSession: false,
+        agentConfigOverrides: expect.objectContaining({
+          title: "PR generator",
+          internal: true,
+        }),
+      }),
+    );
     expect(checkoutGitMocks.createPullRequest).toHaveBeenCalledWith(
       "/tmp/request-worktree",
       {

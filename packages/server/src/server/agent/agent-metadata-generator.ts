@@ -115,6 +115,7 @@ export async function generateAndApplyAgentMetadata(
       schemaName: "AgentMetadata",
       maxRetries: 2,
       providers: DEFAULT_STRUCTURED_GENERATION_PROVIDERS,
+      persistSession: false,
       agentConfigOverrides: {
         title: "Agent metadata generator",
         internal: true,

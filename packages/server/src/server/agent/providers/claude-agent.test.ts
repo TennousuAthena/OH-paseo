@@ -439,6 +439,68 @@ describe("ClaudeAgentSession context window usage", () => {
     });
   }
 
+  test("passes persistSession through to the Claude SDK query options", async () => {
+    const createResultTurn = (sessionId: string) => [
+      {
+        type: "system",
+        subtype: "init",
+        session_id: sessionId,
+        permissionMode: "default",
+      },
+      {
+        type: "result",
+        subtype: "success",
+        duration_ms: 10,
+        duration_api_ms: 8,
+        is_error: false,
+        num_turns: 1,
+        result: "done",
+        stop_reason: null,
+        total_cost_usd: 0,
+        usage: {},
+        permission_denials: [],
+        uuid: `${sessionId}-result`,
+        session_id: sessionId,
+      },
+    ];
+
+    const nonPersistedQueryFactory = createQueryFactoryForTurns([createResultTurn("session-1")]);
+    const nonPersistedClient = new ClaudeAgentClient({
+      logger,
+      queryFactory: nonPersistedQueryFactory,
+    });
+    const nonPersistedSession = await nonPersistedClient.createSession(
+      {
+        provider: "claude",
+        cwd: process.cwd(),
+      },
+      undefined,
+      { persistSession: false },
+    );
+    await nonPersistedSession.run("turn");
+    await nonPersistedSession.close();
+
+    expect(nonPersistedQueryFactory.mock.calls[0]?.[0].options.persistSession).toBe(false);
+
+    const persistedQueryFactory = createQueryFactoryForTurns([createResultTurn("session-2")]);
+    const persistedClient = new ClaudeAgentClient({
+      logger,
+      queryFactory: persistedQueryFactory,
+    });
+    const persistedSession = await persistedClient.createSession(
+      {
+        provider: "claude",
+        cwd: process.cwd(),
+      },
+      undefined,
+      { persistSession: true },
+    );
+    await persistedSession.run("turn");
+    await persistedSession.close();
+
+    expect(persistedQueryFactory.mock.calls[0]?.[0].options.persistSession).toBe(true);
+  });
+
   test("convertUsage includes contextWindowMaxTokens and derives used tokens from result usage as initial fallback", async () => {
     const session = await createSessionForTest();
 
