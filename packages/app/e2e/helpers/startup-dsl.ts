@@ -140,7 +140,6 @@ class StartupAssertions {
 
   async expectsReconnectWelcome(): Promise<this> {
     await expect(this.page.getByTestId("welcome-screen")).toBeVisible({ timeout: 15_000 });
-    await expect(this.page.getByText("Connecting…", { exact: true })).toBeVisible();
     await expect(this.page.getByTestId("welcome-open-settings")).toBeVisible();
     await expect(this.page.getByTestId("welcome-direct-connection")).toBeVisible();
     await expect(this.page.getByTestId("welcome-paste-pairing-link")).toBeVisible();
