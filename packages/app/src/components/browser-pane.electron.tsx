@@ -22,6 +22,7 @@ import {
   isElectronRuntime,
   type DesktopBrowserShortcutEvent,
 } from "@/desktop/host";
+import { isDev } from "@/constants/platform";
 import { useBrowserStore, normalizeWorkspaceBrowserUrl } from "@/stores/browser-store";
 
 type ElectronWebview = HTMLElement & {
@@ -971,17 +972,19 @@ export function BrowserPane({
           />
         </View>
         <View style={styles.chromeRight}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={selectorActive ? "Cancel element selector" : "Select element"}
-            onPress={handleToggleElementSelector}
-            style={selectorIconButtonStyle}
-          >
-            <MousePointer2
-              size={16}
-              color={selectorActive ? theme.colors.accent : theme.colors.foregroundMuted}
-            />
-          </Pressable>
+          {isDev ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={selectorActive ? "Cancel element selector" : "Select element"}
+              onPress={handleToggleElementSelector}
+              style={selectorIconButtonStyle}
+            >
+              <MousePointer2
+                size={16}
+                color={selectorActive ? theme.colors.accent : theme.colors.foregroundMuted}
+              />
+            </Pressable>
+          ) : null}
         </View>
       </View>
       {browser?.lastError ? (
