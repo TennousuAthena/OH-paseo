@@ -1,4 +1,4 @@
-import { buildHostWorkspaceRoute } from "@/utils/host-routes";
+import { buildHostAgentDetailRoute, buildHostWorkspaceRoute } from "@/utils/host-routes";
 import type { WebSocketRoute } from "@playwright/test";
 import { expect, test, type Page } from "./fixtures";
 import { gotoAppShell } from "./helpers/app";
@@ -133,28 +133,34 @@ test.describe("Workspace navigation regression", () => {
     const daemonGate = await installDaemonWebSocketGate(page, daemonPort);
 
     const workspaceClient = await connectNewWorkspaceDaemonClient();
+    const archiveClient = await connectArchiveTabDaemonClient();
     const workspaceIds = new Set<string>();
+    const agentIds: string[] = [];
     const repo = await createTempGitRepo("workspace-reconnect-");
 
     try {
       const workspace = await openProjectViaDaemon(workspaceClient, repo.path);
       workspaceIds.add(workspace.workspaceId);
 
+      const agent = await createIdleAgent(archiveClient, {
+        cwd: repo.path,
+        title: `workspace-reconnect-${Date.now()}`,
+      });
+      agentIds.push(agent.id);
+
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      await switchWorkspaceViaSidebar({
-        page,
-        serverId,
-        targetWorkspacePath: workspace.workspaceId,
-      });
+      await page.goto(buildHostAgentDetailRoute(serverId, agent.id, agent.cwd));
+      await page.waitForURL(
+        (url) => url.pathname.includes("/workspace/") && !url.searchParams.has("open"),
+        { timeout: 60_000 },
+      );
       await expectWorkspaceHeader(page, {
         title: workspace.workspaceName,
         subtitle: workspace.projectDisplayName,
       });
       await expect(page.getByTestId("workspace-tabs-row")).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByRole("textbox", { name: "Message agent..." })).toBeVisible({
-        timeout: 30_000,
-      });
+      await expectWorkspaceTabVisible(page, agent.id);
 
       await daemonGate.drop();
       await expect(page.getByTestId("agent-reconnecting-toast")).toBeVisible({
@@ -184,9 +190,13 @@ test.describe("Workspace navigation regression", () => {
       await expect(page.getByRole("textbox", { name: "Message agent..." })).toBeVisible();
     } finally {
       daemonGate.restore();
+      for (const agentId of agentIds) {
+        await archiveAgentFromDaemon(archiveClient, agentId).catch(() => undefined);
+      }
       for (const workspaceId of workspaceIds) {
         await archiveLocalWorkspaceFromDaemon(workspaceClient, workspaceId).catch(() => undefined);
       }
+      await archiveClient.close().catch(() => undefined);
       await workspaceClient.close().catch(() => undefined);
       await repo.cleanup();
     }
@@ -213,7 +223,7 @@ test.describe("Workspace navigation regression", () => {
     );
 
     await expect(
-      page.getByText(/Connecting to localhost|localhost is offline|Cannot reach localhost/i),
+      page.getByText(/^Connecting$|localhost is offline|Cannot reach localhost/i),
     ).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("menu-button")).toBeVisible();
     await expect(page.getByTestId("workspace-header-title")).toHaveCount(0);
