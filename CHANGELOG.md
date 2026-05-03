@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.66 - 2026-05-03
+
+### Fixed
+
+- Streaming markdown preserves trailing newlines so paragraph spacing stays correct while the agent is still typing.
+- Agent initialization failures surface within 30 seconds instead of 5 minutes.
+- Terminals reply to ANSI cursor-position queries, so tools that ask for cursor location no longer hang.
+
 ## 0.1.65 - 2026-05-03
 
 ### Added
