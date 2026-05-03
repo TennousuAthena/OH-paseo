@@ -4,15 +4,14 @@
 
 ### Added
 
-- **In-app browser** — open a real web browser in any workspace and click any element on the page to send it to the agent as context. ([#670](https://github.com/getpaseo/paseo/pull/670) by [@jasonkneen](https://github.com/jasonkneen))
-- Inline review comments in the git diff pane, including tap a line number to start a comment. ([#530](https://github.com/getpaseo/paseo/pull/530))
-- Sub-agent activity now streams into the timeline as nested tool calls — Codex sub-agents, OpenCode sub-agents, and Claude sub-agents all show their work inline. ([#672](https://github.com/getpaseo/paseo/pull/672), [#658](https://github.com/getpaseo/paseo/pull/658) by [@thisisryanswift](https://github.com/thisisryanswift))
+- **In-app browser** — open a real web browser in any workspace to test your app. ([#670](https://github.com/getpaseo/paseo/pull/670) by [@jasonkneen](https://github.com/jasonkneen))
+- Inline review comments in the git diff pane. Tap a line number to start a comment. ([#530](https://github.com/getpaseo/paseo/pull/530))
+- Sub-agent activity is now shown for Codex, OpenCode, and Claude. ([#672](https://github.com/getpaseo/paseo/pull/672), [#658](https://github.com/getpaseo/paseo/pull/658) by [@thisisryanswift](https://github.com/thisisryanswift))
 - Pull and push your branch in one step from the git actions menu in the changes pane.
 - Resume existing agent sessions with `paseo import --provider <name> <id>`. ([#632](https://github.com/getpaseo/paseo/pull/632))
-- Connect directly via TCP URI with SSL and optional password auth. ([#635](https://github.com/getpaseo/paseo/pull/635))
+- Password authentication and SSL support for daemon connections. ([#635](https://github.com/getpaseo/paseo/pull/635))
 - Connect to a daemon via relay using a pairing offer URL from the CLI. ([#639](https://github.com/getpaseo/paseo/pull/639))
-- **Windows:** Native ARM64 builds are now available for Snapdragon X / Copilot+ PCs.
-- Images in assistant messages show a loading spinner while they load and an "Image unavailable" fallback if they fail, instead of a blank space.
+- **Windows:** Native ARM64 builds are now available.
 - Bundled Paseo skills now refresh automatically on desktop app launch.
 
 ### Improved
@@ -46,7 +45,7 @@
 - `paseo.json` parse errors in setup, teardown, and terminal actions now surface a clear error instead of failing silently.
 - Diff gutter line numbers were shifted one row out of alignment in some cases on web.
 - Streamed agent output reconciles cleanly when the timeline hydrates mid-turn. ([#663](https://github.com/getpaseo/paseo/pull/663))
-- Browser pane keyboard handling no longer steals shortcuts from the rest of the app.
+- Images in assistant messages show a loading spinner while they load and an "Image unavailable" fallback if they fail, instead of a blank space.
 - Isolated bottom sheet modals close and re-open without getting stuck.
 
 ## 0.1.64 - 2026-04-28
