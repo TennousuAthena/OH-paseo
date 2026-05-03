@@ -43,6 +43,7 @@ jobs:
     name: Submit iOS for App Store review
     needs: [submit_ios]
     environment: production
+    runs_on: macos-medium
     steps:
       - uses: eas/checkout
       - name: Install fastlane
