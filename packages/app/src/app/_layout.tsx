@@ -26,7 +26,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-g
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { Extrapolation, interpolate, runOnJS, useSharedValue } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { CommandCenter } from "@/components/command-center";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
@@ -58,7 +58,6 @@ import { getDesktopHost } from "@/desktop/host";
 import { RosettaCalloutSource } from "@/desktop/updates/rosetta-callout-source";
 import { UpdateCalloutSource } from "@/desktop/updates/update-callout-source";
 import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-action";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useOpenProject } from "@/hooks/use-open-project";
@@ -393,7 +392,6 @@ function AppContainer({
   selectedAgentId,
   chromeEnabled: chromeEnabledOverride,
 }: AppContainerProps) {
-  const { theme } = useUnistyles();
   const daemons = useHosts();
   const { settings, updateSettings } = useAppSettings();
   const toggleMobileAgentList = usePanelStore((state) => state.toggleMobileAgentList);
@@ -450,13 +448,8 @@ function AppContainer({
 
   useActiveWorktreeNewAction();
 
-  const containerStyle = useMemo(
-    () => ({ flex: 1 as const, backgroundColor: theme.colors.surface0 }),
-    [theme.colors.surface0],
-  );
-
   const content = (
-    <View style={containerStyle}>
+    <View style={layoutStyles.surfaceFill}>
       <View style={rowStyle}>
         {!isCompactLayout && chromeEnabled && !isFocusModeEnabled && (
           <LeftSidebar selectedAgentId={selectedAgentId} />
@@ -594,9 +587,6 @@ function MobileGestureWrapper({
 function ProvidersWrapper({ children }: { children: ReactNode }) {
   const { settings, isLoading: settingsLoading } = useAppSettings();
   const { upsertConnectionFromOfferUrl } = useHostMutations();
-  const systemColorScheme = useColorScheme();
-  const { theme } = useUnistyles();
-  const resolvedTheme = settings.theme === "auto" ? (systemColorScheme ?? "light") : settings.theme;
 
   // Apply theme setting on mount and when it changes
   useEffect(() => {
@@ -609,27 +599,33 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
     }
   }, [settingsLoading, settings.theme]);
 
-  useEffect(() => {
-    if (settingsLoading || isNative) {
-      return;
-    }
-
-    void updateDesktopWindowControls({
-      backgroundColor: theme.colors.surface0,
-      foregroundColor: theme.colors.foreground,
-    }).catch((error) => {
-      console.warn("[DesktopWindow] Failed to update window controls overlay", error);
-    });
-  }, [settingsLoading, resolvedTheme, theme.colors.foreground, theme.colors.surface0]);
-
   return (
     <VoiceProvider>
+      <DesktopWindowControlsSync enabled={!settingsLoading} />
       <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
       <HostSessionManager />
       <FaviconStatusSync />
       {children}
     </VoiceProvider>
   );
+}
+
+function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
+  const { theme } = useUnistyles();
+  const surface0 = theme.colors.surface0;
+  const foreground = theme.colors.foreground;
+
+  useEffect(() => {
+    if (!enabled || isNative) return;
+    void updateDesktopWindowControls({
+      backgroundColor: surface0,
+      foregroundColor: foreground,
+    }).catch((error) => {
+      console.warn("[DesktopWindow] Failed to update window controls overlay", error);
+    });
+  }, [enabled, surface0, foreground]);
+
+  return null;
 }
 
 function OfferLinkListener({
@@ -911,20 +907,23 @@ function RootProviders({ children }: { children: ReactNode }) {
 }
 
 export default function RootLayout() {
-  const { theme } = useUnistyles();
-  const gestureRootStyle = useMemo(
-    () => ({ flex: 1, backgroundColor: theme.colors.surface0 }),
-    [theme.colors.surface0],
-  );
-
   return (
-    <GestureHandlerRootView style={gestureRootStyle}>
-      <NavigationActiveWorkspaceObserver />
-      <RootProviders>
-        <RuntimeProviders>
-          <AppShell />
-        </RuntimeProviders>
-      </RootProviders>
+    <GestureHandlerRootView style={flexStyle}>
+      <View style={layoutStyles.surfaceFill}>
+        <NavigationActiveWorkspaceObserver />
+        <RootProviders>
+          <RuntimeProviders>
+            <AppShell />
+          </RuntimeProviders>
+        </RootProviders>
+      </View>
     </GestureHandlerRootView>
   );
 }
+
+const layoutStyles = StyleSheet.create((theme) => ({
+  surfaceFill: {
+    flex: 1,
+    backgroundColor: theme.colors.surface0,
+  },
+}));

@@ -1259,7 +1259,7 @@ function renderWorkspaceScreenGateShell(input: {
 
   return (
     <WorkspaceFocusProvider workspaceKey={input.workspaceKey}>
-      <View style={containerWithWorkspaceBackgroundStyle}>
+      <View style={styles.container}>
         <View style={styles.threePaneRow}>
           <View style={styles.centerColumn}>
             <WorkspaceScreenGateFrame>{input.gate}</WorkspaceScreenGateFrame>
