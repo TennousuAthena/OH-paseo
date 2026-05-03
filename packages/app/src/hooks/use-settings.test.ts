@@ -86,6 +86,7 @@ describe("use-settings", () => {
       theme: "light",
       manageBuiltInDaemon: true,
       sendBehavior: "interrupt",
+      serviceUrlBehavior: "ask",
       releaseChannel: "stable",
     });
   });
@@ -128,6 +129,7 @@ describe("use-settings", () => {
     expect(result).toEqual({
       theme: "dark",
       sendBehavior: "interrupt",
+      serviceUrlBehavior: "ask",
     });
     expect(asyncStorageMock.setItem).toHaveBeenCalledWith(
       mod.APP_SETTINGS_KEY,
@@ -166,6 +168,7 @@ describe("use-settings", () => {
     expect(result).toEqual({
       theme: "light",
       sendBehavior: "interrupt",
+      serviceUrlBehavior: "ask",
       manageBuiltInDaemon: false,
       releaseChannel: "beta",
     });
@@ -184,6 +187,7 @@ describe("use-settings", () => {
     expect(result).toEqual({
       theme: "light",
       sendBehavior: "interrupt",
+      serviceUrlBehavior: "ask",
       manageBuiltInDaemon: true,
       releaseChannel: "stable",
     });

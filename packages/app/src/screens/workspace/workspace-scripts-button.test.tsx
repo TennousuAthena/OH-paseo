@@ -107,6 +107,7 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
         : children}
     </button>
   ),
+  useDropdownMenuClose: () => () => {},
 }));
 
 vi.mock("lucide-react-native", () => {
