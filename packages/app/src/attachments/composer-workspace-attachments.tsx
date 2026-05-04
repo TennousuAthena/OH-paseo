@@ -9,8 +9,12 @@ import type {
 } from "@/attachments/types";
 import { AttachmentPill } from "@/components/attachment-pill";
 import { useWorkspaceAttachmentsStore } from "@/attachments/workspace-attachments-store";
+import {
+  isWorkspaceAttachment,
+  userAttachmentsOnly,
+  workspaceAttachmentToSubmitAttachment,
+} from "@/attachments/workspace-attachment-utils";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
-import type { AgentAttachment } from "@server/shared/messages";
 import { useClearReviewDraft } from "@/review/store";
 
 interface WorkspaceAttachmentBindingInput {
@@ -67,31 +71,6 @@ function getAttachmentKey(attachment: WorkspaceComposerAttachment): string {
       body: comment.body,
     })),
   });
-}
-
-function isWorkspaceAttachment(
-  attachment: ComposerAttachment | undefined,
-): attachment is WorkspaceComposerAttachment {
-  return attachment?.kind === "review" || attachment?.kind === "browser_element";
-}
-
-function userAttachmentsOnly(attachments: readonly ComposerAttachment[]): UserComposerAttachment[] {
-  return attachments.filter(
-    (attachment): attachment is UserComposerAttachment =>
-      attachment.kind !== "review" && attachment.kind !== "browser_element",
-  );
-}
-
-function toSubmitAttachment(attachment: ComposerAttachment): AgentAttachment | null {
-  if (attachment.kind === "browser_element") {
-    return {
-      type: "text",
-      mimeType: "text/plain",
-      title: `Browser element · ${attachment.attachment.tag}`,
-      text: attachment.attachment.formatted,
-    };
-  }
-  return attachment.kind === "review" ? attachment.attachment : null;
 }
 
 function renderPill(args: RenderWorkspaceAttachmentPillArgs): ReactElement {
@@ -303,7 +282,7 @@ function WorkspaceAttachmentPill({
 export const composerWorkspaceAttachment = {
   is: isWorkspaceAttachment,
   renderPill,
-  toSubmitAttachment,
+  toSubmitAttachment: workspaceAttachmentToSubmitAttachment,
   userAttachmentsOnly,
   useBinding: useWorkspaceAttachmentBinding,
 };

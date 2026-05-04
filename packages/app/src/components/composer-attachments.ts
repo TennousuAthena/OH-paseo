@@ -1,5 +1,8 @@
 import type { AttachmentMetadata, ComposerAttachment } from "@/attachments/types";
-import { composerWorkspaceAttachment } from "@/attachments/composer-workspace-attachments";
+import {
+  isWorkspaceAttachment,
+  workspaceAttachmentToSubmitAttachment,
+} from "@/attachments/workspace-attachment-utils";
 import type { AgentAttachment } from "@server/shared/messages";
 import { buildGitHubAttachmentFromSearchItem } from "@/utils/review-attachments";
 
@@ -18,8 +21,8 @@ export function splitComposerAttachmentsForSubmit(attachments: ComposerAttachmen
       continue;
     }
 
-    if (composerWorkspaceAttachment.is(attachment)) {
-      const workspaceAttachment = composerWorkspaceAttachment.toSubmitAttachment(attachment);
+    if (isWorkspaceAttachment(attachment)) {
+      const workspaceAttachment = workspaceAttachmentToSubmitAttachment(attachment);
       if (workspaceAttachment) {
         reviewAttachments.push(workspaceAttachment);
       }

@@ -23,7 +23,6 @@ import {
 import Animated from "react-native-reanimated";
 import { useQuery } from "@tanstack/react-query";
 import { FOOTER_HEIGHT, MAX_CONTENT_WIDTH } from "@/constants/layout";
-import { generateMessageId, type StreamItem } from "@/types/stream";
 import {
   AgentStatusBar,
   DraftAgentStatusBar,
@@ -31,7 +30,6 @@ import {
 } from "./agent-status-bar";
 import { ContextWindowMeter } from "./context-window-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
-import type { PickedImageAttachmentInput } from "@/hooks/image-attachment-picker";
 import { useSessionStore } from "@/stores/session-store";
 import {
   MessageInput,
@@ -44,6 +42,22 @@ import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
 import { focusWithRetries } from "@/utils/web-focus";
+import {
+  cancelComposerAgent,
+  dispatchComposerAgentMessage,
+  editQueuedComposerMessage,
+  findGithubItemByOption,
+  isAttachmentSelectedForGithubItem,
+  openComposerAttachment,
+  pickAndPersistImages,
+  queueComposerMessage,
+  removeComposerAttachmentAtIndex,
+  sendQueuedComposerMessageNow,
+  toggleGithubAttachment,
+  type AgentStreamWriter,
+  type QueueWriter,
+  type QueuedComposerMessage,
+} from "@/components/composer-actions";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -79,17 +93,12 @@ import type {
 import { composerWorkspaceAttachment } from "@/attachments/composer-workspace-attachments";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
-import { splitComposerAttachmentsForSubmit } from "@/components/composer-attachments";
 import { AttachmentPill } from "@/components/attachment-pill";
 import { AttachmentLightbox } from "@/components/attachment-lightbox";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
 
-interface QueuedMessage {
-  id: string;
-  text: string;
-  attachments: ComposerAttachment[];
-}
+type QueuedMessage = QueuedComposerMessage;
 
 type AttachmentListUpdater =
   | UserComposerAttachment[]
@@ -126,37 +135,6 @@ function resolveIsDesktopWebBreakpoint(isMobile: boolean): boolean {
 
 function resolveMessagePlaceholder(isDesktopWebBreakpoint: boolean): string {
   return isDesktopWebBreakpoint ? DESKTOP_MESSAGE_PLACEHOLDER : MOBILE_MESSAGE_PLACEHOLDER;
-}
-
-async function pickAndPersistImages(
-  pickImages: () => Promise<PickedImageAttachmentInput[] | null>,
-): Promise<ImageAttachment[]> {
-  const result = await pickImages();
-  if (!result?.length) return [];
-  return await Promise.all(
-    result.map(async (pickedImage) => {
-      if (pickedImage.source.kind === "blob") {
-        return await persistAttachmentFromBlob({
-          blob: pickedImage.source.blob,
-          mimeType: pickedImage.mimeType || "image/jpeg",
-          fileName: pickedImage.fileName ?? null,
-        });
-      }
-      return await persistAttachmentFromFileUri({
-        uri: pickedImage.source.uri,
-        mimeType: pickedImage.mimeType || "image/jpeg",
-        fileName: pickedImage.fileName ?? null,
-      });
-    }),
-  );
-}
-
-function removeAttachmentAtIndex<T extends ComposerAttachment>(prev: T[], index: number): T[] {
-  const removed = prev[index];
-  if (removed?.kind === "image") {
-    void deleteAttachments([removed.metadata]);
-  }
-  return prev.filter((_, i) => i !== index);
 }
 
 function buildCancelButtonStyle(isConnected: boolean, isCancellingAgent: boolean): object[] {
@@ -235,45 +213,6 @@ function renderLeftContent(args: RenderLeftContentArgs): ReactElement {
     return <DraftAgentStatusBar {...statusControls} />;
   }
   return <AgentStatusBar agentId={agentId} serverId={serverId} onDropdownClose={focusInput} />;
-}
-
-function findGithubItemByOption(
-  items: readonly GitHubSearchItem[],
-  optionId: string,
-): GitHubSearchItem | undefined {
-  return items.find((candidate) => `${candidate.kind}:${candidate.number}` === optionId);
-}
-
-function isAttachmentSelectedForGithubItem(
-  current: readonly ComposerAttachment[],
-  item: GitHubSearchItem,
-): boolean {
-  return composerWorkspaceAttachment
-    .userAttachmentsOnly(current)
-    .some(
-      (attachment) =>
-        attachment.kind !== "image" &&
-        attachment.item.kind === item.kind &&
-        attachment.item.number === item.number,
-    );
-}
-
-function buildGithubAttachment(item: GitHubSearchItem): UserComposerAttachment {
-  return item.kind === "pr" ? { kind: "github_pr", item } : { kind: "github_issue", item };
-}
-
-function toggleGithubAttachment(
-  current: UserComposerAttachment[],
-  item: GitHubSearchItem,
-): UserComposerAttachment[] {
-  const matches = (attachment: UserComposerAttachment) =>
-    attachment.kind !== "image" &&
-    attachment.item.kind === item.kind &&
-    attachment.item.number === item.number;
-  if (current.some(matches)) {
-    return current.filter((attachment) => !matches(attachment));
-  }
-  return [...current, buildGithubAttachment(item)];
 }
 
 interface RenderAttachmentPreviewListArgs {
@@ -414,104 +353,6 @@ function attemptStartRealtimeVoice(args: AttemptStartRealtimeVoiceArgs): void {
       toastErrorRef.current(message);
     }
   });
-}
-
-interface DispatchAgentMessageSendArgs {
-  client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
-  serverId: string;
-  targetAgentId: string;
-  text: string;
-  sendAttachments: ComposerAttachment[];
-  setAgentStreamHead: ReturnType<typeof useSessionStore.getState>["setAgentStreamHead"];
-  setAgentStreamTail: ReturnType<typeof useSessionStore.getState>["setAgentStreamTail"];
-}
-
-function appendUserMessageToStream(
-  args: DispatchAgentMessageSendArgs & { userMessage: StreamItem },
-): void {
-  const { serverId, targetAgentId, userMessage, setAgentStreamHead, setAgentStreamTail } = args;
-  const currentHead = useSessionStore
-    .getState()
-    .sessions[serverId]?.agentStreamHead?.get(targetAgentId);
-  if (currentHead && currentHead.length > 0) {
-    setAgentStreamHead(serverId, (prev) => {
-      const head = prev.get(targetAgentId) || [];
-      const updated = new Map(prev);
-      updated.set(targetAgentId, [...head, userMessage]);
-      return updated;
-    });
-    return;
-  }
-  setAgentStreamTail(serverId, (prev) => {
-    const currentStream = prev.get(targetAgentId) || [];
-    const updated = new Map(prev);
-    updated.set(targetAgentId, [...currentStream, userMessage]);
-    return updated;
-  });
-}
-
-async function dispatchAgentMessageSend(args: DispatchAgentMessageSendArgs): Promise<void> {
-  const { client, targetAgentId, text, sendAttachments } = args;
-  const wirePayload = splitComposerAttachmentsForSubmit(sendAttachments);
-  const clientMessageId = generateMessageId();
-  const userMessage: StreamItem = {
-    kind: "user_message",
-    id: clientMessageId,
-    text,
-    timestamp: new Date(),
-    ...(wirePayload.images.length > 0 ? { images: wirePayload.images } : {}),
-    ...(wirePayload.attachments.length > 0 ? { attachments: wirePayload.attachments } : {}),
-  };
-  appendUserMessageToStream({ ...args, userMessage });
-  const imagesData = await encodeImages(wirePayload.images);
-  await client.sendAgentMessage(targetAgentId, text, {
-    messageId: clientMessageId,
-    images: imagesData ?? [],
-    attachments: wirePayload.attachments,
-  });
-}
-
-function openComposerAttachment(
-  attachment: ComposerAttachment,
-  setLightboxMetadata: (metadata: AttachmentMetadata) => void,
-  openWorkspaceAttachment: (input: { attachment: ComposerAttachment }) => boolean,
-): void {
-  if (attachment.kind === "image") {
-    setLightboxMetadata(attachment.metadata);
-    return;
-  }
-  if (composerWorkspaceAttachment.is(attachment)) {
-    openWorkspaceAttachment({ attachment });
-    return;
-  }
-  void openExternalUrl(attachment.item.url);
-}
-
-interface CancelRunningAgentArgs {
-  isAgentRunning: boolean;
-  isCancellingAgent: boolean;
-  isConnected: boolean;
-  client: ReturnType<typeof useHostRuntimeClient>;
-  agentIdRef: { current: string };
-  setIsCancellingAgent: (value: boolean) => void;
-  messageInputRef: { current: MessageInputRef | null };
-}
-
-function cancelRunningAgent(args: CancelRunningAgentArgs): void {
-  const {
-    isAgentRunning,
-    isCancellingAgent,
-    isConnected,
-    client,
-    agentIdRef,
-    setIsCancellingAgent,
-    messageInputRef,
-  } = args;
-  if (!isAgentRunning || isCancellingAgent) return;
-  if (!isConnected || !client) return;
-  setIsCancellingAgent(true);
-  void client.cancelAgent(agentIdRef.current);
-  messageInputRef.current?.focus();
 }
 
 function focusMessageInputWithPlatformStrategy(messageInputRef: {
@@ -1152,14 +993,18 @@ export function Composer({
       if (!client) {
         throw new Error("Host is not connected");
       }
-      await dispatchAgentMessageSend({
+      const stream: AgentStreamWriter = {
+        getHead: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamHead?.get(id),
+        setHead: (updater) => setAgentStreamHead(serverId, updater),
+        setTail: (updater) => setAgentStreamTail(serverId, updater),
+      };
+      await dispatchComposerAgentMessage({
         client,
-        serverId,
-        targetAgentId,
+        agentId: targetAgentId,
         text,
-        sendAttachments,
-        setAgentStreamHead,
-        setAgentStreamTail,
+        attachments: sendAttachments,
+        encodeImages,
+        stream,
       });
       onAttentionPromptSend?.();
     };
@@ -1172,33 +1017,23 @@ export function Composer({
   const isAgentRunning = agentState.status === "running";
   const hasAgent = agentState.status !== null;
 
-  const updateQueue = useCallback(
-    (updater: (current: QueuedMessage[]) => QueuedMessage[]) => {
-      setQueuedMessages(serverId, (prev: Map<string, QueuedMessage[]>) => {
-        const next = new Map(prev);
-        next.set(agentId, updater(prev.get(agentId) ?? []));
-        return next;
-      });
-    },
-    [agentId, serverId, setQueuedMessages],
+  const queueWriter = useMemo<QueueWriter>(
+    () => ({
+      read: (id) => useSessionStore.getState().sessions[serverId]?.queuedMessages?.get(id) ?? [],
+      write: (updater) => setQueuedMessages(serverId, updater),
+    }),
+    [serverId, setQueuedMessages],
   );
 
   const queueMessage = useCallback(
     (queuedMessage: string, queuedAttachments: ComposerAttachment[]) => {
-      const trimmedMessage = queuedMessage.trim();
-      if (!trimmedMessage && queuedAttachments.length === 0) return;
-
-      const newItem = {
-        id: generateMessageId(),
-        text: trimmedMessage,
+      const result = queueComposerMessage({
+        agentId,
+        text: queuedMessage,
         attachments: queuedAttachments,
-      };
-
-      setQueuedMessages(serverId, (prev: Map<string, QueuedMessage[]>) => {
-        const next = new Map(prev);
-        next.set(agentId, [...(prev.get(agentId) ?? []), newItem]);
-        return next;
+        queue: queueWriter,
       });
+      if (!result.queued) return;
 
       setUserInput("");
       setSelectedAttachments([]);
@@ -1208,9 +1043,8 @@ export function Composer({
     [
       agentId,
       clearSentAttachments,
+      queueWriter,
       resetSuppression,
-      serverId,
-      setQueuedMessages,
       setSelectedAttachments,
       setUserInput,
     ],
@@ -1284,7 +1118,15 @@ export function Composer({
   );
 
   const handlePickImage = useCallback(async () => {
-    const newImages = await pickAndPersistImages(pickImages);
+    const newImages = await pickAndPersistImages({
+      pickImages,
+      persister: {
+        persistFromBlob: ({ blob, mimeType, fileName }) =>
+          persistAttachmentFromBlob({ blob, mimeType, fileName }),
+        persistFromFileUri: ({ uri, mimeType, fileName }) =>
+          persistAttachmentFromFileUri({ uri, mimeType, fileName }),
+      },
+    });
     if (newImages.length === 0) return;
     addImages(newImages);
   }, [addImages, pickImages]);
@@ -1298,14 +1140,23 @@ export function Composer({
       if (didRemoveWorkspaceAttachment) {
         return;
       }
-      setSelectedAttachments((prev) => removeAttachmentAtIndex(prev, index));
+      setSelectedAttachments((prev) =>
+        removeComposerAttachmentAtIndex({ attachments: prev, index, deleteAttachments }),
+      );
     },
     [removeAttachment, selectedAttachments, setSelectedAttachments],
   );
 
   const handleOpenAttachment = useCallback(
     (attachment: ComposerAttachment) => {
-      openComposerAttachment(attachment, setLightboxMetadata, openAttachment);
+      openComposerAttachment({
+        attachment,
+        setLightboxMetadata,
+        openWorkspaceAttachment: openAttachment,
+        openExternalUrl: (url) => {
+          void openExternalUrl(url);
+        },
+      });
     },
     [openAttachment],
   );
@@ -1317,15 +1168,16 @@ export function Composer({
   }, [isAgentRunning, isConnected]);
 
   const handleCancelAgent = useCallback(() => {
-    cancelRunningAgent({
+    const didCancel = cancelComposerAgent({
+      client,
+      agentId: agentIdRef.current,
       isAgentRunning,
       isCancellingAgent,
       isConnected,
-      client,
-      agentIdRef,
-      setIsCancellingAgent,
-      messageInputRef,
     });
+    if (!didCancel) return;
+    setIsCancellingAgent(true);
+    messageInputRef.current?.focus();
   }, [client, isAgentRunning, isCancellingAgent, isConnected]);
 
   const focusMessageInputForKeyboardAction = useCallback(() => {
@@ -1391,33 +1243,34 @@ export function Composer({
 
   const handleEditQueuedMessage = useCallback(
     (id: string) => {
-      const item = queuedMessages.find((q) => q.id === id);
-      if (!item) return;
-
-      updateQueue((current) => current.filter((q) => q.id !== id));
-      setUserInput(item.text);
-      setSelectedAttachments(composerWorkspaceAttachment.userAttachmentsOnly(item.attachments));
+      const result = editQueuedComposerMessage({
+        agentId,
+        messageId: id,
+        queue: queueWriter,
+      });
+      if (!result) return;
+      setUserInput(result.text);
+      setSelectedAttachments(result.attachments);
     },
-    [queuedMessages, setSelectedAttachments, setUserInput, updateQueue],
+    [agentId, queueWriter, setSelectedAttachments, setUserInput],
   );
 
   const handleSendQueuedNow = useCallback(
     async (id: string) => {
-      const item = queuedMessages.find((q) => q.id === id);
-      if (!item) return;
       if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
-
-      updateQueue((current) => current.filter((q) => q.id !== id));
-
       // Reuse the regular send path; server-side send atomically interrupts any active run.
-      try {
-        await submitMessage(item.text, item.attachments);
-      } catch (error) {
-        updateQueue((current) => [item, ...current]);
-        setSendError(error instanceof Error ? error.message : "Failed to send message");
+      const result = await sendQueuedComposerMessageNow({
+        agentId,
+        messageId: id,
+        queue: queueWriter,
+        submitMessage: ({ text, attachments: queuedAttachments }) =>
+          submitMessage(text, queuedAttachments),
+      });
+      if (result.status === "failed") {
+        setSendError(result.errorMessage);
       }
     },
-    [queuedMessages, submitMessage, updateQueue],
+    [agentId, queueWriter, submitMessage],
   );
 
   const handleQueue = useCallback(
