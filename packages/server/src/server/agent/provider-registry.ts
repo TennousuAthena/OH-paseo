@@ -36,6 +36,10 @@ import {
   type AgentProviderDefinition,
 } from "./provider-manifest.js";
 
+function isNonEmptyStringArray(value: string[]): value is [string, ...string[]] {
+  return value.length > 0;
+}
+
 export type { AgentProviderDefinition };
 
 export { AGENT_PROVIDER_DEFINITIONS, getAgentProviderDefinition };
@@ -461,9 +465,11 @@ function addDerivedProviders(
     }
 
     if (override.extends === "acp") {
-      if (!override.command) {
+      if (!override.command || !isNonEmptyStringArray(override.command)) {
         throw new Error(`ACP provider '${providerId}' requires a command`);
       }
+      // Capture command in const for closure - TypeScript can't track type refinement inside closures
+      const command = override.command;
 
       resolvedProviders.set(providerId, {
         definition: createDerivedDefinition(
@@ -484,7 +490,7 @@ function addDerivedProviders(
         createBaseClient: (logger) =>
           new GenericACPAgentClient({
             logger,
-            command: override.command!,
+            command,
             env: override.env,
           }),
       });
