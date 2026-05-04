@@ -1740,8 +1740,8 @@ const speakMessageStylesheet = StyleSheet.create((theme) => ({
   },
   headerLabel: {
     fontFamily: Fonts.sans,
-    fontSize: 12,
-    fontWeight: "500",
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },
   text: {
@@ -1769,7 +1769,7 @@ export const SpeakMessage = memo(function SpeakMessage({
   return (
     <View testID="speak-message" style={containerStyle}>
       <View style={speakMessageStylesheet.header}>
-        <ThemedMicVocal size={14} uniProps={foregroundMutedColorMapping} />
+        <ThemedMicVocal size={12} uniProps={foregroundMutedColorMapping} />
         <Text style={speakMessageStylesheet.headerLabel}>Spoke</Text>
       </View>
       <Text style={speakMessageStylesheet.text}>{message}</Text>

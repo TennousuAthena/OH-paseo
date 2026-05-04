@@ -7546,15 +7546,6 @@ export class Session {
     const chunkBytes = Buffer.byteLength(msg.audio, "base64");
     this.voiceInputChunkCount += 1;
     this.voiceInputBytes += chunkBytes;
-    if (this.voiceInputChunkCount === 1) {
-      this.sessionLogger.info(
-        {
-          format: chunkFormat,
-          audioBytes: chunkBytes,
-        },
-        "Received first voice_audio_chunk for active voice mode",
-      );
-    }
     const now = Date.now();
     if (this.voiceInputChunkCount % 50 === 0 || now - this.voiceInputWindowStartedAt >= 1000) {
       this.sessionLogger.info(
