@@ -520,7 +520,6 @@ const MIN_STREAMING_SEGMENT_BYTES = Math.round(
   PCM_BYTES_PER_MS * MIN_STREAMING_SEGMENT_DURATION_MS,
 );
 const AgentIdSchema = z.string().uuid();
-const VOICE_INTERRUPT_CONFIRMATION_MS = 500;
 const AVAILABLE_EDITOR_TARGETS_CACHE_TTL_MS = 60_000;
 const AVAILABLE_EDITOR_TARGETS_CACHE_KEY = "available";
 
@@ -764,8 +763,6 @@ export class Session {
   // Voice mode state
   private isVoiceMode = false;
   private speechInProgress = false;
-  private pendingVoiceSpeechStartAt: number | null = null;
-  private pendingVoiceSpeechTimer: ReturnType<typeof setTimeout> | null = null;
 
   private dictationStreamManager!: DictationStreamManager;
   private resolveVoiceTurnDetection!: () => TurnDetectionProvider | null;
@@ -2783,6 +2780,10 @@ export class Session {
     if (!turnDetection) {
       throw new Error("Voice turn detection is not configured");
     }
+    const stt = this.sttManager.getProvider();
+    if (!stt) {
+      throw new Error("Voice speech-to-text is not configured");
+    }
 
     this.sessionLogger.info(
       { providerId: turnDetection.id },
@@ -2792,27 +2793,69 @@ export class Session {
     const controller = createVoiceTurnController({
       logger: this.sessionLogger.child({ component: "voice-turn-controller" }),
       turnDetection,
-      utteranceSink: {
-        submitUtterance: async ({ pcm16, format, sampleRate, startedAt, endedAt }) => {
-          this.sessionLogger.debug(
-            {
-              audioBytes: pcm16.length,
-              sampleRate,
-              startedAt,
-              endedAt,
-              durationMs: Math.max(0, endedAt - startedAt),
-            },
-            "Submitting detected voice utterance",
-          );
-          await this.processCompletedAudio(pcm16, format);
-        },
-      },
+      stt,
       callbacks: {
         onSpeechStarted: async () => {
-          this.handleProvisionalVoiceSpeechStarted();
+          this.sessionLogger.debug("Voice VAD speech_started");
+        },
+        onPartialTranscript: async ({ segmentId, transcript }) => {
+          this.sessionLogger.info(
+            { segmentId, transcriptLength: transcript.trim().length },
+            "voice_input_state emitting isSpeaking=true",
+          );
+          this.emit({
+            type: "voice_input_state",
+            payload: {
+              isSpeaking: true,
+            },
+          });
+          await this.handleVoiceSpeechStart();
         },
         onSpeechStopped: async () => {
           this.handleVoiceSpeechStopped();
+          this.setPhase("transcribing");
+          this.emit({
+            type: "activity_log",
+            payload: {
+              id: uuidv4(),
+              timestamp: new Date(),
+              type: "system",
+              content: "Transcribing audio...",
+            },
+          });
+        },
+        onFinalTranscript: async ({
+          transcript,
+          language,
+          durationMs,
+          avgLogprob,
+          isLowConfidence,
+        }) => {
+          const requestId = uuidv4();
+          const transcriptText = isLowConfidence ? "" : transcript.trim();
+          if (isLowConfidence) {
+            this.sessionLogger.debug(
+              { text: transcript, avgLogprob },
+              "Filtered low-confidence transcription (likely non-speech)",
+            );
+          }
+          this.sessionLogger.info(
+            {
+              requestId,
+              isVoiceMode: this.isVoiceMode,
+              transcriptLength: transcriptText.length,
+              transcript: transcriptText,
+            },
+            "Transcription result",
+          );
+          await this.handleTranscriptionResultPayload({
+            text: transcriptText,
+            requestId,
+            ...(language ? { language } : {}),
+            duration: durationMs,
+            ...(avgLogprob !== undefined ? { avgLogprob } : {}),
+            ...(isLowConfidence !== undefined ? { isLowConfidence } : {}),
+          });
         },
         onError: (error) => {
           this.sessionLogger.error({ err: error }, "Voice turn controller failed");
@@ -2831,63 +2874,12 @@ export class Session {
       return;
     }
 
-    this.clearPendingVoiceSpeechStart("turn-controller-stop");
     const controller = this.voiceTurnController;
     this.voiceTurnController = null;
     await controller.stop();
   }
 
-  private clearPendingVoiceSpeechStart(reason: string): void {
-    if (this.pendingVoiceSpeechTimer) {
-      clearTimeout(this.pendingVoiceSpeechTimer);
-      this.pendingVoiceSpeechTimer = null;
-    }
-    if (this.pendingVoiceSpeechStartAt !== null) {
-      this.sessionLogger.debug({ reason }, "Clearing provisional voice speech start");
-      this.pendingVoiceSpeechStartAt = null;
-    }
-  }
-
-  private handleProvisionalVoiceSpeechStarted(): void {
-    if (this.speechInProgress || this.pendingVoiceSpeechTimer) {
-      return;
-    }
-
-    const startedAt = Date.now();
-    this.pendingVoiceSpeechStartAt = startedAt;
-    this.sessionLogger.info(
-      { confirmationMs: VOICE_INTERRUPT_CONFIRMATION_MS },
-      "Silero VAD provisional speech_started",
-    );
-    this.pendingVoiceSpeechTimer = setTimeout(() => {
-      this.pendingVoiceSpeechTimer = null;
-      if (this.pendingVoiceSpeechStartAt !== startedAt || this.speechInProgress) {
-        return;
-      }
-
-      this.pendingVoiceSpeechStartAt = null;
-      this.sessionLogger.info("voice_input_state emitting isSpeaking=true");
-      this.emit({
-        type: "voice_input_state",
-        payload: {
-          isSpeaking: true,
-        },
-      });
-      void this.handleVoiceSpeechStart();
-    }, VOICE_INTERRUPT_CONFIRMATION_MS);
-  }
-
   private handleVoiceSpeechStopped(): void {
-    if (this.pendingVoiceSpeechStartAt !== null) {
-      const durationMs = Date.now() - this.pendingVoiceSpeechStartAt;
-      this.clearPendingVoiceSpeechStart("speech-stopped-before-confirmation");
-      this.sessionLogger.info(
-        { durationMs, confirmationMs: VOICE_INTERRUPT_CONFIRMATION_MS },
-        "Ignoring provisional voice speech start that ended before confirmation",
-      );
-      return;
-    }
-
     this.sessionLogger.info("voice_input_state emitting isSpeaking=false");
     this.emit({
       type: "voice_input_state",
@@ -8021,7 +8013,6 @@ export class Session {
    * Clear speech-in-progress flag once the user turn has completed
    */
   private clearSpeechInProgress(reason: string): void {
-    this.clearPendingVoiceSpeechStart(`clear-speech-in-progress:${reason}`);
     if (!this.speechInProgress) {
       return;
     }

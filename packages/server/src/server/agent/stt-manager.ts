@@ -130,6 +130,10 @@ export class STTManager {
     this.resolveStt = toResolver(stt);
   }
 
+  public getProvider(): SpeechToTextProvider | null {
+    return this.resolveStt();
+  }
+
   /**
    * Transcribe audio buffer to text
    */
