@@ -14,6 +14,7 @@ import type {
   AgentProvider,
 } from "./agent/agent-sdk-types.js";
 import { execCommand, platformShell } from "../utils/spawn.js";
+import { getUnattendedModeId } from "./agent/provider-manifest.js";
 
 const LOOP_ID_LENGTH = 8;
 const DEFAULT_LOOP_PROVIDER: AgentProvider = "claude";
@@ -71,10 +72,12 @@ const LoopRecordSchema = z.object({
   cwd: z.string(),
   provider: z.string(),
   model: z.string().nullable(),
+  modeId: z.string().nullable().default(null),
   workerProvider: z.string().nullable(),
   workerModel: z.string().nullable(),
   verifierProvider: z.string().nullable(),
   verifierModel: z.string().nullable(),
+  verifierModeId: z.string().nullable().default(null),
   verifyPrompt: z.string().nullable(),
   verifyChecks: z.array(z.string()),
   archive: z.boolean(),
@@ -109,10 +112,12 @@ export interface LoopRunOptions {
   cwd: string;
   provider?: AgentProvider;
   model?: string;
+  modeId?: string;
   workerProvider?: AgentProvider;
   workerModel?: string;
   verifierProvider?: AgentProvider;
   verifierModel?: string;
+  verifierModeId?: string;
   verifyPrompt?: string;
   verifyChecks?: string[];
   archive?: boolean;
@@ -376,10 +381,12 @@ export class LoopService {
       cwd: path.resolve(input.cwd),
       provider: input.provider ?? DEFAULT_LOOP_PROVIDER,
       model: normalizePrompt(input.model, "model"),
+      modeId: normalizePrompt(input.modeId, "modeId"),
       workerProvider: input.workerProvider ?? null,
       workerModel: normalizePrompt(input.workerModel, "workerModel"),
       verifierProvider: input.verifierProvider ?? null,
       verifierModel: normalizePrompt(input.verifierModel, "verifierModel"),
+      verifierModeId: normalizePrompt(input.verifierModeId, "verifierModeId"),
       verifyPrompt,
       verifyChecks,
       archive: input.archive ?? false,
@@ -789,10 +796,12 @@ export class LoopService {
   }
 
   private buildWorkerConfig(loop: LoopRecord, iteration: LoopIterationRecord): AgentSessionConfig {
+    const provider = loop.workerProvider ?? loop.provider;
     return {
-      provider: loop.workerProvider ?? loop.provider,
+      provider,
       cwd: loop.cwd,
       model: loop.workerModel ?? loop.model ?? undefined,
+      modeId: loop.modeId ?? getUnattendedModeId(provider),
       title: buildWorkerTitle(loop, iteration.index),
       internal: true,
     };
@@ -802,10 +811,12 @@ export class LoopService {
     loop: LoopRecord,
     iteration: LoopIterationRecord,
   ): AgentSessionConfig {
+    const provider = loop.verifierProvider ?? loop.provider;
     return {
-      provider: loop.verifierProvider ?? loop.provider,
+      provider,
       cwd: loop.cwd,
       model: loop.verifierModel ?? loop.model ?? undefined,
+      modeId: loop.verifierModeId ?? loop.modeId ?? getUnattendedModeId(provider),
       title: buildVerifierTitle(loop, iteration.index),
       internal: true,
     };

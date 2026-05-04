@@ -85,14 +85,14 @@ export function formatDurationMs(durationMs: number): string {
 
 function resolveScheduleTarget(args: {
   targetValue: string | undefined;
-  hasExplicitProviderSelection: boolean;
+  hasExplicitNewAgentOption: boolean;
   createNewAgentTarget: () => ScheduleTarget;
 }): ScheduleTarget {
-  const { targetValue, hasExplicitProviderSelection, createNewAgentTarget } = args;
+  const { targetValue, hasExplicitNewAgentOption, createNewAgentTarget } = args;
   const currentAgentId = process.env.PASEO_AGENT_ID?.trim();
 
   if (!targetValue) {
-    if (currentAgentId && !hasExplicitProviderSelection) {
+    if (currentAgentId && !hasExplicitNewAgentOption) {
       return { type: "self", agentId: currentAgentId };
     }
     return createNewAgentTarget();
@@ -102,10 +102,10 @@ function resolveScheduleTarget(args: {
     return createNewAgentTarget();
   }
 
-  if (hasExplicitProviderSelection) {
+  if (hasExplicitNewAgentOption) {
     throw {
       code: "INVALID_TARGET",
-      message: "--provider can only be used with a new-agent target",
+      message: "--provider/--mode can only be used with a new-agent target",
       details: "Use --target new-agent or omit --target to create a new agent schedule",
     } satisfies CommandError;
   }
@@ -130,6 +130,7 @@ export function parseScheduleCreateInput(options: {
   name?: string;
   target?: string;
   provider?: string;
+  mode?: string;
   maxRuns?: string;
   expiresIn?: string;
 }): CreateScheduleInput {
@@ -154,7 +155,8 @@ export function parseScheduleCreateInput(options: {
     : { type: "cron", expression: options.cron!.trim() };
 
   const targetValue = options.target?.trim();
-  const hasExplicitProviderSelection = options.provider !== undefined;
+  const modeId = options.mode?.trim();
+  const hasExplicitNewAgentOption = options.provider !== undefined || options.mode !== undefined;
   const createNewAgentTarget = (): ScheduleTarget => {
     const resolvedProviderModel = resolveProviderAndModel({
       provider: options.provider,
@@ -165,12 +167,13 @@ export function parseScheduleCreateInput(options: {
         provider: resolvedProviderModel.provider,
         cwd: process.cwd(),
         ...(resolvedProviderModel.model ? { model: resolvedProviderModel.model } : {}),
+        ...(modeId ? { modeId } : {}),
       },
     };
   };
   const target = resolveScheduleTarget({
     targetValue,
-    hasExplicitProviderSelection,
+    hasExplicitNewAgentOption,
     createNewAgentTarget,
   });
 

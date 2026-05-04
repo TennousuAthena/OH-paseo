@@ -475,8 +475,10 @@ export interface RunLoopOptions {
   cwd: string;
   provider?: string;
   model?: string;
+  modeId?: string;
   verifierProvider?: string;
   verifierModel?: string;
+  verifierModeId?: string;
   verifyPrompt?: string | null;
   verifyChecks?: string[];
   name?: string | null;
@@ -3751,8 +3753,10 @@ export class DaemonClient {
         cwd: options.cwd,
         ...(options.provider ? { provider: options.provider } : {}),
         ...(options.model ? { model: options.model } : {}),
+        ...(options.modeId ? { modeId: options.modeId } : {}),
         ...(options.verifierProvider ? { verifierProvider: options.verifierProvider } : {}),
         ...(options.verifierModel ? { verifierModel: options.verifierModel } : {}),
+        ...(options.verifierModeId ? { verifierModeId: options.verifierModeId } : {}),
         ...(options.verifyPrompt ? { verifyPrompt: options.verifyPrompt } : {}),
         ...(options.verifyChecks && options.verifyChecks.length > 0
           ? { verifyChecks: options.verifyChecks }

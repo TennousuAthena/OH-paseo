@@ -25,6 +25,10 @@ export function createScheduleCommand(): Command {
         "--provider <provider>",
         "Agent provider, or provider/model (e.g. codex or codex/gpt-5.4)",
       )
+      .option(
+        "--mode <mode>",
+        "Provider-specific mode (e.g. claude bypassPermissions, opencode build)",
+      )
       .option("--max-runs <n>", "Maximum number of runs")
       .option("--expires-in <duration>", "Time to live for the schedule"),
   ).action(withOutput(runCreateCommand));

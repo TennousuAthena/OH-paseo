@@ -21,8 +21,10 @@ export interface LoopRunRow {
 export interface LoopRunOptions extends CommandOptions {
   provider?: string;
   model?: string;
+  mode?: string;
   verifyProvider?: string;
   verifyModel?: string;
+  verifyMode?: string;
   verify?: string;
   verifyCheck?: string[];
   archive?: boolean;
@@ -48,8 +50,13 @@ export function addLoopRunOptions(command: Command): Command {
     .argument("<prompt>", "Prompt for each fresh worker iteration")
     .option("--provider <provider>", "Default provider for worker and verifier agents")
     .option("--model <model>", "Default model for worker and verifier agents")
+    .option(
+      "--mode <mode>",
+      "Provider-specific mode for the worker agent (e.g. claude bypassPermissions, opencode build)",
+    )
     .option("--verify-provider <provider>", "Provider for the verifier agent")
     .option("--verify-model <model>", "Model for the verifier agent")
+    .option("--verify-mode <mode>", "Provider-specific mode for the verifier agent")
     .option("--verify <prompt>", "Verifier agent prompt")
     .option(
       "--verify-check <command>",
@@ -116,6 +123,10 @@ export function buildLoopRunInput(prompt: string, options: LoopRunOptions): Loop
     result.model = options.model.trim();
   }
 
+  if (options.mode?.trim()) {
+    result.modeId = options.mode.trim();
+  }
+
   // Resolve verifier provider/model
   if (options.verifyProvider) {
     const { provider, model } = resolveProviderAndModel({ provider: options.verifyProvider });
@@ -128,6 +139,10 @@ export function buildLoopRunInput(prompt: string, options: LoopRunOptions): Loop
     }
   } else if (options.verifyModel?.trim()) {
     result.verifierModel = options.verifyModel.trim();
+  }
+
+  if (options.verifyMode?.trim()) {
+    result.verifierModeId = options.verifyMode.trim();
   }
 
   if (verifyPrompt) result.verifyPrompt = verifyPrompt;

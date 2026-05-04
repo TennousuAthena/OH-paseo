@@ -6,6 +6,7 @@ import type { AgentStorage } from "../agent/agent-storage.js";
 import type { AgentPromptInput, AgentSessionConfig } from "../agent/agent-sdk-types.js";
 import { curateAgentActivity } from "../agent/activity-curator.js";
 import { ensureAgentLoaded } from "../agent/agent-loading.js";
+import { getUnattendedModeId } from "../agent/provider-manifest.js";
 import { ScheduleStore } from "./store.js";
 import { computeNextRunAt, validateScheduleCadence } from "./cron.js";
 import type {
@@ -411,7 +412,7 @@ export class ScheduleService {
     const config: AgentSessionConfig = {
       provider: schedule.target.config.provider,
       cwd: schedule.target.config.cwd,
-      modeId: schedule.target.config.modeId,
+      modeId: schedule.target.config.modeId ?? getUnattendedModeId(schedule.target.config.provider),
       model: schedule.target.config.model,
       thinkingOptionId: schedule.target.config.thinkingOptionId,
       title: schedule.target.config.title,

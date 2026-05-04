@@ -9,7 +9,10 @@ export interface AgentModeVisuals {
   colorTier: AgentModeColorTier;
 }
 
-export type AgentProviderModeDefinition = Omit<AgentMode, "icon" | "colorTier"> & AgentModeVisuals;
+export type AgentProviderModeDefinition = Omit<AgentMode, "icon" | "colorTier"> &
+  AgentModeVisuals & {
+    isUnattended?: boolean;
+  };
 
 // TODO: `modes` should not be static. Providers (especially ACP) report their
 // own modes at runtime via session/new. We should fetch modes from the provider
@@ -55,6 +58,7 @@ const CLAUDE_MODES: AgentProviderModeDefinition[] = [
     description: "Skip all permission prompts (use with caution)",
     icon: "ShieldAlert",
     colorTier: "dangerous",
+    isUnattended: true,
   },
 ];
 
@@ -72,6 +76,7 @@ const CODEX_MODES: AgentProviderModeDefinition[] = [
     description: "Edit files, run commands, and access the network without additional prompts.",
     icon: "ShieldAlert",
     colorTier: "dangerous",
+    isUnattended: true,
   },
 ];
 
@@ -96,6 +101,7 @@ const COPILOT_MODES: AgentProviderModeDefinition[] = [
     description: "Autonomous mode that runs until task completion without user interaction",
     icon: "ShieldOff",
     colorTier: "dangerous",
+    isUnattended: true,
   },
 ];
 
@@ -113,6 +119,7 @@ const OPENCODE_MODES: AgentProviderModeDefinition[] = [
     description: "Automatically approves all tool permission prompts for the session",
     icon: "ShieldAlert",
     colorTier: "dangerous",
+    isUnattended: true,
   },
   {
     id: "plan",
@@ -220,6 +227,17 @@ export function isValidAgentProvider(
   validIds: Iterable<string> = BUILTIN_PROVIDER_IDS,
 ): boolean {
   return Array.isArray(validIds) ? validIds.includes(value) : new Set(validIds).has(value);
+}
+
+export function getUnattendedModeId(
+  provider: string,
+  definitions: AgentProviderDefinition[] = [
+    ...AGENT_PROVIDER_DEFINITIONS,
+    ...DEV_AGENT_PROVIDER_DEFINITIONS,
+  ],
+): string | undefined {
+  const definition = definitions.find((entry) => entry.id === provider);
+  return definition?.modes.find((mode) => mode.isUnattended)?.id;
 }
 
 export function getModeVisuals(
