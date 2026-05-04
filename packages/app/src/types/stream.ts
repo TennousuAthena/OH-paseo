@@ -543,10 +543,6 @@ function appendTodoList(
   return [...state, entry];
 }
 
-function formatErrorMessage(message: string): string {
-  return `Agent error\n${message}`;
-}
-
 function reduceTimelineToolCall(
   state: StreamItem[],
   event: Extract<AgentStreamEventPayload, { type: "timeline" }>,
@@ -672,7 +668,7 @@ function reduceTimelineEvent(
         id: createTimelineId("error", item.message ?? "", timestamp),
         timestamp,
         activityType: "error",
-        message: formatErrorMessage(item.message ?? "Unknown error"),
+        message: item.message ?? "Unknown error",
       };
       return finalizeActiveThoughts(appendActivityLog(state, activity));
     }

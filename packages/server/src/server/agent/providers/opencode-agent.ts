@@ -117,18 +117,6 @@ const OPENCODE_HANDLED_BUILTIN_SLASH_COMMANDS: AgentSlashCommand[] = [
   { name: "compact", description: "Compact the current session", argumentHint: "" },
   { name: "summarize", description: "Compact the current session", argumentHint: "" },
 ];
-const OPENCODE_FATAL_RETRY_MESSAGE_TOKENS = [
-  "insufficient balance",
-  "no resource package",
-  "please recharge",
-  "invalid api key",
-  "unauthorized",
-  "authentication",
-  "model not found",
-  "unknown model",
-  "does not exist",
-  "unsupported model",
-] as const;
 const OPENCODE_HEADERS_TIMEOUT_TOKENS = [
   "headers timeout",
   "headers timeout error",
@@ -327,14 +315,6 @@ async function reconcileOpenCodeSessionClose(params: {
       "Failed to archive OpenCode session during close",
     );
   }
-}
-
-function isFatalOpenCodeRetryMessage(message: string | null | undefined): boolean {
-  const normalized = typeof message === "string" ? message.trim().toLowerCase() : "";
-  if (!normalized) {
-    return false;
-  }
-  return OPENCODE_FATAL_RETRY_MESSAGE_TOKENS.some((token) => normalized.includes(token));
 }
 
 function isOpenCodeHeadersTimeoutFailure(error: unknown): boolean {
@@ -2161,15 +2141,24 @@ function appendOpenCodeSessionStatus(
     events.push({ type: "turn_completed", provider: "opencode", usage: undefined });
     return;
   }
-  if (status.type === "retry" && isFatalOpenCodeRetryMessage(status.message)) {
-    resetOpenCodeTurnTrackingState(state);
+  if (status.type === "retry") {
+    // Mirror what opencode's TUI shows: retry attempts are visible activity, not
+    // terminal. opencode itself never gives up — it backs off and tries again
+    // forever. If we silently swallow these the user sees a spinner with no
+    // explanation. Forwarding as a timeline error item is a no-op for old
+    // clients (the schema already supports it).
+    const message = typeof status.message === "string" ? status.message.trim() : "";
+    const text = message
+      ? `Provider retry (attempt ${status.attempt}): ${message}`
+      : `Provider retry (attempt ${status.attempt})`;
     events.push({
-      type: "turn_failed",
+      type: "timeline",
       provider: "opencode",
-      error: toDiagnosticErrorMessage(status.message),
+      item: { type: "error", message: text },
     });
+    return;
   }
-  // "retry" and "busy" are transient — no terminal event.
+  // "busy" is transient — no terminal event, no surfaced activity.
 }
 
 interface Deferred<T> {

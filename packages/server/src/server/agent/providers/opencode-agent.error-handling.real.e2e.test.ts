@@ -148,31 +148,10 @@ describe("opencode agent error handling (real)", () => {
     }
   }, 45_000);
 
-  test("surfaces fatal retry status from zai/glm-5.1 instead of hanging forever", async () => {
-    const client = new OpenCodeAgentClient(pino({ level: "silent" }));
-    const session = await client.createSession({
-      provider: "opencode",
-      cwd: process.cwd(),
-      modeId: "build",
-    });
-
-    try {
-      await session.setModel("zai/glm-5.1");
-
-      const events: AgentStreamEvent[] = [];
-      for await (const event of streamSession(session, "Say hello")) {
-        events.push(event);
-        if (isTerminalEvent(event)) break;
-      }
-
-      const terminal = events.find(isTerminalEvent);
-      expect(terminal).toBeDefined();
-      expect(terminal!.type).toBe("turn_failed");
-      expect((terminal!.type === "turn_failed" ? terminal.error : "").toLowerCase()).toMatch(
-        /insufficient balance|resource package|recharge/,
-      );
-    } finally {
-      await session.close().catch(() => undefined);
-    }
-  }, 45_000);
+  // Note: there used to be a real-API test here pinned to zai/glm-5.1's
+  // "insufficient balance" retry. It's been removed because retry behavior is
+  // entirely upstream-dependent — opencode itself decides when to retry, and
+  // OpenCode Zen's quota/availability changes over time. The translation logic
+  // (session.status:retry → timeline error item) is covered by unit tests in
+  // opencode/event-translator.test.ts.
 });

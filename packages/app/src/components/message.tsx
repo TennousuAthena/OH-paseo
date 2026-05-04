@@ -1810,9 +1810,7 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
   successBg: {
     backgroundColor: "rgba(20, 83, 45, 0.3)",
   },
-  errorBg: {
-    backgroundColor: "rgba(127, 29, 29, 0.3)",
-  },
+  errorBg: {},
   artifactBg: {
     backgroundColor: "rgba(30, 58, 138, 0.4)",
   },
@@ -1827,6 +1825,8 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
   },
   iconContainer: {
     flexShrink: 0,
+    height: 20,
+    justifyContent: "center",
   },
   textContainer: {
     flex: 1,
@@ -1936,7 +1936,9 @@ export const ActivityLog = memo(function ActivityLog({
             <IconComponent size={16} color={config.color} />
           </View>
           <View style={activityLogStylesheet.textContainer}>
-            <Text style={messageTextStyle}>{displayMessage}</Text>
+            <Text style={messageTextStyle} selectable>
+              {displayMessage}
+            </Text>
             {metadata && (
               <View style={activityLogStylesheet.detailsRow}>
                 <Text style={activityLogStylesheet.detailsText}>Details</Text>

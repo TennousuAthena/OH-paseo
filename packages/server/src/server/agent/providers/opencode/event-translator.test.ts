@@ -735,7 +735,7 @@ describe("translateOpenCodeEvent", () => {
     expect(state.partTypes.size).toBe(0);
   });
 
-  it("emits turn_failed from fatal session.status retry", () => {
+  it("forwards session.status retry as a non-terminal timeline error item", () => {
     const state = createState();
     state.streamedPartKeys.add("text:part-1");
     state.partTypes.set("part-1", "text");
@@ -747,8 +747,8 @@ describe("translateOpenCodeEvent", () => {
           sessionID: "session-1",
           status: {
             type: "retry",
-            attempt: 2,
-            message: "Invalid API key",
+            attempt: 3,
+            message: "Internal server error",
             next: Date.now() + 1000,
           },
         },
@@ -758,16 +758,46 @@ describe("translateOpenCodeEvent", () => {
 
     expect(result).toEqual([
       {
-        type: "turn_failed",
+        type: "timeline",
         provider: "opencode",
-        error: "Invalid API key",
+        item: { type: "error", message: "Provider retry (attempt 3): Internal server error" },
       },
     ]);
-    expect(state.streamedPartKeys.size).toBe(0);
-    expect(state.partTypes.size).toBe(0);
+    // Streaming state must NOT be reset — the turn is still alive, opencode
+    // will eventually either succeed or emit session.idle / session.error.
+    expect(state.streamedPartKeys.size).toBe(1);
+    expect(state.partTypes.size).toBe(1);
   });
 
-  it("ignores transient session.status updates", () => {
+  it("forwards retry without a message using just the attempt number", () => {
+    const state = createState();
+
+    const result = translateOpenCodeEvent(
+      {
+        type: "session.status",
+        properties: {
+          sessionID: "session-1",
+          status: {
+            type: "retry",
+            attempt: 1,
+            message: "",
+            next: Date.now() + 1000,
+          },
+        },
+      },
+      state,
+    );
+
+    expect(result).toEqual([
+      {
+        type: "timeline",
+        provider: "opencode",
+        item: { type: "error", message: "Provider retry (attempt 1)" },
+      },
+    ]);
+  });
+
+  it("ignores transient session.status busy updates", () => {
     const state = createState();
 
     const busy = translateOpenCodeEvent(
@@ -781,24 +811,7 @@ describe("translateOpenCodeEvent", () => {
       state,
     );
 
-    const retry = translateOpenCodeEvent(
-      {
-        type: "session.status",
-        properties: {
-          sessionID: "session-1",
-          status: {
-            type: "retry",
-            attempt: 1,
-            message: "rate limited",
-            next: Date.now() + 1000,
-          },
-        },
-      },
-      state,
-    );
-
     expect(busy).toEqual([]);
-    expect(retry).toEqual([]);
   });
 
   it("emits structured assistant output when schema mode completes without text parts", () => {
