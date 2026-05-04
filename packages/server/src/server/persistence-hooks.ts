@@ -124,7 +124,7 @@ function hasRegisteredProvider(registeredProviders: RegisteredProviders, value: 
   if (isProviderRegistry(registeredProviders)) {
     return Object.prototype.hasOwnProperty.call(registeredProviders, value);
   }
-  return new Set(registeredProviders).has(value as AgentProvider);
+  return new Set(registeredProviders).has(value);
 }
 
 export function isRegisteredProvider(

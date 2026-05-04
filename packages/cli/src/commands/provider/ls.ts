@@ -76,7 +76,7 @@ export async function runLsCommand(
         provider: entry.provider,
         label: entry.label ?? entry.provider,
         status: entry.status === "ready" ? "available" : entry.status,
-        enabled: entry.enabled === false ? "Disabled" : "Enabled",
+        enabled: !entry.enabled ? "Disabled" : "Enabled",
         defaultMode: entry.defaultModeId ?? "default",
         modes: (entry.modes ?? []).map((mode) => mode.label).join(", "),
       })),

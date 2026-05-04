@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile, mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
-import type { Task, TaskStore, CreateTaskOptions, TaskStatus, AgentType } from "./types.js";
+import type { Task, TaskStore, CreateTaskOptions, TaskStatus } from "./types.js";
 
 function generateId(): string {
   return randomBytes(4).toString("hex");
@@ -128,7 +128,7 @@ function parseTask(content: string): Task {
   }
   taskBody = taskBody.trim();
 
-  const assignee = getValue("assignee") as AgentType | "";
+  const assignee = getValue("assignee");
   const parentId = getValue("parentId");
   const priorityStr = getValue("priority");
   const priority = priorityStr ? parseInt(priorityStr, 10) : undefined;

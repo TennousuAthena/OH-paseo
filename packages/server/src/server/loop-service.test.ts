@@ -376,15 +376,15 @@ describe("LoopService", () => {
     expect(finalLoop.archive).toBe(true);
     expect(iteration?.workerAgentId).toBeTruthy();
     expect(iteration?.verifierAgentId).toBeTruthy();
-    expect(archivedAgentIds).toEqual([iteration!.workerAgentId!, iteration!.verifierAgentId!]);
+    expect(archivedAgentIds).toEqual([iteration.workerAgentId!, iteration.verifierAgentId!]);
     await storage.flush();
-    await expect(storage.get(iteration!.workerAgentId!)).resolves.toMatchObject({
-      id: iteration!.workerAgentId!,
+    await expect(storage.get(iteration.workerAgentId!)).resolves.toMatchObject({
+      id: iteration.workerAgentId!,
       archivedAt: expect.any(String),
       internal: true,
     });
-    await expect(storage.get(iteration!.verifierAgentId!)).resolves.toMatchObject({
-      id: iteration!.verifierAgentId!,
+    await expect(storage.get(iteration.verifierAgentId!)).resolves.toMatchObject({
+      id: iteration.verifierAgentId!,
       archivedAt: expect.any(String),
       internal: true,
     });

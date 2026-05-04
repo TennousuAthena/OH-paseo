@@ -870,7 +870,7 @@ export class LoopService {
       record.id.startsWith(trimmed),
     );
     if (matches.length === 1) {
-      return matches[0]!;
+      return matches[0];
     }
     if (matches.length > 1) {
       throw new Error(`Loop id prefix is ambiguous: ${trimmed}`);

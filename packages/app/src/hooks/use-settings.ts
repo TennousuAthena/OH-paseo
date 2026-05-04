@@ -235,16 +235,16 @@ export async function loadSettingsFromStorage(): Promise<Settings> {
 function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
   if (typeof stored.theme === "string" && VALID_THEMES.has(stored.theme)) {
-    result.theme = stored.theme as AppSettings["theme"];
+    result.theme = stored.theme;
   }
   if (stored.sendBehavior === "interrupt" || stored.sendBehavior === "queue") {
     result.sendBehavior = stored.sendBehavior;
   }
   if (
     typeof stored.serviceUrlBehavior === "string" &&
-    VALID_SERVICE_URL_BEHAVIORS.has(stored.serviceUrlBehavior as ServiceUrlBehavior)
+    VALID_SERVICE_URL_BEHAVIORS.has(stored.serviceUrlBehavior)
   ) {
-    result.serviceUrlBehavior = stored.serviceUrlBehavior as ServiceUrlBehavior;
+    result.serviceUrlBehavior = stored.serviceUrlBehavior;
   }
   return result;
 }

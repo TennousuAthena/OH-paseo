@@ -119,7 +119,7 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
     if (audio && audio.samples instanceof Float32Array) {
       rawSamples = audio.samples;
     } else if (audio && Array.isArray(audio.samples)) {
-      rawSamples = Float32Array.from(audio.samples as number[]);
+      rawSamples = Float32Array.from(audio.samples);
     }
     // Copy to avoid "External buffers are not allowed" when sherpa-onnx
     // returns a Float32Array backed by native memory.

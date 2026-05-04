@@ -1,5 +1,8 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": false
+  },
   "plugins": ["react", "react-perf", "unicorn", "typescript", "oxc", "import", "promise"],
   "categories": {
     "correctness": "error",
@@ -53,6 +56,7 @@
     "typescript/no-explicit-any": "error",
     "typescript/prefer-as-const": "error",
     "typescript/no-this-alias": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
     "typescript/consistent-type-definitions": ["error", "interface"],
 
     "import/no-unassigned-import": [

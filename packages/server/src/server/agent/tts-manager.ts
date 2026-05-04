@@ -181,7 +181,7 @@ export class TTSManager {
 
     const scheduleNextSegments = () => {
       while (nextSegmentToSchedule < segments.length && inflight.size < TTS_PREFETCH_SEGMENTS) {
-        const segment = segments[nextSegmentToSchedule]!;
+        const segment = segments[nextSegmentToSchedule];
         inflight.set(segment.index, this.scheduleSegmentSynthesis(segment, abortSignal));
         nextSegmentToSchedule += 1;
       }

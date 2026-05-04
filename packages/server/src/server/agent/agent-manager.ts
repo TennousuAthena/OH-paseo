@@ -1301,7 +1301,7 @@ export class AgentManager {
       throw new Error(`Agent ${agentId} already has an active run`);
     }
 
-    const agent = existingAgent as ActiveManagedAgent;
+    const agent = existingAgent;
     agent.pendingReplacement = false;
     agent.lastError = undefined;
 
@@ -1361,7 +1361,7 @@ export class AgentManager {
   }
 
   private finalizeForegroundTurn(agent: ActiveManagedAgent, turnId?: string): void {
-    const mutableAgent = agent as ActiveManagedAgent;
+    const mutableAgent = agent;
     if (turnId) {
       this.foregroundRuns.rememberFinalizedTurn(mutableAgent, turnId);
     }
@@ -1430,7 +1430,7 @@ export class AgentManager {
       } catch (error) {
         const latest = this.agents.get(agentId);
         if (latest) {
-          const latestActive = latest as ActiveManagedAgent;
+          const latestActive = latest;
           latestActive.pendingReplacement = false;
           if (!latestActive.activeForegroundTurnId && latestActive.lifecycle === "running") {
             (latestActive as ActiveManagedAgent).lifecycle = "idle";
@@ -1502,7 +1502,7 @@ export class AgentManager {
 
       if (options?.signal) {
         abortHandler = () =>
-          finishErr(createAbortError(options.signal!, "wait_for_agent_start aborted"));
+          finishErr(createAbortError(options.signal, "wait_for_agent_start aborted"));
         options.signal.addEventListener("abort", abortHandler, { once: true });
       }
 
@@ -2636,7 +2636,7 @@ export class AgentManager {
       "handleStreamEvent: turn_canceled",
     );
     if (!isForegroundEvent && !agent.pendingReplacement) {
-      (agent as ActiveManagedAgent).lifecycle = "idle";
+      agent.lifecycle = "idle";
     }
     agent.lastError = undefined;
     this.resolvePendingPermissionsForAgent(agent, event.provider, options, "Interrupted");
@@ -2661,7 +2661,7 @@ export class AgentManager {
       "handleStreamEvent: turn_started",
     );
     if (!isForegroundEvent) {
-      (agent as ActiveManagedAgent).lifecycle = "running";
+      agent.lifecycle = "running";
       this.emitState(agent);
     }
   }

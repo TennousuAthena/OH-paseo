@@ -61,7 +61,7 @@ function runTx<T>(
     const request = run(store);
 
     request.addEventListener("success", () => {
-      resolve(request.result as T);
+      resolve(request.result);
     });
 
     request.addEventListener("error", () => {

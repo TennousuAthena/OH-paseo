@@ -901,7 +901,7 @@ export async function isPaseoOwnedWorktreeCwd(
     };
   }
 
-  const worktreesRoot = join(paseoHome, "worktrees", parts[0]!);
+  const worktreesRoot = join(paseoHome, "worktrees", parts[0]);
   return {
     allowed: true,
     ...(repoRoot !== undefined ? { repoRoot } : {}),

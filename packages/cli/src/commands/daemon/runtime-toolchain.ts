@@ -84,7 +84,7 @@ async function resolveNodePathFromPidWindows(pid: number): Promise<NodePathFromP
         error: errors.join("; ") || "could not resolve executable path from PID",
       };
     }
-    const probe = probes[index] as (typeof probes)[number];
+    const probe = probes[index];
     const result = await runProcessProbe(probe.command, probe.args);
     if (result.resolved) {
       const resolved = probe.parseValue ? probe.parseValue(result.resolved) : result.resolved;

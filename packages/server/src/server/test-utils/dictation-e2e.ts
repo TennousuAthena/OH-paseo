@@ -92,7 +92,7 @@ export async function findLargestDebugWavFixture(): Promise<string> {
     }
     const stats = await Promise.all(wavPaths.map((full) => fs.stat(full)));
     for (let i = 0; i < wavPaths.length; i += 1) {
-      files.push({ filePath: wavPaths[i]!, size: stats[i]!.size });
+      files.push({ filePath: wavPaths[i], size: stats[i].size });
     }
     currentLevel = nextLevel;
   }
@@ -101,7 +101,7 @@ export async function findLargestDebugWavFixture(): Promise<string> {
     throw new Error(`No .wav files found under ${base}`);
   }
   files.sort((a, b) => b.size - a.size);
-  return files[0]!.filePath;
+  return files[0].filePath;
 }
 
 export function normalizeTranscript(text: string): string {
@@ -130,7 +130,7 @@ function levenshteinDistanceWords(a: string[], b: string[]): number {
     }
     for (let j = 0; j <= n; j += 1) prev[j] = cur[j]!;
   }
-  return prev[n]!;
+  return prev[n];
 }
 
 export function wordSimilarity(aText: string, bText: string): number {

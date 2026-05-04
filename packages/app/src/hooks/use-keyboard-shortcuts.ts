@@ -260,7 +260,7 @@ export function useKeyboardShortcuts({
     const handleCommandCenterToggle = (event: KeyboardEvent): boolean => {
       const store = useKeyboardShortcutsStore.getState();
       if (!store.commandCenterOpen) {
-        const target = event.target instanceof Element ? (event.target as Element) : null;
+        const target = event.target instanceof Element ? event.target : null;
         const targetEl =
           target?.closest?.("textarea, input, [contenteditable='true']") ??
           (target instanceof HTMLElement ? target : null);

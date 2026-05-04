@@ -386,7 +386,7 @@ describe("relay external socket reconnect behavior", () => {
       clientId,
     });
     expect(sessionMock.instances).toHaveLength(1);
-    const session = sessionMock.instances[0]!;
+    const session = sessionMock.instances[0];
 
     socket1.emit("close", 1006, "");
     await vi.advanceTimersByTimeAsync(1_000);
@@ -425,7 +425,7 @@ describe("relay external socket reconnect behavior", () => {
     await Promise.resolve();
 
     expect(sessionMock.instances).toHaveLength(1);
-    const session = sessionMock.instances[0]!;
+    const session = sessionMock.instances[0];
     expect(session.args.clientCapabilities).toEqual({
       [CLIENT_CAPS.reasoningMergeEnum]: true,
     });
@@ -542,7 +542,7 @@ describe("relay external socket reconnect behavior", () => {
       clientId,
     });
     expect(sessionMock.instances).toHaveLength(1);
-    const session = sessionMock.instances[0]!;
+    const session = sessionMock.instances[0];
 
     socket1.emit("close", 1006, "");
     await vi.advanceTimersByTimeAsync(1_000);
@@ -573,7 +573,7 @@ describe("relay external socket reconnect behavior", () => {
       clientId,
     });
     expect(sessionMock.instances).toHaveLength(1);
-    const session = sessionMock.instances[0]!;
+    const session = sessionMock.instances[0];
 
     const relaySocket = new MockSocket();
     await attachRelayAndHello({
@@ -617,7 +617,7 @@ describe("relay external socket reconnect behavior", () => {
       clientId,
     });
     expect(sessionMock.instances).toHaveLength(1);
-    const session = sessionMock.instances[0]!;
+    const session = sessionMock.instances[0];
 
     socket1.emit("close", 1006, "");
     await vi.advanceTimersByTimeAsync(90_000);
@@ -721,7 +721,7 @@ describe("relay external socket reconnect behavior", () => {
       clientId: "cid-binary-inbound",
     });
     expect(sessionMock.instances).toHaveLength(1);
-    const session = sessionMock.instances[0]!;
+    const session = sessionMock.instances[0];
 
     socket.emit(
       "message",
@@ -758,7 +758,7 @@ describe("relay external socket reconnect behavior", () => {
       clientId: "cid-binary-outbound",
     });
     expect(sessionMock.instances).toHaveLength(1);
-    const session = sessionMock.instances[0]!;
+    const session = sessionMock.instances[0];
 
     const onBinaryMessage = session.args.onBinaryMessage as
       | ((frame: Uint8Array) => void)

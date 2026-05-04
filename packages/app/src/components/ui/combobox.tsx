@@ -488,7 +488,7 @@ function handleDesktopEnterKey(input: DesktopKeyHandlerInput) {
   if (input.orderedVisibleOptions.length === 0) return;
   const { activeIndex, orderedVisibleOptions } = input;
   const index = activeIndex >= 0 && activeIndex < orderedVisibleOptions.length ? activeIndex : 0;
-  input.handleSelect(orderedVisibleOptions[index]!.id);
+  input.handleSelect(orderedVisibleOptions[index].id);
 }
 
 interface FloatingSizeSetters {

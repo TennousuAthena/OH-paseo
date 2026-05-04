@@ -98,11 +98,11 @@ function normalizeLoggerConfigInput(config: LoggerConfigInput): PersistedConfig 
   }
 
   if ("log" in config) {
-    return config as PersistedConfig;
+    return config;
   }
 
   if ("level" in config || "format" in config) {
-    const legacy = config as LegacyLogConfig;
+    const legacy = config;
     return {
       log: {
         ...(legacy.level ? { level: legacy.level } : {}),

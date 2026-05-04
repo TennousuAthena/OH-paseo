@@ -132,7 +132,7 @@ function dispatchWebNotificationClick(detail: WebNotificationClickDetail): boole
       cancelable: true,
     },
   );
-  return dispatch(event) === false;
+  return !dispatch(event);
 }
 
 function fallbackNavigateToNotificationTarget(data: Record<string, unknown> | undefined): void {

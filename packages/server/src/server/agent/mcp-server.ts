@@ -168,9 +168,7 @@ function resolveRegisteredProviderIds(
   agentManager: AgentManager,
   providerRegistry: Record<AgentProvider, ProviderDefinition> | null | undefined,
 ): AgentProvider[] {
-  return providerRegistry
-    ? (Object.keys(providerRegistry) as AgentProvider[])
-    : agentManager.getRegisteredProviderIds();
+  return providerRegistry ? Object.keys(providerRegistry) : agentManager.getRegisteredProviderIds();
 }
 
 interface ProviderSummary {
@@ -239,7 +237,7 @@ function resolveScheduleProviderAndModel(params: {
   const providerInput = params.provider?.trim() || params.defaultProvider;
   const slashIndex = providerInput.indexOf("/");
   if (slashIndex === -1) {
-    return { provider: providerInput as AgentProvider };
+    return { provider: providerInput };
   }
 
   const provider = providerInput.slice(0, slashIndex).trim();
@@ -249,7 +247,7 @@ function resolveScheduleProviderAndModel(params: {
   }
 
   return {
-    provider: provider as AgentProvider,
+    provider: provider,
     model,
   };
 }
@@ -447,7 +445,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
 
     const resolvedProviderModel = resolveScheduleProviderAndModel({
       provider: params?.provider,
-      defaultProvider: params.provider as AgentProvider,
+      defaultProvider: params.provider,
     });
     return {
       type: "new-agent" as const,

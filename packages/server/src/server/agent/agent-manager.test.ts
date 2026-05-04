@@ -1833,7 +1833,7 @@ test("fetchTimeline returns a bounded reset window when cursor epoch is stale", 
     direction: "after",
     cursor: {
       epoch: "stale-epoch",
-      seq: baseline.rows[baseline.rows.length - 1]!.seq,
+      seq: baseline.rows[baseline.rows.length - 1].seq,
     },
     limit: 1,
   });
@@ -2613,7 +2613,7 @@ test("replaceAgentRun does not emit idle or resolve waiters between interrupted 
   }, []);
   expect(runningIndexes.length).toBeGreaterThanOrEqual(2);
 
-  const firstReplacementRunningIndex = runningIndexes[1]!;
+  const firstReplacementRunningIndex = runningIndexes[1];
   expect(lifecycleUpdates.slice(0, firstReplacementRunningIndex).includes("idle")).toBe(false);
 
   allowSecondRunToEnd.resolve();
@@ -4766,11 +4766,10 @@ test("hydrateTimeline suppresses only matching canonical user_message messageId"
   const timeline = manager.getTimeline(snapshot.id);
   const userMessages = timeline.filter((item) => item.type === "user_message");
   expect(userMessages).toHaveLength(2);
-  expect(
-    userMessages.map(
-      (item) => (item as Extract<AgentTimelineItem, { type: "user_message" }>).messageId,
-    ),
-  ).toEqual(["msg_client_hello", "msg_provider_distinct"]);
+  expect(userMessages.map((item) => item.messageId)).toEqual([
+    "msg_client_hello",
+    "msg_provider_distinct",
+  ]);
   expect(userMessages.map((item) => item.text)).toEqual(["hello from user", "hello from user"]);
 });
 
@@ -4815,11 +4814,11 @@ test("recordUserMessage normalizes blank/whitespace messageId to undefined", asy
 
   expect(userMessages).toHaveLength(3);
   // Empty string → undefined (not empty string)
-  expect(userMessages[0]!.messageId).toBeUndefined();
+  expect(userMessages[0].messageId).toBeUndefined();
   // Whitespace → undefined
-  expect(userMessages[1]!.messageId).toBeUndefined();
+  expect(userMessages[1].messageId).toBeUndefined();
   // Valid → preserved
-  expect(userMessages[2]!.messageId).toBe("msg_valid_123");
+  expect(userMessages[2].messageId).toBe("msg_valid_123");
 });
 
 test("recordUserMessage preserves provided messageId in timeline item and dispatched event", async () => {
@@ -4942,9 +4941,7 @@ test("live provider user_message echo is suppressed when recordUserMessage was c
   // Should be exactly 1 (canonical), not 2 (canonical + provider echo)
   expect(userMessages).toHaveLength(1);
   // The canonical one must carry the client messageId for optimistic matching
-  expect((userMessages[0] as Extract<AgentTimelineItem, { type: "user_message" }>).messageId).toBe(
-    "msg_client_echo_1",
-  );
+  expect(userMessages[0].messageId).toBe("msg_client_echo_1");
 
   // Assistant messages from the run should still appear
   const assistantMessages = timeline.filter((item) => item.type === "assistant_message");
@@ -5135,9 +5132,7 @@ test("provider user_message is NOT suppressed when no prior recordUserMessage", 
 
   // Provider's user_message should be recorded (no canonical to dedup against)
   expect(userMessages).toHaveLength(1);
-  expect((userMessages[0] as Extract<AgentTimelineItem, { type: "user_message" }>).text).toBe(
-    "continuation prompt",
-  );
+  expect(userMessages[0].text).toBe("continuation prompt");
 });
 
 test("replaceAgentRun succeeds when foreground turn terminal event is never delivered", async () => {

@@ -63,8 +63,8 @@ describe("combined model selector helpers", () => {
       }),
     ]);
 
-    expect(matchesSearch(rows[0]!, "claude")).toBe(true);
-    expect(matchesSearch(rows[1]!, "gpt-5.4")).toBe(true);
+    expect(matchesSearch(rows[0], "claude")).toBe(true);
+    expect(matchesSearch(rows[1], "gpt-5.4")).toBe(true);
   });
 
   it("keeps the selected trigger label model-only", () => {

@@ -187,7 +187,7 @@ function createAliasedModelIdSchema<T extends string>(params: {
         message: "Invalid model id",
       },
     )
-    .transform((value) => params.aliases[value] ?? (value as T));
+    .transform((value) => params.aliases[value] ?? value);
 }
 
 const STT_MODEL_ALIASES = buildAliasMap(LOCAL_STT_MODEL_IDS);

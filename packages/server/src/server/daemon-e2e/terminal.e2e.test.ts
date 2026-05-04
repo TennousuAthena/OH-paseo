@@ -503,7 +503,7 @@ function summarizeTerminalOutputCadence(input: {
 }): TerminalOutputCadenceSummary {
   const gaps = input.frames
     .slice(1)
-    .map((frame, index) => frame.receivedAtMs - input.frames[index]!.receivedAtMs)
+    .map((frame, index) => frame.receivedAtMs - input.frames[index].receivedAtMs)
     .sort((a, b) => a - b);
   const p95Index =
     gaps.length === 0 ? -1 : Math.min(gaps.length - 1, Math.ceil(gaps.length * 0.95) - 1);
@@ -512,7 +512,7 @@ function summarizeTerminalOutputCadence(input: {
   return {
     frameCount: input.frames.length,
     maxGapMs: gaps.at(-1) ?? 0,
-    p95GapMs: p95Index === -1 ? 0 : gaps[p95Index]!,
+    p95GapMs: p95Index === -1 ? 0 : gaps[p95Index],
     lastOutputAfterStopMs: lastFrame ? lastFrame.receivedAtMs - input.stoppedAtMs : 0,
     payloadBytes: input.frames.map((frame) => frame.payloadBytes),
   };

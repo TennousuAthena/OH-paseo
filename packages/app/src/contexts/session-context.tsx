@@ -14,11 +14,7 @@ import {
   type TimelineReducerSideEffect,
 } from "@/timeline/session-stream-reducers";
 import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
-import type {
-  AgentAttachment,
-  AgentStreamEventPayload,
-  SessionOutboundMessage,
-} from "@server/shared/messages";
+import type { AgentAttachment, SessionOutboundMessage } from "@server/shared/messages";
 import { parseServerInfoStatusPayload } from "@server/shared/messages";
 import {
   buildAgentAttentionNotificationPayload,
@@ -1201,7 +1197,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       if (message.type !== "agent_stream") return;
       const { agentId, event, timestamp, seq, epoch } = message.payload;
       const parsedTimestamp = new Date(timestamp);
-      const streamEvent = event as AgentStreamEventPayload;
+      const streamEvent = event;
       if (
         event.type === "turn_started" ||
         event.type === "turn_completed" ||

@@ -111,7 +111,7 @@ export async function runAllowCommand(
       permissionsToAllow = pendingPermissions;
     } else {
       // Find permission by ID prefix
-      const permission = pendingPermissions.find((p) => p.id === reqId || p.id.startsWith(reqId!));
+      const permission = pendingPermissions.find((p) => p.id === reqId || p.id.startsWith(reqId));
       if (!permission) {
         await client.close();
         const error: CommandError = {

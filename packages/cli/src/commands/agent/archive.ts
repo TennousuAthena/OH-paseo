@@ -44,7 +44,7 @@ export async function runArchiveCommand(
   options: AgentArchiveOptions,
   _command: Command,
 ): Promise<AgentArchiveCommandResult> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
 
   // Validate arguments
   if (!agentIdArg || agentIdArg.trim().length === 0) {
@@ -58,7 +58,7 @@ export async function runArchiveCommand(
 
   let client: DaemonClient;
   try {
-    client = await connectToDaemon({ host: options.host as string | undefined });
+    client = await connectToDaemon({ host: options.host });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {

@@ -113,7 +113,7 @@ export async function runImportCommand(
   options: AgentImportOptions,
   _command: Command,
 ): Promise<AgentImportCommandResult> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
   const sessionId = sessionIdArg.trim();
   if (!sessionId) {
     throw {
@@ -134,7 +134,7 @@ export async function runImportCommand(
   }
 
   const labels = parseImportLabels(options.label);
-  const client = await connectToDaemonOrThrow(options.host as string | undefined, host);
+  const client = await connectToDaemonOrThrow(options.host, host);
 
   try {
     const agent = await client.importAgent({

@@ -138,7 +138,7 @@ export class DaemonClientRuntimeMetrics {
 
   private pruneBuckets(now: number): void {
     const cutoff = now - this.windowMs;
-    while (this.buckets.length > 0 && this.buckets[0]!.endedAt < cutoff) {
+    while (this.buckets.length > 0 && this.buckets[0].endedAt < cutoff) {
       this.buckets.shift();
     }
   }

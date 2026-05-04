@@ -22,7 +22,7 @@ export interface StopOnQuitDeps {
 }
 
 export function shouldStopDesktopManagedDaemonOnQuit(settings: QuitLifecycleSettings): boolean {
-  return settings.daemon.keepRunningAfterQuit === false;
+  return !settings.daemon.keepRunningAfterQuit;
 }
 
 export async function stopDesktopManagedDaemonOnQuitIfNeeded(

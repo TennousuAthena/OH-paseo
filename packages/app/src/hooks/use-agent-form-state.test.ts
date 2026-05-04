@@ -35,7 +35,7 @@ const TEST_CLAUDE_DEFINITION: AgentProviderDefinition = {
 function makeProviderMap(
   ...definitions: AgentProviderDefinition[]
 ): Map<AgentProvider, AgentProviderDefinition> {
-  return new Map(definitions.map((d) => [d.id as AgentProvider, d]));
+  return new Map(definitions.map((d) => [d.id, d]));
 }
 
 const codexProviderMap = makeProviderMap(TEST_CODEX_DEFINITION);

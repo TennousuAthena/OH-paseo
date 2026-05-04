@@ -342,7 +342,7 @@ export async function connectToDaemon(options?: ConnectOptions): Promise<DaemonC
       if (lastError instanceof Error) throw lastError;
       throw new Error(`Unable to connect to Paseo daemon via ${hosts.join(", ")}`);
     }
-    const host = hosts[index] as string;
+    const host = hosts[index];
     const password = resolveDaemonPassword(host);
     const result = await tryConnectHost(host, password, clientId, timeout, nodeWebSocketFactory);
     if ("client" in result) {

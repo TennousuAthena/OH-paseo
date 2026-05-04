@@ -332,7 +332,7 @@ export function useCommandCenter() {
         if (currentItems.length === 0) return;
         event.preventDefault();
         const index = Math.max(0, Math.min(activeIndexRef.current, currentItems.length - 1));
-        handleSelectItemRef.current(currentItems[index]!);
+        handleSelectItemRef.current(currentItems[index]);
         return;
       }
 

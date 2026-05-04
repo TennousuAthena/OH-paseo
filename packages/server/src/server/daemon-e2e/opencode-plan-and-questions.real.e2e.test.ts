@@ -20,7 +20,7 @@ function pickOpenCodeModel(
   const preferred = models.find((model) =>
     preferences.some((fragment) => model.id.includes(fragment)),
   );
-  return preferred?.id ?? models[0]!.id;
+  return preferred?.id ?? models[0].id;
 }
 
 async function createHarness(): Promise<{

@@ -317,7 +317,7 @@ test("Test 4: Autonomous run", async () => {
       return;
     }
 
-    const autoTurnId = autoStarts[0]!.turnId;
+    const autoTurnId = autoStarts[0].turnId;
     expect(fgTurnId).not.toBe(autoTurnId);
 
     // Autonomous turn reaches terminal

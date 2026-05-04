@@ -58,7 +58,7 @@ export class TerminalOutputCoalescer {
     }
 
     const payload =
-      this.chunks.length === 1 ? this.chunks[0]! : Buffer.concat(this.chunks, this.bytes);
+      this.chunks.length === 1 ? this.chunks[0] : Buffer.concat(this.chunks, this.bytes);
     const bytes = this.bytes;
     const chars = this.chars;
     this.clearPending();

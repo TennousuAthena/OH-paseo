@@ -141,7 +141,7 @@ function createTestDeps(): TestDeps {
 }
 
 function createProviderDefinition(overrides: Partial<ProviderDefinition>): ProviderDefinition {
-  const provider = (overrides.id ?? "claude") as AgentProvider;
+  const provider = overrides.id ?? "claude";
   return {
     id: provider,
     label: "Claude",

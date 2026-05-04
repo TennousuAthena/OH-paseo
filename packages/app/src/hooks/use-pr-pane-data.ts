@@ -86,7 +86,7 @@ export function usePrPaneData({
   const checkoutPrStatus = useCheckoutPrStatusQuery({ serverId, cwd, enabled });
   const status = checkoutPrStatus.status;
   const { prNumber, repoOwner, repoName } = extractPrRepoIdentity(status);
-  const githubFeaturesEnabled = checkoutPrStatus.githubFeaturesEnabled !== false;
+  const githubFeaturesEnabled = checkoutPrStatus.githubFeaturesEnabled;
   const unsupportedKey =
     prNumber === null ? null : timelineUnsupportedKey({ serverId, cwd, prNumber });
   const timelineUnsupported = unsupportedKey ? unsupportedTimelineKeys.has(unsupportedKey) : false;
@@ -100,7 +100,7 @@ export function usePrPaneData({
     timelineUnsupported,
   });
 
-  const timelineQuery = useQuery<PullRequestTimeline, Error>({
+  const timelineQuery = useQuery<PullRequestTimeline>({
     queryKey: prPaneTimelineQueryKey({ serverId, cwd, prNumber }),
     queryFn: async () => {
       if (!daemonClient || prNumber === null || repoOwner === null || repoName === null) {

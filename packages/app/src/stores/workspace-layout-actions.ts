@@ -526,7 +526,7 @@ function findNearestSiblingPaneId(root: SplitNodeInternal, paneId: string): stri
 
   for (let depth = path.length - 1; depth >= 0; depth -= 1) {
     const parentPath = path.slice(0, depth);
-    const childIndex = path[depth]!;
+    const childIndex = path[depth];
     const parentNode = getNodeAtPath(root, parentPath);
     invariant(parentNode.kind === "group", "Expected parent group for pane lookup");
 
@@ -667,7 +667,7 @@ function removePaneByPath(root: SplitNodeInternal, path: number[]): SplitNodeInt
   }
 
   const parentPath = path.slice(0, -1);
-  const removeIndex = path[path.length - 1]!;
+  const removeIndex = path[path.length - 1];
   const parentNode = getNodeAtPath(root, parentPath);
   invariant(parentNode.kind === "group", "Expected parent group while removing pane");
 
@@ -676,7 +676,7 @@ function removePaneByPath(root: SplitNodeInternal, path: number[]): SplitNodeInt
 
   const nextParentNode =
     nextParentChildren.length === 1
-      ? nextParentChildren[0]!
+      ? nextParentChildren[0]
       : createGroupNode({
           id: parentNode.group.id,
           direction: parentNode.group.direction,

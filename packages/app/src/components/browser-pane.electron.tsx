@@ -461,7 +461,7 @@ export function BrowserPane({
     };
     const handleFaviconUpdated = (event: Event) => {
       const favicons = Array.isArray((event as Event & { favicons?: unknown[] }).favicons)
-        ? (((event as Event & { favicons?: string[] }).favicons as string[] | undefined) ?? [])
+        ? ((event as Event & { favicons?: string[] }).favicons ?? [])
         : [];
       updateBrowserRef.current(browserIdRef.current, { faviconUrl: favicons[0] ?? null });
     };

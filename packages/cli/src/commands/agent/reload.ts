@@ -40,7 +40,7 @@ export async function runReloadCommand(
   options: AgentReloadOptions,
   _command: Command,
 ): Promise<AgentReloadCommandResult> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
 
   if (!agentIdArg || agentIdArg.trim().length === 0) {
     const error: CommandError = {
@@ -53,7 +53,7 @@ export async function runReloadCommand(
 
   let client: DaemonClient;
   try {
-    client = await connectToDaemon({ host: options.host as string | undefined });
+    client = await connectToDaemon({ host: options.host });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {

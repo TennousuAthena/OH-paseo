@@ -216,7 +216,7 @@ export async function runInspectCommand(
   options: AgentInspectOptions,
   _command: Command,
 ): Promise<AgentInspectResult> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
 
   // Validate arguments
   if (!agentIdArg || agentIdArg.trim().length === 0) {
@@ -230,7 +230,7 @@ export async function runInspectCommand(
 
   let client;
   try {
-    client = await connectToDaemon({ host: options.host as string | undefined });
+    client = await connectToDaemon({ host: options.host });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {

@@ -148,7 +148,7 @@ describe("sendOsNotification", () => {
     clicked.clickListeners[0]?.({} as Event);
 
     expect(dispatchEvent).toHaveBeenCalledTimes(1);
-    const event = dispatchEvent.mock.calls[0]?.[0] as unknown as {
+    const event = dispatchEvent.mock.calls[0]?.[0] as {
       type?: string;
       detail?: { data?: Record<string, unknown> };
     };

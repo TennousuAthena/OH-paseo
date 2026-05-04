@@ -176,9 +176,9 @@ export class WorkspaceDirectory {
       ),
     );
     for (let i = 0; i < includedWorkspaces.length; i += 1) {
-      const workspaceId = includedWorkspaces[i]!.workspaceId;
+      const workspaceId = includedWorkspaces[i].workspaceId;
       descriptorsByWorkspaceId.set(workspaceId, {
-        ...workspaceDescriptors[i]!,
+        ...workspaceDescriptors[i],
         archivingAt: this.archivingByWorkspaceId.get(workspaceId) ?? null,
       });
     }

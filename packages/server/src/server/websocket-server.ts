@@ -248,7 +248,7 @@ function bufferFromWsData(data: Buffer | ArrayBuffer | Buffer[] | string): Buffe
     );
   }
   if (Buffer.isBuffer(data)) return data;
-  return Buffer.from(data as ArrayBuffer);
+  return Buffer.from(data);
 }
 
 interface WebSocketLike {
@@ -1653,9 +1653,9 @@ export class VoiceAssistantWebSocketServer {
       if (latencies.length === 0) continue;
       latencies.sort((a, b) => a - b);
       const count = latencies.length;
-      const minMs = Math.round(latencies[0]!);
-      const maxMs = Math.round(latencies[count - 1]!);
-      const p50Ms = Math.round(latencies[Math.floor(count / 2)]!);
+      const minMs = Math.round(latencies[0]);
+      const maxMs = Math.round(latencies[count - 1]);
+      const p50Ms = Math.round(latencies[Math.floor(count / 2)]);
       const totalMs = Math.round(latencies.reduce((sum, v) => sum + v, 0));
       stats.push({ type, count, minMs, maxMs, p50Ms, totalMs });
     }

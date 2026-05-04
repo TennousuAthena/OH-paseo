@@ -68,7 +68,7 @@ const concatInt16 = (a: Int16Array, b: Int16Array): Int16Array => {
 const int16ToFloat32 = (input: Int16Array): Float32Array => {
   const out = new Float32Array(input.length);
   for (let i = 0; i < input.length; i += 1) {
-    out[i] = input[i]! / 32768;
+    out[i] = input[i] / 32768;
   }
   return out;
 };
@@ -209,8 +209,8 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
   const decodeAudioData = useCallback(
     async (context: AudioContext, buffer: ArrayBuffer): Promise<AudioBuffer> => {
       const maybePromise = context.decodeAudioData(buffer);
-      if (maybePromise && typeof (maybePromise as Promise<AudioBuffer>).then === "function") {
-        return maybePromise as Promise<AudioBuffer>;
+      if (maybePromise && typeof maybePromise.then === "function") {
+        return maybePromise;
       }
       return await new Promise<AudioBuffer>((resolve, reject) => {
         context.decodeAudioData(buffer, resolve, reject);
@@ -276,7 +276,7 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
       },
     });
 
-    const stream = rawStream as MediaStream;
+    const stream = rawStream;
 
     const context = new AudioContextCtor();
 
@@ -347,7 +347,7 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
 
     const recorder = new RecorderCtor(stream, {
       mimeType: "audio/webm;codecs=opus",
-    } as MediaRecorderOptions) as MediaRecorder;
+    } as MediaRecorderOptions);
 
     const recorderRefs: RecorderRefs = {
       recorder,

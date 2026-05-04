@@ -110,7 +110,7 @@ export class DictationStreamSender {
     let sent = 0;
     while (this.sendSeq < this.segments.length) {
       const seq = this.sendSeq;
-      const audio = this.segments[seq]!;
+      const audio = this.segments[seq];
       client.sendDictationStreamChunk(dictationId, seq, audio, this.format);
       this.sendSeq = seq + 1;
       sent += 1;

@@ -168,7 +168,7 @@ describe("opencode agent error handling (real)", () => {
       const terminal = events.find(isTerminalEvent);
       expect(terminal).toBeDefined();
       expect(terminal!.type).toBe("turn_failed");
-      expect((terminal!.type === "turn_failed" ? terminal!.error : "").toLowerCase()).toMatch(
+      expect((terminal!.type === "turn_failed" ? terminal.error : "").toLowerCase()).toMatch(
         /insufficient balance|resource package|recharge/,
       );
     } finally {

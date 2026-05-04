@@ -389,7 +389,7 @@ export class ProviderSnapshotManager {
   }
 
   private getProviderIds(): AgentProvider[] {
-    return Object.keys(this.providerRegistry) as AgentProvider[];
+    return Object.keys(this.providerRegistry);
   }
 
   private resolveRefreshProviders(providers?: AgentProvider[]): AgentProvider[] | undefined {

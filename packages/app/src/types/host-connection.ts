@@ -134,9 +134,8 @@ export function upsertHostConnectionInProfiles(input: {
     return [...existing, profile];
   }
 
-  const matchedProfiles = matchingIndexes.map((index) => existing[index]!);
-  const prev =
-    matchedProfiles.find((daemon) => daemon.serverId === serverId) ?? matchedProfiles[0]!;
+  const matchedProfiles = matchingIndexes.map((index) => existing[index]);
+  const prev = matchedProfiles.find((daemon) => daemon.serverId === serverId) ?? matchedProfiles[0];
   const nextConnections = dedupeHostConnections([
     ...matchedProfiles.flatMap((daemon) => daemon.connections),
     input.connection,
@@ -180,7 +179,7 @@ export function upsertHostConnectionInProfiles(input: {
     updatedAt: now,
   };
 
-  const firstIndex = matchingIndexes[0]!;
+  const firstIndex = matchingIndexes[0];
   const matchingIndexSet = new Set(matchingIndexes);
   const next = existing.filter((_daemon, index) => !matchingIndexSet.has(index));
   next.splice(firstIndex, 0, nextProfile);

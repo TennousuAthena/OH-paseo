@@ -78,7 +78,7 @@ function getSessionInputMeta(
 function toBigInt64(values: number[]): BigInt64Array {
   const out = new BigInt64Array(values.length);
   for (let i = 0; i < values.length; i += 1) {
-    out[i] = BigInt(values[i]!);
+    out[i] = BigInt(values[i]);
   }
   return out;
 }
@@ -101,8 +101,8 @@ function normalizeTextForPocket(text: string): string {
   if (out.length > 0 && /[A-Za-z0-9]$/.test(out)) {
     out = `${out}.`;
   }
-  if (out.length > 0 && /[a-z]/.test(out[0]!)) {
-    out = out[0]!.toUpperCase() + out.slice(1);
+  if (out.length > 0 && /[a-z]/.test(out[0])) {
+    out = out[0].toUpperCase() + out.slice(1);
   }
   return out;
 }
@@ -452,8 +452,8 @@ class PocketTtsOnnxEngine {
 
       const outputNames = (this.flowLmMain as unknown as { outputNames?: string[] }).outputNames;
       const resStepRecord = resStep as unknown as Record<string, OrtTensor>;
-      const conditioningName = outputNames?.[0] ?? Object.keys(resStepRecord)[0]!;
-      const eosName = outputNames?.[1] ?? Object.keys(resStepRecord)[1]!;
+      const conditioningName = outputNames?.[0] ?? Object.keys(resStepRecord)[0];
+      const eosName = outputNames?.[1] ?? Object.keys(resStepRecord)[1];
 
       const conditioning = resStepRecord[conditioningName];
       const eos = resStepRecord[eosName];
@@ -463,7 +463,7 @@ class PocketTtsOnnxEngine {
       updateStateFromOutputs(state, resStepRecord);
 
       const eosData = tensorDataFloat32(eos);
-      if (eosData[0]! > -4.0 && eosStep === null) {
+      if (eosData[0] > -4.0 && eosStep === null) {
         eosStep = step;
       }
       if (eosStep !== null && step >= eosStep + this.framesAfterEos) {
@@ -495,7 +495,7 @@ class PocketTtsOnnxEngine {
         if (!flowTensor) throw new Error("PocketTTS flow_lm_flow: missing output");
         const delta = tensorDataFloat32(flowTensor);
         for (let i = 0; i < x.length; i += 1) {
-          x[i] = x[i]! + delta[i]! * dt;
+          x[i] = x[i] + delta[i] * dt;
         }
       }
 
@@ -512,7 +512,7 @@ class PocketTtsOnnxEngine {
     const frameCount = frames.length;
     const flattened = new Float32Array(frameCount * 32);
     for (let i = 0; i < frameCount; i += 1) {
-      flattened.set(frames[i]!, i * 32);
+      flattened.set(frames[i], i * 32);
     }
     const latent = new ort.Tensor("float32", flattened, [1, frameCount, 32]);
 

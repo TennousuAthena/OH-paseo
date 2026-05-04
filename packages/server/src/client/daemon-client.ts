@@ -1124,7 +1124,7 @@ export class DaemonClient {
       return this.subscribe(arg1);
     }
 
-    const type = arg1 as SessionOutboundMessage["type"];
+    const type = arg1;
     const handler = arg2 as (message: SessionOutboundMessage) => void;
 
     if (!this.messageHandlers.has(type)) {

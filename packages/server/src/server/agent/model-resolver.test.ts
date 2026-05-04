@@ -5,7 +5,7 @@ import { resolveAgentModel } from "./model-resolver.js";
 
 vi.mock("./provider-registry.js", () => ({
   buildProviderRegistry: vi.fn(),
-  isProviderEnabled: vi.fn((definition: { enabled: boolean }) => definition.enabled === true),
+  isProviderEnabled: vi.fn((definition: { enabled: boolean }) => definition.enabled),
 }));
 
 import { buildProviderRegistry } from "./provider-registry.js";

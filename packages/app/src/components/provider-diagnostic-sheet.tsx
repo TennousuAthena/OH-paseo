@@ -117,7 +117,7 @@ function CustomModelsSection(props: {
           },
         },
       });
-      await refresh([provider as AgentProvider]);
+      await refresh([provider]);
     },
     [patchConfig, provider, refresh],
   );
@@ -284,7 +284,7 @@ export function ProviderDiagnosticSheet({
       }
 
       try {
-        const result = await client.getProviderDiagnostic(provider as AgentProvider);
+        const result = await client.getProviderDiagnostic(provider);
         setDiagnostic(result.diagnostic);
       } catch (err) {
         setDiagnostic(err instanceof Error ? err.message : "Failed to fetch diagnostic");
@@ -308,7 +308,7 @@ export function ProviderDiagnosticSheet({
     if (!provider) {
       return;
     }
-    void Promise.all([refresh([provider as AgentProvider]), fetchDiagnostic()]).catch((err) => {
+    void Promise.all([refresh([provider]), fetchDiagnostic()]).catch((err) => {
       setDiagnostic(err instanceof Error ? err.message : "Failed to refresh provider");
     });
   }, [fetchDiagnostic, provider, refresh]);

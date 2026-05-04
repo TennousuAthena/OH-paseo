@@ -153,7 +153,7 @@ async function runSingleTest(testFile: string): Promise<TestOutcome> {
 
 async function runRemainingTests(index: number): Promise<void> {
   if (index >= testFiles.length) return;
-  const testFile = testFiles[index] as string;
+  const testFile = testFiles[index];
   const outcome = await runSingleTest(testFile);
   if (outcome.status === "passed") {
     passed++;

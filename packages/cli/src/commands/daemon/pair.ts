@@ -12,7 +12,7 @@ export function pairCommand(): Command {
   return addJsonOption(new Command("pair").description("Print the daemon pairing QR code and link"))
     .option("--home <path>", "Paseo home directory (default: ~/.paseo)")
     .action(async (_options: PairOptions, command: Command) => {
-      await runPairCommand(command.optsWithGlobals() as PairOptions);
+      await runPairCommand(command.optsWithGlobals());
     });
 }
 

@@ -128,7 +128,7 @@ export function bindWsHandler(
       }
     };
   }
-  const prop = `on${event}` as "onopen" | "onclose" | "onerror" | "onmessage";
+  const prop = `on${event}`;
   const wsRecord = ws as unknown as Record<string, unknown>;
   const previous = wsRecord[prop];
   wsRecord[prop] = handler;

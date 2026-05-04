@@ -218,7 +218,7 @@ export async function ensureSherpaOnnxModels(options: {
     ),
   );
   for (let i = 0; i < uniq.length; i += 1) {
-    out[uniq[i]!] = paths[i]!;
+    out[uniq[i]] = paths[i]!;
   }
   return out as Record<SherpaOnnxModelId, string>;
 }

@@ -1478,11 +1478,11 @@ function parseCheckoutShortstat(text: string): CheckoutShortstat | null {
   let deletions = 0;
   const addMatch = trimmed.match(/(\d+)\s+insertion/);
   if (addMatch) {
-    additions = Number.parseInt(addMatch[1]!, 10);
+    additions = Number.parseInt(addMatch[1], 10);
   }
   const delMatch = trimmed.match(/(\d+)\s+deletion/);
   if (delMatch) {
-    deletions = Number.parseInt(delMatch[1]!, 10);
+    deletions = Number.parseInt(delMatch[1], 10);
   }
 
   if (additions === 0 && deletions === 0) {

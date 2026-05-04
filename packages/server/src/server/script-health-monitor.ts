@@ -105,8 +105,8 @@ export class ScriptHealthMonitor {
         probeTargets.map(({ route }) => this.probeRoute(route.port)),
       );
       for (let i = 0; i < probeTargets.length; i += 1) {
-        const { route, state } = probeTargets[i]!;
-        const isHealthy = healthResults[i]!;
+        const { route, state } = probeTargets[i];
+        const isHealthy = healthResults[i];
         const previousHealth = state.health;
 
         if (isHealthy) {

@@ -341,7 +341,7 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
     return () => {
       attemptGuard.cancel();
       try {
-        void mediaRecorder.current?.stop();
+        mediaRecorder.current?.stop();
       } catch {
         // Ignore stop during unmount.
       }

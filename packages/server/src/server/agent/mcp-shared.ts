@@ -86,7 +86,7 @@ export function resolveRequiredProviderModel(
   }
 
   return {
-    provider: provider as AgentProvider,
+    provider: provider,
     model,
   };
 }

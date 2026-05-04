@@ -22,9 +22,9 @@ class FakeRequest<T = unknown> {
 class FakeObjectStore {
   constructor(private readonly onPut: (record: unknown) => void) {}
 
-  put(record: unknown): FakeRequest<unknown> {
+  put(record: unknown): FakeRequest {
     this.onPut(record);
-    const request = new FakeRequest<unknown>();
+    const request = new FakeRequest();
     queueMicrotask(() => request.emit("success"));
     return request;
   }

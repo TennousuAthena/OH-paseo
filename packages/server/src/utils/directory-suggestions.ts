@@ -889,7 +889,7 @@ function pruneDirectoryListCache(): void {
   }
 
   while (directoryListCache.size > DIRECTORY_LIST_CACHE_MAX_ENTRIES) {
-    const oldestKey = directoryListCache.keys().next().value as string | undefined;
+    const oldestKey = directoryListCache.keys().next().value;
     if (!oldestKey) {
       return;
     }
@@ -910,7 +910,7 @@ function pruneWorkspaceEntryListCache(): void {
   }
 
   while (workspaceEntryListCache.size > DIRECTORY_LIST_CACHE_MAX_ENTRIES) {
-    const oldestKey = workspaceEntryListCache.keys().next().value as string | undefined;
+    const oldestKey = workspaceEntryListCache.keys().next().value;
     if (!oldestKey) {
       return;
     }

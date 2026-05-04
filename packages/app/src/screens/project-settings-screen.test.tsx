@@ -752,7 +752,7 @@ describe("ProjectSettingsScreen — save flow", () => {
     await flush();
 
     expect(client.writeProjectConfig).toHaveBeenCalledTimes(1);
-    const callArg = client.writeProjectConfig.mock.calls[0]![0] as {
+    const callArg = client.writeProjectConfig.mock.calls[0][0] as {
       repoRoot: string;
       config: PaseoConfigRaw;
       expectedRevision: PaseoConfigRevision | null;
@@ -767,7 +767,7 @@ describe("ProjectSettingsScreen — save flow", () => {
     // Subsequent saves use the freshly-returned revision.
     click(requireById("save-button"));
     await flush();
-    const secondArg = client.writeProjectConfig.mock.calls[1]![0] as {
+    const secondArg = client.writeProjectConfig.mock.calls[1][0] as {
       expectedRevision: PaseoConfigRevision;
     };
     expect(secondArg.expectedRevision).toEqual(newRevision);
@@ -869,7 +869,7 @@ describe("ProjectSettingsScreen — round-trip semantics", () => {
     click(requireById("save-button"));
     await flush();
 
-    const savedConfig = client.writeProjectConfig.mock.calls[0]![0]!.config as PaseoConfigRaw;
+    const savedConfig = client.writeProjectConfig.mock.calls[0][0]!.config as PaseoConfigRaw;
     // string stays string when edited in place
     expect(savedConfig.worktree?.setup).toBe("npm install\nnpm run prepare");
   });
@@ -897,7 +897,7 @@ describe("ProjectSettingsScreen — round-trip semantics", () => {
     click(requireById("save-button"));
     await flush();
 
-    const savedConfig = client.writeProjectConfig.mock.calls[0]![0]!.config as PaseoConfigRaw;
+    const savedConfig = client.writeProjectConfig.mock.calls[0][0]!.config as PaseoConfigRaw;
     expect(savedConfig.worktree?.teardown).toEqual(["docker compose down", "rm -rf .cache"]);
   });
 
@@ -920,7 +920,7 @@ describe("ProjectSettingsScreen — round-trip semantics", () => {
     click(requireById("save-button"));
     await flush();
 
-    const savedConfig = client.writeProjectConfig.mock.calls[0]![0]!.config as PaseoConfigRaw;
+    const savedConfig = client.writeProjectConfig.mock.calls[0][0]!.config as PaseoConfigRaw;
     expect(savedConfig.worktree?.setup).toBe("npm install");
   });
 
@@ -943,7 +943,7 @@ describe("ProjectSettingsScreen — round-trip semantics", () => {
     click(requireById("save-button"));
     await flush();
 
-    const savedConfig = client.writeProjectConfig.mock.calls[0]![0]!.config as PaseoConfigRaw;
+    const savedConfig = client.writeProjectConfig.mock.calls[0][0]!.config as PaseoConfigRaw;
     expect(savedConfig.worktree?.setup).toEqual(["npm install", "npm run prepare"]);
   });
 });
@@ -996,7 +996,7 @@ describe("ProjectSettingsScreen — scripts editor", () => {
     click(requireById("save-button"));
     await flush();
 
-    const savedConfig = client.writeProjectConfig.mock.calls[0]![0]!.config as PaseoConfigRaw;
+    const savedConfig = client.writeProjectConfig.mock.calls[0][0]!.config as PaseoConfigRaw;
     const scriptKeys = Object.keys((savedConfig as Record<string, unknown>).scripts ?? {});
     // One of the two scripts was removed.
     expect(scriptKeys.length).toBe(1);
@@ -1031,7 +1031,7 @@ describe("ProjectSettingsScreen — scripts editor", () => {
     click(requireById("save-button"));
     await flush();
 
-    const savedConfig = client.writeProjectConfig.mock.calls[0]![0]!.config as PaseoConfigRaw;
+    const savedConfig = client.writeProjectConfig.mock.calls[0][0]!.config as PaseoConfigRaw;
     expect((savedConfig as Record<string, unknown>).customTopLevel).toBe("preserved");
     const worktreeRecord = (savedConfig.worktree ?? {}) as Record<string, unknown>;
     expect(worktreeRecord.customWorktreeField).toBe("keep");

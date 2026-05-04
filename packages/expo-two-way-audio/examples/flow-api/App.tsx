@@ -91,7 +91,7 @@ export function FlowTest() {
       for (const result of data.results as {
         alternatives: Array<RecognitionAlternative>;
       }[]) {
-        for (const alternative of result.alternatives as Array<RecognitionAlternative>) {
+        for (const alternative of result.alternatives) {
           console.log(alternative.content);
         }
       }

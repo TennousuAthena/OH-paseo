@@ -750,7 +750,7 @@ function ChatAgentContent({
     };
   }, []);
 
-  const isInitializing = agentId ? isInitializingFromMap !== false : false;
+  const isInitializing = agentId ? isInitializingFromMap : false;
   const isHistorySyncing = useMemo(() => {
     if (!agentId || !isInitializing) {
       return false;

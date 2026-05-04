@@ -87,9 +87,9 @@ export function normalizeClaudeRuntimeModelId(value: string | null | undefined):
     return null;
   }
 
-  const family = runtimeMatch[1]!.toLowerCase();
-  const major = runtimeMatch[2]!;
-  const minor = runtimeMatch[3]!;
+  const family = runtimeMatch[1].toLowerCase();
+  const major = runtimeMatch[2];
+  const minor = runtimeMatch[3];
   const suffix = runtimeMatch[4] ?? "";
   return `claude-${family}-${major}-${minor}${suffix}`;
 }

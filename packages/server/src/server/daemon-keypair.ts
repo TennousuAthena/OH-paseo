@@ -37,7 +37,7 @@ export async function loadOrCreateDaemonKeyPair(
   if (existsSync(filePath)) {
     try {
       const raw = readFileSync(filePath, "utf8");
-      const parsed = KeyPairSchema.parse(JSON.parse(raw)) as StoredKeyPair;
+      const parsed = KeyPairSchema.parse(JSON.parse(raw));
 
       const publicKey = importPublicKey(parsed.publicKeyB64);
       const secretKey = importSecretKey(parsed.secretKeyB64);

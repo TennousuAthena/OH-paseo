@@ -58,7 +58,7 @@ function fetchTail(ctx: FetchContext): AgentTimelineFetchResult {
     staleCursor: false,
     gap: false,
     window,
-    hasOlder: selected.length > 0 && selected[0]!.seq > minSeq,
+    hasOlder: selected.length > 0 && selected[0].seq > minSeq,
     hasNewer: false,
     rows: selected.map(cloneRow),
   };
@@ -93,7 +93,7 @@ function fetchAfter(ctx: FetchContext): AgentTimelineFetchResult {
     staleCursor: false,
     gap: false,
     window,
-    hasOlder: selected[0]!.seq > minSeq,
+    hasOlder: selected[0].seq > minSeq,
     hasNewer: Boolean(lastSelected && lastSelected.seq < maxSeq),
     rows: selected.map(cloneRow),
   };
@@ -115,7 +115,7 @@ function fetchBefore(ctx: FetchContext): AgentTimelineFetchResult {
     staleCursor: false,
     gap: false,
     window,
-    hasOlder: selected.length > 0 && selected[0]!.seq > minSeq,
+    hasOlder: selected.length > 0 && selected[0].seq > minSeq,
     hasNewer: endExclusive >= 0,
     rows: selected.map(cloneRow),
   };
@@ -137,7 +137,7 @@ function fetchReset(
     staleCursor: flags.staleCursor,
     gap: flags.gap,
     window,
-    hasOlder: rows.length > 0 && rows[0]!.seq > minSeq,
+    hasOlder: rows.length > 0 && rows[0].seq > minSeq,
     hasNewer: false,
     rows,
   };
@@ -155,7 +155,7 @@ export class InMemoryAgentTimelineStore {
     const rows = options?.rows?.length
       ? options.rows.map(cloneRow)
       : this.buildRowsFromItems(options?.items ?? [], options?.nextSeq ?? 1, timestamp);
-    const nextSeq = options?.nextSeq ?? (rows.length ? rows[rows.length - 1]!.seq + 1 : 1);
+    const nextSeq = options?.nextSeq ?? (rows.length ? rows[rows.length - 1].seq + 1 : 1);
     this.states.set(agentId, {
       epoch: options?.epoch ?? randomUUID(),
       rows,
@@ -188,8 +188,8 @@ export class InMemoryAgentTimelineStore {
         ? DEFAULT_TIMELINE_FETCH_LIMIT
         : Math.max(0, Math.floor(requestedLimit));
     const cursor = options?.cursor;
-    const minSeq = state.rows.length ? state.rows[0]!.seq : 0;
-    const maxSeq = state.rows.length ? state.rows[state.rows.length - 1]!.seq : 0;
+    const minSeq = state.rows.length ? state.rows[0].seq : 0;
+    const maxSeq = state.rows.length ? state.rows[state.rows.length - 1].seq : 0;
     const selectAll = limit === 0;
 
     const window = {
@@ -265,7 +265,7 @@ export class InMemoryAgentTimelineStore {
     const rows = this.requireState(agentId).rows;
     const chunks: string[] = [];
     for (let i = rows.length - 1; i >= 0; i -= 1) {
-      const item = rows[i]!.item;
+      const item = rows[i].item;
       if (item.type !== "assistant_message") {
         if (chunks.length > 0) {
           break;

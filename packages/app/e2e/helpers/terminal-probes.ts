@@ -204,8 +204,7 @@ export async function installTerminalRenderProbe(page: Page): Promise<void> {
         if (next?.write && !next.__paseoRenderProbeWriteWrapped) {
           const originalWrite = next.write.bind(next);
           next.write = (data: string | Uint8Array, callback?: () => void) => {
-            const text =
-              typeof data === "string" ? data : new TextDecoder().decode(data as Uint8Array);
+            const text = typeof data === "string" ? data : new TextDecoder().decode(data);
             probe.writeCount += 1;
             const preview = text
               .replaceAll("\u001b", "\\x1b")
@@ -424,7 +423,7 @@ export async function installTerminalKeystrokeStressProbe(page: Page): Promise<v
       const count = Math.min(from.length, to.length);
       const values: number[] = [];
       for (let index = 0; index < count; index += 1) {
-        values.push(to[index]!.at - from[index]!.at);
+        values.push(to[index].at - from[index].at);
       }
       return values;
     }
@@ -459,7 +458,7 @@ export async function installTerminalKeystrokeStressProbe(page: Page): Promise<v
         const keydownToInputFrame = this.keydowns
           .map((keydown) => firstAtOrAfter(this.inputFrames, keydown.at)?.at ?? null)
           .filter((at): at is number => at !== null)
-          .map((at, index) => at - this.keydowns[index]!.at);
+          .map((at, index) => at - this.keydowns[index].at);
         const inputFrameToOutputFrame = this.inputFrames
           .map((input) => {
             const output = firstAtOrAfter(this.outputFrames, input.at);
@@ -663,8 +662,7 @@ export async function installTerminalKeystrokeStressProbe(page: Page): Promise<v
         if (next?.write && !next.__paseoKeystrokeProbeWriteWrapped) {
           const originalWrite = next.write.bind(next);
           next.write = (data: string | Uint8Array, callback?: () => void) => {
-            const text =
-              typeof data === "string" ? data : new TextDecoder().decode(data as Uint8Array);
+            const text = typeof data === "string" ? data : new TextDecoder().decode(data);
             const event: XtermWriteEvent = {
               at: performance.now(),
               committedAt: null,

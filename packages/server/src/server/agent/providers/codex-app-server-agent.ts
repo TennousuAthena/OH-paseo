@@ -289,14 +289,14 @@ function tokenizeCommandArgs(args: string): string[] {
   let current = "";
   let quote: "'" | '"' | null = null;
   for (let i = 0; i < args.length; i += 1) {
-    const ch = args[i]!;
+    const ch = args[i];
     if (quote) {
       if (ch === quote) {
         quote = null;
         continue;
       }
       if (ch === "\\" && i + 1 < args.length) {
-        const next = args[i + 1]!;
+        const next = args[i + 1];
         if (next === quote || next === "\\" || next === "n" || next === "t") {
           i += 1;
           current += decodeEscapedChar(next);

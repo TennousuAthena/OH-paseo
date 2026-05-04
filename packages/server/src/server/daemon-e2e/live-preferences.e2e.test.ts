@@ -44,7 +44,7 @@ function pickTwoDistinctModels(models: Array<{ id: string }>): [string, string] 
   if (ids.length < 2) {
     throw new Error(`Need at least 2 models to test switching; got ${ids.length}`);
   }
-  return [ids[0]!, ids[1]!];
+  return [ids[0], ids[1]];
 }
 
 function isBinaryInstalled(binary: string): boolean {
@@ -127,7 +127,7 @@ test("live thinking switching works for Claude (off -> on)", async () => {
     if (!modelList.models || modelList.models.length === 0) {
       throw new Error("No Claude models returned");
     }
-    const modelId = modelList.models[0]!.id;
+    const modelId = modelList.models[0].id;
 
     const agent = await ctx.client.createAgent({
       provider: "claude",

@@ -196,8 +196,8 @@ function resolveProvider(input: {
   if (initialValues?.provider && allowedProviderMap.has(initialValues.provider)) {
     return initialValues.provider;
   }
-  if (preferences?.provider && allowedProviderMap.has(preferences.provider as AgentProvider)) {
-    return preferences.provider as AgentProvider;
+  if (preferences?.provider && allowedProviderMap.has(preferences.provider)) {
+    return preferences.provider;
   }
   if (currentProvider && allowedProviderMap.size > 0 && !allowedProviderMap.has(currentProvider)) {
     return null;
@@ -396,7 +396,7 @@ function buildProviderDefinitionMapForStatuses(args: {
 
   const matchingProviders = new Set(
     args.snapshotEntries
-      .filter((entry) => args.statuses.has(entry.status) && entry.enabled !== false)
+      .filter((entry) => args.statuses.has(entry.status) && entry.enabled)
       .map((entry) => entry.provider),
   );
 

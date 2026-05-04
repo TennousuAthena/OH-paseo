@@ -83,7 +83,7 @@ export async function listAvailableEditorTargets(
   const results: EditorTargetDescriptorPayload[] = [];
   for (let i = 0; i < supportedTargets.length; i += 1) {
     if (!executables[i]) continue;
-    const target = supportedTargets[i]!;
+    const target = supportedTargets[i];
     results.push({
       id: target.id,
       label: target.label,

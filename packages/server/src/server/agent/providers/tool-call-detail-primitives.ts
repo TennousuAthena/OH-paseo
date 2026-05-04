@@ -703,7 +703,7 @@ export function toShellToolDetail(
 
 export function toReadToolDetail(
   input: ParsedToolReadInput | null,
-  output: ParsedToolReadOutput | ParsedToolReadOutputWithPath | null,
+  output: ParsedToolReadOutput | null,
   options?: { normalizePath?: NormalizePathFn },
 ): ToolCallDetail | undefined {
   const filePath = normalizeDetailPath(input?.filePath ?? output?.filePath, options?.normalizePath);

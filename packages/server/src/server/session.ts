@@ -1402,7 +1402,7 @@ export class Session {
   }
 
   private getRegisteredProviderIds(): AgentProvider[] {
-    return Object.keys(this.getProviderRegistry()) as AgentProvider[];
+    return Object.keys(this.getProviderRegistry());
   }
 
   private buildStoredAgentPayload(
@@ -2382,7 +2382,7 @@ export class Session {
     );
     const agents = [];
     for (let i = 0; i < archiveResults.length; i += 1) {
-      const result = archiveResults[i]!;
+      const result = archiveResults[i];
       if (result.status === "fulfilled") {
         agents.push(result.value);
       } else {
@@ -3282,9 +3282,7 @@ export class Session {
           throw new Error(`Agent not found: ${agentId}`);
         }
         const providerRegistry = this.getProviderRegistry();
-        if (
-          !isStoredAgentProviderAvailable(record, Object.keys(providerRegistry) as AgentProvider[])
-        ) {
+        if (!isStoredAgentProviderAvailable(record, Object.keys(providerRegistry))) {
           throw new Error(`Agent ${agentId} references unavailable provider '${record.provider}'`);
         }
         const handle = toAgentPersistenceHandle(providerRegistry, record.persistence);
@@ -5831,7 +5829,7 @@ export class Session {
       ),
     );
     for (let i = 0; i < pairs.length; i += 1) {
-      placementsByCwd.set(normalizePersistedWorkspaceId(pairs[i]!.workspace.cwd), placements[i]!);
+      placementsByCwd.set(normalizePersistedWorkspaceId(pairs[i].workspace.cwd), placements[i]);
     }
 
     return placementsByCwd;
@@ -7727,7 +7725,7 @@ export class Session {
     );
 
     const combinedAudio = Buffer.concat(pendingSegments.map((segment) => segment.audio));
-    const combinedFormat = pendingSegments[pendingSegments.length - 1]!.format;
+    const combinedFormat = pendingSegments[pendingSegments.length - 1].format;
 
     await this.processAudio(combinedAudio, combinedFormat);
   }

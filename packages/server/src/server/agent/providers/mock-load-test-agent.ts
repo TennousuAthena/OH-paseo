@@ -130,7 +130,7 @@ function resolveModelProfile(modelId: string | null | undefined): {
   durationMs: number;
   intervalMs: number;
 } {
-  const model = MODELS.find((entry) => entry.id === modelId) ?? MODELS[0]!;
+  const model = MODELS.find((entry) => entry.id === modelId) ?? MODELS[0];
   const metadata = model.metadata ?? {};
   return {
     modelId: model.id,

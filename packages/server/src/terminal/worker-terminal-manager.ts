@@ -1,4 +1,4 @@
-import { fork, type ChildProcess } from "node:child_process";
+import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import type { TerminalState } from "../shared/messages.js";
@@ -109,7 +109,7 @@ function forkTerminalWorker(): TerminalWorkerProcess {
     execArgv: resolveWorkerExecArgv(),
     serialization: "advanced",
     stdio: ["ignore", "ignore", "inherit", "ipc"],
-  }) as ChildProcess as TerminalWorkerProcess;
+  }) as TerminalWorkerProcess;
 }
 
 export function createWorkerTerminalManager(

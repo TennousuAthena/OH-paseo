@@ -160,20 +160,17 @@ function removeAttachmentAtIndex<T extends ComposerAttachment>(prev: T[], index:
 }
 
 function buildCancelButtonStyle(isConnected: boolean, isCancellingAgent: boolean): object[] {
-  const disabled =
-    !isConnected || isCancellingAgent ? (styles.buttonDisabled as object) : undefined;
-  return [styles.cancelButton as object, disabled].filter((value): value is object =>
-    Boolean(value),
-  );
+  const disabled = !isConnected || isCancellingAgent ? styles.buttonDisabled : undefined;
+  return [styles.cancelButton, disabled].filter((value): value is object => Boolean(value));
 }
 
 function buildRealtimeVoiceButtonStyle(
   hovered: boolean | undefined,
   voiceButtonDisabled: boolean,
 ): object[] {
-  const hoveredStyle = hovered ? (styles.iconButtonHovered as object) : undefined;
-  const disabledStyle = voiceButtonDisabled ? (styles.buttonDisabled as object) : undefined;
-  return [styles.realtimeVoiceButton as object, hoveredStyle, disabledStyle].filter(
+  const hoveredStyle = hovered ? styles.iconButtonHovered : undefined;
+  const disabledStyle = voiceButtonDisabled ? styles.buttonDisabled : undefined;
+  return [styles.realtimeVoiceButton, hoveredStyle, disabledStyle].filter(
     (value): value is object => Boolean(value),
   );
 }

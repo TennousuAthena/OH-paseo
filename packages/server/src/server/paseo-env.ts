@@ -19,7 +19,7 @@ type ExternalProcessEnv = NodeJS.ProcessEnv & Record<string, string>;
 let resolvedProcessExecPath: string | undefined;
 
 function buildInternalProcessEnv<T extends ProcessEnvRecord>(baseEnv: T): T {
-  return { ...baseEnv } as T;
+  return { ...baseEnv };
 }
 
 function buildExternalProcessEnv(

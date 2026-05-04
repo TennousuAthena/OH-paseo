@@ -112,7 +112,7 @@ export async function resolveProviderCommandPrefix(
   }
 
   return {
-    command: commandConfig.argv[0]!,
+    command: commandConfig.argv[0],
     args: commandConfig.argv.slice(1),
   };
 }

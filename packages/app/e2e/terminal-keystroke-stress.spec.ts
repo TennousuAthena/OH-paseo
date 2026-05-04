@@ -278,7 +278,7 @@ async function measureDaemonBurstEcho(
       timeoutMs: STRESS_TIMEOUT_MS,
     });
 
-    const latencies = sendTimes.map((sentAt, index) => outputTimesByByte[index]! - sentAt);
+    const latencies = sendTimes.map((sentAt, index) => outputTimesByByte[index] - sentAt);
     return {
       inputTextLength: inputText.length,
       inputFrameCount: sendTimes.length,

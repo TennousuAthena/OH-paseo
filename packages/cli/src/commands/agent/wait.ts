@@ -139,7 +139,7 @@ export async function runWaitCommand(
   options: AgentWaitOptions,
   _command: Command,
 ): Promise<SingleResult<AgentWaitResult>> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
 
   if (!agentIdArg || agentIdArg.trim().length === 0) {
     throw {
@@ -153,7 +153,7 @@ export async function runWaitCommand(
 
   let client;
   try {
-    client = await connectToDaemon({ host: options.host as string | undefined });
+    client = await connectToDaemon({ host: options.host });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {

@@ -46,7 +46,7 @@ export async function* streamSession(
     turnId = result.turnId;
 
     for (let idx = queue.length - 1; idx >= 0; idx -= 1) {
-      if (!matchesTurn(queue[idx]!)) {
+      if (!matchesTurn(queue[idx])) {
         queue.splice(idx, 1);
       }
     }

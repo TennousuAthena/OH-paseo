@@ -1541,7 +1541,7 @@ function WorkspaceScreenContent({
       if (!client || !workspaceDirectory) {
         throw new Error("Host is not connected");
       }
-      return (await client.getCheckoutStatus(workspaceDirectory)) as CheckoutStatusPayload;
+      return await client.getCheckoutStatus(workspaceDirectory);
     },
     staleTime: Infinity,
     refetchOnMount: false,

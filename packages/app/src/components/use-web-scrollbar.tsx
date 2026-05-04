@@ -140,9 +140,9 @@ export function useWebScrollViewScrollbar(
       const scrollable = scrollableRef.current;
       if (!scrollable) return;
       if ("scrollToOffset" in scrollable) {
-        (scrollable as FlatList).scrollToOffset({ offset, animated: false });
+        scrollable.scrollToOffset({ offset, animated: false });
       } else {
-        (scrollable as ScrollView).scrollTo({ y: offset, animated: false });
+        scrollable.scrollTo({ y: offset, animated: false });
       }
     },
     [scrollableRef],

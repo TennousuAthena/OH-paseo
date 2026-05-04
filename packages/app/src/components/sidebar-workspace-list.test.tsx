@@ -351,7 +351,7 @@ describe("sidebar workspace render isolation", () => {
     act(() => {
       useSessionStore.getState().mergeWorkspaces(SERVER_ID, [
         {
-          ...createWorkspaces()[1]!,
+          ...createWorkspaces()[1],
           status: "running",
         },
       ]);

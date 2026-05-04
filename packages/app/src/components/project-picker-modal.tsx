@@ -29,7 +29,7 @@ interface PathRowProps {
 function PathRow({ path, active, onSelect }: PathRowProps) {
   const { theme } = useUnistyles();
   const handlePress = useCallback(() => {
-    void onSelect(path);
+    onSelect(path);
   }, [onSelect, path]);
   const pressableStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -172,7 +172,7 @@ export function ProjectPickerModal() {
       if (key === "Enter") {
         event.preventDefault();
         if (options.length > 0 && activeIndex < options.length) {
-          void handleSelectPath(options[activeIndex]!);
+          void handleSelectPath(options[activeIndex]);
         } else if (query.trim()) {
           handleSubmitCustom();
         }

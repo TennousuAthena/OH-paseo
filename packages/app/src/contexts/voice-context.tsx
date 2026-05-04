@@ -140,7 +140,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
     runtimeRef.current = runtime;
   }
 
-  const engine = engineRef.current!;
+  const engine = engineRef.current;
   const runtime = runtimeRef.current!;
 
   useEffect(() => {

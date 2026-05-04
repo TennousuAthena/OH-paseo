@@ -622,7 +622,7 @@ export function CombinedModelSelector({
   const singleProviderView = useMemo<SelectorView | null>(() => {
     const providers = Array.from(allProviderModels.keys());
     if (providers.length !== 1) return null;
-    const providerId = providers[0]!;
+    const providerId = providers[0];
     const label = resolveProviderLabel(providerDefinitions, providerId);
     return { kind: "provider", providerId, providerLabel: label };
   }, [allProviderModels, providerDefinitions]);
@@ -655,7 +655,7 @@ export function CombinedModelSelector({
 
   const handleSelect = useCallback(
     (provider: string, modelId: string) => {
-      onSelect(provider as AgentProvider, modelId);
+      onSelect(provider, modelId);
       setIsOpen(false);
       setSearchQuery("");
     },

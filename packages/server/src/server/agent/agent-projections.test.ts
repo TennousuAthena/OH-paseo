@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { AGENT_LIFECYCLE_STATUSES, type AgentLifecycleStatus } from "./agent-manager.js";
+import { AGENT_LIFECYCLE_STATUSES } from "./agent-manager.js";
 import { toAgentPayload, toStoredAgentRecord, type ManagedAgent } from "./agent-projections.js";
 import type { AgentSession } from "./agent-sdk-types.js";
 import type {
@@ -203,7 +203,7 @@ describe("toStoredAgentRecord", () => {
 
   it("propagates lifecycle status for all states", () => {
     for (const status of AGENT_LIFECYCLE_STATUSES) {
-      const agent = createManagedAgent({ lifecycle: status as AgentLifecycleStatus });
+      const agent = createManagedAgent({ lifecycle: status });
       const record = toStoredAgentRecord(agent);
       expect(record.lastStatus).toBe(status);
     }
@@ -301,7 +301,7 @@ describe("toAgentPayload", () => {
 
   it("propagates lifecycle status for all states", () => {
     for (const status of AGENT_LIFECYCLE_STATUSES) {
-      const agent = createManagedAgent({ lifecycle: status as AgentLifecycleStatus });
+      const agent = createManagedAgent({ lifecycle: status });
       const payload = toAgentPayload(agent);
       expect(payload.status).toBe(status);
     }

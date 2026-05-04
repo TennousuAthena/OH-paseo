@@ -197,7 +197,7 @@ describe("useInlineReviewController", () => {
       body: "first comment",
     });
 
-    act(() => result.current.onEditComment(reviewTarget, savedComment!));
+    act(() => result.current.onEditComment(reviewTarget, savedComment));
     expect(result.current.editor).toEqual({
       target: reviewTarget,
       commentId: savedComment?.id,
@@ -208,8 +208,8 @@ describe("useInlineReviewController", () => {
     const updatedComment = useReviewDraftStore.getState().drafts[firstKey]?.[0];
     expect(updatedComment).toMatchObject({ id: savedComment?.id, body: "updated comment" });
 
-    act(() => result.current.onEditComment(reviewTarget, updatedComment!));
-    act(() => result.current.onDeleteComment(updatedComment!.id));
+    act(() => result.current.onEditComment(reviewTarget, updatedComment));
+    act(() => result.current.onDeleteComment(updatedComment.id));
     expect(useReviewDraftStore.getState().drafts[firstKey]).toEqual([]);
     expect(result.current.editor).toBeNull();
 

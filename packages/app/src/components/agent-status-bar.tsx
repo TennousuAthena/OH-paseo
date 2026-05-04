@@ -234,7 +234,7 @@ function buildFallbackAllProviderModels(
   map.set(
     provider,
     modelOptions.map((option) => ({
-      provider: provider as AgentProvider,
+      provider: provider,
       id: option.id,
       label: option.label,
     })),

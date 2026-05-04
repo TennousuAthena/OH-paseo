@@ -79,12 +79,12 @@ describe("SherpaOnnxParakeetSTT session", () => {
     expect(transcripts).toHaveLength(2);
     expect(transcripts).toEqual([
       expect.objectContaining({
-        segmentId: committed[0]!.segmentId,
+        segmentId: committed[0].segmentId,
         transcript: "first",
         isFinal: true,
       }),
       expect.objectContaining({
-        segmentId: committed[1]!.segmentId,
+        segmentId: committed[1].segmentId,
         transcript: "second",
         isFinal: true,
       }),

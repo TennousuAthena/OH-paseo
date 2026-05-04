@@ -1,7 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
 import pino from "pino";
 
-import type { AgentSlashCommand } from "../agent-sdk-types.js";
 import { isCommandAvailable } from "../../../utils/executable.js";
 import { ClaudeAgentClient } from "./claude-agent.js";
 
@@ -40,7 +39,7 @@ describe("claude agent commands contract (real)", () => {
       expect(commands.map((command) => command.name)).toContain("rewind");
 
       for (const command of commands) {
-        const typed = command as AgentSlashCommand;
+        const typed = command;
         expect(typeof typed.name).toBe("string");
         expect(typed.name.length).toBeGreaterThan(0);
         expect(typed.name.startsWith("/")).toBe(false);

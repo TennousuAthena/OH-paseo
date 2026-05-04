@@ -132,7 +132,7 @@ function TreeRowItem({
   );
 
   const handleCopy = useCallback(() => {
-    void onCopyPath(entry.path);
+    onCopyPath(entry.path);
   }, [onCopyPath, entry.path]);
 
   const handleDownload = useCallback(() => {

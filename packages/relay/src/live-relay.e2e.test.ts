@@ -177,7 +177,7 @@ describe("Live relay (relay.paseo.sh) E2E", () => {
 
           const plaintextFromDaemon = "hello-from-daemon";
           const ciphertextFromDaemon = await encrypt(daemonSharedKey, plaintextFromDaemon);
-          daemonWs!.send(Buffer.from(ciphertextFromDaemon));
+          daemonWs.send(Buffer.from(ciphertextFromDaemon));
 
           const clientReceivedCiphertext = await waitForOnceMessage(
             clientWs,

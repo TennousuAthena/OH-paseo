@@ -295,7 +295,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
   function activateNextPlaybackGroup(): void {
     while (playback.orderedGroupIds.length > 0) {
-      const groupId = playback.orderedGroupIds[0]!;
+      const groupId = playback.orderedGroupIds[0];
       if (playback.groups.has(groupId)) {
         playback.activeGroupId = groupId;
         return;

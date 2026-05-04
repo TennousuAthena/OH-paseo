@@ -38,8 +38,8 @@ function resamplePcm16(pcm: Uint8Array, fromRate: number, toRate: number): Uint8
     if (i + 1 >= pcm.length) {
       return 0;
     }
-    const lo = pcm[i]!;
-    const hi = pcm[i + 1]!;
+    const lo = pcm[i];
+    const hi = pcm[i + 1];
     let value = (hi << 8) | lo;
     if (value & 0x8000) {
       value = value - 0x10000;

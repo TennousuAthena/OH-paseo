@@ -83,8 +83,8 @@ describe("TTSManager", () => {
 
     expect(calls.length).toBeGreaterThan(1);
     expect(calls.every((text) => text.length <= 260)).toBe(true);
-    expect(calls[0]!.length).toBeLessThanOrEqual(120);
-    expect(calls.slice(1).some((text) => text.length > calls[0]!.length)).toBe(true);
+    expect(calls[0].length).toBeLessThanOrEqual(120);
+    expect(calls.slice(1).some((text) => text.length > calls[0].length)).toBe(true);
   });
 
   it("prefetches the next segment before current playback completes", async () => {

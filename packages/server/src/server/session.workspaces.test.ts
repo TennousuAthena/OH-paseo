@@ -3809,7 +3809,7 @@ test("subscribed fetch_workspaces includes git enrichment in the initial snapsho
   session.workspaceRegistry.list = async () => [gitWorkspace, directoryWorkspace];
   session.reconcileAndEmitWorkspaceUpdates = vi.fn(async () => {});
   session.describeWorkspaceRecord = vi.fn(
-    async (workspace: typeof gitWorkspace | typeof directoryWorkspace, project: unknown) => {
+    async (workspace: typeof gitWorkspace, project: unknown) => {
       if (workspace.workspaceId === gitWorkspace.workspaceId) {
         expect(project).toEqual(gitProject);
         return baselineGitDescriptor;

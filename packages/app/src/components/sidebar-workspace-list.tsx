@@ -439,7 +439,7 @@ function WorkspaceStatusIndicator({
     );
   }
 
-  let KindIcon: typeof ThemedMonitor | typeof ThemedFolderGit2 | null;
+  let KindIcon: typeof ThemedMonitor | null;
   if (workspaceKind === "local_checkout") KindIcon = ThemedMonitor;
   else if (workspaceKind === "worktree") KindIcon = ThemedFolderGit2;
   else KindIcon = null;

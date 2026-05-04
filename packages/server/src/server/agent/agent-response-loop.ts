@@ -214,14 +214,14 @@ function tryParseJson(candidate: string): string | null {
 }
 
 function extractBalancedJsonCandidate(source: string, start: number): string | null {
-  const open = source[start]!;
+  const open = source[start];
   const close = open === "{" ? "}" : "]";
   let depth = 0;
   let inString = false;
   let escaped = false;
 
   for (let i = start; i < source.length; i += 1) {
-    const ch = source[i]!;
+    const ch = source[i];
 
     if (inString) {
       if (escaped) {

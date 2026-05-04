@@ -653,14 +653,14 @@ export class ACPAgentClient implements AgentClient {
       { logger: this.logger, provider: this.provider },
     );
     const connection = new ClientSideConnection(() => this.buildProbeClient(), stream);
-    const initialize = (await Promise.race([
+    const initialize = await Promise.race([
       connection.initialize({
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: ACP_CLIENT_CAPABILITIES,
         clientInfo: { name: "Paseo", version: "dev" },
       }),
       spawnErrorPromise,
-    ])) as InitializeResponse;
+    ]);
 
     return { child, connection, initialize };
   }
@@ -2093,7 +2093,7 @@ function mergeToolSnapshot(
 ): ACPToolSnapshot {
   return {
     toolCallId,
-    title: (update.title ?? previous?.title ?? toolCallId) as string,
+    title: update.title ?? previous?.title ?? toolCallId,
     kind: update.kind ?? previous?.kind ?? null,
     status: update.status ?? previous?.status ?? null,
     content: coalesceDefined(update.content, previous?.content, null),
