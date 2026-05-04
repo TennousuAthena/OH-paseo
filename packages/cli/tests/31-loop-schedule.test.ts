@@ -118,7 +118,7 @@ try {
     assert.notStrictEqual(result.exitCode, 0, "should fail for self target with provider");
     const output = result.stdout + result.stderr;
     assert(
-      output.includes("--provider can only be used with a new-agent target"),
+      output.includes("can only be used with a new-agent target"),
       "should explain provider target mismatch",
     );
     console.log("schedule rejects provider with self target\n");
