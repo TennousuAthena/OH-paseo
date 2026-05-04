@@ -139,7 +139,7 @@ describe("desktop attachment store", () => {
     await store.garbageCollect({ referencedIds: new Set(["att_3"]) });
 
     expect(readDesktopFileBase64Mock).toHaveBeenCalledWith("/managed/att_3.jpg");
-    expect(resolveDesktopPreviewUrlMock).toHaveBeenCalled();
+    expect(resolveDesktopPreviewUrlMock).toHaveBeenCalledWith(attachment);
     expect(releaseDesktopPreviewUrlMock).toHaveBeenCalledWith({ url: "blob:test" });
     expect(deleteDesktopAttachmentFileMock).toHaveBeenCalledWith({
       path: "/managed/att_3.jpg",

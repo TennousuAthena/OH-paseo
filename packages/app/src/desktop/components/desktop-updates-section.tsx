@@ -17,6 +17,7 @@ import {
   startDesktopDaemon,
   stopDesktopDaemon,
 } from "@/desktop/daemon/desktop-daemon";
+import { executeDaemonManagementToggle } from "@/desktop/daemon/daemon-management-toggle";
 import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { useDesktopSettings, type DesktopSettings } from "@/desktop/settings/desktop-settings";
 import type { DesktopDaemonStatus } from "@/desktop/daemon/desktop-daemon";
@@ -39,72 +40,42 @@ function useDaemonManagementToggle(args: {
       return;
     }
 
-    if (!settings.manageBuiltInDaemon) {
-      setIsUpdatingDaemonManagement(true);
-      void updateSettings({ manageBuiltInDaemon: true })
-        .then(() => startDesktopDaemon())
-        .then((newStatus) => {
-          setStatus(newStatus);
-          refetch();
-          return;
-        })
-        .catch((error) => {
-          console.error("[Settings] Failed to update built-in daemon management", error);
-          Alert.alert("Error", "Unable to update built-in daemon management.");
-        })
-        .finally(() => {
-          setIsUpdatingDaemonManagement(false);
-        });
-      return;
-    }
-
-    void confirmDialog({
-      title: "Pause built-in daemon",
-      message:
-        "This will stop the built-in daemon immediately. Running agents and terminals connected to the built-in daemon will be stopped.",
-      confirmLabel: "Pause and stop",
-      cancelLabel: "Cancel",
-      destructive: true,
+    setIsUpdatingDaemonManagement(true);
+    void executeDaemonManagementToggle(settings.manageBuiltInDaemon, daemonStatus, {
+      confirm: () =>
+        confirmDialog({
+          title: "Pause built-in daemon",
+          message:
+            "This will stop the built-in daemon immediately. Running agents and terminals connected to the built-in daemon will be stopped.",
+          confirmLabel: "Pause and stop",
+          cancelLabel: "Cancel",
+          destructive: true,
+        }),
+      persistSettings: (next) => updateSettings(next) as Promise<void>,
+      startDaemon: startDesktopDaemon,
+      stopDaemon: stopDesktopDaemon,
     })
-      .then((confirmed) => {
-        if (!confirmed) {
+      .then((result) => {
+        if (result.kind === "cancelled") {
           return;
         }
-
-        setIsUpdatingDaemonManagement(true);
-
-        void updateSettings({ manageBuiltInDaemon: false })
-          .then(() => {
-            if (daemonStatus?.status === "running" && daemonStatus.desktopManaged) {
-              return stopDesktopDaemon();
-            }
-            return daemonStatus ?? null;
-          })
-          .then((newStatus) => {
-            if (newStatus) {
-              setStatus(newStatus);
-            }
-            return;
-          })
-          .then(() => {
-            refetch();
-            return;
-          })
-          .catch((error) => {
-            console.error("[Settings] Failed to stop built-in daemon", error);
-            Alert.alert(
-              "Error",
-              "Built-in daemon management was paused, but Paseo could not stop the daemon.",
-            );
-          })
-          .finally(() => {
-            setIsUpdatingDaemonManagement(false);
-          });
+        if (result.newStatus) {
+          setStatus(result.newStatus);
+        }
+        refetch();
         return;
       })
       .catch((error) => {
-        console.error("[Settings] Failed to open built-in daemon pause confirmation", error);
-        Alert.alert("Error", "Unable to open the daemon confirmation dialog.");
+        console.error("[Settings] Failed to update built-in daemon management", error);
+        Alert.alert(
+          "Error",
+          settings.manageBuiltInDaemon
+            ? "Built-in daemon management was paused, but Paseo could not stop the daemon."
+            : "Unable to update built-in daemon management.",
+        );
+      })
+      .finally(() => {
+        setIsUpdatingDaemonManagement(false);
       });
   }, [
     daemonStatus,
