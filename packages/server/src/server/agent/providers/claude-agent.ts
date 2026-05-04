@@ -2975,6 +2975,16 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     if (message.subtype === "task_notification") {
+      // TODO: subagent timelines are best-effort. Subagent task_notifications
+      // arrive without parent_tool_use_id but with tool_use_id pointing at the
+      // parent's Task call, so they slip past the sidechain router and pollute
+      // the parent timeline. Drop them here; eventually thread them into the
+      // parent Task tool call's sub_agent log instead.
+      const taskUseId = message.tool_use_id;
+      const cachedTool = taskUseId ? this.toolUseCache.get(taskUseId) : undefined;
+      if (cachedTool?.name === "Task") {
+        return;
+      }
       const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(message);
       if (taskNotificationItem) {
         events.push({
