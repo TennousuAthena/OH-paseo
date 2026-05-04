@@ -78,6 +78,7 @@ import { spawnWorkspaceScript } from "./worktree-bootstrap.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { DaemonConfigStore } from "./daemon-config-store.js";
 import { applyMutableProviderConfigToOverrides } from "./daemon-config-store.js";
+import { getErrorMessage, getErrorMessageOr } from "../shared/error-utils.js";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 
 import { buildProviderRegistry } from "./agent/provider-registry.js";
@@ -733,11 +734,13 @@ function parseClientCapabilities(
     return new Set();
   }
   const known = new Set<ClientCapability>(Object.values(CLIENT_CAPS));
-  return new Set(
-    Object.entries(capabilities).flatMap(([key, value]) =>
-      value === true && known.has(key as ClientCapability) ? [key as ClientCapability] : [],
-    ),
-  );
+  const result: ClientCapability[] = [];
+  for (const [key, value] of Object.entries(capabilities)) {
+    if (value === true && known.has(key as ClientCapability)) {
+      result.push(key as ClientCapability);
+    }
+  }
+  return new Set(result);
 }
 
 /**
@@ -1692,7 +1695,8 @@ export class Session {
         const err = error instanceof Error ? error : new Error(String(error));
         this.sessionLogger.error({ err }, "Error handling message");
 
-        const requestId = (msg as { requestId?: unknown }).requestId;
+        const requestId =
+          "requestId" in msg && typeof msg.requestId === "string" ? msg.requestId : undefined;
         if (typeof requestId === "string") {
           try {
             this.emit({
@@ -2493,7 +2497,7 @@ export class Session {
           id: uuidv4(),
           timestamp: new Date(),
           type: "error",
-          content: `Failed to update agent: ${(error as Error).message}`,
+          content: `Failed to update agent: ${getErrorMessage(error)}`,
         },
       });
       this.emit({
@@ -2502,9 +2506,7 @@ export class Session {
           requestId,
           agentId,
           accepted: false,
-          error: (error as Error | undefined)?.message
-            ? String((error as Error).message)
-            : "Failed to update agent",
+          error: getErrorMessageOr(error, "Failed to update agent"),
         },
       });
     }
@@ -3168,7 +3170,7 @@ export class Session {
           id: uuidv4(),
           timestamp: new Date(),
           type: "error",
-          content: `Failed to resume agent: ${(error as Error).message}`,
+          content: `Failed to resume agent: ${getErrorMessage(error)}`,
         },
       });
     }
@@ -3321,7 +3323,7 @@ export class Session {
           id: uuidv4(),
           timestamp: new Date(),
           type: "error",
-          content: `Failed to refresh agent: ${(error as Error).message}`,
+          content: `Failed to refresh agent: ${getErrorMessage(error)}`,
         },
       });
     }
@@ -3497,7 +3499,7 @@ export class Session {
           type: "list_provider_models_response",
           payload: {
             provider: msg.provider,
-            error: (error as Error)?.message ?? String(error),
+            error: getErrorMessage(error),
             fetchedAt,
             requestId: msg.requestId,
           },
@@ -3645,7 +3647,7 @@ export class Session {
         type: "list_provider_modes_response",
         payload: {
           provider: msg.provider,
-          error: (error as Error)?.message ?? String(error),
+          error: getErrorMessage(error),
           fetchedAt,
           requestId: msg.requestId,
         },
@@ -3722,7 +3724,7 @@ export class Session {
         type: "list_provider_features_response",
         payload: {
           provider: msg.draftConfig.provider,
-          error: (error as Error)?.message ?? String(error),
+          error: getErrorMessage(error),
           fetchedAt,
           requestId: msg.requestId,
         },
@@ -3753,7 +3755,7 @@ export class Session {
         type: "list_available_providers_response",
         payload: {
           providers: [],
-          error: (error as Error)?.message ?? String(error),
+          error: getErrorMessage(error),
           fetchedAt,
           requestId: msg.requestId,
         },
@@ -3999,7 +4001,7 @@ export class Session {
       const snapshot = await this.workspaceGitService.getSnapshot(cwd);
       return snapshot.git.isDirty === true;
     } catch (error) {
-      throw new Error(`Unable to inspect git status for ${cwd}: ${(error as Error).message}`, {
+      throw new Error(`Unable to inspect git status for ${cwd}: ${getErrorMessage(error)}`, {
         cause: error,
       });
     }
@@ -4103,7 +4105,7 @@ export class Session {
           id: uuidv4(),
           timestamp: new Date(),
           type: "error",
-          content: `Failed to set agent mode: ${(error as Error).message}`,
+          content: `Failed to set agent mode: ${getErrorMessage(error)}`,
         },
       });
       this.emit({
@@ -4112,9 +4114,7 @@ export class Session {
           requestId,
           agentId,
           accepted: false,
-          error: (error as Error | undefined)?.message
-            ? String((error as Error).message)
-            : "Failed to set agent mode",
+          error: getErrorMessageOr(error, "Failed to set agent mode"),
         },
       });
     }
@@ -4148,7 +4148,7 @@ export class Session {
           id: uuidv4(),
           timestamp: new Date(),
           type: "error",
-          content: `Failed to set agent model: ${(error as Error).message}`,
+          content: `Failed to set agent model: ${getErrorMessage(error)}`,
         },
       });
       this.emit({
@@ -4157,9 +4157,7 @@ export class Session {
           requestId,
           agentId,
           accepted: false,
-          error: (error as Error | undefined)?.message
-            ? String((error as Error).message)
-            : "Failed to set agent model",
+          error: getErrorMessageOr(error, "Failed to set agent model"),
         },
       });
     }
@@ -4197,7 +4195,7 @@ export class Session {
           id: uuidv4(),
           timestamp: new Date(),
           type: "error",
-          content: `Failed to set agent feature: ${(error as Error).message}`,
+          content: `Failed to set agent feature: ${getErrorMessage(error)}`,
         },
       });
       this.emit({
@@ -4206,9 +4204,7 @@ export class Session {
           requestId,
           agentId,
           accepted: false,
-          error: (error as Error | undefined)?.message
-            ? String((error as Error).message)
-            : "Failed to set agent feature",
+          error: getErrorMessageOr(error, "Failed to set agent feature"),
         },
       });
     }
@@ -4245,7 +4241,7 @@ export class Session {
           id: uuidv4(),
           timestamp: new Date(),
           type: "error",
-          content: `Failed to set agent thinking option: ${(error as Error).message}`,
+          content: `Failed to set agent thinking option: ${getErrorMessage(error)}`,
         },
       });
       this.emit({
@@ -4254,9 +4250,7 @@ export class Session {
           requestId,
           agentId,
           accepted: false,
-          error: (error as Error | undefined)?.message
-            ? String((error as Error).message)
-            : "Failed to set agent thinking option",
+          error: getErrorMessageOr(error, "Failed to set agent thinking option"),
         },
       });
     }
@@ -4397,7 +4391,7 @@ export class Session {
         payload: {
           agentId,
           commands: [],
-          error: (error as Error).message,
+          error: getErrorMessage(error),
           requestId,
         },
       });
@@ -4439,7 +4433,7 @@ export class Session {
           id: uuidv4(),
           timestamp: new Date(),
           type: "error",
-          content: `Failed to respond to permission: ${(error as Error).message}`,
+          content: `Failed to respond to permission: ${getErrorMessage(error)}`,
         },
       });
       throw error;
@@ -4534,7 +4528,7 @@ export class Session {
           return;
         default: {
           const exhaustiveCheck: never = resolution;
-          throw new Error(`Unhandled branch resolution: ${exhaustiveCheck}`);
+          throw new Error(`Unhandled branch resolution: ${getErrorMessage(exhaustiveCheck)}`);
         }
       }
     } catch (error) {
@@ -5563,7 +5557,7 @@ export class Session {
           mode,
           directory: null,
           file: null,
-          error: (error as Error).message,
+          error: getErrorMessage(error),
           requestId,
         },
       });
@@ -5595,7 +5589,7 @@ export class Session {
         payload: {
           cwd,
           icon: null,
-          error: (error as Error).message,
+          error: getErrorMessage(error),
           requestId,
         },
       });
@@ -5671,7 +5665,7 @@ export class Session {
           fileName: null,
           mimeType: null,
           size: null,
-          error: (error as Error).message,
+          error: getErrorMessage(error),
           requestId,
         },
       });
@@ -5966,7 +5960,7 @@ export class Session {
     defaultSort: [{ key: "updated_at", direction: "desc" }],
     label: "fetch_agents",
     getId: (agent) => agent.id,
-    getSortValue: (agent, key) => {
+    getSortValue: (agent, key): number | string => {
       switch (key) {
         case "status_priority":
           return this.getStatusPriority(agent);
@@ -6007,7 +6001,7 @@ export class Session {
     return {
       id: workspace.workspaceId,
       projectId: workspace.projectId,
-      projectDisplayName: resolvedProjectRecord?.displayName ?? String(workspace.projectId),
+      projectDisplayName: resolvedProjectRecord?.displayName ?? workspace.projectId,
       projectRootPath: resolvedProjectRecord?.rootPath ?? workspace.cwd,
       workspaceDirectory: workspace.cwd,
       projectKind: (resolvedProjectRecord?.kind ?? "directory") === "git" ? "git" : "non_git",
@@ -6095,7 +6089,7 @@ export class Session {
     return {
       id: result.workspace.workspaceId,
       projectId: result.workspace.projectId,
-      projectDisplayName: projectRecord?.displayName ?? String(result.workspace.projectId),
+      projectDisplayName: projectRecord?.displayName ?? result.workspace.projectId,
       projectRootPath: projectRecord?.rootPath ?? result.repoRoot,
       workspaceDirectory: result.workspace.cwd,
       projectKind: "git",
@@ -7779,7 +7773,7 @@ export class Session {
           id: uuidv4(),
           timestamp: new Date(),
           type: "error",
-          content: `Transcription error: ${(error as Error).message}`,
+          content: `Transcription error: ${getErrorMessage(error)}`,
         },
       });
       throw error;
