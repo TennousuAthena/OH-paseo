@@ -42,12 +42,12 @@ export async function runLoopLogsCommand(
   options: LoopLogsOptions,
   _command: Command,
 ): Promise<void> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
   const pollInterval = parsePollInterval(options.pollInterval ?? "1000");
   let client: LoopDaemonClient;
   try {
     client = (await connectToDaemon({
-      host: options.host as string | undefined,
+      host: options.host,
     })) as unknown as LoopDaemonClient;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

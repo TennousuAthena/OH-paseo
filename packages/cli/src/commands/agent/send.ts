@@ -166,7 +166,7 @@ export async function runSendCommand(
   options: AgentSendOptions,
   _command: Command,
 ): Promise<SingleResult<AgentSendResult>> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
 
   // Validate arguments
   if (!agentIdArg || agentIdArg.trim().length === 0) {
@@ -186,7 +186,7 @@ export async function runSendCommand(
 
   let client;
   try {
-    client = await connectToDaemon({ host: options.host as string | undefined });
+    client = await connectToDaemon({ host: options.host });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {

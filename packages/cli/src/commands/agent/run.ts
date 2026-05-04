@@ -358,7 +358,7 @@ export async function runRunCommand(
   options: AgentRunOptions,
   _command: Command,
 ): Promise<SingleResult<AgentRunResult>> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
   const outputSchema = options.outputSchema ? loadOutputSchema(options.outputSchema) : undefined;
 
   validateRunOptions(prompt, options, outputSchema);
@@ -367,7 +367,7 @@ export async function runRunCommand(
   const resolvedProviderModel = resolveProviderAndModel(options);
   const resolvedTitle = options.title ?? options.name;
 
-  const client = await connectToDaemonOrThrow(options.host as string | undefined, host);
+  const client = await connectToDaemonOrThrow(options.host, host);
 
   try {
     // Resolve working directory

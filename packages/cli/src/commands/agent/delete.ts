@@ -39,7 +39,7 @@ export async function runDeleteCommand(
   options: AgentDeleteOptions,
   _command: Command,
 ): Promise<AgentDeleteResult> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
 
   if (!id && !options.all && !options.cwd) {
     const error: CommandError = {
@@ -52,7 +52,7 @@ export async function runDeleteCommand(
 
   let client: DaemonClient;
   try {
-    client = await connectToDaemon({ host: options.host as string | undefined });
+    client = await connectToDaemon({ host: options.host });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {

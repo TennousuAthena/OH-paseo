@@ -42,7 +42,7 @@ export async function runStopCommand(
   options: AgentStopOptions,
   _command: Command,
 ): Promise<AgentStopResult> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
 
   // Validate arguments - need either an id, --all, or --cwd
   if (!id && !options.all && !options.cwd) {
@@ -56,7 +56,7 @@ export async function runStopCommand(
 
   let client: DaemonClient;
   try {
-    client = await connectToDaemon({ host: options.host as string | undefined });
+    client = await connectToDaemon({ host: options.host });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {

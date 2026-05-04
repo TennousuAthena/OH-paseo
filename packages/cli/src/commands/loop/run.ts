@@ -153,12 +153,12 @@ export async function runLoopRunCommand(
   options: LoopRunOptions,
   _command: Command,
 ): Promise<LoopRunResult> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
   const input = buildLoopRunInput(prompt, options);
   let client;
   try {
     client = (await connectToDaemon({
-      host: options.host as string | undefined,
+      host: options.host,
     })) as unknown as LoopDaemonClient;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

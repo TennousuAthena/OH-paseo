@@ -168,11 +168,11 @@ export async function runLsCommand(
   options: AgentLsOptions,
   _command: Command,
 ): Promise<AgentLsResult> {
-  const host = getDaemonHost({ host: options.host as string | undefined });
+  const host = getDaemonHost({ host: options.host });
 
   let client;
   try {
-    client = await connectToDaemon({ host: options.host as string | undefined });
+    client = await connectToDaemon({ host: options.host });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {
