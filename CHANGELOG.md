@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.69 - 2026-05-05
+
+### Fixed
+
+- Paseo now recovers automatically when an internal daemon process crashes — your agents stay connected instead of getting stuck and you don't have to restart anything.
+- Answering an interactive question from a Claude agent now reaches Claude correctly instead of being dropped. ([#760](https://github.com/getpaseo/paseo/pull/760) by [@somus](https://github.com/somus))
+
 ## 0.1.68 - 2026-05-05
 
 ### Fixed
