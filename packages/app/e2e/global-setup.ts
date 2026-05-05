@@ -705,6 +705,7 @@ export default async function globalSetup() {
     process.env.E2E_SERVER_ID = offer.serverId;
     process.env.E2E_RELAY_DAEMON_PUBLIC_KEY = offer.daemonPublicKeyB64;
     process.env.E2E_METRO_PORT = String(metroPort);
+    process.env.E2E_PASEO_HOME = paseoHome;
     console.log(
       `[e2e] Test daemon started on port ${port}, Metro on port ${metroPort}, home: ${paseoHome}`,
     );
