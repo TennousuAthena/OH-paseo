@@ -5,7 +5,6 @@ import { copyFile, rm, stat } from "fs/promises";
 import { join, basename, dirname, resolve, sep } from "path";
 import net from "node:net";
 import { createHash } from "node:crypto";
-import * as pty from "node-pty";
 import stripAnsi from "strip-ansi";
 import { buildStringCommandShellInvocation } from "./string-command-shell.js";
 import { readPaseoConfigJson, resolvePaseoConfigPath } from "./paseo-config-file.js";
@@ -30,7 +29,6 @@ import { runGitCommand } from "./run-git-command.js";
 import { spawnProcess } from "./spawn.js";
 import { resolvePaseoHome } from "../server/paseo-home.js";
 import { createExternalProcessEnv } from "../server/paseo-env.js";
-import { ensureNodePtySpawnHelperExecutableForCurrentPlatform } from "../terminal/terminal.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 
 const execFileAsync = promisify(execFile);
@@ -465,54 +463,29 @@ async function execSetupCommandStreamed(options: {
       cwd: options.cwd,
     });
 
-    const spawnWithPipes = () => {
-      const shellInvocation = buildStringCommandShellInvocation({ command: options.command });
-      const child = spawnProcess(shellInvocation.shell, shellInvocation.args, {
-        cwd: options.cwd,
-        env: options.env,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+    const shellInvocation = buildStringCommandShellInvocation({ command: options.command });
+    const child = spawnProcess(shellInvocation.shell, shellInvocation.args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
-      child.stdout?.on("data", (chunk: Buffer | string) => {
-        emitOutput("stdout", chunk.toString());
-      });
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      emitOutput("stdout", chunk.toString());
+    });
 
-      child.stderr?.on("data", (chunk: Buffer | string) => {
-        emitOutput("stderr", chunk.toString());
-      });
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      emitOutput("stderr", chunk.toString());
+    });
 
-      child.on("error", (error) => {
-        emitOutput("stderr", error instanceof Error ? error.message : String(error));
-        finish(null);
-      });
-
-      child.on("close", (code) => {
-        finish(typeof code === "number" ? code : null);
-      });
-    };
-
-    try {
-      ensureNodePtySpawnHelperExecutableForCurrentPlatform();
-      const shellInvocation = buildStringCommandShellInvocation({ command: options.command });
-      const terminal = pty.spawn(shellInvocation.shell, shellInvocation.args, {
-        cwd: options.cwd,
-        env: options.env,
-        name: "xterm-color",
-        cols: 120,
-        rows: 30,
-      });
-
-      terminal.onData((data) => {
-        emitOutput("stdout", data);
-      });
-
-      terminal.onExit(({ exitCode }) => {
-        finish(typeof exitCode === "number" ? exitCode : null);
-      });
-    } catch (error) {
+    child.on("error", (error) => {
       emitOutput("stderr", error instanceof Error ? error.message : String(error));
-      spawnWithPipes();
-    }
+      finish(null);
+    });
+
+    child.on("close", (code) => {
+      finish(typeof code === "number" ? code : null);
+    });
   });
 }
 

@@ -3,7 +3,12 @@ import { resolvePaseoNodeEnv } from "./paseo-env.js";
 import { z } from "zod";
 
 import type { PaseoDaemonConfig } from "./bootstrap.js";
-import { loadPersistedConfig } from "./persisted-config.js";
+import {
+  loadPersistedConfig,
+  LogFormatSchema,
+  LogLevelSchema,
+  type PersistedConfig,
+} from "./persisted-config.js";
 import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import type {
   AgentProviderRuntimeSettingsMap,
@@ -35,6 +40,14 @@ function parseBooleanEnv(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
+function normalizeLogEnv(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return value.trim().toLowerCase();
+}
+
 export type CliConfigOverrides = Partial<{
   listen: string;
   relayEnabled: boolean;
@@ -42,6 +55,24 @@ export type CliConfigOverrides = Partial<{
   mcpInjectIntoAgents: boolean;
   hostnames: HostnamesConfig;
 }>;
+
+function resolveLogConfigFromEnv(
+  env: NodeJS.ProcessEnv,
+  persisted: ReturnType<typeof loadPersistedConfig>,
+): PersistedConfig["log"] {
+  const envLogLevel = LogLevelSchema.safeParse(normalizeLogEnv(env.PASEO_LOG_LEVEL));
+  const envLogFormat = LogFormatSchema.safeParse(normalizeLogEnv(env.PASEO_LOG_FORMAT));
+
+  if (!envLogLevel.success && !envLogFormat.success) {
+    return persisted.log;
+  }
+
+  return {
+    ...persisted.log,
+    ...(envLogLevel.success ? { level: envLogLevel.data } : {}),
+    ...(envLogFormat.success ? { format: envLogFormat.data } : {}),
+  };
+}
 
 const OptionalVoiceLlmProviderSchema = z
   .union([z.string(), z.null(), z.undefined()])
@@ -271,5 +302,6 @@ export function loadConfig(
     voiceLlmModel: voiceLlm.model,
     agentProviderSettings: extractAgentProviderSettings(providerOverrides),
     providerOverrides,
+    log: resolveLogConfigFromEnv(env, persisted),
   };
 }

@@ -6,7 +6,6 @@ import os from "node:os";
 import { mkdtemp, rm } from "node:fs/promises";
 import { Writable } from "node:stream";
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 
 import { generateLocalPairingOffer } from "../pairing-offer.js";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
@@ -202,8 +201,9 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
     const tempHome = await mkdtemp(path.join(os.tmpdir(), "paseo-offer-e2e-"));
     const port = await getAvailablePort();
 
-    const indexPath = fileURLToPath(new URL("../index.ts", import.meta.url));
-    const tsxBin = path.resolve(process.cwd(), "../../node_modules/.bin/tsx");
+    const serverRoot = path.resolve(import.meta.dirname, "../../..");
+    const supervisorPath = path.join(serverRoot, "scripts/supervisor-entrypoint.ts");
+    const tsxBin = path.resolve(serverRoot, "../../node_modules/.bin/tsx");
 
     const env = {
       ...process.env,
@@ -216,7 +216,7 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
     };
 
     const stdoutLines: string[] = [];
-    const proc = spawn(tsxBin, [indexPath, "--no-relay"], {
+    const proc = spawn(tsxBin, [supervisorPath, "--dev", "--no-relay"], {
       env,
       stdio: ["ignore", "pipe", "pipe"],
     });

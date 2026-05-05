@@ -5,7 +5,7 @@ import type {
   TerminalStateSnapshot,
 } from "./terminal.js";
 import type { TerminalState } from "../shared/messages.js";
-import type { CaptureTerminalLinesResult } from "./terminal.js";
+import type { CaptureTerminalLinesResult } from "./terminal-capture.js";
 
 export interface WorkerTerminalInfo {
   id: string;

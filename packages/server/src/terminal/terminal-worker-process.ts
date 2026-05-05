@@ -1,5 +1,5 @@
 import { createTerminalManager } from "./terminal-manager.js";
-import { captureTerminalLines } from "./terminal.js";
+import { captureTerminalLines } from "./terminal-capture.js";
 import type { TerminalSession } from "./terminal.js";
 import type {
   TerminalWorkerRequest,

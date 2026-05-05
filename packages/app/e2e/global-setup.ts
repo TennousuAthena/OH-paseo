@@ -573,7 +573,7 @@ function startDaemon(args: DaemonSpawnArgs): ChildProcess {
   const tsxBin = execSync("which tsx").toString().trim();
   const { openAiUsable, localModelsDir } = args.dictation;
 
-  const child = spawn(tsxBin, ["src/server/index.ts"], {
+  const child = spawn(tsxBin, ["scripts/supervisor-entrypoint.ts", "--dev"], {
     cwd: serverDir,
     env: {
       ...process.env,

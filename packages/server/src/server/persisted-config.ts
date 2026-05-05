@@ -9,8 +9,8 @@ import {
 } from "./agent/provider-launch-config.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 
-const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
-const LogFormatSchema = z.enum(["pretty", "json"]);
+export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
+export const LogFormatSchema = z.enum(["pretty", "json"]);
 
 const LogConfigSchema = z
   .object({

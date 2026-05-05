@@ -1,6 +1,10 @@
 # Ad-hoc daemon testing
 
-Spin up an isolated daemon programmatically without touching the main daemon on port 6767.
+Spin up an isolated in-process daemon test harness without touching the main daemon on port 6767.
+
+This is for test code only. Executable daemon processes must start through
+`scripts/supervisor-entrypoint.ts` or `dist/scripts/supervisor-entrypoint.js`;
+do not use `createPaseoDaemon` as a product launch path.
 
 ## Quick start
 
@@ -85,7 +89,7 @@ await client.close();
 await daemon.close(); // stops daemon + cleans up temp dirs
 ```
 
-The test helper does **not** expose `providerOverrides`. Use `createPaseoDaemon` directly when you need it (see quick start above).
+The test helper does **not** expose `providerOverrides`. In test harnesses, use `createPaseoDaemon` directly when you need it (see quick start above).
 
 ## Common client methods
 

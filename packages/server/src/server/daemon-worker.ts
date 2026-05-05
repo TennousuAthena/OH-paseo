@@ -2,7 +2,6 @@ import { createPaseoDaemon } from "./bootstrap.js";
 import { loadConfig } from "./config.js";
 import { resolvePaseoHome } from "./paseo-home.js";
 import { createRootLogger } from "./logger.js";
-import { loadPersistedConfig } from "./persisted-config.js";
 import { acquirePidLock, PidLockError, releasePidLock, updatePidLock } from "./pid-lock.js";
 import type { DaemonLifecycleIntent } from "./bootstrap.js";
 
@@ -24,9 +23,8 @@ interface BootstrapResult {
 function bootstrapFromEnvironment(): BootstrapResult {
   try {
     const paseoHome = resolvePaseoHome();
-    const persistedConfig = loadPersistedConfig(paseoHome);
-    const logger = createRootLogger(persistedConfig, { paseoHome });
     const config = loadConfig(paseoHome);
+    const logger = createRootLogger({ log: config.log }, { paseoHome, file: false });
     return { paseoHome, logger, config };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

@@ -39,7 +39,7 @@ import { scheduleAgentMetadataGeneration } from "./agent-metadata-generator.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../voice-types.js";
 import { expandUserPath, isSameOrDescendantPath, resolvePathFromBase } from "../path-utils.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
-import { captureTerminalLines } from "../../terminal/terminal.js";
+import { captureTerminalLines } from "../../terminal/terminal-capture.js";
 import type {
   AgentWorktreeSetupContinuation,
   CreatePaseoWorktreeSetupContinuationInput,
