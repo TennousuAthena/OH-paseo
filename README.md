@@ -91,9 +91,9 @@ paseo --host workstation.local:6767 run "run the full test suite"
 
 See the [full CLI reference](https://paseo.sh/docs/cli) for more.
 
-## Orchestration skills (Unstable)
+## Skills
 
-Experimental skills that teach agents how to use the Paseo CLI to orchestrate other agents. I am updating these very frequently as I learn new things, expect changes without notice, might be coupled to my own setup, use at your own risk.
+Skills teach your agent how to use the Paseo CLI to orchestrate other agents. One agent can spin up a team, hand off work to a different model, run loops with verifiers, and bring in advisors — all from inside a normal conversation. The result is workflows that would otherwise require you to manually coordinate multiple terminals.
 
 ```bash
 npx skills add getpaseo/paseo
