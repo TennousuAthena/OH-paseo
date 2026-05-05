@@ -1140,6 +1140,7 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
     },
   });
   expect(client.lastResumeOverrides).toMatchObject({
+    modeId: "auto",
     systemPrompt: "new prompt",
     mcpServers: {
       paseo: {

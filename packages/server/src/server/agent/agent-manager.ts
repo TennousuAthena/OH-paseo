@@ -791,10 +791,19 @@ export class AgentManager {
       provider: handle.provider,
     } as AgentSessionConfig;
     const normalizedConfig = await this.normalizeConfig(mergedConfig);
-    const resumeOverrides =
-      normalizedConfig.model !== mergedConfig.model
-        ? { ...overrides, model: normalizedConfig.model }
-        : overrides;
+    const resumeOverrides: Partial<AgentSessionConfig> = { ...overrides };
+    let hasResumeOverrides = overrides !== undefined;
+
+    if (normalizedConfig.model !== mergedConfig.model) {
+      resumeOverrides.model = normalizedConfig.model;
+      hasResumeOverrides = true;
+    }
+
+    if (normalizedConfig.modeId !== mergedConfig.modeId) {
+      resumeOverrides.modeId = normalizedConfig.modeId;
+      hasResumeOverrides = true;
+    }
+
     const launchContext = this.buildLaunchContext(resolvedAgentId);
     const client = this.requireClient(handle.provider);
     const available = await client.isAvailable();
@@ -803,7 +812,11 @@ export class AgentManager {
         `Provider '${handle.provider}' is not available. Please ensure the CLI is installed.`,
       );
     }
-    const session = await client.resumeSession(handle, resumeOverrides, launchContext);
+    const session = await client.resumeSession(
+      handle,
+      hasResumeOverrides ? resumeOverrides : undefined,
+      launchContext,
+    );
     return this.registerSession(session, normalizedConfig, resolvedAgentId, options);
   }
 
