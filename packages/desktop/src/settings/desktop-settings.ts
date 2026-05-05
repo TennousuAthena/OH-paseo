@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -198,13 +199,19 @@ export function createDesktopSettingsStore({
 }): DesktopSettingsStore {
   const filePath = path.join(userDataPath, DESKTOP_SETTINGS_FILENAME);
   let cachedDocument: PersistedDesktopSettingsDocument | null = null;
+  let persistQueue: Promise<void> = Promise.resolve();
 
   async function persistDocument(document: PersistedDesktopSettingsDocument): Promise<void> {
-    await mkdir(userDataPath, { recursive: true });
-    const tempFilePath = `${filePath}.tmp`;
-    await writeFile(tempFilePath, `${JSON.stringify(document, null, 2)}\n`, "utf8");
-    await rename(tempFilePath, filePath);
-    cachedDocument = document;
+    const write = async () => {
+      await mkdir(userDataPath, { recursive: true });
+      const tempFilePath = `${filePath}.tmp.${process.pid}.${randomUUID()}`;
+      await writeFile(tempFilePath, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+      await rename(tempFilePath, filePath);
+      cachedDocument = document;
+    };
+    const queued = persistQueue.then(write, write);
+    persistQueue = queued.catch(() => undefined);
+    await queued;
   }
 
   async function loadDocument(): Promise<PersistedDesktopSettingsDocument> {

@@ -43,6 +43,22 @@ describe("desktop-settings", () => {
     expect(persisted.settings).toEqual(DEFAULT_DESKTOP_SETTINGS);
   });
 
+  it("handles concurrent first-launch reads without racing the settings write", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+    const store = createDesktopSettingsStore({ userDataPath });
+
+    const settings = await Promise.all(Array.from({ length: 20 }, () => store.get()));
+    const persisted = JSON.parse(await readFile(settingsFilePath(userDataPath), "utf8")) as {
+      settings: DesktopSettings;
+    };
+    const files = await readdir(userDataPath);
+
+    expect(settings).toEqual(Array.from({ length: 20 }, () => DEFAULT_DESKTOP_SETTINGS));
+    expect(persisted.settings).toEqual(DEFAULT_DESKTOP_SETTINGS);
+    expect(files).toEqual(["desktop-settings.json"]);
+  });
+
   it("coerces invalid persisted values back to safe defaults", async () => {
     const userDataPath = await createTempUserDataDir();
     directories.add(userDataPath);
