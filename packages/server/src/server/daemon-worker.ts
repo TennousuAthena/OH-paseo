@@ -2,12 +2,15 @@ import { createPaseoDaemon } from "./bootstrap.js";
 import { loadConfig } from "./config.js";
 import { resolvePaseoHome } from "./paseo-home.js";
 import { createRootLogger } from "./logger.js";
-import { acquirePidLock, PidLockError, releasePidLock, updatePidLock } from "./pid-lock.js";
 import type { DaemonLifecycleIntent } from "./bootstrap.js";
 
 type SupervisorLifecycleMessage =
   | {
       type: "paseo:shutdown";
+    }
+  | {
+      type: "paseo:ready";
+      listen: string;
     }
   | {
       type: "paseo:restart";
@@ -46,12 +49,10 @@ function applyCliFlagOverrides(config: ReturnType<typeof loadConfig>): void {
 }
 
 async function main() {
-  const { paseoHome, logger, config } = bootstrapFromEnvironment();
+  const { logger, config } = bootstrapFromEnvironment();
   let daemon: Awaited<ReturnType<typeof createPaseoDaemon>> | null = null;
   let shutdownPromise: Promise<number> | null = null;
   let exitHookInstalled = false;
-  const supervised = process.env.PASEO_SUPERVISED === "1" && typeof process.send === "function";
-  let pidLockAcquired = false;
 
   applyCliFlagOverrides(config);
 
@@ -87,10 +88,6 @@ async function main() {
             return 1;
           }
           await daemon.stop();
-          if (pidLockAcquired) {
-            await releasePidLock(paseoHome);
-            pidLockAcquired = false;
-          }
           clearTimeout(forceExit);
           logger.info("Server closed");
           return options?.successExitCode ?? 0;
@@ -149,11 +146,6 @@ async function main() {
   };
 
   try {
-    if (!supervised) {
-      await acquirePidLock(paseoHome, null);
-      pidLockAcquired = true;
-    }
-
     daemon = await createPaseoDaemon(
       {
         ...config,
@@ -162,40 +154,22 @@ async function main() {
       logger,
     );
   } catch (err) {
-    if (pidLockAcquired) {
-      await releasePidLock(paseoHome);
-      pidLockAcquired = false;
-    }
-    if (err instanceof PidLockError) {
-      logger.error({ pid: err.existingLock?.pid }, err.message);
-      process.exit(1);
-    }
     logger.fatal({ err }, "Daemon bootstrap failed");
     throw err;
   }
 
   try {
     await daemon.start();
-    if (!supervised) {
-      const listenTarget = daemon.getListenTarget();
-      const listen =
-        listenTarget?.type === "tcp"
-          ? `${listenTarget.host}:${listenTarget.port}`
-          : listenTarget?.path;
-      if (!listen) {
-        throw new Error("Daemon did not expose a listen target after startup");
-      }
-      await updatePidLock(paseoHome, { listen });
+    const listenTarget = daemon.getListenTarget();
+    const listen =
+      listenTarget?.type === "tcp"
+        ? `${listenTarget.host}:${listenTarget.port}`
+        : listenTarget?.path;
+    if (!listen) {
+      throw new Error("Daemon did not expose a listen target after startup");
     }
+    sendSupervisorLifecycleMessage({ type: "paseo:ready", listen });
   } catch (err) {
-    if (pidLockAcquired) {
-      await releasePidLock(paseoHome);
-      pidLockAcquired = false;
-    }
-    if (err instanceof PidLockError) {
-      logger.error({ pid: err.existingLock?.pid }, err.message);
-      process.exit(1);
-    }
     logger.fatal({ err }, "Daemon failed to start listening");
     throw err;
   }

@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   const config = parseConfig(process.argv.slice(2));
   const workerEntry = config.devMode ? resolveDevWorkerEntry() : resolveWorkerEntry();
   const workerExecArgv = resolveWorkerExecArgv(workerEntry);
-  const workerEnv: NodeJS.ProcessEnv = { ...process.env, PASEO_SUPERVISED: "1" };
+  const workerEnv: NodeJS.ProcessEnv = { ...process.env };
   const packagedNodeEntrypointRunner =
     process.env.ELECTRON_RUN_AS_NODE === "1"
       ? resolvePackagedNodeEntrypointRunnerPath(fileURLToPath(import.meta.url))

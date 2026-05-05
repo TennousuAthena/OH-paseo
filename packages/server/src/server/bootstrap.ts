@@ -842,16 +842,6 @@ export async function createPaseoDaemon(
             github,
           );
 
-          if (typeof process.send === "function" && process.env.PASEO_SUPERVISED === "1") {
-            process.send({
-              type: "paseo:ready",
-              listen:
-                boundListenTarget.type === "tcp"
-                  ? `${boundListenTarget.host}:${boundListenTarget.port}`
-                  : boundListenTarget.path,
-            });
-          }
-
           if (relayEnabled) {
             const offer = await createConnectionOfferV2({
               serverId,
