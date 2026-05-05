@@ -154,6 +154,10 @@ npm run typecheck
   </a>
 </p>
 
+## Community
+
+- [paseo-relay](https://github.com/zenghongtu/paseo-relay) — self-hosted relay in Go
+
 ## License
 
 AGPL-3.0
