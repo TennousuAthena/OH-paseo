@@ -93,7 +93,7 @@ See the [full CLI reference](https://paseo.sh/docs/cli) for more.
 
 ## Skills
 
-Skills teach your agent to use the Paseo CLI to orchestrate other agents — hand off work, run loops, bring in advisors — without you juggling terminals.
+Skills teach your agent to use Paseo to orchestrate other agents.
 
 ```bash
 npx skills add getpaseo/paseo
@@ -139,6 +139,8 @@ npm run typecheck
 ## Community
 
 - [paseo-relay](https://github.com/zenghongtu/paseo-relay) — self-hosted relay in Go
+
+---
 
 <p align="center">
   <a href="https://star-history.com/#getpaseo/paseo&Date">
