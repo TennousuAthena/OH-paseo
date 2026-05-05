@@ -93,7 +93,7 @@ See the [full CLI reference](https://paseo.sh/docs/cli) for more.
 
 ## Skills
 
-Skills teach your agent how to use the Paseo CLI to orchestrate other agents. One agent can spin up a team, hand off work to a different model, run loops with verifiers, and bring in advisors — all from inside a normal conversation. The result is workflows that would otherwise require you to manually coordinate multiple terminals.
+Skills teach your agent to use the Paseo CLI to orchestrate other agents — hand off work, run loops, bring in advisors — without you juggling terminals.
 
 ```bash
 npx skills add getpaseo/paseo
