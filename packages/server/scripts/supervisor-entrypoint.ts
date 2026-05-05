@@ -141,9 +141,7 @@ async function main(): Promise<void> {
 
   runSupervisor({
     name: "DaemonRunner",
-    startupMessage: config.devMode
-      ? "Starting daemon worker (dev mode, crash restarts enabled)"
-      : "Starting daemon worker (IPC restart enabled)",
+    startupMessage: "Starting daemon worker (IPC restart and crash restart enabled)",
     resolveWorkerEntry: () => workerEntry,
     workerArgs: config.workerArgs,
     workerEnv,
@@ -163,7 +161,7 @@ async function main(): Promise<void> {
           },
         })
       : undefined,
-    restartOnCrash: config.devMode,
+    restartOnCrash: true,
     logFile: supervisorLogFile,
     onWorkerReady: async ({ listen }) => {
       await updatePidLock(paseoHome, { listen }, { ownerPid: process.pid });
