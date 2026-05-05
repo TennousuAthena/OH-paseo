@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { CommandDialog } from "~/components/command-dialog";
+import { CodeBlock } from "~/components/code-block";
 import { pageMeta } from "~/meta";
 import {
   downloadUrls,
@@ -25,12 +25,6 @@ export const Route = createFileRoute("/download")({
   }),
   component: Download,
 });
-
-const homebrewTrigger = (
-  <span className="inline-flex items-center justify-center rounded-full bg-foreground px-4 py-1.5 text-sm font-medium text-background hover:bg-foreground/85 transition-colors">
-    Homebrew
-  </span>
-);
 
 function Download() {
   const release = useRelease();
@@ -101,14 +95,17 @@ function Download() {
 
         {/* Desktop */}
         <section className="rounded-xl border border-border bg-card/40 p-6 md:p-8 mb-6">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-semibold">Desktop</h2>
-            <MonitorIcon className="h-5 w-5 text-muted-foreground" />
+          <div className="flex items-start justify-between mb-8">
+            <div>
+              <h2 className="text-2xl font-semibold">Desktop</h2>
+              <p className="text-sm text-muted-foreground mt-1">Recommended, bundles the server</p>
+            </div>
+            <MonitorIcon className="h-5 w-5 text-muted-foreground mt-1.5" />
           </div>
 
           <div className="divide-y divide-border">
             {/* macOS */}
-            <div className="flex items-center justify-between py-5 first:pt-0 last:pb-0">
+            <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <AppleIcon className="h-5 w-5 text-foreground" />
                 <span className="font-medium">macOS</span>
@@ -116,16 +113,20 @@ function Download() {
               <div className="flex flex-wrap items-center gap-2">
                 <DownloadPill href={urls.macAppleSilicon} label="Apple Silicon" />
                 <DownloadPill href={urls.macIntel} label="Intel" />
-                <CommandDialog
-                  trigger={homebrewTrigger}
-                  title="Install via Homebrew"
-                  command="brew install --cask paseo"
-                />
               </div>
             </div>
 
+            {/* Homebrew */}
+            <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <TerminalIcon className="h-5 w-5 text-foreground" />
+                <span className="font-medium">Homebrew</span>
+              </div>
+              <CodeBlock size="sm">brew install --cask paseo</CodeBlock>
+            </div>
+
             {/* Windows */}
-            <div className="flex items-center justify-between py-5 first:pt-0 last:pb-0">
+            <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <WindowsIcon className="h-5 w-5 text-foreground" />
                 <span className="font-medium">Windows</span>
@@ -140,7 +141,7 @@ function Download() {
             </div>
 
             {/* Linux */}
-            <div className="flex items-center justify-between py-5 first:pt-0 last:pb-0">
+            <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <LinuxIcon className="h-5 w-5 text-foreground" />
                 <span className="font-medium">Linux</span>
@@ -163,7 +164,7 @@ function Download() {
 
           <div className="divide-y divide-border">
             {/* Android */}
-            <div className="flex items-center justify-between py-5 first:pt-0 last:pb-0">
+            <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <AndroidIcon className="h-5 w-5 text-foreground" />
                 <span className="font-medium">Android</span>
@@ -175,7 +176,7 @@ function Download() {
             </div>
 
             {/* iOS */}
-            <div className="flex items-center justify-between py-5 first:pt-0 last:pb-0">
+            <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <AppleIcon className="h-5 w-5 text-foreground" />
                 <span className="font-medium">iOS</span>
@@ -187,15 +188,20 @@ function Download() {
           </div>
         </section>
 
-        {/* Web & CLI */}
-        <section className="rounded-xl border border-border bg-card/40 p-6 md:p-8">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-semibold">Web & CLI</h2>
-            <TerminalIcon className="h-5 w-5 text-muted-foreground" />
+        {/* Web */}
+        <section className="rounded-xl border border-border bg-card/40 p-6 md:p-8 mb-6">
+          <div className="flex items-start justify-between mb-8">
+            <div>
+              <h2 className="text-2xl font-semibold">Web</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Connect to a server from any browser
+              </p>
+            </div>
+            <GlobeIcon className="h-5 w-5 text-muted-foreground mt-1.5" />
           </div>
 
           <div className="divide-y divide-border">
-            <div className="flex items-center justify-between py-5 first:pt-0 last:pb-0">
+            <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <GlobeIcon className="h-5 w-5 text-foreground" />
                 <span className="font-medium">Web App</span>
@@ -204,17 +210,36 @@ function Download() {
                 <DownloadPill href={webAppUrl} label="Open" external />
               </div>
             </div>
+          </div>
+        </section>
 
-            <div className="flex items-center justify-between py-5 first:pt-0 last:pb-0">
+        {/* Server */}
+        <section className="rounded-xl border border-border bg-card/40 p-6 md:p-8">
+          <div className="flex items-start justify-between mb-8">
+            <div>
+              <h2 className="text-2xl font-semibold">Server</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Run the Paseo server anywhere, connect from any client
+              </p>
+            </div>
+            <TerminalIcon className="h-5 w-5 text-muted-foreground mt-1.5" />
+          </div>
+
+          <div className="divide-y divide-border">
+            <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <TerminalIcon className="h-5 w-5 text-foreground" />
-                <span className="font-medium">CLI</span>
+                <span className="font-medium">npm</span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <code className="text-sm text-muted-foreground font-mono bg-muted px-3 py-1.5 rounded-lg">
-                  npm install -g @getpaseo/cli
-                </code>
+              <CodeBlock size="sm">npm install -g @getpaseo/cli && paseo</CodeBlock>
+            </div>
+
+            <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <TerminalIcon className="h-5 w-5 text-foreground" />
+                <span className="font-medium">Nix</span>
               </div>
+              <CodeBlock size="sm">nix run github:getpaseo/paseo</CodeBlock>
             </div>
           </div>
         </section>
