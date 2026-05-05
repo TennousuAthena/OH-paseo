@@ -1,9 +1,36 @@
-import { readFile } from "node:fs/promises";
+import { chmod, readFile } from "node:fs/promises";
 import path from "node:path";
-import { expect, test as base, type Page } from "./fixtures";
-import { gotoAppShell, openSettings } from "./helpers/app";
+import { expect, test as base } from "./fixtures";
 import { connectNewWorkspaceDaemonClient, openProjectViaDaemon } from "./helpers/new-workspace";
 import { createTempGitRepo } from "./helpers/workspace";
+import {
+  blockPaseoConfigWrites,
+  bumpPaseoConfigOnDisk,
+  clickReloadProjectSettings,
+  clickRetryProjectSettingsSave,
+  clickSaveProjectSettings,
+  corruptPaseoConfig,
+  editWorktreeSetup,
+  expectEmptyScriptList,
+  expectHostIndicatorVisible,
+  expectHostPickerHidden,
+  expectNoEditableTarget,
+  expectNoProjectSettingsError,
+  expectProjectSettingsError,
+  expectProjectSettingsFormHidden,
+  expectProjectSettingsFormVisible,
+  expectSaveButtonDisabled,
+  expectScriptRowCount,
+  expectWriteFailedCalloutActions,
+  installDaemonConnectionGate,
+  installReadTransportFailure,
+  navigateToProjectSettings,
+  openProjectSettings,
+  openProjects,
+  removeProjectScript,
+  restorePaseoConfig,
+  unblockPaseoConfigWrites,
+} from "./helpers/project-settings";
 
 const updatedSetup = ["npm install", "npm run build"];
 
@@ -48,6 +75,9 @@ const test = base.extend<ProjectsSettingsFixtures>({
     });
 
     await client.close();
+    // Defensive: restore directory write permission in case the test left it blocked
+    // (write_failed test), so that repo.cleanup() can remove files inside.
+    await chmod(repo.path, 0o755).catch(() => undefined);
     await repo.cleanup();
   },
   gitlabRemoteProject: async ({ page: _page }, provide) => {
@@ -67,30 +97,6 @@ const test = base.extend<ProjectsSettingsFixtures>({
     await repo.cleanup();
   },
 });
-
-async function openProjects(page: Page): Promise<void> {
-  await gotoAppShell(page);
-  await openSettings(page);
-  await page.getByTestId("settings-projects").click();
-  await expect(page).toHaveURL(/\/settings\/projects$/);
-}
-
-async function openProjectSettings(page: Page, projectName: string): Promise<void> {
-  await page.getByRole("button", { name: `Edit ${projectName}`, exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "Worktree setup commands" })).toBeVisible({
-    timeout: 30_000,
-  });
-}
-
-async function editWorktreeSetup(page: Page, setupCommands: string[]): Promise<void> {
-  await page
-    .getByRole("textbox", { name: "Worktree setup commands" })
-    .fill(setupCommands.join("\n"));
-}
-
-async function saveProjectConfig(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Save project config" }).click();
-}
 
 async function expectProjectConfigSaved(project: ProjectsSettingsProject): Promise<void> {
   await expect
@@ -133,7 +139,7 @@ test.describe("Projects settings", () => {
     await openProjects(page);
     await openProjectSettings(page, editableProject.name);
     await editWorktreeSetup(page, updatedSetup);
-    await saveProjectConfig(page);
+    await clickSaveProjectSettings(page);
     await expectProjectConfigSaved(editableProject);
   });
 
@@ -145,7 +151,138 @@ test.describe("Projects settings", () => {
     await openProjects(page);
     await openProjectSettings(page, gitlabRemoteProject.name);
     await editWorktreeSetup(page, updatedSetup);
-    await saveProjectConfig(page);
+    await clickSaveProjectSettings(page);
     await expectProjectConfigSaved(gitlabRemoteProject);
+  });
+});
+
+test.describe("Projects settings — error UX", () => {
+  test("stale-write callout appears on save, disables save, and reload clears it", async ({
+    page,
+    editableProject,
+  }) => {
+    await openProjects(page);
+    await openProjectSettings(page, editableProject.name);
+
+    // Bump the file on disk so the daemon detects a revision mismatch on save.
+    await bumpPaseoConfigOnDisk(editableProject.path);
+
+    await clickSaveProjectSettings(page);
+
+    await expectProjectSettingsError(page, "stale");
+    await expectSaveButtonDisabled(page);
+
+    await clickReloadProjectSettings(page);
+
+    await expectNoProjectSettingsError(page, "stale");
+    await expectProjectSettingsFormVisible(page);
+  });
+
+  test("invalid paseo.json shows read-error callout, reload after fix shows form", async ({
+    page,
+    editableProject,
+  }) => {
+    await corruptPaseoConfig(editableProject.path);
+
+    await openProjects(page);
+    await navigateToProjectSettings(page, editableProject.name);
+
+    await expectProjectSettingsError(page, "invalid");
+    await expectProjectSettingsFormHidden(page);
+
+    // Restore a valid config so the reload succeeds.
+    await restorePaseoConfig(editableProject.path, initialPaseoConfig);
+
+    await clickReloadProjectSettings(page);
+
+    await expectNoProjectSettingsError(page, "invalid");
+    await expectProjectSettingsFormVisible(page);
+  });
+
+  test("write_failed callout appears on save with blocked directory, retry re-attempts, reload clears it", async ({
+    page,
+    editableProject,
+  }) => {
+    await openProjects(page);
+    await openProjectSettings(page, editableProject.name);
+
+    await blockPaseoConfigWrites(editableProject.path);
+
+    await clickSaveProjectSettings(page);
+
+    await expectProjectSettingsError(page, "write_failed");
+    await expectWriteFailedCalloutActions(page);
+
+    await clickRetryProjectSettingsSave(page);
+    await expectProjectSettingsError(page, "write_failed");
+
+    await unblockPaseoConfigWrites(editableProject.path);
+    await clickReloadProjectSettings(page);
+    await expectNoProjectSettingsError(page, "write_failed");
+    await expectProjectSettingsFormVisible(page);
+  });
+
+  test("read-transport failure shows callout, reload recovers", async ({
+    page,
+    editableProject,
+  }) => {
+    // Drop the WS connection the moment a read_project_config_request is sent.
+    // Subsequent connections are proxied transparently so Reload can succeed.
+    await installReadTransportFailure(page);
+
+    await openProjects(page);
+    await navigateToProjectSettings(page, editableProject.name);
+
+    await expectProjectSettingsError(page, "transport");
+    await expectProjectSettingsFormHidden(page);
+
+    // The client reconnects after a ~1.5 s backoff; retry Reload until refetch succeeds.
+    await expect(async () => {
+      await clickReloadProjectSettings(page);
+      await expectNoProjectSettingsError(page, "transport", 3_000);
+    }).toPass({ timeout: 15_000 });
+    await expectProjectSettingsFormVisible(page);
+  });
+
+  test("project settings shows no-target state when daemon connection drops", async ({
+    page,
+    editableProject,
+  }) => {
+    const gate = await installDaemonConnectionGate(page);
+
+    await openProjects(page);
+    await openProjectSettings(page, editableProject.name);
+
+    // Closing with code 1001 (Going Away) transitions DaemonClient to "error" state.
+    // The NoEditableTarget UI renders via isHostGone check regardless of state.
+    await gate.drop();
+
+    await expectNoEditableTarget(page);
+  });
+
+  test("single-host project renders static host indicator, not a picker chip", async ({
+    page,
+    editableProject,
+  }) => {
+    await openProjects(page);
+    await openProjectSettings(page, editableProject.name);
+
+    await expectHostIndicatorVisible(page);
+    await expectHostPickerHidden(page);
+  });
+
+  test("script removal via kebab menu removes the row from the form", async ({
+    page,
+    editableProject,
+  }) => {
+    await openProjects(page);
+    await openProjectSettings(page, editableProject.name);
+
+    await expectScriptRowCount(page, 1);
+
+    await removeProjectScript(page, "dev");
+
+    await expectScriptRowCount(page, 0);
+    await expectEmptyScriptList(page);
   });
 });
