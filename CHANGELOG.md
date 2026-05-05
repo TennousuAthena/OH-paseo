@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.68 - 2026-05-05
+
+### Fixed
+
+- The desktop app no longer fails on first launch after a fresh install.
+
 ## 0.1.67 - 2026-05-03
 
 ### Fixed
