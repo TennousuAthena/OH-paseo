@@ -36,6 +36,9 @@ interface ArchiveTabDaemonClient {
     predicate: (snapshot: { status: string }) => boolean,
     timeout?: number,
   ): Promise<{ status: string }>;
+  fetchAgentHistory(options?: {
+    page?: { limit: number };
+  }): Promise<{ entries: Array<{ id: string }> }>;
 }
 
 function getDaemonPort(): string {
@@ -265,8 +268,10 @@ export async function openSessions(page: Page): Promise<void> {
   });
 }
 
+const AGENT_ROW_SELECTOR = '[data-testid^="agent-row-"]';
+
 function getSessionRowByTitle(page: Page, title: string) {
-  return page.locator('[data-testid^="agent-row-"]').filter({ hasText: title }).first();
+  return page.locator(AGENT_ROW_SELECTOR).filter({ hasText: title }).first();
 }
 
 export async function expectSessionRowVisible(page: Page, title: string): Promise<void> {
@@ -281,6 +286,12 @@ export async function clickSessionRow(page: Page, title: string): Promise<void> 
   const row = getSessionRowByTitle(page, title);
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.click();
+}
+
+export async function expectSessionsEmptyState(page: Page): Promise<void> {
+  // Guard: if session rows appear, a prior spec polluted the shared daemon — see 00-sessions-empty.spec.ts.
+  await expect(page.locator(AGENT_ROW_SELECTOR)).toHaveCount(0, { timeout: 5_000 });
+  await expect(page.getByText("No sessions yet")).toBeVisible({ timeout: 30_000 });
 }
 
 export async function archiveAgentFromSessions(
