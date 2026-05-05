@@ -4,6 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test, expect } from "./fixtures";
 import { gotoAppShell } from "./helpers/app";
+import {
+  closeMobileAgentSidebar,
+  expectMobileAgentSidebarHidden,
+  expectMobileAgentSidebarVisible,
+  openMobileAgentSidebar,
+} from "./helpers/sidebar";
 import { createTempGitRepo } from "./helpers/workspace";
 import { expectWorkspaceHeader } from "./helpers/workspace-ui";
 import { connectWorkspaceSetupClient } from "./helpers/workspace-setup";
@@ -178,5 +184,18 @@ test.describe("Sidebar workspace list", () => {
       await client.close();
       await repo.cleanup();
     }
+  });
+});
+
+test.describe("Mobile sidebar panelState transition", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("showMobileAgent open and close transition", async ({ page }) => {
+    await gotoAppShell(page);
+    await expectMobileAgentSidebarHidden(page);
+    await openMobileAgentSidebar(page);
+    await expectMobileAgentSidebarVisible(page);
+    await closeMobileAgentSidebar(page);
+    await expectMobileAgentSidebarHidden(page);
   });
 });
