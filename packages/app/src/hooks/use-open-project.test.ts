@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.hoisted(() => {
+  (globalThis as typeof globalThis & { __DEV__?: boolean }).__DEV__ = false;
+});
+
 vi.mock("@react-native-async-storage/async-storage", () => {
   const storage = new Map<string, string>();
   return {
@@ -19,10 +23,8 @@ const { replaceRoute } = vi.hoisted(() => ({
   replaceRoute: vi.fn(),
 }));
 
-vi.mock("expo-router", () => ({
-  router: {
-    replace: replaceRoute,
-  },
+vi.mock("@/hooks/use-workspace-navigation", () => ({
+  navigateToWorkspace: replaceRoute,
 }));
 
 import { openProjectDirectly } from "@/hooks/use-open-project";
@@ -89,7 +91,7 @@ describe("openProjectDirectly", () => {
       mergeWorkspaces: useSessionStore.getState().mergeWorkspaces,
       setHasHydratedWorkspaces: useSessionStore.getState().setHasHydratedWorkspaces,
       openDraftTab: createOpenDraftTab(),
-      replaceRoute,
+      navigateToWorkspace: replaceRoute,
     });
 
     expect(result).toBe(true);
@@ -115,7 +117,7 @@ describe("openProjectDirectly", () => {
     const tabs = collectAllTabs(layout.root);
     expect(tabs).toHaveLength(1);
     expect(tabs[0]?.target.kind).toBe("draft");
-    expect(replaceRoute).toHaveBeenCalledWith("/h/server-1/workspace/1");
+    expect(replaceRoute).toHaveBeenCalledWith("server-1", "1");
   });
 
   it("does not navigate or seed tabs when openProject fails", async () => {
@@ -133,7 +135,7 @@ describe("openProjectDirectly", () => {
       mergeWorkspaces: useSessionStore.getState().mergeWorkspaces,
       setHasHydratedWorkspaces: useSessionStore.getState().setHasHydratedWorkspaces,
       openDraftTab: createOpenDraftTab(),
-      replaceRoute,
+      navigateToWorkspace: replaceRoute,
     });
 
     expect(result).toBe(false);

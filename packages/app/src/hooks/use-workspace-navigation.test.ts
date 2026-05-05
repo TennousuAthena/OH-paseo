@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { navigateMock } = vi.hoisted(() => ({
-  navigateMock: vi.fn(),
+const { dismissToMock } = vi.hoisted(() => ({
+  dismissToMock: vi.fn(),
 }));
 
 vi.mock("expo-router", () => ({
   router: {
-    navigate: navigateMock,
+    dismissTo: dismissToMock,
   },
 }));
 
@@ -19,11 +19,11 @@ import {
 
 describe("navigateToWorkspace", () => {
   beforeEach(() => {
-    navigateMock.mockReset();
+    dismissToMock.mockReset();
     syncNavigationActiveWorkspace({ current: null });
   });
 
-  it("uses router navigation from a non-workspace route even when active selection is stale", () => {
+  it("dismisses to the workspace route from a non-workspace route even when active selection is stale", () => {
     activateNavigationWorkspaceSelection({
       serverId: "server-1",
       workspaceId: "workspace-a",
@@ -33,7 +33,7 @@ describe("navigateToWorkspace", () => {
       currentPathname: "/h/server-1/sessions",
     });
 
-    expect(navigateMock).toHaveBeenCalledWith("/h/server-1/workspace/workspace-b");
+    expect(dismissToMock).toHaveBeenCalledWith("/h/server-1/workspace/workspace-b");
     expect(getNavigationActiveWorkspaceSelection()).toEqual({
       serverId: "server-1",
       workspaceId: "workspace-a",
@@ -50,7 +50,7 @@ describe("navigateToWorkspace", () => {
       currentPathname: "/h/server-1/workspace/workspace-a",
     });
 
-    expect(navigateMock).not.toHaveBeenCalled();
+    expect(dismissToMock).not.toHaveBeenCalled();
     expect(getNavigationActiveWorkspaceSelection()).toEqual({
       serverId: "server-1",
       workspaceId: "workspace-b",

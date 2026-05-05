@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { router, type Href } from "expo-router";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import {
@@ -12,7 +11,7 @@ import {
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 import { generateDraftId } from "@/stores/draft-keys";
-import { buildHostWorkspaceRoute } from "@/utils/host-routes";
+import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
 
 interface OpenProjectDirectlyInput {
   serverId: string;
@@ -22,7 +21,7 @@ interface OpenProjectDirectlyInput {
   mergeWorkspaces: (serverId: string, workspaces: Iterable<WorkspaceDescriptor>) => void;
   setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
   openDraftTab: (workspaceKey: string) => string | null;
-  replaceRoute: (route: string) => void;
+  navigateToWorkspace: (serverId: string, workspaceId: string) => void;
 }
 
 export async function openProjectDirectly(input: OpenProjectDirectlyInput): Promise<boolean> {
@@ -50,7 +49,7 @@ export async function openProjectDirectly(input: OpenProjectDirectlyInput): Prom
   }
 
   input.openDraftTab(workspaceKey);
-  input.replaceRoute(buildHostWorkspaceRoute(normalizedServerId, workspace.id));
+  input.navigateToWorkspace(normalizedServerId, workspace.id);
   return true;
 }
 
@@ -75,9 +74,7 @@ export function useOpenProject(serverId: string | null): (path: string) => Promi
             kind: "draft",
             draftId: generateDraftId(),
           }),
-        replaceRoute: (route) => {
-          router.replace(route as Href);
-        },
+        navigateToWorkspace,
       });
     },
     [client, isConnected, mergeWorkspaces, normalizedServerId, setHasHydratedWorkspaces],

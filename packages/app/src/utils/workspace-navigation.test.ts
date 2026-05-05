@@ -8,6 +8,7 @@ const { platformState, routerMock } = vi.hoisted(() => ({
   routerMock: {
     back: vi.fn(),
     canGoBack: vi.fn(() => false),
+    dismissTo: vi.fn(),
     navigate: vi.fn(),
     replace: vi.fn(),
   },
@@ -60,6 +61,7 @@ describe("prepareWorkspaceTab", () => {
     routerMock.back.mockReset();
     routerMock.canGoBack.mockReset();
     routerMock.canGoBack.mockReturnValue(false);
+    routerMock.dismissTo.mockReset();
     routerMock.navigate.mockReset();
     routerMock.replace.mockReset();
     syncNavigationActiveWorkspace({ current: null });
@@ -106,6 +108,7 @@ describe("prepareWorkspaceTab", () => {
 
     expect(route).toBe("/h/server-1/workspace/b64_L3JlcG8vd29ya3RyZWU");
     expect(routerMock.back).toHaveBeenCalledOnce();
+    expect(routerMock.dismissTo).not.toHaveBeenCalled();
     expect(routerMock.replace).not.toHaveBeenCalled();
 
     vi.runAllTimers();

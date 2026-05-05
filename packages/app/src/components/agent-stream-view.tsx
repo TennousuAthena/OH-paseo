@@ -21,7 +21,6 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -83,7 +82,7 @@ import {
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { normalizeInlinePathTarget } from "@/utils/inline-path";
 import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
-import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
+import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import {
   getWorkingIndicatorDotStrength,
@@ -135,7 +134,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     ref,
   ) {
     const viewportRef = useRef<StreamViewportHandle | null>(null);
-    const router = useRouter();
     const isMobile = useIsCompactFormFactor();
     const streamRenderStrategy = useMemo(
       () =>
@@ -213,12 +211,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           }
 
           if (workspaceId) {
-            const route = prepareWorkspaceTab({
+            navigateToPreparedWorkspaceTab({
               serverId: resolvedServerId,
               workspaceId,
               target: { kind: "file", path: normalized.file },
             });
-            router.navigate(route);
           }
           return;
         }
@@ -247,7 +244,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         onOpenWorkspaceFile,
         requestDirectoryListing,
         resolvedServerId,
-        router,
         setExplorerTabForCheckout,
         openWorkspaceFile,
         workspaceId,

@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react";
-import { useLocalSearchParams, useRouter, type Href } from "expo-router";
+import { useLocalSearchParams, usePathname, useRouter, type Href } from "expo-router";
 import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-boundary";
 import { useSessionStore } from "@/stores/session-store";
 import { useResolveWorkspaceIdByCwd } from "@/stores/session-store-hooks";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildHostRootRoute } from "@/utils/host-routes";
 import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
-import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
+import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 
 export default function HostAgentReadyRoute() {
   return (
@@ -18,6 +18,7 @@ export default function HostAgentReadyRoute() {
 
 function HostAgentReadyRouteContent() {
   const router = useRouter();
+  const pathname = usePathname();
   const params = useLocalSearchParams<{
     serverId?: string;
     agentId?: string;
@@ -50,15 +51,15 @@ function HostAgentReadyRouteContent() {
 
     if (resolvedWorkspaceId) {
       redirectedRef.current = true;
-      router.replace(
-        prepareWorkspaceTab({
-          serverId,
-          workspaceId: resolvedWorkspaceId,
-          target: { kind: "agent", agentId },
-        }) as Href,
-      );
+      navigateToPreparedWorkspaceTab({
+        serverId,
+        workspaceId: resolvedWorkspaceId,
+        target: { kind: "agent", agentId },
+        navigationMethod: "replace",
+        currentPathname: pathname,
+      });
     }
-  }, [agentId, resolvedWorkspaceId, router, serverId]);
+  }, [agentId, pathname, resolvedWorkspaceId, router, serverId]);
 
   useEffect(() => {
     if (redirectedRef.current) {
@@ -102,13 +103,13 @@ function HostAgentReadyRouteContent() {
         }
         redirectedRef.current = true;
         if (workspaceId) {
-          router.replace(
-            prepareWorkspaceTab({
-              serverId,
-              workspaceId,
-              target: { kind: "agent", agentId },
-            }) as Href,
-          );
+          navigateToPreparedWorkspaceTab({
+            serverId,
+            workspaceId,
+            target: { kind: "agent", agentId },
+            navigationMethod: "replace",
+            currentPathname: pathname,
+          });
           return;
         }
         router.replace(buildHostRootRoute(serverId));
@@ -125,7 +126,7 @@ function HostAgentReadyRouteContent() {
     return () => {
       cancelled = true;
     };
-  }, [agentId, client, hasHydratedWorkspaces, isConnected, router, serverId]);
+  }, [agentId, client, hasHydratedWorkspaces, isConnected, pathname, router, serverId]);
 
   return null;
 }

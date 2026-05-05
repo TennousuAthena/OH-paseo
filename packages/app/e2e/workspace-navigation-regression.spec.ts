@@ -36,6 +36,7 @@ import {
   workspaceDeckEntryLocator,
   expectWorkspaceDeckEntryCount,
 } from "./helpers/workspace-ui";
+import { clickSettingsBackToWorkspace } from "./helpers/settings";
 
 const LOADING_WORKSPACE_TEXT_PATTERN = /Loading workspace/i;
 
@@ -73,6 +74,18 @@ async function expectNoLoadingWorkspacePane(
 
 async function expectNoLoadingPane(page: Page): Promise<void> {
   await expect(page.getByText(LOADING_WORKSPACE_TEXT_PATTERN)).toHaveCount(0);
+}
+
+async function getVisibleDraftTabCount(page: Page): Promise<number> {
+  return page.locator('[data-testid^="workspace-tab-draft"]').filter({ visible: true }).count();
+}
+
+async function closeFirstVisibleDraftTab(page: Page): Promise<void> {
+  const closeButton = page.locator('[data-testid^="workspace-draft-close-"]').filter({
+    visible: true,
+  });
+  await expect(closeButton.first()).toBeVisible({ timeout: 30_000 });
+  await closeButton.first().click();
 }
 
 async function installDaemonWebSocketGate(page: Page, daemonPort: string) {
@@ -132,6 +145,25 @@ async function installDaemonWebSocketGate(page: Page, daemonPort: string) {
 
 test.describe("Workspace navigation regression", () => {
   test.describe.configure({ timeout: 240_000 });
+
+  test("keeps one replacement draft after returning from settings and closing the last tab", async ({
+    page,
+    withWorkspace,
+  }) => {
+    const workspace = await withWorkspace({ prefix: "workspace-settings-back-tab-" });
+
+    await workspace.navigateTo();
+    await expect.poll(() => getVisibleDraftTabCount(page), { timeout: 30_000 }).toBe(1);
+
+    await openSettings(page);
+    await clickSettingsBackToWorkspace(page);
+    await expect(page).toHaveURL(/\/workspace\//, { timeout: 30_000 });
+    await expect.poll(() => getVisibleDraftTabCount(page), { timeout: 30_000 }).toBe(1);
+
+    await closeFirstVisibleDraftTab(page);
+
+    await expect.poll(() => getVisibleDraftTabCount(page), { timeout: 30_000 }).toBe(1);
+  });
 
   test("keeps the workspace rendered while reconnecting to the host", async ({ page }) => {
     const serverId = process.env.E2E_SERVER_ID;

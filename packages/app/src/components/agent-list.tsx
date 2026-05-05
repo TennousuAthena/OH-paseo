@@ -21,7 +21,7 @@ import { Archive } from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
 import { buildHostAgentDetailRoute } from "@/utils/host-routes";
 import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
-import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
+import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import type { Agent } from "@/stores/session-store";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 
@@ -324,13 +324,12 @@ export function AgentList({
       }
 
       rememberArchivedAgentDetail(agent);
-      const route = prepareWorkspaceTab({
+      navigateToPreparedWorkspaceTab({
         serverId,
         workspaceId,
         target: { kind: "agent", agentId },
         pin: Boolean(agent.archivedAt),
       });
-      router.navigate(route);
     },
     [isActionSheetVisible, onAgentSelect],
   );

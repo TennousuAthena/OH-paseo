@@ -19,7 +19,7 @@ function shouldUseRetainedWorkspaceSwitch(input: {
   }
 
   if (input.currentPathname == null) {
-    return true;
+    return false;
   }
 
   return parseHostWorkspaceRouteFromPathname(input.currentPathname) !== null;
@@ -49,7 +49,7 @@ export function navigateToWorkspace(
   }
 
   const href = buildHostWorkspaceRoute(serverId, workspaceId);
-  router.navigate(href);
+  router.dismissTo(href);
 }
 
 export function useWorkspaceNavigation() {

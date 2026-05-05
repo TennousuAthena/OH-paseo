@@ -1,5 +1,6 @@
-import { router, type Href } from "expo-router";
+import { router } from "expo-router";
 import { isNative } from "@/constants/platform";
+import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
 import {
   activateNavigationWorkspaceSelection,
   getLastNavigationWorkspaceRouteSelection,
@@ -22,6 +23,7 @@ interface PrepareWorkspaceTabInput {
 
 interface NavigateToPreparedWorkspaceTabInput extends PrepareWorkspaceTabInput {
   navigationMethod?: "navigate" | "replace";
+  currentPathname?: string | null;
 }
 
 function getPreparedTarget(target: WorkspaceTabTarget): WorkspaceTabTarget {
@@ -65,9 +67,13 @@ export function navigateToPreparedWorkspaceTab(input: NavigateToPreparedWorkspac
       }, 0);
       return route;
     }
-    router.replace(route as Href);
+    navigateToWorkspace(input.serverId, input.workspaceId, {
+      currentPathname: input.currentPathname,
+    });
   } else {
-    router.navigate(route as Href);
+    navigateToWorkspace(input.serverId, input.workspaceId, {
+      currentPathname: input.currentPathname,
+    });
   }
   return route;
 }

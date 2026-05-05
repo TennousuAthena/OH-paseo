@@ -19,7 +19,7 @@ import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-over
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import { getIsElectronRuntime } from "@/constants/layout";
 import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
-import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
+import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { focusWithRetries } from "@/utils/web-focus";
 import { useActiveServerId } from "@/hooks/use-active-server-id";
 
@@ -123,7 +123,7 @@ function resolveActionShortcutKeys(
 }
 
 export function useCommandCenter() {
-  const _pathname = usePathname();
+  const pathname = usePathname();
   const routeActiveServerId = useActiveServerId();
   const { overrides } = useKeyboardShortcutOverrides();
   const open = useKeyboardShortcutsStore((s) => s.commandCenterOpen);
@@ -212,14 +212,14 @@ export function useCommandCenter() {
         router.navigate(buildHostAgentDetailRoute(agent.serverId, agent.id) as Href);
         return;
       }
-      const route = prepareWorkspaceTab({
+      navigateToPreparedWorkspaceTab({
         serverId: agent.serverId,
         workspaceId,
         target: { kind: "agent", agentId: agent.id },
+        currentPathname: pathname,
       });
-      router.navigate(route);
     },
-    [setOpen],
+    [pathname, setOpen],
   );
 
   const openProjectPicker = useOpenProjectPicker(activeServerId);

@@ -78,13 +78,13 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
   buildHostOpenProjectRoute,
-  buildHostWorkspaceRoute,
   buildProjectsSettingsRoute,
   buildSettingsHostRoute,
   buildSettingsSectionRoute,
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
 import { getLastNavigationWorkspaceRouteSelection } from "@/stores/navigation-active-workspace-store";
+import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
 
 // ---------------------------------------------------------------------------
 // View model
@@ -963,9 +963,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
   const handleBackToWorkspace = useCallback(() => {
     const lastWorkspaceRoute = getLastNavigationWorkspaceRouteSelection();
     if (lastWorkspaceRoute) {
-      router.replace(
-        buildHostWorkspaceRoute(lastWorkspaceRoute.serverId, lastWorkspaceRoute.workspaceId),
-      );
+      navigateToWorkspace(lastWorkspaceRoute.serverId, lastWorkspaceRoute.workspaceId);
       return;
     }
     if (anyOnlineServerId) {
