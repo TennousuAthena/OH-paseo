@@ -23,6 +23,7 @@ import {
   createDefaultLayout,
   findPaneById,
   findPaneContainingTab,
+  getFocusedBrowserId,
   getTreeDepth,
   insertSplit,
   removePaneFromTree,
@@ -35,10 +36,10 @@ import {
 const SERVER_ID = "server-1";
 const WORKSPACE_ID = "ws-main";
 
-function createTab(tabId: string): WorkspaceTab {
+function createTab(tabId: string, target?: WorkspaceTab["target"]): WorkspaceTab {
   return {
     tabId,
-    target: { kind: "draft", draftId: tabId },
+    target: target ?? { kind: "draft", draftId: tabId },
     createdAt: 1,
   };
 }
@@ -47,8 +48,9 @@ function createPane(input: {
   id: string;
   tabIds: string[];
   focusedTabId?: string | null;
+  targetsByTabId?: Record<string, WorkspaceTab["target"]>;
 }): SplitNode {
-  const tabs = input.tabIds.map((tabId) => createTab(tabId));
+  const tabs = input.tabIds.map((tabId) => createTab(tabId, input.targetsByTabId?.[tabId]));
   return {
     kind: "pane",
     pane: {
@@ -114,6 +116,53 @@ describe("workspace-layout-store helpers", () => {
       "tab-c",
       "tab-d",
     ]);
+  });
+
+  it("derives the focused browser id from the focused pane active tab", () => {
+    const root: SplitNode = {
+      kind: "group",
+      group: {
+        id: "group-root",
+        direction: "horizontal",
+        sizes: [0.5, 0.5],
+        children: [
+          createPane({
+            id: "left",
+            tabIds: ["agent-a", "browser-a"],
+            focusedTabId: "browser-a",
+            targetsByTabId: {
+              "agent-a": { kind: "agent", agentId: "agent-a" },
+              "browser-a": { kind: "browser", browserId: "browser-a-id" },
+            },
+          }),
+          createPane({
+            id: "right",
+            tabIds: ["browser-b"],
+            focusedTabId: "browser-b",
+            targetsByTabId: {
+              "browser-b": { kind: "browser", browserId: "browser-b-id" },
+            },
+          }),
+        ],
+      },
+    };
+
+    expect(getFocusedBrowserId({ root, focusedPaneId: "left" })).toBe("browser-a-id");
+    expect(getFocusedBrowserId({ root, focusedPaneId: "right" })).toBe("browser-b-id");
+  });
+
+  it("returns null when the focused pane active tab is not a browser", () => {
+    const root = createPane({
+      id: "main",
+      tabIds: ["browser-a", "agent-a"],
+      focusedTabId: "agent-a",
+      targetsByTabId: {
+        "browser-a": { kind: "browser", browserId: "browser-a-id" },
+        "agent-a": { kind: "agent", agentId: "agent-a" },
+      },
+    });
+
+    expect(getFocusedBrowserId({ root, focusedPaneId: "main" })).toBeNull();
   });
 });
 

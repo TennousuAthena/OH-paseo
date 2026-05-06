@@ -60,8 +60,10 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       ipcRenderer.invoke("paseo:menu:showContextMenu", input),
   },
   browser: {
-    setActivePane: (browserId: string | null) =>
-      ipcRenderer.invoke("paseo:browser:set-active-pane", browserId),
+    setWorkspaceActiveBrowser: (browserId: string | null) =>
+      ipcRenderer.invoke("paseo:browser:set-workspace-active-browser", browserId),
+    openDevTools: (browserId: string) =>
+      ipcRenderer.invoke("paseo:browser:open-devtools", browserId),
     clearPartition: (browserId: string) =>
       ipcRenderer.invoke("paseo:browser:clear-partition", browserId),
   },

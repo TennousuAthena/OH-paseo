@@ -89,7 +89,8 @@ export interface DesktopBrowserShortcutEvent {
 }
 
 export interface DesktopBrowserBridge {
-  setActivePane?: (browserId: string | null) => Promise<void>;
+  setWorkspaceActiveBrowser?: (browserId: string | null) => Promise<void>;
+  openDevTools?: (browserId: string) => Promise<unknown>;
   clearPartition?: (browserId: string) => Promise<void>;
 }
 
