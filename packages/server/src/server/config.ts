@@ -51,6 +51,7 @@ function normalizeLogEnv(value: string | undefined): string | undefined {
 export type CliConfigOverrides = Partial<{
   listen: string;
   relayEnabled: boolean;
+  relayUseTls: boolean;
   mcpEnabled: boolean;
   mcpInjectIntoAgents: boolean;
   hostnames: HostnamesConfig;
@@ -139,12 +140,14 @@ interface ResolveRelayInput {
   env: NodeJS.ProcessEnv;
   persisted: ReturnType<typeof loadPersistedConfig>;
   cliRelayEnabled: boolean | undefined;
+  cliRelayUseTls: boolean | undefined;
 }
 
 interface ResolvedRelay {
   enabled: boolean;
   endpoint: string;
   publicEndpoint: string;
+  useTls: boolean;
 }
 
 function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
@@ -161,7 +164,12 @@ function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
     input.env.PASEO_RELAY_PUBLIC_ENDPOINT ??
     input.persisted.daemon?.relay?.publicEndpoint ??
     endpoint;
-  return { enabled, endpoint, publicEndpoint };
+  const useTls =
+    input.cliRelayUseTls ??
+    (input.env.PASEO_RELAY_USE_TLS !== undefined
+      ? (parseBooleanEnv(input.env.PASEO_RELAY_USE_TLS) ?? false)
+      : (input.persisted.daemon?.relay?.useTls ?? endpoint === DEFAULT_RELAY_ENDPOINT));
+  return { enabled, endpoint, publicEndpoint, useTls };
 }
 
 interface ResolvedVoiceLlm {
@@ -265,6 +273,7 @@ export function loadConfig(
     env,
     persisted,
     cliRelayEnabled: options?.cli?.relayEnabled,
+    cliRelayUseTls: options?.cli?.relayUseTls,
   });
 
   const { openai, speech } = resolveSpeechConfig({
@@ -293,6 +302,7 @@ export function loadConfig(
     relayEnabled: relay.enabled,
     relayEndpoint: relay.endpoint,
     relayPublicEndpoint: relay.publicEndpoint,
+    relayUseTls: relay.useTls,
     appBaseUrl,
     auth: resolveAuthConfig(env, persisted),
     openai,
