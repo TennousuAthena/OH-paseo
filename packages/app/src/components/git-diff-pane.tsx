@@ -9,7 +9,6 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { useRouter } from "expo-router";
 import { DiffStat } from "@/components/diff-stat";
 import {
   View,
@@ -87,7 +86,8 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { buildGitActions, type GitActions } from "@/components/git-actions-policy";
 import { lineNumberGutterWidth } from "@/components/code-insets";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
-import { buildNewAgentRoute, resolveNewAgentWorkingDir } from "@/utils/new-agent-routing";
+import { resolveNewAgentWorkingDir } from "@/utils/new-agent-routing";
+import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { GitActionsSplitButton } from "@/components/git-actions-split-button";
 import { usePanelStore } from "@/stores/panel-store";
@@ -1874,7 +1874,6 @@ export function GitDiffPane({
   const isMobile = useIsCompactFormFactor();
   const showDesktopWebScrollbar = isWeb && !isMobile;
   const canUseSplitLayout = isWeb && !isMobile;
-  const router = useRouter();
   const [diffModeOverride, setDiffModeOverride] = useState<ReviewDraftMode | null>(null);
   const [postShipArchiveSuggested, setPostShipArchiveSuggested] = useState(false);
   const [shipDefault, setShipDefault] = useState<"merge" | "pr">("merge");
@@ -2360,9 +2359,9 @@ export function GitDiffPane({
 
   const handleArchiveSuccess = useCallback(
     (targetWorkingDir: string) => {
-      router.replace(buildNewAgentRoute(serverId, targetWorkingDir));
+      navigateToWorkspace(serverId, targetWorkingDir);
     },
-    [router, serverId],
+    [serverId],
   );
 
   const toastError = useCallback(

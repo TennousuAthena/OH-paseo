@@ -46,7 +46,8 @@ export function navigateToWorkspace(
   _options: NavigateToWorkspaceOptions = {},
 ) {
   lastWorkspaceSelection = { serverId, workspaceId };
-  router.dismissTo(buildHostWorkspaceRoute(serverId, workspaceId) as Href);
+  const route = buildHostWorkspaceRoute(serverId, workspaceId) as Href;
+  router.dismissTo(route);
 }
 
 export function navigateToLastWorkspace(): boolean {

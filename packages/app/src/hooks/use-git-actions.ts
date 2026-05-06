@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useMemo, type ReactElement } from "react";
-import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   type CheckoutGitActionStatus,
@@ -14,9 +13,10 @@ import {
   useCheckoutPrStatusQuery,
 } from "@/hooks/use-checkout-pr-status-query";
 import { buildGitActions, type GitActions } from "@/components/git-actions-policy";
-import { buildNewAgentRoute, resolveNewAgentWorkingDir } from "@/utils/new-agent-routing";
+import { resolveNewAgentWorkingDir } from "@/utils/new-agent-routing";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useToast } from "@/contexts/toast-context";
+import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
 
 export type { GitActionId, GitAction, GitActions } from "@/components/git-actions-policy";
 
@@ -225,7 +225,6 @@ interface UseGitActionsResult {
 }
 
 export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): UseGitActionsResult {
-  const router = useRouter();
   const toast = useToast();
   const [postShipArchiveSuggested, setPostShipArchiveSuggested] = useState(false);
   const [shipDefault, setShipDefault] = useState<"merge" | "pr">("merge");
@@ -432,13 +431,13 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     const targetWorkingDir = resolveNewAgentWorkingDir(cwd, status ?? null);
     void runArchiveWorktree({ serverId, cwd, worktreePath })
       .then(() => {
-        router.replace(buildNewAgentRoute(serverId, targetWorkingDir));
+        navigateToWorkspace(serverId, targetWorkingDir);
         return;
       })
       .catch((err) => {
         toastActionError(err, "Failed to archive worktree");
       });
-  }, [cwd, router, runArchiveWorktree, serverId, status, toast, toastActionError]);
+  }, [cwd, runArchiveWorktree, serverId, status, toast, toastActionError]);
 
   const baseRefLabel = useMemo(() => formatBaseRefLabel(baseRef), [baseRef]);
   const derived = deriveGitActionsState({
