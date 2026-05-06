@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -7,14 +7,8 @@ import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { Button } from "@/components/ui/button";
 import { openExternalUrl } from "@/utils/open-external-url";
-import {
-  shouldUseDesktopDaemon,
-  getCliInstallStatus,
-  installCli,
-  getSkillsInstallStatus,
-  installSkills,
-  type InstallStatus,
-} from "@/desktop/daemon/desktop-daemon";
+import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
+import { useCliInstall, useSkillsInstall } from "@/desktop/hooks/use-install-status";
 
 const CLI_DOCS_URL = "https://paseo.sh/docs/cli";
 const SKILLS_DOCS_URL = "https://paseo.sh/docs/skills";
@@ -23,59 +17,37 @@ const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 export function IntegrationsSection() {
   const { theme } = useUnistyles();
   const showSection = shouldUseDesktopDaemon();
-
-  const [cliStatus, setCliStatus] = useState<InstallStatus | null>(null);
-  const [skillsStatus, setSkillsStatus] = useState<InstallStatus | null>(null);
-  const [isInstallingCli, setIsInstallingCli] = useState(false);
-  const [isInstallingSkills, setIsInstallingSkills] = useState(false);
-
-  const loadStatus = useCallback(() => {
-    if (!showSection) return;
-    void getCliInstallStatus()
-      .then(setCliStatus)
-      .catch((error) => {
-        console.error("[Integrations] Failed to load CLI status", error);
-      });
-    void getSkillsInstallStatus()
-      .then(setSkillsStatus)
-      .catch((error) => {
-        console.error("[Integrations] Failed to load skills status", error);
-      });
-  }, [showSection]);
+  const {
+    status: cliStatus,
+    isInstalling: isInstallingCli,
+    install: installCli,
+    refresh: refreshCliStatus,
+  } = useCliInstall();
+  const {
+    status: skillsStatus,
+    isInstalling: isInstallingSkills,
+    install: installSkills,
+    refresh: refreshSkillsStatus,
+  } = useSkillsInstall();
 
   useFocusEffect(
     useCallback(() => {
       if (!showSection) return undefined;
-      loadStatus();
+      refreshCliStatus();
+      refreshSkillsStatus();
       return undefined;
-    }, [loadStatus, showSection]),
+    }, [refreshCliStatus, refreshSkillsStatus, showSection]),
   );
 
   const handleInstallCli = useCallback(() => {
     if (isInstallingCli) return;
-    setIsInstallingCli(true);
-    void installCli()
-      .then(setCliStatus)
-      .catch((error) => {
-        console.error("[Integrations] Failed to install CLI", error);
-      })
-      .finally(() => {
-        setIsInstallingCli(false);
-      });
-  }, [isInstallingCli]);
+    installCli();
+  }, [installCli, isInstallingCli]);
 
   const handleInstallSkills = useCallback(() => {
     if (isInstallingSkills) return;
-    setIsInstallingSkills(true);
-    void installSkills()
-      .then(setSkillsStatus)
-      .catch((error) => {
-        console.error("[Integrations] Failed to install skills", error);
-      })
-      .finally(() => {
-        setIsInstallingSkills(false);
-      });
-  }, [isInstallingSkills]);
+    installSkills();
+  }, [installSkills, isInstallingSkills]);
 
   const handleOpenCliDocs = useCallback(() => {
     void openExternalUrl(CLI_DOCS_URL);

@@ -8,86 +8,15 @@ import { ArrowUpRight, Copy, FileText, Activity } from "lucide-react-native";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { confirmDialog } from "@/utils/confirm-dialog";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
-import {
-  getCliDaemonStatus,
-  shouldUseDesktopDaemon,
-  startDesktopDaemon,
-  stopDesktopDaemon,
-} from "@/desktop/daemon/desktop-daemon";
-import { executeDaemonManagementToggle } from "@/desktop/daemon/daemon-management-toggle";
+import { getCliDaemonStatus, shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
+import { useBuiltInDaemonManagement } from "@/desktop/hooks/use-built-in-daemon-management";
 import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { useDesktopSettings, type DesktopSettings } from "@/desktop/settings/desktop-settings";
-import type { DesktopDaemonStatus } from "@/desktop/daemon/desktop-daemon";
 import { resolveAppVersion } from "@/utils/app-version";
 
 type DesktopDaemonSettings = DesktopSettings["daemon"];
-
-function useDaemonManagementToggle(args: {
-  daemonStatus: DesktopDaemonStatus | null;
-  settings: DesktopDaemonSettings;
-  updateSettings: (next: Partial<DesktopDaemonSettings>) => Promise<unknown>;
-  setStatus: (status: DesktopDaemonStatus) => void;
-  refetch: () => void;
-}) {
-  const { daemonStatus, settings, updateSettings, setStatus, refetch } = args;
-  const [isUpdatingDaemonManagement, setIsUpdatingDaemonManagement] = useState(false);
-
-  const handleToggleDaemonManagement = useCallback(() => {
-    if (isUpdatingDaemonManagement) {
-      return;
-    }
-
-    setIsUpdatingDaemonManagement(true);
-    void executeDaemonManagementToggle(settings.manageBuiltInDaemon, daemonStatus, {
-      confirm: () =>
-        confirmDialog({
-          title: "Pause built-in daemon",
-          message:
-            "This will stop the built-in daemon immediately. Running agents and terminals connected to the built-in daemon will be stopped.",
-          confirmLabel: "Pause and stop",
-          cancelLabel: "Cancel",
-          destructive: true,
-        }),
-      persistSettings: (next) => updateSettings(next) as Promise<void>,
-      startDaemon: startDesktopDaemon,
-      stopDaemon: stopDesktopDaemon,
-    })
-      .then((result) => {
-        if (result.kind === "cancelled") {
-          return;
-        }
-        if (result.newStatus) {
-          setStatus(result.newStatus);
-        }
-        refetch();
-        return;
-      })
-      .catch((error) => {
-        console.error("[Settings] Failed to update built-in daemon management", error);
-        Alert.alert(
-          "Error",
-          settings.manageBuiltInDaemon
-            ? "Built-in daemon management was paused, but Paseo could not stop the daemon."
-            : "Unable to update built-in daemon management.",
-        );
-      })
-      .finally(() => {
-        setIsUpdatingDaemonManagement(false);
-      });
-  }, [
-    daemonStatus,
-    isUpdatingDaemonManagement,
-    refetch,
-    setStatus,
-    settings.manageBuiltInDaemon,
-    updateSettings,
-  ]);
-
-  return { isUpdatingDaemonManagement, handleToggleDaemonManagement };
-}
 
 function useKeepRunningAfterQuitToggle(args: {
   settings: DesktopDaemonSettings;
@@ -99,9 +28,8 @@ function useKeepRunningAfterQuitToggle(args: {
   const handleToggleKeepRunningAfterQuit = useCallback(() => {
     setIsUpdatingKeepRunningAfterQuit(true);
     void updateSettings({ keepRunningAfterQuit: !settings.keepRunningAfterQuit })
-      .catch((error) => {
-        console.error("[Settings] Failed to update desktop quit daemon behavior", error);
-        Alert.alert("Error", "Unable to update the desktop quit daemon behavior.");
+      .catch(() => {
+        // useDesktopSettings owns the user-visible IPC error.
       })
       .finally(() => {
         setIsUpdatingKeepRunningAfterQuit(false);
@@ -393,13 +321,14 @@ export function LocalDaemonSection() {
   const daemonStatusDetailText = `PID ${daemonStatus?.pid ? daemonStatus.pid : "—"}`;
   const isDaemonManagementPaused = !daemonSettings.manageBuiltInDaemon;
 
-  const { isUpdatingDaemonManagement, handleToggleDaemonManagement } = useDaemonManagementToggle({
-    daemonStatus,
-    settings: daemonSettings,
-    updateSettings: updateDaemonSettings,
-    setStatus,
-    refetch,
-  });
+  const { isUpdating: isUpdatingDaemonManagement, toggle: handleToggleDaemonManagement } =
+    useBuiltInDaemonManagement({
+      daemonStatus,
+      settings: daemonSettings,
+      updateSettings: updateDaemonSettings,
+      setStatus,
+      refreshStatus: refetch,
+    });
   const { isUpdatingKeepRunningAfterQuit, handleToggleKeepRunningAfterQuit } =
     useKeepRunningAfterQuitToggle({
       settings: daemonSettings,
