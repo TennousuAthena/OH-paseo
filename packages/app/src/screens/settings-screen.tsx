@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { Fragment, useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import type { ComponentType, ReactNode } from "react";
 import {
   Alert,
@@ -745,16 +745,19 @@ function SettingsSidebar({
       ) : null}
       <View style={sidebarStyles.list}>
         {items.map((item) => (
-          <SidebarSectionButton
-            key={item.id}
-            itemId={item.id}
-            label={item.label}
-            icon={item.icon}
-            isSelected={selectedSectionId === item.id}
-            onSelect={onSelectSection}
-          />
+          <Fragment key={item.id}>
+            <SidebarSectionButton
+              itemId={item.id}
+              label={item.label}
+              icon={item.icon}
+              isSelected={selectedSectionId === item.id}
+              onSelect={onSelectSection}
+            />
+            {item.id === "general" ? (
+              <SidebarProjectsButton isSelected={isProjectsSelected} onSelect={onSelectProjects} />
+            ) : null}
+          </Fragment>
         ))}
-        <SidebarProjectsButton isSelected={isProjectsSelected} onSelect={onSelectProjects} />
       </View>
       <SidebarSeparator />
       <View style={sidebarStyles.list}>
