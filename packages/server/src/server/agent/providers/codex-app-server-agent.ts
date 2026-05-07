@@ -141,6 +141,10 @@ function parseGoalSubcommand(args: string | undefined): GoalSubcommand {
   return { kind: "set", objective: trimmed };
 }
 
+function formatOutOfBandStatusMessage(text: string): string {
+  return `${text.replace(/\n+$/u, "")}\n\n`;
+}
+
 const CODEX_APP_SERVER_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: true,
@@ -3609,7 +3613,7 @@ class CodexAppServerAgentSession implements AgentSession {
     const subcommand = parseGoalSubcommand(parsed.args);
     return {
       run: async ({ emit }) => {
-        const text = await this.executeGoalSubcommand(subcommand);
+        const text = formatOutOfBandStatusMessage(await this.executeGoalSubcommand(subcommand));
         emit({
           type: "timeline",
           provider: CODEX_PROVIDER,

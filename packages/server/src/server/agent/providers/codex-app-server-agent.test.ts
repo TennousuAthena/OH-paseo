@@ -64,7 +64,10 @@ function createConfig(overrides: Partial<AgentSessionConfig> = {}): AgentSession
   };
 }
 
-function createSession(configOverrides: Partial<AgentSessionConfig> = {}): CodexTestSession {
+function createSession(
+  configOverrides: Partial<AgentSessionConfig> = {},
+  options: { goalsEnabled?: boolean } = {},
+): CodexTestSession {
   const session = new __codexAppServerInternals.CodexAppServerAgentSession(
     createConfig(configOverrides),
     null,
@@ -72,6 +75,9 @@ function createSession(configOverrides: Partial<AgentSessionConfig> = {}): Codex
     () => {
       throw new Error("Test session cannot spawn Codex app-server");
     },
+    {},
+    false,
+    options.goalsEnabled === true,
   ) as CodexTestSession;
   session.connected = true;
   session.currentThreadId = "test-thread";
@@ -882,6 +888,45 @@ describe("Codex app-server provider", () => {
         item: {
           type: "assistant_message",
           text: "History loaded.",
+        },
+      },
+    ]);
+  });
+
+  test("appends blank-line spacing to /goal status messages", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const session = createSession({}, { goalsEnabled: true });
+    session.client = {
+      request: vi.fn(async (method: string, params: unknown) => {
+        requests.push({ method, params });
+        if (method === "thread/loaded/list") {
+          return { data: ["test-thread"] };
+        }
+        return {};
+      }),
+    };
+
+    const handler = session.tryHandleOutOfBand?.("/goal ship feature");
+    expect(handler).not.toBeNull();
+
+    const events: AgentStreamEvent[] = [];
+    await handler?.run({ emit: (event) => events.push(event) });
+
+    expect(requests).toContainEqual({
+      method: "thread/goal/set",
+      params: {
+        threadId: "test-thread",
+        objective: "ship feature",
+        status: "active",
+      },
+    });
+    expect(events).toEqual([
+      {
+        type: "timeline",
+        provider: "codex",
+        item: {
+          type: "assistant_message",
+          text: "Goal set: ship feature\n\n",
         },
       },
     ]);
