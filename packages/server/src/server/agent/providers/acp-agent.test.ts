@@ -1,4 +1,6 @@
-import { describe, expect, test, vi } from "vitest";
+import { type ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type {
   PermissionOption,
   PromptResponse,
@@ -23,6 +25,7 @@ import { transformPiModels } from "./pi-direct-agent.js";
 import type { AgentStreamEvent } from "../agent-sdk-types.js";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { asInternals } from "../../test-utils/class-mocks.js";
+import * as spawnUtils from "../../../utils/spawn.js";
 
 interface ACPSessionInternals {
   sessionId: string | null;
@@ -112,6 +115,14 @@ function createSessionWithConfig(
       },
     },
   );
+}
+
+function createTerminalChildStub(): ChildProcess {
+  const child = new EventEmitter() as ChildProcess;
+  child.stdout = new EventEmitter() as ChildProcess["stdout"];
+  child.stderr = new EventEmitter() as ChildProcess["stderr"];
+  child.kill = vi.fn(() => true) as ChildProcess["kill"];
+  return child;
 }
 
 function selectConfigOption(
@@ -300,6 +311,78 @@ describe("createLoggedNdJsonStream", () => {
 
     await writer.close();
     reader.releaseLock();
+  });
+});
+
+describe("ACPAgentSession terminal tools", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("runs single-string terminal commands through the platform shell", async () => {
+    const child = createTerminalChildStub();
+    const spawn = vi.spyOn(spawnUtils, "spawnProcess").mockReturnValue(child);
+    const session = createSession();
+    const shell = spawnUtils.platformShell();
+
+    await session.createTerminal({
+      sessionId: "session-1",
+      command: "git -C /repo status --short",
+      cwd: "/repo",
+    });
+
+    expect(spawn).toHaveBeenCalledWith(
+      shell.command,
+      [...shell.flag, "git -C /repo status --short"],
+      expect.objectContaining({ cwd: "/repo" }),
+    );
+  });
+
+  test("preserves explicit terminal argv", async () => {
+    const child = createTerminalChildStub();
+    const spawn = vi.spyOn(spawnUtils, "spawnProcess").mockReturnValue(child);
+    const session = createSession();
+
+    await session.createTerminal({
+      sessionId: "session-1",
+      command: "git",
+      args: ["status", "--short"],
+      cwd: "/repo",
+    });
+
+    expect(spawn).toHaveBeenCalledWith(
+      "git",
+      ["status", "--short"],
+      expect.objectContaining({ cwd: "/repo" }),
+    );
+  });
+
+  test("surfaces spawn errors through terminal output and waitForTerminalExit", async () => {
+    const child = createTerminalChildStub();
+    vi.spyOn(spawnUtils, "spawnProcess").mockReturnValue(child);
+    const session = createSession();
+
+    const terminal = await session.createTerminal({
+      sessionId: "session-1",
+      command: "missing-command",
+    });
+    child.emit("error", new Error("spawn missing-command ENOENT"));
+
+    await expect(
+      session.waitForTerminalExit({
+        sessionId: "session-1",
+        terminalId: terminal.terminalId,
+      }),
+    ).rejects.toThrow("spawn missing-command ENOENT");
+    await expect(
+      session.terminalOutput({
+        sessionId: "session-1",
+        terminalId: terminal.terminalId,
+      }),
+    ).resolves.toMatchObject({
+      output: "spawn missing-command ENOENT\n",
+      truncated: false,
+    });
   });
 });
 

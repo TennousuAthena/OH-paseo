@@ -92,7 +92,7 @@ import {
 import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 import { appendOrReplaceGrowingAssistantMessage, runProviderTurn } from "./provider-runner.js";
 import { findExecutable } from "../../../utils/executable.js";
-import { spawnProcess } from "../../../utils/spawn.js";
+import { platformShell, spawnProcess } from "../../../utils/spawn.js";
 
 function assertChildWithPipes(
   child: ChildProcess,
@@ -104,6 +104,22 @@ function assertChildWithPipes(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function resolveTerminalCommand(
+  command: string,
+  args?: string[],
+): { command: string; args: string[] } {
+  if (args && args.length > 0) {
+    return { command, args };
+  }
+
+  if (!/\s/.test(command.trim())) {
+    return { command, args: [] };
+  }
+
+  const shell = platformShell();
+  return { command: shell.command, args: [...shell.flag, command] };
 }
 
 const DEFAULT_ACP_CAPABILITIES: AgentCapabilityFlags = {
@@ -1464,7 +1480,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     const env = Object.fromEntries(
       (params.env ?? []).map((entry: EnvVariable) => [entry.name, entry.value]),
     );
-    const child = spawnProcess(params.command, params.args ?? [], {
+    const terminalCommand = resolveTerminalCommand(params.command, params.args);
+    const child = spawnProcess(terminalCommand.command, terminalCommand.args, {
       cwd: params.cwd ?? this.config.cwd,
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
@@ -1479,6 +1496,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       resolveExit = resolve;
       rejectExit = reject;
     });
+    waitForExit.catch(() => undefined);
 
     const entry: TerminalEntry = {
       id: terminalId,
@@ -1498,9 +1516,11 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     child.stderr!.on("data", (chunk: Buffer | string) =>
       appendTerminalOutput(entry, chunk.toString()),
     );
-    child.once("error", (error) =>
-      rejectExit(error instanceof Error ? error : new Error(String(error))),
-    );
+    child.once("error", (error) => {
+      const spawnError = error instanceof Error ? error : new Error(String(error));
+      appendTerminalOutput(entry, `${spawnError.message}\n`);
+      rejectExit(spawnError);
+    });
     child.once("exit", (code, signal) => {
       const exit = { exitCode: code, signal };
       entry.exit = exit;
