@@ -13,25 +13,18 @@ import { openExternalUrl } from "@/utils/open-external-url";
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const CHANGELOG_URL = "https://paseo.sh/changelog";
 
-function resolveUpdateCalloutTitle(args: {
-  isInstalled: boolean;
-  isInstalling: boolean;
-  isError: boolean;
-}): string {
-  if (args.isInstalled) return "Update installed";
+function resolveUpdateCalloutTitle(args: { isInstalling: boolean; isError: boolean }): string {
   if (args.isInstalling) return "Installing update";
   if (args.isError) return "Update failed";
   return "Update available";
 }
 
 function resolveUpdateCalloutDescription(args: {
-  isInstalled: boolean;
   isInstalling: boolean;
   isError: boolean;
   errorMessage: string | null;
   latestVersion: string | undefined;
 }): ReactNode {
-  if (args.isInstalled) return "Restart to use the new version.";
   if (args.isInstalling) return "Installing and restarting...";
   if (args.isError) return args.errorMessage ?? "Something went wrong.";
   if (args.latestVersion) {
@@ -43,7 +36,6 @@ function resolveUpdateCalloutDescription(args: {
 }
 
 function buildUpdateCalloutActions(args: {
-  isInstalled: boolean;
   isInstalling: boolean;
   isError: boolean;
   openChangelog: () => void;
@@ -53,7 +45,7 @@ function buildUpdateCalloutActions(args: {
   const actions: SidebarCalloutAction[] = [{ label: "What's new", onPress: args.openChangelog }];
   if (args.isError) {
     actions.push({ label: "Retry", onPress: args.retry, variant: "primary" });
-  } else if (!args.isInstalled) {
+  } else {
     actions.push({
       label: args.isInstalling ? "Installing..." : "Install & restart",
       onPress: args.install,
@@ -107,29 +99,21 @@ export function UpdateCalloutSource() {
     if (!isDesktopApp) {
       return;
     }
-    if (
-      status !== "available" &&
-      status !== "installed" &&
-      status !== "installing" &&
-      status !== "error"
-    ) {
+    if (status !== "available" && status !== "installing" && status !== "error") {
       return;
     }
 
-    const isInstalled = status === "installed";
     const isError = status === "error";
-    const isAvailable = !isInstalled && !isInstalling && !isError;
+    const isAvailable = !isInstalling && !isError;
 
-    const title = resolveUpdateCalloutTitle({ isInstalled, isInstalling, isError });
+    const title = resolveUpdateCalloutTitle({ isInstalling, isError });
     const description = resolveUpdateCalloutDescription({
-      isInstalled,
       isInstalling,
       isError,
       errorMessage,
       latestVersion: availableUpdate?.latestVersion ?? undefined,
     });
     const actions = buildUpdateCalloutActions({
-      isInstalled,
       isInstalling,
       isError,
       openChangelog,
