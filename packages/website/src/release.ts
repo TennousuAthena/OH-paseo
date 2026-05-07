@@ -49,20 +49,16 @@ interface ReleaseInfo {
   windowsArm64Asset: string | null;
 }
 
-const fallbackVersion = websitePackage.version.replace(/-.*$/, "");
-const fallbackRelease: ReleaseInfo = {
-  version: fallbackVersion,
-  windowsX64Asset: `Paseo-Setup-${fallbackVersion}.exe`,
-  windowsArm64Asset: null,
-};
 const GITHUB_RELEASES_URL = "https://api.github.com/repos/getpaseo/paseo/releases?per_page=10";
-const RELEASE_REFRESH_MS = 60_000;
-
-let cachedRelease = fallbackRelease;
-let cachedReleaseAt = 0;
-let refreshReleasePromise: Promise<void> | null = null;
 
 async function fetchLatestReadyRelease(): Promise<ReleaseInfo> {
+  const fallbackVersion = websitePackage.version.replace(/-.*$/, "");
+  const fallback: ReleaseInfo = {
+    version: fallbackVersion,
+    windowsX64Asset: `Paseo-Setup-${fallbackVersion}.exe`,
+    windowsArm64Asset: null,
+  };
+
   try {
     const res = await fetch(GITHUB_RELEASES_URL, {
       headers: {
@@ -78,11 +74,11 @@ async function fetchLatestReadyRelease(): Promise<ReleaseInfo> {
         cacheKey: "github-releases-latest",
       },
     } as RequestInit);
-    if (!res.ok) return fallbackRelease;
+    if (!res.ok) return fallback;
 
     const releases = (await res.json()) as GitHubRelease[];
     const ready = releases.find((r) => !r.prerelease && !r.draft && hasRequiredAssets(r));
-    if (!ready) return fallbackRelease;
+    if (!ready) return fallback;
     const win = pickWindowsAssets(ready.assets);
     return {
       version: versionFromTag(ready.tag_name),
@@ -90,28 +86,10 @@ async function fetchLatestReadyRelease(): Promise<ReleaseInfo> {
       windowsArm64Asset: win.arm64,
     };
   } catch {
-    return fallbackRelease;
+    return fallback;
   }
-}
-
-function refreshLatestRelease(): Promise<void> {
-  refreshReleasePromise ??= fetchLatestReadyRelease()
-    .then((release) => {
-      cachedRelease = release;
-      cachedReleaseAt = Date.now();
-      return undefined;
-    })
-    .finally(() => {
-      refreshReleasePromise = null;
-    });
-
-  return refreshReleasePromise;
 }
 
 export const getLatestRelease = createServerFn({ method: "GET" }).handler(async () => {
-  if (Date.now() - cachedReleaseAt > RELEASE_REFRESH_MS) {
-    void refreshLatestRelease();
-  }
-
-  return cachedRelease;
+  return fetchLatestReadyRelease();
 });
