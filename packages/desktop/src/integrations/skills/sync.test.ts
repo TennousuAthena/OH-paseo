@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { syncSkills } from "./skill-sync";
+import { removeSkill, syncSkills } from "./sync";
 
 interface Sandbox {
   root: string;
@@ -70,6 +70,11 @@ describe("syncSkills", () => {
       "utf-8",
     );
     expect(agentsContent).toBe("new paseo content");
+    const claudeContent = await fs.readFile(
+      path.join(sandbox.claudeDir, "paseo", "SKILL.md"),
+      "utf-8",
+    );
+    expect(claudeContent).toBe("new paseo content");
     const codexContent = await fs.readFile(
       path.join(sandbox.codexDir, "paseo", "SKILL.md"),
       "utf-8",
@@ -107,10 +112,10 @@ describe("syncSkills", () => {
       ),
     ).toBe("roles content");
 
-    const claudeLink = path.join(sandbox.claudeDir, "paseo-epic");
-    const lstat = await fs.lstat(claudeLink);
-    expect(lstat.isSymbolicLink()).toBe(true);
-    expect(await fs.readFile(path.join(claudeLink, "references", "roles.md"), "utf-8")).toBe(
+    const claudeSkillDir = path.join(sandbox.claudeDir, "paseo-epic");
+    expect((await fs.lstat(claudeSkillDir)).isDirectory()).toBe(true);
+    expect(await fs.readFile(path.join(claudeSkillDir, "SKILL.md"), "utf-8")).toBe("epic content");
+    expect(await fs.readFile(path.join(claudeSkillDir, "references", "roles.md"), "utf-8")).toBe(
       "roles content",
     );
   });
@@ -252,5 +257,48 @@ describe("syncSkills", () => {
 
     expect(errors).toContain("paseo");
     expect(result.processedSkills).toBe(0);
+  });
+});
+
+describe("removeSkill", () => {
+  let sandbox: Sandbox;
+
+  beforeEach(async () => {
+    sandbox = await makeSandbox();
+  });
+
+  afterEach(async () => {
+    await fs.rm(sandbox.root, { recursive: true, force: true });
+  });
+
+  it("removes the skill from all three targets when present", async () => {
+    await writeBundleSkill(sandbox.sourceDir, "paseo", { "SKILL.md": "content" });
+    await syncSkills({
+      sourceDir: sandbox.sourceDir,
+      agentsDir: sandbox.agentsDir,
+      claudeDir: sandbox.claudeDir,
+      codexDir: sandbox.codexDir,
+      skillNames: ["paseo"],
+    });
+
+    await removeSkill("paseo", {
+      agentsDir: sandbox.agentsDir,
+      claudeDir: sandbox.claudeDir,
+      codexDir: sandbox.codexDir,
+    });
+
+    await expect(fs.access(path.join(sandbox.agentsDir, "paseo"))).rejects.toThrow();
+    await expect(fs.access(path.join(sandbox.claudeDir, "paseo"))).rejects.toThrow();
+    await expect(fs.access(path.join(sandbox.codexDir, "paseo"))).rejects.toThrow();
+  });
+
+  it("does not throw when targets are missing", async () => {
+    await expect(
+      removeSkill("does-not-exist", {
+        agentsDir: sandbox.agentsDir,
+        claudeDir: sandbox.claudeDir,
+        codexDir: sandbox.codexDir,
+      }),
+    ).resolves.toBeUndefined();
   });
 });
