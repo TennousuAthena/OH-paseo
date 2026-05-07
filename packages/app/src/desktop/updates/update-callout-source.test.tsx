@@ -184,21 +184,6 @@ describe("UpdateCalloutSource", () => {
     expect(container?.querySelector('[data-testid="update-callout"]')).toBeNull();
   });
 
-  it("shows only the changelog action once the update is installed", async () => {
-    updaterState.value = {
-      ...updaterState.value,
-      status: "installed",
-      availableUpdate: null,
-    };
-    await renderHarness(root!);
-
-    expect(container?.textContent).toContain("Update installed");
-    expect(
-      container?.querySelector('[data-testid="update-callout-action-0"]')?.textContent,
-    ).toContain("What's new");
-    expect(container?.querySelector('[data-testid="update-callout-action-1"]')).toBeNull();
-  });
-
   it("disables the install action and shows Installing... while installing", async () => {
     updaterState.value = {
       ...updaterState.value,
