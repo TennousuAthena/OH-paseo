@@ -120,6 +120,7 @@ jobs:
         working-directory: packages/server
         run: >
           npx vitest run
+          src/utils/executable.probe.test.ts
           src/utils/executable.test.ts
           src/utils/spawn.launch-regression.test.ts
           src/utils/spawn.percent-escape.test.ts
