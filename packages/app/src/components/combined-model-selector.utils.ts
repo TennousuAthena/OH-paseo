@@ -48,7 +48,10 @@ export function matchesSearch(row: SelectorModelRow, normalizedQuery: string): b
     return true;
   }
 
-  return [row.modelLabel, row.modelId, row.providerLabel].some((value) =>
-    value.toLowerCase().includes(normalizedQuery),
-  );
+  const haystack = [row.modelLabel, row.modelId, row.providerLabel, row.description ?? ""]
+    .join(" ")
+    .toLowerCase();
+
+  const tokens = normalizedQuery.split(/\s+/).filter((token) => token.length > 0);
+  return tokens.every((token) => haystack.includes(token));
 }

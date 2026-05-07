@@ -67,6 +67,22 @@ describe("combined model selector helpers", () => {
     expect(matchesSearch(rows[1], "gpt-5.4")).toBe(true);
   });
 
+  it("matches across label, provider, and description with multi-token fuzzy search", () => {
+    const row = {
+      favoriteKey: "opencode:opencode-zen/kimi-k2.5",
+      provider: "opencode",
+      providerLabel: "OpenCode",
+      modelId: "opencode-zen/kimi-k2.5",
+      modelLabel: "Kimi K2.5",
+      description: "OpenCode Zen - kimi",
+    };
+
+    expect(matchesSearch(row, "kimi zen")).toBe(true);
+    expect(matchesSearch(row, "zen kimi")).toBe(true);
+    expect(matchesSearch(row, "k2.5 zen")).toBe(true);
+    expect(matchesSearch(row, "kimi gemini")).toBe(false);
+  });
+
   it("keeps the selected trigger label model-only", () => {
     expect(resolveProviderLabel(providerDefinitions, "codex")).toBe("Codex");
     expect(buildSelectedTriggerLabel("GPT-5.4")).toBe("GPT-5.4");
