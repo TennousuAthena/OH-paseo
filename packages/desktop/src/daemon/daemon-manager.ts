@@ -28,12 +28,8 @@ import {
   sendLocalTransportMessage,
   closeLocalTransportSession,
 } from "./local-transport.js";
-import {
-  createNodeEntrypointInvocation,
-  resolveDaemonRunnerEntrypoint,
-  runCliJsonCommand,
-  runCliTextCommand,
-} from "./runtime-paths.js";
+import { createNodeEntrypointInvocation, resolveDaemonRunnerEntrypoint } from "./runtime-paths.js";
+import { runExternalCliJsonCommand, runExternalCliTextCommand } from "./cli/external.js";
 import {
   createDesktopSettingsCommandHandlers,
   type DesktopCommandHandler,
@@ -109,7 +105,7 @@ export function isDesktopManagedDaemonRunningSync(): boolean {
 }
 
 export async function stopDesktopDaemonViaCli(): Promise<void> {
-  await runCliJsonCommand([
+  await runExternalCliJsonCommand([
     "daemon",
     "stop",
     "--json",
@@ -195,7 +191,7 @@ export async function resolveDesktopDaemonStatus(): Promise<DesktopDaemonStatus>
   const home = getPaseoHome();
 
   try {
-    const payload = (await runCliJsonCommand(["daemon", "status", "--json"])) as Record<
+    const payload = (await runExternalCliJsonCommand(["daemon", "status", "--json"])) as Record<
       string,
       unknown
     >;
@@ -425,7 +421,7 @@ function getDaemonLogs(): DesktopDaemonLogs {
 }
 
 async function getCliDaemonStatus(): Promise<string> {
-  return await runCliTextCommand(["daemon", "status"]);
+  return await runExternalCliTextCommand(["daemon", "status"]);
 }
 
 async function getDaemonPairing(): Promise<DesktopPairingOffer> {
@@ -439,7 +435,7 @@ async function getDaemonPairing(): Promise<DesktopPairingOffer> {
   }
 
   try {
-    const payload = await runCliJsonCommand(["daemon", "pair", "--json"]);
+    const payload = await runExternalCliJsonCommand(["daemon", "pair", "--json"]);
     if (!isRecord(payload)) {
       throw new Error("Daemon pairing response was not an object.");
     }

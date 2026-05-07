@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
       keepRunningAfterQuit: true,
     },
   },
-  runCliJsonCommand: vi.fn(),
-  runCliTextCommand: vi.fn(),
+  runExternalCliJsonCommand: vi.fn(),
+  runExternalCliTextCommand: vi.fn(),
   spawnProcess: vi.fn(),
 }));
 
@@ -53,8 +53,11 @@ vi.mock("./runtime-paths.js", () => ({
     entryPath: "/tmp/daemon.js",
     execArgv: [],
   })),
-  runCliJsonCommand: mocks.runCliJsonCommand,
-  runCliTextCommand: mocks.runCliTextCommand,
+}));
+
+vi.mock("./cli/external.js", () => ({
+  runExternalCliJsonCommand: mocks.runExternalCliJsonCommand,
+  runExternalCliTextCommand: mocks.runExternalCliTextCommand,
 }));
 
 function desktopSettingsWithManagement(enabled: boolean) {
@@ -70,8 +73,8 @@ function desktopSettingsWithManagement(enabled: boolean) {
 describe("daemon-manager commands", () => {
   beforeEach(() => {
     mocks.settings = DEFAULT_DESKTOP_SETTINGS;
-    mocks.runCliJsonCommand.mockReset();
-    mocks.runCliTextCommand.mockReset();
+    mocks.runExternalCliJsonCommand.mockReset();
+    mocks.runExternalCliTextCommand.mockReset();
     mocks.spawnProcess.mockReset();
   });
 
@@ -86,13 +89,13 @@ describe("daemon-manager commands", () => {
       "Built-in daemon management is disabled.",
     );
 
-    expect(mocks.runCliJsonCommand).not.toHaveBeenCalled();
+    expect(mocks.runExternalCliJsonCommand).not.toHaveBeenCalled();
     expect(mocks.spawnProcess).not.toHaveBeenCalled();
   });
 
   it("keeps stop callable while built-in daemon management is disabled", async () => {
     mocks.settings = desktopSettingsWithManagement(false);
-    mocks.runCliJsonCommand.mockResolvedValue({
+    mocks.runExternalCliJsonCommand.mockResolvedValue({
       localDaemon: "stopped",
       serverId: "",
     });
@@ -110,11 +113,11 @@ describe("daemon-manager commands", () => {
       error: null,
     });
 
-    expect(mocks.runCliJsonCommand).toHaveBeenCalledWith(["daemon", "status", "--json"]);
+    expect(mocks.runExternalCliJsonCommand).toHaveBeenCalledWith(["daemon", "status", "--json"]);
   });
 
-  it("routes running desktop daemon stops through CLI daemon stop", async () => {
-    mocks.runCliJsonCommand
+  it("routes running desktop daemon stops through external CLI daemon stop", async () => {
+    mocks.runExternalCliJsonCommand
       .mockResolvedValueOnce({
         localDaemon: "running",
         serverId: "server-1",
@@ -141,8 +144,12 @@ describe("daemon-manager commands", () => {
       error: null,
     });
 
-    expect(mocks.runCliJsonCommand).toHaveBeenNthCalledWith(1, ["daemon", "status", "--json"]);
-    expect(mocks.runCliJsonCommand).toHaveBeenNthCalledWith(2, [
+    expect(mocks.runExternalCliJsonCommand).toHaveBeenNthCalledWith(1, [
+      "daemon",
+      "status",
+      "--json",
+    ]);
+    expect(mocks.runExternalCliJsonCommand).toHaveBeenNthCalledWith(2, [
       "daemon",
       "stop",
       "--json",
@@ -152,6 +159,10 @@ describe("daemon-manager commands", () => {
       "--kill-timeout",
       "5",
     ]);
-    expect(mocks.runCliJsonCommand).toHaveBeenNthCalledWith(3, ["daemon", "status", "--json"]);
+    expect(mocks.runExternalCliJsonCommand).toHaveBeenNthCalledWith(3, [
+      "daemon",
+      "status",
+      "--json",
+    ]);
   });
 });
