@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.1.70-beta.1 - 2026-05-07
+
+### Added
+
+- **One-click ACP providers** — add Cursor, Hermes, Qwen Coder, Kimi Code, and other ACP agents from a built-in catalog instead of writing config by hand.
+- Codex `/goal` slash command — set or update the goal mid-turn while a Codex agent is running.
+- Detect GitHub issue and PR URLs pasted into the composer search.
+- `paseo worktree create` CLI command, with parity to the MCP `create_worktree` tool.
+- `paseo schedule update` to edit a schedule in place without recreating it.
+- `paseo schedule run-once` for cron-style triggers, plus `--mode` on `schedule` and `loop`. Background runs now default to unattended mode.
+- Projects settings now lists workspaces from any remote — GitLab, Gitea, Bitbucket, self-hosted, and SSH-style URLs, not just GitHub. ([#681](https://github.com/getpaseo/paseo/pull/681) by [@krumpyzoid](https://github.com/krumpyzoid))
+
+### Improved
+
+- Skills now install, update, and uninstall on demand instead of silently auto-syncing on every desktop launch.
+- Self-hosted relays can opt into `wss://` for TLS connections.
+- Workspace open targets only show options reachable from the current daemon.
+- Combobox search matches model descriptions, not just names.
+- Codex image attachments render inline as path markdown.
+- Subagent task notifications no longer clutter the parent agent's timeline.
+- Voice mode: quieter thinking tone and small UI polish.
+- Settings sidebar order: Projects now appears after General.
+- Electron upgraded to 41.2.0 for the desktop app.
+
+### Fixed
+
+- **Linux:** Workspace file watchers no longer storm with events on busy working trees, fixing CPU spikes on large repos. ([#794](https://github.com/getpaseo/paseo/pull/794) by [@312223105](https://github.com/312223105))
+- ACP-based agents launch terminal shell commands reliably. ([#793](https://github.com/getpaseo/paseo/pull/793) by [@ebg1223](https://github.com/ebg1223))
+- Checkout shortstat now counts untracked files. ([#608](https://github.com/getpaseo/paseo/issues/608), [#762](https://github.com/getpaseo/paseo/pull/762) by [@somus](https://github.com/somus))
+- Relay endpoints on port 443 use TLS automatically. ([#774](https://github.com/getpaseo/paseo/pull/774) by [@caoer](https://github.com/caoer))
+- Desktop CLI passthrough TTY handling — interactive commands now behave correctly when launched from the desktop app.
+- The CLI honors the `PASEO_PASSWORD` environment variable for password-protected daemons.
+- Daemon shutdown terminates all child processes cleanly using tree-kill.
+- Agent spawn paths handle missing executables and unusual install layouts more reliably.
+- OpenCode now forwards provider retry errors instead of silently swallowing them.
+- Codex import no longer reverts to the wrong default mode.
+- Pane keyboard shortcuts no longer fire while you're typing in an editable field.
+- Cold workspace URL navigation now lands in the correct sidebar entry on web.
+- Workspace navigation regression on web fixed.
+- Duplicate workspace shell navigation eliminated.
+- The 'Update installed' callout no longer flashes incorrectly.
+- Browser pane reload focus and devtools handling.
+- MCP terminal capture now includes scrollback.
+- Worktree branches no longer get renamed when an agent is created against an existing worktree from MCP.
+- Creating an agent in a subdirectory of a registered workspace now runs in that subdirectory instead of jumping up to the parent. ([#551](https://github.com/getpaseo/paseo/issues/551))
+- Non-GitHub project display names are derived from the remote owner/repo instead of the local path.
+- Desktop IPC wrapped in shared mutation/query hooks, fixing stale state and intermittent failures. ([#761](https://github.com/getpaseo/paseo/issues/761))
+- `paseo schedule create --host` now requires `--cwd` to avoid running schedules in the wrong directory.
+- `paseo schedule create --every` runs once immediately by default, then on the configured interval.
+- MCP `create_agent` validates the requested mode and refuses silent cross-provider inheritance.
+
 ## 0.1.69 - 2026-05-05
 
 ### Fixed
