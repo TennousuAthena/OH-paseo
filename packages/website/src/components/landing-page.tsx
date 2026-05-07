@@ -18,10 +18,7 @@ const FADE_IN_UP_40 = { opacity: 0, y: 40 };
 const FADE_IN_UP_4 = { opacity: 0, y: 4 };
 const FADE_OUT_UP_4 = { opacity: 0, y: 4 };
 
-const EASE_OUT_06: Transition = { duration: 0.6, ease: "easeOut" };
-const EASE_OUT_06_DELAY_015: Transition = { duration: 0.6, delay: 0.15, ease: "easeOut" };
 const EASE_OUT_06_DELAY_01: Transition = { duration: 0.6, delay: 0.1, ease: "easeOut" };
-const EASE_OUT_06_DELAY_04: Transition = { duration: 0.6, delay: 0.4, ease: "easeOut" };
 const EASE_OUT_08_DELAY_05: Transition = { duration: 0.8, delay: 0.5, ease: "easeOut" };
 const EASE_OUT_05: Transition = { duration: 0.5, ease: "easeOut" };
 const EASE_OUT_015: Transition = { duration: 0.15, ease: "easeOut" };
@@ -117,22 +114,8 @@ function Nav() {
 function Hero({ title, subtitle }: { title: React.ReactNode; subtitle: string }) {
   return (
     <div className="space-y-6">
-      <motion.h1
-        initial={FADE_IN_UP}
-        animate={FADE_IN}
-        transition={EASE_OUT_06}
-        className="text-3xl md:text-5xl font-medium tracking-tight"
-      >
-        {title}
-      </motion.h1>
-      <motion.p
-        initial={FADE_IN_UP}
-        animate={FADE_IN}
-        transition={EASE_OUT_06_DELAY_015}
-        className="text-white/70 text-lg leading-relaxed max-w-lg"
-      >
-        {subtitle}
-      </motion.p>
+      <h1 className="text-3xl md:text-5xl font-medium tracking-tight">{title}</h1>
+      <p className="text-white/70 text-lg leading-relaxed max-w-lg">{subtitle}</p>
     </div>
   );
 }
@@ -866,12 +849,7 @@ function LocalVoiceSection() {
 
 function GetStarted() {
   return (
-    <motion.div
-      initial={FADE_IN_UP}
-      animate={FADE_IN}
-      transition={EASE_OUT_06_DELAY_04}
-      className="pt-10"
-    >
+    <div className="pt-10">
       <div className="flex flex-row flex-wrap gap-3">
         <DownloadButton />
         <a
@@ -927,7 +905,7 @@ function GetStarted() {
           +{ADDITIONAL_AGENT_COUNT} more
         </a>
       </div>
-    </motion.div>
+    </div>
   );
 }
 
