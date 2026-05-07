@@ -11,6 +11,11 @@ function formatStars(count: number): string {
 }
 
 const GITHUB_REPO_URL = "https://api.github.com/repos/getpaseo/paseo";
+const STAR_REFRESH_MS = 60_000;
+
+let cachedStars = "";
+let cachedStarsAt = 0;
+let refreshStarsPromise: Promise<void> | null = null;
 
 async function fetchStarCount(): Promise<string> {
   try {
@@ -34,7 +39,26 @@ async function fetchStarCount(): Promise<string> {
   }
 }
 
+function refreshStarCount(): Promise<void> {
+  refreshStarsPromise ??= fetchStarCount()
+    .then((stars) => {
+      if (stars) {
+        cachedStars = stars;
+        cachedStarsAt = Date.now();
+      }
+      return undefined;
+    })
+    .finally(() => {
+      refreshStarsPromise = null;
+    });
+
+  return refreshStarsPromise;
+}
+
 export const getStarCount = createServerFn({ method: "GET" }).handler(async () => {
-  const stars = await fetchStarCount();
-  return { stars };
+  if (Date.now() - cachedStarsAt > STAR_REFRESH_MS) {
+    void refreshStarCount();
+  }
+
+  return { stars: cachedStars };
 });
