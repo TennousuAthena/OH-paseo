@@ -2,7 +2,7 @@
 title: Voice
 description: Paseo voice architecture, local-first model execution, and provider configuration.
 nav: Voice
-order: 3
+order: 9
 ---
 
 # Voice
@@ -69,12 +69,12 @@ You can switch dictation, voice STT, and voice TTS to OpenAI by setting provider
 
 ## Environment Variables
 
-- `OPENAI_API_KEY` — OpenAI speech credentials
-- `PASEO_VOICE_LLM_PROVIDER` — voice agent provider override
-- `PASEO_LOCAL_MODELS_DIR` — local model storage directory
-- `PASEO_DICTATION_LOCAL_STT_MODEL` — local dictation STT model ID
-- `PASEO_VOICE_LOCAL_STT_MODEL`, `PASEO_VOICE_LOCAL_TTS_MODEL` — local voice STT/TTS model IDs
-- `PASEO_VOICE_LOCAL_TTS_SPEAKER_ID`, `PASEO_VOICE_LOCAL_TTS_SPEED` — optional local voice TTS tuning
+- `OPENAI_API_KEY`, OpenAI speech credentials
+- `PASEO_VOICE_LLM_PROVIDER`, voice agent provider override
+- `PASEO_LOCAL_MODELS_DIR`, local model storage directory
+- `PASEO_DICTATION_LOCAL_STT_MODEL`, local dictation STT model ID
+- `PASEO_VOICE_LOCAL_STT_MODEL`, `PASEO_VOICE_LOCAL_TTS_MODEL`, local voice STT/TTS model IDs
+- `PASEO_VOICE_LOCAL_TTS_SPEAKER_ID`, `PASEO_VOICE_LOCAL_TTS_SPEED`, optional local voice TTS tuning
 
 ## Operational Notes
 

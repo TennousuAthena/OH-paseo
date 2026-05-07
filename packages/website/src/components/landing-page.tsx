@@ -33,6 +33,7 @@ const SVG_OVERFLOW_VISIBLE_STYLE = { overflow: "visible" as const };
 const PHONE_PERSPECTIVE_STYLE = { minHeight: 480, perspective: 1200 };
 import { CursorFieldProvider } from "~/components/butterfly";
 import { CommandDialog } from "~/components/command-dialog";
+import { AGENT_PAGES } from "~/data/agent-pages";
 import {
   appStoreUrl,
   playStoreUrl,
@@ -142,6 +143,9 @@ const OPENCODE_BADGE_ICON = <OpenCodeIcon className="h-6 w-6" />;
 const COPILOT_BADGE_ICON = <CopilotIcon className="h-6 w-6" />;
 const PI_BADGE_ICON = <PiIcon className="h-6 w-6" />;
 
+const FEATURED_AGENT_COUNT = 5;
+const ADDITIONAL_AGENT_COUNT = AGENT_PAGES.length - FEATURED_AGENT_COUNT;
+
 function AgentBadge({ name, icon }: { name: string; icon: React.ReactNode }) {
   const [hovered, setHovered] = React.useState(false);
   const handleMouseEnter = React.useCallback(() => setHovered(true), []);
@@ -222,7 +226,7 @@ function MultiProviderSection() {
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-4 sm:w-2/3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:w-full">
         {providers.slice(3).map((p) => (
           <div
             key={p.name}
@@ -232,6 +236,12 @@ function MultiProviderSection() {
             <span className="font-medium">{p.name}</span>
           </div>
         ))}
+        <a
+          href="/agents"
+          className="flex items-center justify-center gap-3 rounded-xl border border-dashed border-white/10 bg-white/[0.01] px-5 py-4 text-white/50 hover:text-white/80 hover:border-white/20 hover:bg-white/[0.03] transition-colors"
+        >
+          <span className="font-medium">+{ADDITIONAL_AGENT_COUNT} more</span>
+        </a>
       </div>
     </FeatureSection>
   );
@@ -910,6 +920,12 @@ function GetStarted() {
           <AgentBadge name="Copilot" icon={COPILOT_BADGE_ICON} />
           <AgentBadge name="Pi" icon={PI_BADGE_ICON} />
         </div>
+        <a
+          href="/agents"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          +{ADDITIONAL_AGENT_COUNT} more
+        </a>
       </div>
     </motion.div>
   );
