@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { MarkdownAsync } from "react-markdown";
+import { DocsMarkdown } from "~/components/docs-markdown";
 import { DocsSourceFooter } from "~/components/docs-source-footer";
 import { getDoc } from "~/docs";
-import { docsRehypePlugins, docsRemarkPlugins } from "~/docs-rehype";
 import { pageMeta } from "~/meta";
 
 export const Route = createFileRoute("/docs/")({
@@ -16,14 +15,12 @@ export const Route = createFileRoute("/docs/")({
   component: DocsIndex,
 });
 
-async function DocsIndex() {
+function DocsIndex() {
   const doc = getDoc("");
   if (!doc) return <p className="text-muted-foreground">Doc not found.</p>;
   return (
     <>
-      <MarkdownAsync remarkPlugins={docsRemarkPlugins} rehypePlugins={docsRehypePlugins}>
-        {doc.content}
-      </MarkdownAsync>
+      <DocsMarkdown>{doc.content}</DocsMarkdown>
       <DocsSourceFooter doc={doc} />
     </>
   );

@@ -1,5 +1,4 @@
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
-import { rehypePrettyCode } from "rehype-pretty-code";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import { createHighlighterCore, type HighlighterCore } from "shiki/core";
@@ -10,7 +9,7 @@ export const docsRemarkPlugins: PluggableList = [remarkGfm];
 
 let docsHighlighter: Promise<HighlighterCore> | undefined;
 
-function getDocsHighlighter(): Promise<HighlighterCore> {
+export function getDocsHighlighter(): Promise<HighlighterCore> {
   docsHighlighter ??= Promise.all([
     import("shiki/themes/catppuccin-mocha.mjs"),
     import("shiki/langs/bash.mjs"),
@@ -39,14 +38,6 @@ function getDocsHighlighter(): Promise<HighlighterCore> {
 }
 
 export const docsRehypePlugins: PluggableList = [
-  [
-    rehypePrettyCode,
-    {
-      theme: "catppuccin-mocha",
-      keepBackground: false,
-      getHighlighter: getDocsHighlighter,
-    },
-  ],
   rehypeSlug,
   [
     rehypeAutolinkHeadings,

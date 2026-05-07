@@ -894,12 +894,15 @@ function GetStarted() {
         <ServerInstallButton />
       </div>
       <div className="pt-3">
-        <a href="/download" className="text-xs text-white/40 hover:text-white/70 transition-colors">
+        <a
+          href="/download"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
           All download options
         </a>
       </div>
       <div className="flex items-center gap-2 pt-6">
-        <span className="text-xs text-white/40">Supports</span>
+        <span className="text-xs text-muted-foreground">Supports</span>
         <div className="flex items-center gap-1">
           <AgentBadge name="Claude Code" icon={CLAUDE_CODE_BADGE_ICON} />
           <AgentBadge name="Codex" icon={CODEX_BADGE_ICON} />
@@ -1338,8 +1341,14 @@ function PhoneShowcase() {
         {/* Left phone — rotated to face inward */}
         <motion.div style={leftPhoneStyle} className="w-[160px] md:w-[240px] absolute">
           <img
-            src="/phone-1.png"
+            src="/phone-1-480.webp"
+            srcSet="/phone-1-320.webp 320w, /phone-1-480.webp 480w"
+            sizes="(min-width: 768px) 240px, 160px"
             alt="Paseo sessions list"
+            width={480}
+            height={1044}
+            loading="lazy"
+            decoding="async"
             className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
           />
         </motion.div>
@@ -1352,8 +1361,14 @@ function PhoneShowcase() {
           className="w-[220px] md:w-[240px] relative z-10"
         >
           <img
-            src="/phone-2.png"
+            src="/phone-2-480.webp"
+            srcSet="/phone-2-320.webp 320w, /phone-2-480.webp 480w"
+            sizes="(min-width: 768px) 240px, 220px"
             alt="Paseo agent chat"
+            width={480}
+            height={1044}
+            loading="lazy"
+            decoding="async"
             className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
           />
         </motion.div>
@@ -1361,8 +1376,14 @@ function PhoneShowcase() {
         {/* Right phone — rotated to face inward */}
         <motion.div style={rightPhoneStyle} className="w-[160px] md:w-[240px] absolute">
           <img
-            src="/phone-3.png"
+            src="/phone-3-480.webp"
+            srcSet="/phone-3-320.webp 320w, /phone-3-480.webp 480w"
+            sizes="(min-width: 768px) 240px, 160px"
             alt="Paseo diff view"
+            width={480}
+            height={1044}
+            loading="lazy"
+            decoding="async"
             className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
           />
         </motion.div>
@@ -1425,7 +1446,7 @@ function CLISection() {
 
       <a
         href="/docs/cli"
-        className="inline-flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
       >
         Full CLI reference
         <svg

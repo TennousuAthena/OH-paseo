@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { MarkdownAsync } from "react-markdown";
+import { DocsMarkdown } from "~/components/docs-markdown";
 import { DocsSourceFooter } from "~/components/docs-source-footer";
 import { getDoc } from "~/docs";
-import { docsRehypePlugins, docsRemarkPlugins } from "~/docs-rehype";
 import { pageMeta } from "~/meta";
 
 export const Route = createFileRoute("/docs/$")({
@@ -23,7 +22,7 @@ function DocsPage() {
   return <RenderedDoc slug={slug} />;
 }
 
-async function RenderedDoc({ slug }: { slug: string }) {
+function RenderedDoc({ slug }: { slug: string }) {
   const doc = getDoc(slug);
 
   if (!doc) {
@@ -32,9 +31,7 @@ async function RenderedDoc({ slug }: { slug: string }) {
 
   return (
     <>
-      <MarkdownAsync remarkPlugins={docsRemarkPlugins} rehypePlugins={docsRehypePlugins}>
-        {doc.content}
-      </MarkdownAsync>
+      <DocsMarkdown>{doc.content}</DocsMarkdown>
       <DocsSourceFooter doc={doc} />
     </>
   );
