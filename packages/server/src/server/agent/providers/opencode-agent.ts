@@ -49,7 +49,7 @@ import {
 import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
 import { terminateWithTreeKill } from "../../../utils/tree-kill.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
-import { spawnProcess } from "../../../utils/spawn.js";
+import { execCommand, spawnProcess } from "../../../utils/spawn.js";
 import { buildToolCallDisplayModel } from "../../../shared/tool-call-display.js";
 import { mapOpencodeToolCall } from "./opencode/tool-call-mapper.js";
 import {
@@ -1228,6 +1228,20 @@ export class OpenCodeAgentClient implements AgentClient {
         serverStatus = `Unavailable (${toDiagnosticErrorMessage(error)})`;
       }
 
+      let authValue = "Not checked";
+      if (resolvedBinary) {
+        try {
+          const { stdout, stderr } = await execCommand(resolvedBinary, ["auth", "list"], {
+            ...createProviderEnvSpec(),
+            timeout: 5_000,
+          });
+          const text = (stdout.trim() || stderr.trim()).trim();
+          authValue = text ? `\n    ${text.replace(/\n/g, "\n    ")}` : "(empty)";
+        } catch (error) {
+          authValue = `Error - ${toDiagnosticErrorMessage(error)}`;
+        }
+      }
+
       if (available) {
         try {
           const models = await this.listModels({ cwd: homedir(), force: false });
@@ -1263,6 +1277,7 @@ export class OpenCodeAgentClient implements AgentClient {
             value: resolvedBinary ? await resolveBinaryVersion(resolvedBinary) : "unknown",
           },
           { label: "Server", value: serverStatus },
+          { label: "Auth", value: authValue },
           { label: "Models", value: modelsValue },
           { label: "Status", value: status },
         ]),
