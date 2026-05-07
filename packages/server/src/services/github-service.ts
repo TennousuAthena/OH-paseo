@@ -933,11 +933,12 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       const readOptions: GitHubReadOptions = input.force
         ? { force: true, reason: input.reason }
         : { force: false, reason: input.reason };
+      const query = normalizeGitHubSearchQuery(input.query);
       const [issuesResult, prsResult] = await Promise.allSettled([
         shouldFetchIssues
           ? this.listIssues({
               cwd: input.cwd,
-              query: input.query,
+              query,
               limit: input.limit,
               ...readOptions,
             })
@@ -945,7 +946,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         shouldFetchPullRequests
           ? this.listPullRequests({
               cwd: input.cwd,
-              query: input.query,
+              query,
               limit: input.limit,
               ...readOptions,
             })
@@ -1169,6 +1170,15 @@ async function runGhCommand(
     envOverlay: GITHUB_ENV,
     maxBuffer: 10 * 1024 * 1024,
   });
+}
+
+const GITHUB_ISSUE_OR_PR_URL_PATTERN =
+  /^https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/(?:pull|issues)\/(\d+)(?:[/?#].*)?$/i;
+
+function normalizeGitHubSearchQuery(query: string): string {
+  const trimmed = query.trim();
+  const match = trimmed.match(GITHUB_ISSUE_OR_PR_URL_PATTERN);
+  return match ? match[1] : query;
 }
 
 function buildCacheKey(params: { cwd: string; method: string; args: unknown }): string {

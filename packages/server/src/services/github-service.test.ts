@@ -1698,6 +1698,44 @@ describe("GitHubService", () => {
     ]);
   });
 
+  it("treats a GitHub issue or PR URL as a search for that number", async () => {
+    const runner = createRunner([issueJson("Issue title"), searchPullRequestJson("PR title")]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    await service.searchIssuesAndPrs({
+      cwd: "/repo",
+      query: "https://github.com/getpaseo/paseo/pull/793",
+      limit: 5,
+    });
+
+    expect(runner.calls.map((call) => call.args)).toEqual([
+      [
+        "issue",
+        "list",
+        "--search",
+        "793",
+        "--json",
+        "number,title,url,state,body,labels,updatedAt",
+        "--limit",
+        "5",
+      ],
+      [
+        "pr",
+        "list",
+        "--search",
+        "793",
+        "--json",
+        "number,title,url,state,body,labels,baseRefName,headRefName,updatedAt",
+        "--limit",
+        "5",
+      ],
+    ]);
+  });
+
   it("searches only GitHub PRs when the search kinds request excludes issues", async () => {
     const runner = createRunner([searchPullRequestJson("PR title")]);
     const service = createGitHubService({
