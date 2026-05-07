@@ -11,3 +11,7 @@ routes = [
 
 [observability]
 enabled = true
+
+[[kv_namespaces]]
+binding = "WEBSITE_CACHE"
+id = "cb4d8779806544e9b673142a80c1eb5f"
