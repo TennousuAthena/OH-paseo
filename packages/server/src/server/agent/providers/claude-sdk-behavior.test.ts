@@ -160,7 +160,7 @@ describe("Claude SDK direct behavior", () => {
       expect(sawResult || responseText.length === 0).toBe(true);
     } finally {
       input.end();
-      rmSync(cwd, { recursive: true, force: true });
+      rmSync(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   }, 120000);
 });

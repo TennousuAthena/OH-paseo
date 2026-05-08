@@ -74,7 +74,7 @@ async function createSession(params?: {
 
 async function cleanupSession(handle: { cwd: string; session: AgentSession }): Promise<void> {
   await handle.session.close().catch(() => undefined);
-  rmSync(handle.cwd, { recursive: true, force: true });
+  rmSync(handle.cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
 async function startTurnAndCollectEvents(
