@@ -1,13 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
-import { createTestLogger } from "../../../test-utils/test-logger.js";
+import { createTestLogger } from "../../../../test-utils/test-logger.js";
 import {
   ClaudeAgentClient,
   convertClaudeHistoryEntry,
   normalizeClaudeAskUserQuestionUpdatedInput,
-} from "./claude-agent.js";
-import type { AgentTimelineItem, AgentUsage, AgentStreamEvent } from "../agent-sdk-types.js";
+} from "./agent.js";
+import type { AgentTimelineItem, AgentUsage, AgentStreamEvent } from "../../agent-sdk-types.js";
 
 interface TestClaudeSession {
   translateMessageToEvents(message: SDKMessage): AgentStreamEvent[];

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Logger } from "pino";
 
-import { createTestLogger } from "../../../test-utils/test-logger.js";
-import { asInternals } from "../../test-utils/class-mocks.js";
-import { ClaudeAgentClient, readEventIdentifiers } from "./claude-agent.js";
-import { streamSession } from "./test-utils/session-stream-adapter.js";
-import type { AgentStreamEvent, AgentTimelineItem } from "../agent-sdk-types.js";
+import { createTestLogger } from "../../../../test-utils/test-logger.js";
+import { asInternals } from "../../../test-utils/class-mocks.js";
+import { ClaudeAgentClient, readEventIdentifiers } from "./agent.js";
+import { streamSession } from "../test-utils/session-stream-adapter.js";
+import type { AgentStreamEvent, AgentTimelineItem } from "../../agent-sdk-types.js";
 
 interface QueryMock {
   next: ReturnType<typeof vi.fn>;
@@ -660,7 +660,7 @@ test("Grep tool_result string content flows to a search detail with content", as
       grepEntry,
     );
 
-    const { mapClaudeCompletedToolCall } = await import("./claude/tool-call-mapper.js");
+    const { mapClaudeCompletedToolCall } = await import("./tool-call-mapper.js");
     const item = mapClaudeCompletedToolCall({
       callId: "tool-grep-1",
       name: "Grep",

@@ -897,10 +897,18 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   function kill(): void {
     if (!killed) {
       killed = true;
-      ptyProcess.kill();
+      killPtyProcess();
       emitExit(buildExitInfo());
     }
     disposeResources();
+  }
+
+  function killPtyProcess(signal?: NodeJS.Signals): void {
+    if (process.platform === "win32") {
+      ptyProcess.kill();
+      return;
+    }
+    ptyProcess.kill(signal);
   }
 
   function waitForProcessExit(timeoutMs: number): Promise<boolean> {
@@ -940,7 +948,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     }
 
     try {
-      ptyProcess.kill();
+      killPtyProcess();
     } catch {
       // process may already be gone
     }
@@ -948,7 +956,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     const exitedGracefully = await waitForProcessExit(gracefulTimeoutMs);
     if (!exitedGracefully) {
       try {
-        ptyProcess.kill("SIGKILL");
+        killPtyProcess("SIGKILL");
       } catch {
         // process may already be gone
       }

@@ -8,7 +8,7 @@ import type { AgentProvider } from "../agent-sdk-types.js";
 import { AgentManager } from "../agent-manager.js";
 import { AgentStorage } from "../agent-storage.js";
 
-import { ClaudeAgentClient } from "./claude-agent.js";
+import { ClaudeAgentClient } from "./claude/agent.js";
 import { CodexAppServerAgentClient } from "./codex-app-server-agent.js";
 import { OpenCodeAgentClient } from "./opencode-agent.js";
 

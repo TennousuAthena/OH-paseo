@@ -1,26 +1,14 @@
 /**
- * Direct SDK behavior tests - uses same setup as claude-agent.ts
+ * Direct SDK behavior tests - uses same setup as the Claude provider
  */
 import { mkdtempSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
-import { spawnProcess } from "../../../utils/spawn.js";
-
-type SpawnClaudeOptions = NonNullable<
-  Parameters<typeof query>[0]["options"]
->["spawnClaudeCodeProcess"];
-
-const spawnClaudeForTest: SpawnClaudeOptions = (options) =>
-  spawnProcess(options.command, options.args, {
-    cwd: options.cwd,
-    env: options.env,
-    signal: options.signal,
-    stdio: ["pipe", "pipe", "pipe"],
-    shell: false,
-  });
+import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { isProviderAvailable } from "../../../daemon-e2e/agent-configs.js";
+import { findExecutable } from "../../../../utils/executable.js";
+import { claudeQuery } from "./query.js";
 
 class Pushable<T> implements AsyncIterable<T> {
   private queue: T[] = [];
@@ -97,21 +85,15 @@ function extractTextFromEvents(events: SDKMessage[]): string {
   return responseText;
 }
 
-const hasClaudeCredentials =
-  !!process.env.CLAUDE_CODE_OAUTH_TOKEN || !!process.env.ANTHROPIC_API_KEY;
-
 describe("Claude SDK direct behavior", () => {
-  let canRunClaudeIntegration = false;
+  let canRun = false;
 
   beforeAll(async () => {
-    canRunClaudeIntegration = (await isCommandAvailable("claude")) && hasClaudeCredentials;
-    if (canRunClaudeIntegration) {
-      expect(await isCommandAvailable("claude")).toBe(true);
-    }
+    canRun = await isProviderAvailable("claude");
   });
 
   beforeEach((context) => {
-    if (!canRunClaudeIntegration) {
+    if (!canRun) {
       context.skip();
     }
   });
@@ -121,15 +103,14 @@ describe("Claude SDK direct behavior", () => {
     const input = new Pushable<SDKUserMessage>();
     const claudeBinary = await findExecutable("claude");
 
-    // Use same options as claude-agent.ts
-    const q = query({
+    // Use same options as the Claude provider
+    const q = claudeQuery({
       prompt: input,
       options: {
         cwd,
         includePartialMessages: true,
         permissionMode: "bypassPermissions",
         ...(claudeBinary ? { pathToClaudeCodeExecutable: claudeBinary } : {}),
-        spawnClaudeCodeProcess: spawnClaudeForTest,
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
