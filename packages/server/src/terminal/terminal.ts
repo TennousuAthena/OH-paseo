@@ -102,6 +102,10 @@ interface EnsureNodePtySpawnHelperExecutableOptions {
   force?: boolean;
 }
 
+interface WindowsPtyProcessReadiness {
+  _agent?: { innerPid?: number };
+}
+
 function resolveNodePtyPackageRoot(): string | null {
   try {
     const packageJsonPath = require.resolve("node-pty/package.json");
@@ -754,6 +758,22 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     disposeResources();
   });
 
+  async function waitForPtyProcessStart(): Promise<void> {
+    if (process.platform !== "win32") {
+      return;
+    }
+
+    const started = (): boolean => {
+      const windowsPtyProcess = ptyProcess as unknown as WindowsPtyProcessReadiness;
+      return ptyProcess.pid > 0 || (windowsPtyProcess._agent?.innerPid ?? 0) > 0 || processExited;
+    };
+
+    const deadline = Date.now() + 5000;
+    while (!started() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
   function getState(): TerminalState {
     return {
       rows: terminal.rows,
@@ -917,10 +937,16 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   function kill(): void {
     if (!killed) {
       killed = true;
-      killPtyProcess();
+      if (!processExited) {
+        killPtyProcess();
+      }
       emitExit(buildExitInfo());
     }
-    disposeResources();
+    if (processExited) {
+      disposeResources();
+      return;
+    }
+    void waitForProcessExit(1000).finally(disposeResources);
   }
 
   function killPtyProcess(signal?: NodeJS.Signals): void {
@@ -986,6 +1012,8 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     // Finalize bookkeeping (idempotent if ptyProcess.onExit already fired).
     kill();
   }
+
+  await waitForPtyProcessStart();
 
   // Small delay to let shell initialize
   await new Promise((resolve) => setTimeout(resolve, 50));
