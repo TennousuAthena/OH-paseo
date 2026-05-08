@@ -36,6 +36,9 @@ jobs:
       - name: Install server dependencies
         run: npm install --workspace=@getpaseo/server --include-workspace-root
 
+      - name: Install agent CLIs for provider tests
+        run: npm install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
+
       - name: Build highlight dependency
         run: npm run build --workspace=@getpaseo/highlight
 
