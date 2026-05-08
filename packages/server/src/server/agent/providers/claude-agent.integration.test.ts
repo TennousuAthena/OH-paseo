@@ -8,8 +8,22 @@ import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentSession, AgentStreamEvent, ToolCallTimelineItem } from "../agent-sdk-types.js";
 import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
+import { spawnProcess } from "../../../utils/spawn.js";
 import { ClaudeAgentClient } from "./claude-agent.js";
 import { streamSession } from "./test-utils/session-stream-adapter.js";
+
+type SpawnClaudeOptions = NonNullable<
+  Parameters<typeof query>[0]["options"]
+>["spawnClaudeCodeProcess"];
+
+const spawnClaudeForTest: SpawnClaudeOptions = (options) =>
+  spawnProcess(options.command, options.args, {
+    cwd: options.cwd,
+    env: options.env,
+    signal: options.signal,
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: false,
+  });
 
 const logger = pino({ level: "silent" });
 const client = new ClaudeAgentClient({ logger });
@@ -157,7 +171,14 @@ async function createSession(params?: {
 
 async function cleanupSession(handle: { cwd: string; session: AgentSession }): Promise<void> {
   await handle.session.close().catch(() => undefined);
-  rmSync(handle.cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  try {
+    rmSync(handle.cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EBUSY" && code !== "ENOTEMPTY" && code !== "EPERM") {
+      throw error;
+    }
+  }
 }
 
 describe("ClaudeAgentSession integration", () => {
@@ -233,6 +254,7 @@ describe("ClaudeAgentSession integration", () => {
         includePartialMessages: false,
         settingSources: ["user", "project"],
         pathToClaudeCodeExecutable: claudeBinary,
+        spawnClaudeCodeProcess: spawnClaudeForTest,
       },
     });
 

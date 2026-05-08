@@ -158,6 +158,8 @@ function makeLaunchFixture(ext: "exe" | "cmd" | "bat"): LaunchFixture {
 
   if (ext === "exe") {
     // Copy node.exe to <command>.exe and run our assert body via -e.
+    // The `--` separator stops Node from parsing userArgs as Node options
+    // (e.g. `--config` would otherwise trigger "bad option" → exit 9).
     // With -e there is no script slot, so process.argv = [node, ...userArgs] → slice(1).
     const binaryPath = path.join(root, `${command}.exe`);
     copyFileSync(process.execPath, binaryPath);
@@ -165,7 +167,7 @@ function makeLaunchFixture(ext: "exe" | "cmd" | "bat"): LaunchFixture {
       root,
       command,
       binaryPath,
-      args: ["-e", ASSERT_SCRIPT_BODY, ...userArgs],
+      args: ["-e", ASSERT_SCRIPT_BODY, "--", ...userArgs],
       expectedArgvJson,
       sliceFrom: 1,
     };

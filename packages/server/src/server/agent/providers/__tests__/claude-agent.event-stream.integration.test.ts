@@ -74,7 +74,14 @@ async function createSession(params?: {
 
 async function cleanupSession(handle: { cwd: string; session: AgentSession }): Promise<void> {
   await handle.session.close().catch(() => undefined);
-  rmSync(handle.cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  try {
+    rmSync(handle.cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EBUSY" && code !== "ENOTEMPTY" && code !== "EPERM") {
+      throw error;
+    }
+  }
 }
 
 async function startTurnAndCollectEvents(

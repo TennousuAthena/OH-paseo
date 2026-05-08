@@ -7,6 +7,20 @@ import path from "node:path";
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
+import { spawnProcess } from "../../../utils/spawn.js";
+
+type SpawnClaudeOptions = NonNullable<
+  Parameters<typeof query>[0]["options"]
+>["spawnClaudeCodeProcess"];
+
+const spawnClaudeForTest: SpawnClaudeOptions = (options) =>
+  spawnProcess(options.command, options.args, {
+    cwd: options.cwd,
+    env: options.env,
+    signal: options.signal,
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: false,
+  });
 
 class Pushable<T> implements AsyncIterable<T> {
   private queue: T[] = [];
@@ -50,6 +64,17 @@ function tmpCwd(): string {
     return realpathSync(dir);
   } catch {
     return dir;
+  }
+}
+
+function rmCwd(cwd: string): void {
+  try {
+    rmSync(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EBUSY" && code !== "ENOTEMPTY" && code !== "EPERM") {
+      throw error;
+    }
   }
 }
 
@@ -104,6 +129,7 @@ describe("Claude SDK direct behavior", () => {
         includePartialMessages: true,
         permissionMode: "bypassPermissions",
         ...(claudeBinary ? { pathToClaudeCodeExecutable: claudeBinary } : {}),
+        spawnClaudeCodeProcess: spawnClaudeForTest,
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
@@ -160,7 +186,7 @@ describe("Claude SDK direct behavior", () => {
       expect(sawResult || responseText.length === 0).toBe(true);
     } finally {
       input.end();
-      rmSync(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      rmCwd(cwd);
     }
   }, 120000);
 });
