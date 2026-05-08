@@ -829,16 +829,36 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   }
 
   function subscribe(listener: (msg: ServerMessage) => void): () => void {
-    listeners.add(listener);
+    let active = true;
+    let snapshotDelivered = false;
+    const queuedMessages: ServerMessage[] = [];
+    const subscriptionListener = (msg: ServerMessage): void => {
+      if (!active) {
+        return;
+      }
+      if (!snapshotDelivered) {
+        queuedMessages.push(msg);
+        return;
+      }
+      listener(msg);
+    };
+
+    listeners.add(subscriptionListener);
 
     terminal.write("", () => {
-      if (!disposed && listeners.has(listener)) {
+      if (!disposed && active && listeners.has(subscriptionListener)) {
+        snapshotDelivered = true;
         listener({ type: "snapshot", ...getStateSnapshot() });
+        for (const message of queuedMessages.splice(0)) {
+          listener(message);
+        }
       }
     });
 
     return () => {
-      listeners.delete(listener);
+      active = false;
+      queuedMessages.length = 0;
+      listeners.delete(subscriptionListener);
     };
   }
 
