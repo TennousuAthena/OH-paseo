@@ -29,8 +29,7 @@ platform :ios do
     loop do
       builds = Spaceship::ConnectAPI::Build.all(
         app_id: app.id,
-        filter: { "version" => build_number.to_s },
-        includes: "preReleaseVersion",
+        version: build_number.to_s,
       )
       build = builds.find { |b| b.pre_release_version&.platform == "IOS" }
       state = build&.processing_state
