@@ -48,12 +48,12 @@ describe("default provider availability", () => {
     await expect(client.isAvailable()).resolves.toBe(false);
   });
 
-  test("Claude reports available without a PATH binary because the SDK bundles its own cli.js", async () => {
+  test("Claude reports unavailable when the default command cannot be resolved", async () => {
     const binDir = makeTempDir("provider-availability-claude-");
     isolatePathTo(binDir);
     const client = new ClaudeAgentClient({ logger: createTestLogger() });
 
-    await expect(client.isAvailable()).resolves.toBe(true);
+    await expect(client.isAvailable()).resolves.toBe(false);
   });
 
   test("OpenCode reports unavailable when the default command cannot be resolved", async () => {
