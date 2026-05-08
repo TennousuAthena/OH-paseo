@@ -254,6 +254,7 @@ interface ClaudeAgentClientOptions {
   logger: Logger;
   runtimeSettings?: ProviderRuntimeSettings;
   queryFactory?: typeof query;
+  resolveBinary?: () => Promise<string>;
 }
 
 interface ClaudeAgentSessionOptions {
@@ -264,6 +265,7 @@ interface ClaudeAgentSessionOptions {
   persistSession?: boolean;
   logger: Logger;
   queryFactory?: typeof query;
+  resolveBinary: () => Promise<string>;
 }
 
 type ClaudeThinkingEffort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -1251,12 +1253,14 @@ export class ClaudeAgentClient implements AgentClient {
   private readonly logger: Logger;
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly queryFactory: typeof query;
+  private readonly resolveBinary: () => Promise<string>;
 
   constructor(options: ClaudeAgentClientOptions) {
     this.defaults = options.defaults;
     this.logger = options.logger.child({ module: "agent", provider: "claude" });
     this.runtimeSettings = options.runtimeSettings;
     this.queryFactory = options.queryFactory ?? query;
+    this.resolveBinary = options.resolveBinary ?? resolveClaudeBinary;
   }
 
   async createSession(
@@ -1272,6 +1276,7 @@ export class ClaudeAgentClient implements AgentClient {
       persistSession: options?.persistSession,
       logger: this.logger,
       queryFactory: this.queryFactory,
+      resolveBinary: this.resolveBinary,
     });
   }
 
@@ -1298,6 +1303,7 @@ export class ClaudeAgentClient implements AgentClient {
       launchEnv: launchContext?.env,
       logger: this.logger,
       queryFactory: this.queryFactory,
+      resolveBinary: this.resolveBinary,
     });
   }
 
@@ -1379,6 +1385,16 @@ export class ClaudeAgentClient implements AgentClient {
     }
     return { ...config, provider: "claude" } as ClaudeAgentConfig;
   }
+}
+
+async function resolveClaudeBinary(): Promise<string> {
+  const found = await findExecutable("claude");
+  if (found) {
+    return found;
+  }
+  throw new Error(
+    "Claude binary not found. Install Claude Code (https://github.com/anthropics/claude-code) and ensure it is available in your shell PATH.",
+  );
 }
 
 async function resolveClaudeVersion(
@@ -1549,6 +1565,7 @@ class ClaudeAgentSession implements AgentSession {
   private readonly persistSession?: boolean;
   private readonly logger: Logger;
   private readonly queryFactory: typeof query;
+  private readonly resolveBinary: () => Promise<string>;
   private query: Query | null = null;
   private input: AsyncMessageInput<SDKUserMessage> | null = null;
   private claudeSessionId: string | null;
@@ -1597,6 +1614,7 @@ class ClaudeAgentSession implements AgentSession {
     this.persistSession = options.persistSession;
     this.logger = options.logger;
     this.queryFactory = options.queryFactory ?? query;
+    this.resolveBinary = options.resolveBinary;
     const handle = options.handle;
 
     if (handle) {
@@ -2283,7 +2301,7 @@ class ClaudeAgentSession implements AgentSession {
       ],
     });
 
-    const claudeBinary = await findExecutable("claude");
+    const claudeBinary = await this.resolveBinary();
     this.logger.debug(
       {
         claudeBinary,
@@ -2304,7 +2322,7 @@ class ClaudeAgentSession implements AgentSession {
       allowDangerouslySkipPermissions: true,
       agents: this.defaults?.agents,
       canUseTool: this.handlePermissionRequest,
-      ...(claudeBinary ? { pathToClaudeCodeExecutable: claudeBinary } : {}),
+      pathToClaudeCodeExecutable: claudeBinary,
       // Use Claude Code preset system prompt and load CLAUDE.md files
       // Append provider-agnostic system prompt and orchestrator instructions for agents.
       systemPrompt: {

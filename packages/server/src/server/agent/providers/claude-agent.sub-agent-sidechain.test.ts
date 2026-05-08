@@ -251,7 +251,10 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
   });
 
   test("accumulates lightweight sub_agent detail and preserves callId lifecycle collapse", async () => {
-    const session = await new ClaudeAgentClient({ logger }).createSession({
+    const session = await new ClaudeAgentClient({
+      logger,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({
       provider: "claude",
       cwd: process.cwd(),
     });
@@ -300,7 +303,10 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
   test("tails sub-agent actions instead of dropping latest entries at cap", async () => {
     sdkMocks.query.mockImplementation(() => buildQueryMock(buildTailScenarioEvents(205)));
 
-    const session = await new ClaudeAgentClient({ logger }).createSession({
+    const session = await new ClaudeAgentClient({
+      logger,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({
       provider: "claude",
       cwd: process.cwd(),
     });

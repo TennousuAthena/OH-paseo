@@ -66,6 +66,7 @@ async function createSession() {
   const client = new ClaudeAgentClient({
     logger: createTestLogger(),
     queryFactory: sdkQueryFactory,
+    resolveBinary: async () => "/test/claude/bin",
   });
   return client.createSession({
     provider: "claude",
@@ -77,6 +78,7 @@ function createSessionWithLogger(logger: Logger) {
   const client = new ClaudeAgentClient({
     logger,
     queryFactory: sdkQueryFactory,
+    resolveBinary: async () => "/test/claude/bin",
   });
   return client.createSession({
     provider: "claude",
@@ -223,6 +225,7 @@ test("logs redacted query summary and never leaks sentinel secrets", async () =>
         PASEO_RUNTIME_SENTINEL_SECRET: runtimeSecret,
       },
     },
+    resolveBinary: async () => "/test/claude/bin",
   });
   const session = await client.createSession({
     provider: "claude",
@@ -797,6 +800,7 @@ test("captures Claude stderr in the turn failure diagnostic when stderr arrives 
   const client = new ClaudeAgentClient({
     logger: loggerSpy.logger,
     queryFactory: sdkQueryFactory,
+    resolveBinary: async () => "/test/claude/bin",
   });
   const session = await client.createSession({
     provider: "claude",

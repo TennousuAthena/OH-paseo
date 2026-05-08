@@ -66,6 +66,7 @@ describe("Claude SDK env", () => {
     const client = new ClaudeAgentClient({
       logger: createTestLogger(),
       queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
     });
     const session = await client.createSession(
       {
@@ -123,6 +124,7 @@ describe("Claude SDK env", () => {
     const client = new ClaudeAgentClient({
       logger: createTestLogger(),
       queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
     });
     const session = await client.resumeSession(
       {

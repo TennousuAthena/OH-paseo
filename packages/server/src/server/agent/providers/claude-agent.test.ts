@@ -346,7 +346,7 @@ describe("ClaudeAgentClient.listModels", () => {
   const logger = createTestLogger();
 
   test("returns hardcoded claude models", async () => {
-    const client = new ClaudeAgentClient({ logger });
+    const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
     const models = await client.listModels({ cwd: "/tmp/claude-models", force: false });
 
     expect(models.map((m) => m.id)).toEqual([
@@ -430,7 +430,10 @@ describe("normalizeClaudeAskUserQuestionUpdatedInput", () => {
   });
 
   test("respondToPermission preserves full question input when UI returns answers-only payload", async () => {
-    const client = new ClaudeAgentClient({ logger: createTestLogger() });
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      resolveBinary: async () => "/test/claude/bin",
+    });
     const session = await client.createSession({
       provider: "claude",
       cwd: process.cwd(),
@@ -505,7 +508,7 @@ describe("ClaudeAgentSession context window usage", () => {
   const logger = createTestLogger();
 
   async function createSessionForTest(): Promise<TestClaudeSession> {
-    const client = new ClaudeAgentClient({ logger });
+    const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
     const session = await client.createSession({
       provider: "claude",
       cwd: process.cwd(),
@@ -605,6 +608,7 @@ describe("ClaudeAgentSession context window usage", () => {
     const nonPersistedClient = new ClaudeAgentClient({
       logger,
       queryFactory: nonPersistedQueryFactory,
+      resolveBinary: async () => "/test/claude/bin",
     });
     const nonPersistedSession = await nonPersistedClient.createSession(
       {
@@ -623,6 +627,7 @@ describe("ClaudeAgentSession context window usage", () => {
     const persistedClient = new ClaudeAgentClient({
       logger,
       queryFactory: persistedQueryFactory,
+      resolveBinary: async () => "/test/claude/bin",
     });
     const persistedSession = await persistedClient.createSession(
       {
@@ -980,7 +985,11 @@ describe("ClaudeAgentSession context window usage", () => {
         },
       ],
     ]);
-    const client = new ClaudeAgentClient({ logger, queryFactory });
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
     const session = await client.createSession({
       provider: "claude",
       cwd: process.cwd(),

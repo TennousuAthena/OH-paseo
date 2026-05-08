@@ -261,7 +261,7 @@ test("interrupt only calls query.interrupt and leaves the query open", async () 
     return scriptedQuery;
   });
 
-  const client = new ClaudeAgentClient({ logger });
+  const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
   const session = await client.createSession({
     provider: "claude",
     cwd: process.cwd(),
@@ -311,7 +311,7 @@ test("reuses the existing query after interrupt before starting the next prompt"
     return scriptedQuery;
   });
 
-  const client = new ClaudeAgentClient({ logger });
+  const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
   const session = await client.createSession({
     provider: "claude",
     cwd: process.cwd(),
@@ -361,7 +361,7 @@ test("emits an assistant system notice when Claude changes session id mid-turn",
     return queryRef;
   });
 
-  const client = new ClaudeAgentClient({ logger });
+  const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
   const session = await client.createSession({
     provider: "claude",
     cwd: process.cwd(),
@@ -455,7 +455,7 @@ test("recovers when the query pump sees a single interrupt abort before the next
     return scriptedQuery;
   });
 
-  const client = new ClaudeAgentClient({ logger });
+  const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
   const session = await client.createSession({
     provider: "claude",
     cwd: process.cwd(),
@@ -488,7 +488,7 @@ test("stale abort result after replacement start does not poison the new foregro
     return queryRef;
   });
 
-  const client = new ClaudeAgentClient({ logger });
+  const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
   const session = await client.createSession({
     provider: "claude",
     cwd: process.cwd(),
@@ -564,7 +564,7 @@ test("creates an autonomous live turn when assistant output arrives without a fo
     return queryRef;
   });
 
-  const client = new ClaudeAgentClient({ logger });
+  const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
   const session = await client.createSession({
     provider: "claude",
     cwd: process.cwd(),
@@ -634,7 +634,7 @@ test("auto-completes an open autonomous turn when a foreground prompt starts", a
     return queryRef;
   });
 
-  const client = new ClaudeAgentClient({ logger });
+  const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
   const session = await client.createSession({
     provider: "claude",
     cwd: process.cwd(),

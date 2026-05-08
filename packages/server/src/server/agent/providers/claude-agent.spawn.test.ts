@@ -77,6 +77,7 @@ describe("Claude spawn override", () => {
     const client = new ClaudeAgentClient({
       logger: createTestLogger(),
       queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
     });
     const session = await client.createSession({
       provider: "claude",

@@ -157,7 +157,7 @@ describe("ClaudeAgentSession history replay regression", () => {
 
   test("does not replay persisted history during the first live stream turn", async () => {
     const logger = createTestLogger();
-    const client = new ClaudeAgentClient({ logger });
+    const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
     const handle: AgentPersistenceHandle = {
       provider: "claude",
       sessionId: "history-session",
@@ -194,7 +194,7 @@ describe("ClaudeAgentSession history replay regression", () => {
 
   test("still exposes persisted history through streamHistory", async () => {
     const logger = createTestLogger();
-    const client = new ClaudeAgentClient({ logger });
+    const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
     const handle: AgentPersistenceHandle = {
       provider: "claude",
       sessionId: "history-session",
@@ -223,7 +223,7 @@ describe("ClaudeAgentSession history replay regression", () => {
 
   test("listCommands includes rewind command", async () => {
     const logger = createTestLogger();
-    const client = new ClaudeAgentClient({ logger });
+    const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
     const handle: AgentPersistenceHandle = {
       provider: "claude",
       sessionId: "history-session",
@@ -245,7 +245,7 @@ describe("ClaudeAgentSession history replay regression", () => {
 
   test("slash /rewind uses latest user message id from persisted history", async () => {
     const logger = createTestLogger();
-    const client = new ClaudeAgentClient({ logger });
+    const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
     const handle: AgentPersistenceHandle = {
       provider: "claude",
       sessionId: "history-session",
