@@ -1,7 +1,8 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
+import * as executableUtils from "../../../../utils/executable.js";
 import {
   ClaudeAgentClient,
   convertClaudeHistoryEntry,
@@ -13,6 +14,10 @@ interface TestClaudeSession {
   translateMessageToEvents(message: SDKMessage): AgentStreamEvent[];
   convertUsage(message: SDKMessage): AgentUsage | undefined;
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("convertClaudeHistoryEntry", () => {
   test("maps user tool results to timeline items", () => {
@@ -366,6 +371,59 @@ describe("ClaudeAgentClient.listModels", () => {
 
     const defaultModel = models.find((m) => m.isDefault);
     expect(defaultModel?.id).toBe("claude-opus-4-6");
+  });
+});
+
+describe("ClaudeAgentClient binary resolution", () => {
+  const logger = createTestLogger();
+
+  test("uses the replace-command override binary when claude is not on PATH", async () => {
+    const customClaudePath = "/path/to/custom-claude";
+    vi.spyOn(executableUtils, "findExecutable").mockImplementation(async (name: string) => {
+      if (name === "claude") {
+        return null;
+      }
+      if (name === customClaudePath) {
+        return customClaudePath;
+      }
+      return null;
+    });
+
+    const queryReturn = vi.fn();
+    queryReturn.mockResolvedValue(undefined);
+    const queryFactory = vi.fn(() => ({
+      close: vi.fn(),
+      return: queryReturn,
+    }));
+
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      runtimeSettings: {
+        command: {
+          mode: "replace",
+          argv: [customClaudePath],
+        },
+      },
+    });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    await expect(
+      (
+        session as unknown as {
+          ensureQuery(): Promise<unknown>;
+        }
+      ).ensureQuery(),
+    ).resolves.toBeDefined();
+
+    expect(queryFactory.mock.calls[0]?.[0].options.pathToClaudeCodeExecutable).toBe(
+      customClaudePath,
+    );
+
+    await session.close();
   });
 });
 

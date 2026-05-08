@@ -1169,7 +1169,7 @@ export class ClaudeAgentClient implements AgentClient {
     this.logger = options.logger.child({ module: "agent", provider: "claude" });
     this.runtimeSettings = options.runtimeSettings;
     this.queryFactory = options.queryFactory;
-    this.resolveBinary = options.resolveBinary ?? resolveClaudeBinary;
+    this.resolveBinary = options.resolveBinary ?? (() => resolveClaudeBinary(this.runtimeSettings));
   }
 
   async createSession(
@@ -1296,7 +1296,15 @@ export class ClaudeAgentClient implements AgentClient {
   }
 }
 
-async function resolveClaudeBinary(): Promise<string> {
+async function resolveClaudeBinary(runtimeSettings?: ProviderRuntimeSettings): Promise<string> {
+  const command = runtimeSettings?.command;
+  if (command?.mode === "replace") {
+    const foundOverride = await findExecutable(command.argv[0]);
+    if (foundOverride) {
+      return foundOverride;
+    }
+  }
+
   const found = await findExecutable("claude");
   if (found) {
     return found;
