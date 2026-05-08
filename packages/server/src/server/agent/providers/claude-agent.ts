@@ -1329,9 +1329,7 @@ export class ClaudeAgentClient implements AgentClient {
     if (command?.mode === "replace") {
       return await isCommandAvailable(command.argv[0]);
     }
-    // Default mode uses @anthropic-ai/claude-agent-sdk's bundled cli.js run
-    // via process.execPath. No external `claude` binary is required.
-    return true;
+    return await isCommandAvailable("claude");
   }
 
   async getDiagnostic(): Promise<{ diagnostic: string }> {
@@ -1381,6 +1379,16 @@ export class ClaudeAgentClient implements AgentClient {
     }
     return { ...config, provider: "claude" } as ClaudeAgentConfig;
   }
+}
+
+async function resolveClaudeBinary(): Promise<string> {
+  const found = await findExecutable("claude");
+  if (found) {
+    return found;
+  }
+  throw new Error(
+    "Claude binary not found. Install Claude Code (https://github.com/anthropics/claude-code) and ensure it is available in your shell PATH.",
+  );
 }
 
 async function resolveClaudeVersion(
@@ -2256,11 +2264,6 @@ class ClaudeAgentSession implements AgentSession {
         ? this.config.thinkingOptionId
         : undefined;
     if (thinkingOptionId && isClaudeThinkingEffort(thinkingOptionId)) {
-      if (thinkingOptionId === "xhigh") {
-        // "xhigh" is accepted by Claude Opus 4.7 but not yet in the SDK type definitions
-        // @ts-expect-error -- SDK 0.2.71 effort type doesn't include "xhigh" yet
-        return { thinking: { type: "adaptive" }, effort: thinkingOptionId };
-      }
       return { thinking: { type: "adaptive" }, effort: thinkingOptionId };
     }
     return { thinking: undefined, effort: undefined };
@@ -2290,7 +2293,7 @@ class ClaudeAgentSession implements AgentSession {
       ],
     });
 
-    const claudeBinary = await findExecutable("claude");
+    const claudeBinary = await resolveClaudeBinary();
     this.logger.debug(
       {
         claudeBinary,
@@ -2311,7 +2314,7 @@ class ClaudeAgentSession implements AgentSession {
       allowDangerouslySkipPermissions: true,
       agents: this.defaults?.agents,
       canUseTool: this.handlePermissionRequest,
-      ...(claudeBinary ? { pathToClaudeCodeExecutable: claudeBinary } : {}),
+      pathToClaudeCodeExecutable: claudeBinary,
       // Use Claude Code preset system prompt and load CLAUDE.md files
       // Append provider-agnostic system prompt and orchestrator instructions for agents.
       systemPrompt: {
