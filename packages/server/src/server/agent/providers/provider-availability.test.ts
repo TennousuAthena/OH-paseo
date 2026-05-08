@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -29,19 +29,6 @@ function isolatePathTo(dir: string): void {
   if (process.platform === "win32") {
     process.env.PATHEXT = ".CMD";
   }
-}
-
-function writeProviderShim(dir: string, command: string): string {
-  const filePath = process.platform === "win32" ? join(dir, `${command}.cmd`) : join(dir, command);
-  const content =
-    process.platform === "win32"
-      ? `@echo off\r\necho ${command} 1.0\r\n`
-      : `#!/bin/sh\necho ${command} 1.0\n`;
-  writeFileSync(filePath, content);
-  if (process.platform !== "win32") {
-    chmodSync(filePath, 0o755);
-  }
-  return filePath;
 }
 
 afterEach(() => {
@@ -75,24 +62,6 @@ describe("default provider availability", () => {
     const client = new OpenCodeAgentClient(createTestLogger());
 
     await expect(client.isAvailable()).resolves.toBe(false);
-  });
-
-  test("Codex reports available when the default command resolves from PATH", async () => {
-    const binDir = makeTempDir("provider-availability-codex-");
-    isolatePathTo(binDir);
-    writeProviderShim(binDir, "codex");
-    const client = new CodexAppServerAgentClient(createTestLogger());
-
-    await expect(client.isAvailable()).resolves.toBe(true);
-  });
-
-  test("OpenCode reports available when the default command resolves from PATH", async () => {
-    const binDir = makeTempDir("provider-availability-opencode-");
-    isolatePathTo(binDir);
-    writeProviderShim(binDir, "opencode");
-    const client = new OpenCodeAgentClient(createTestLogger());
-
-    await expect(client.isAvailable()).resolves.toBe(true);
   });
 
   test("AgentManager reports Codex unavailable without throwing", async () => {

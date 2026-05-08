@@ -2,9 +2,10 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { isPlatform } from "../test-utils/platform.js";
 import { searchHomeDirectories, searchWorkspaceEntries } from "./directory-suggestions.js";
 
-const isWindows = process.platform === "win32";
+const isWindows = isPlatform("win32");
 
 describe("searchHomeDirectories", () => {
   let tempRoot: string;
@@ -18,6 +19,8 @@ describe("searchHomeDirectories", () => {
 
     mkdirSync(homeDir, { recursive: true });
     mkdirSync(outsideDir, { recursive: true });
+    homeDir = realpathSync(homeDir);
+    outsideDir = realpathSync(outsideDir);
 
     mkdirSync(path.join(homeDir, "projects", "paseo"), { recursive: true });
     mkdirSync(path.join(homeDir, "projects", "playground"), { recursive: true });
@@ -26,7 +29,9 @@ describe("searchHomeDirectories", () => {
     writeFileSync(path.join(homeDir, "projects", "README.md"), "not a directory\n");
 
     mkdirSync(path.join(outsideDir, "outside-match"), { recursive: true });
-    symlinkSync(path.join(outsideDir, "outside-match"), path.join(homeDir, "outside-link"));
+    if (!isWindows) {
+      symlinkSync(path.join(outsideDir, "outside-match"), path.join(homeDir, "outside-link"));
+    }
   });
 
   afterEach(() => {
@@ -50,8 +55,9 @@ describe("searchHomeDirectories", () => {
       limit: 10,
     });
 
-    expect(results).toContain(path.join(homeDir, "projects"));
-    expect(results).toContain(path.join(homeDir, "projects", "paseo"));
+    const resolvedResults = results.map((result) => realpathSync.native(result));
+    expect(resolvedResults).toContain(realpathSync.native(path.join(homeDir, "projects")));
+    expect(resolvedResults).toContain(realpathSync.native(path.join(homeDir, "projects", "paseo")));
     expect(results).not.toContain(path.join(homeDir, "projects", "README.md"));
   });
 
@@ -62,7 +68,9 @@ describe("searchHomeDirectories", () => {
       limit: 10,
     });
 
-    expect(results).toEqual([path.join(homeDir, "projects", "paseo")]);
+    expect(results.map((result) => realpathSync.native(result))).toEqual([
+      realpathSync.native(path.join(homeDir, "projects", "paseo")),
+    ]);
   });
 
   it("prioritizes exact segment matches before segment-prefix matches", async () => {
@@ -77,8 +85,9 @@ describe("searchHomeDirectories", () => {
       limit: 30,
     });
 
-    const exactIndex = results.indexOf(exactSegmentPath);
-    const prefixIndex = results.indexOf(prefixSegmentPath);
+    const resolvedResults = results.map((result) => realpathSync.native(result));
+    const exactIndex = resolvedResults.indexOf(realpathSync.native(exactSegmentPath));
+    const prefixIndex = resolvedResults.indexOf(realpathSync.native(prefixSegmentPath));
     expect(exactIndex).toBeGreaterThanOrEqual(0);
     expect(prefixIndex).toBeGreaterThanOrEqual(0);
     expect(exactIndex).toBeLessThan(prefixIndex);
@@ -96,8 +105,9 @@ describe("searchHomeDirectories", () => {
       limit: 30,
     });
 
-    const earlierIndex = results.indexOf(earlierPath);
-    const laterIndex = results.indexOf(laterPath);
+    const resolvedResults = results.map((result) => realpathSync.native(result));
+    const earlierIndex = resolvedResults.indexOf(realpathSync.native(earlierPath));
+    const laterIndex = resolvedResults.indexOf(realpathSync.native(laterPath));
     expect(earlierIndex).toBeGreaterThanOrEqual(0);
     expect(laterIndex).toBeGreaterThanOrEqual(0);
     expect(earlierIndex).toBeLessThan(laterIndex);
@@ -125,7 +135,8 @@ describe("searchHomeDirectories", () => {
     expect(results).not.toContain(path.join(homeDir, ".hidden", "cache"));
   });
 
-  it("does not return paths that escape home through symlinks", async () => {
+  // POSIX-only: creates and follows a symlink escape fixture.
+  it.skipIf(isWindows)("does not return paths that escape home through symlinks", async () => {
     const results = await searchHomeDirectories({
       homeDir,
       query: "outside",
@@ -170,7 +181,9 @@ describe("searchWorkspaceEntries", () => {
     );
     writeFileSync(path.join(workspaceDir, "docs", "notes.md"), "notes\n");
 
-    symlinkSync(path.join(outsideDir, "escaped"), path.join(workspaceDir, "escaped-link"));
+    if (!isWindows) {
+      symlinkSync(path.join(outsideDir, "escaped"), path.join(workspaceDir, "escaped-link"));
+    }
   });
 
   afterEach(() => {
@@ -214,28 +227,32 @@ describe("searchWorkspaceEntries", () => {
     expect(filesOnly).toEqual([{ path: "README.md", kind: "file" }]);
   });
 
-  it("supports path-style queries and does not escape cwd through symlinks", async () => {
-    const pathResults = await searchWorkspaceEntries({
-      cwd: workspaceDir,
-      query: "src/co",
-      limit: 20,
-      includeFiles: true,
-      includeDirectories: true,
-    });
-    expect(pathResults).toContainEqual({
-      path: "src/components",
-      kind: "directory",
-    });
+  // POSIX-only: creates and follows a symlink escape fixture.
+  it.skipIf(isWindows)(
+    "supports path-style queries and does not escape cwd through symlinks",
+    async () => {
+      const pathResults = await searchWorkspaceEntries({
+        cwd: workspaceDir,
+        query: "src/co",
+        limit: 20,
+        includeFiles: true,
+        includeDirectories: true,
+      });
+      expect(pathResults).toContainEqual({
+        path: "src/components",
+        kind: "directory",
+      });
 
-    const escapedResults = await searchWorkspaceEntries({
-      cwd: workspaceDir,
-      query: "escaped",
-      limit: 20,
-      includeFiles: true,
-      includeDirectories: true,
-    });
-    expect(escapedResults.some((entry) => entry.path.includes("escaped-link"))).toBe(false);
-  });
+      const escapedResults = await searchWorkspaceEntries({
+        cwd: workspaceDir,
+        query: "escaped",
+        limit: 20,
+        includeFiles: true,
+        includeDirectories: true,
+      });
+      expect(escapedResults.some((entry) => entry.path.includes("escaped-link"))).toBe(false);
+    },
+  );
 
   it("ignores node_modules entries so deep workspace files still resolve under scan limits", async () => {
     mkdirSync(path.join(workspaceDir, "packages", "app", "src", "app"), { recursive: true });

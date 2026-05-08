@@ -1,7 +1,8 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
+import { realpathSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 
@@ -23,6 +24,9 @@ import type { CreatePaseoWorktreeWorkflowFn } from "../worktree-session.js";
 import { WorkspaceGitServiceImpl } from "../workspace-git-service.js";
 import type { GitHubService } from "../../services/github-service.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
+
+const REPO_CWD = resolvePath("/tmp/repo");
+const TARGET_CWD = resolvePath("/tmp/target");
 
 interface LooseSafeParseResult {
   success: boolean;
@@ -583,7 +587,7 @@ describe("create_agent MCP tool", () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockResolvedValue({
       id: "agent-123",
-      cwd: "/tmp/repo",
+      cwd: REPO_CWD,
       lifecycle: "idle",
       currentModeId: null,
       availableModes: [],
@@ -613,7 +617,7 @@ describe("create_agent MCP tool", () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockResolvedValue({
       id: "agent-456",
-      cwd: "/tmp/repo",
+      cwd: REPO_CWD,
       lifecycle: "idle",
       currentModeId: null,
       availableModes: [],
@@ -642,7 +646,7 @@ describe("create_agent MCP tool", () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockResolvedValue({
       id: "agent-789",
-      cwd: "/tmp/repo",
+      cwd: REPO_CWD,
       lifecycle: "idle",
       currentModeId: null,
       availableModes: [],
@@ -685,14 +689,20 @@ describe("create_agent MCP tool", () => {
     const startedAgentSetupIds: string[] = [];
 
     try {
-      execSync(`git init ${JSON.stringify(repoDir)}`, { stdio: "pipe" });
-      execSync("git config user.email test@example.com", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config user.name Test", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config commit.gpgsign false", { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["init", repoDir], { stdio: "pipe" });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["config", "commit.gpgsign", "false"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
       await writeFile(join(repoDir, "README.md"), "hello\n");
-      execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
-      execSync("git commit -m init", { cwd: repoDir, stdio: "pipe" });
-      execSync("git branch -M main", { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["add", "README.md"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["commit", "-m", "init"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["branch", "-M", "main"], { cwd: repoDir, stdio: "pipe" });
 
       spies.agentManager.createAgent.mockImplementation(async (config: { cwd: string }) => ({
         id: "agent-with-worktree",
@@ -757,14 +767,20 @@ describe("create_agent MCP tool", () => {
     };
 
     try {
-      execSync(`git init ${JSON.stringify(repoDir)}`, { stdio: "pipe" });
-      execSync("git config user.email test@example.com", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config user.name Test", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config commit.gpgsign false", { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["init", repoDir], { stdio: "pipe" });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["config", "commit.gpgsign", "false"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
       await writeFile(join(repoDir, "README.md"), "hello\n");
-      execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
-      execSync("git commit -m init", { cwd: repoDir, stdio: "pipe" });
-      execSync("git branch -M main", { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["add", "README.md"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["commit", "-m", "init"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["branch", "-M", "main"], { cwd: repoDir, stdio: "pipe" });
 
       spies.agentManager.createAgent.mockImplementation(async (config: { cwd: string }) => ({
         id: "agent-auto-named-worktree",
@@ -798,7 +814,10 @@ describe("create_agent MCP tool", () => {
       });
 
       const agentCwd = z.string().parse(spies.agentManager.createAgent.mock.calls[0]?.[0].cwd);
-      const initialBranch = execSync("git branch --show-current", { cwd: agentCwd, stdio: "pipe" })
+      const initialBranch = execFileSync("git", ["branch", "--show-current"], {
+        cwd: agentCwd,
+        stdio: "pipe",
+      })
         .toString()
         .trim();
       expect(initialBranch).not.toBe("");
@@ -824,19 +843,28 @@ describe("create_agent MCP tool", () => {
     };
 
     try {
-      execSync(`git init ${JSON.stringify(repoDir)}`, { stdio: "pipe" });
-      execSync("git config user.email test@example.com", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config user.name Test", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config commit.gpgsign false", { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["init", repoDir], { stdio: "pipe" });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["config", "commit.gpgsign", "false"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
       await writeFile(join(repoDir, "README.md"), "hello\n");
-      execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
-      execSync("git commit -m init", { cwd: repoDir, stdio: "pipe" });
-      execSync("git branch -M main", { cwd: repoDir, stdio: "pipe" });
-      execSync("git checkout -b existing-feature", { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["add", "README.md"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["commit", "-m", "init"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["branch", "-M", "main"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["checkout", "-b", "existing-feature"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
       await writeFile(join(repoDir, "feature.txt"), "feature\n");
-      execSync("git add feature.txt", { cwd: repoDir, stdio: "pipe" });
-      execSync("git commit -m feature", { cwd: repoDir, stdio: "pipe" });
-      execSync("git checkout main", { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["add", "feature.txt"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["commit", "-m", "feature"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["checkout", "main"], { cwd: repoDir, stdio: "pipe" });
 
       spies.agentManager.createAgent.mockImplementation(async (config: { cwd: string }) => ({
         id: "agent-checkout-worktree",
@@ -871,7 +899,9 @@ describe("create_agent MCP tool", () => {
 
       const agentCwd = z.string().parse(spies.agentManager.createAgent.mock.calls[0]?.[0].cwd);
       expect(
-        execSync("git branch --show-current", { cwd: agentCwd, stdio: "pipe" }).toString().trim(),
+        execFileSync("git", ["branch", "--show-current"], { cwd: agentCwd, stdio: "pipe" })
+          .toString()
+          .trim(),
       ).toBe("existing-feature");
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
@@ -901,7 +931,7 @@ describe("create_agent MCP tool", () => {
         },
         workspace: {
           workspaceId: "/tmp/worktrees/pr-123",
-          projectId: "/tmp/repo",
+          projectId: REPO_CWD,
           cwd: "/tmp/worktrees/pr-123",
           kind: "worktree" as const,
           displayName: "pr-123",
@@ -909,7 +939,7 @@ describe("create_agent MCP tool", () => {
           updatedAt: "2026-04-30T00:00:00.000Z",
           archivedAt: null,
         },
-        repoRoot: "/tmp/repo",
+        repoRoot: REPO_CWD,
         created: true,
         ...(options?.setupContinuation?.kind === "agent"
           ? {
@@ -949,7 +979,7 @@ describe("create_agent MCP tool", () => {
     });
     const tool = registeredTool(server, "create_agent");
     await tool.callback({
-      cwd: "/tmp/repo",
+      cwd: REPO_CWD,
       title: "PR agent",
       provider: "codex/gpt-5.4",
       initialPrompt: "Rename this PR branch from prompt",
@@ -985,14 +1015,20 @@ describe("create_agent MCP tool", () => {
     const setupContinuations: Array<"workspace" | "agent" | undefined> = [];
 
     try {
-      execSync(`git init ${JSON.stringify(repoDir)}`, { stdio: "pipe" });
-      execSync("git config user.email test@example.com", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config user.name Test", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config commit.gpgsign false", { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["init", repoDir], { stdio: "pipe" });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["config", "commit.gpgsign", "false"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
       await writeFile(join(repoDir, "README.md"), "hello\n");
-      execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
-      execSync("git commit -m init", { cwd: repoDir, stdio: "pipe" });
-      execSync("git branch -M main", { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["add", "README.md"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["commit", "-m", "init"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["branch", "-M", "main"], { cwd: repoDir, stdio: "pipe" });
       const workspaceGitService = {
         getSnapshot: vi.fn(async () => null),
       };
@@ -1031,19 +1067,27 @@ describe("create_agent MCP tool", () => {
 
   it("forces a workspace git snapshot refresh when archive_worktree deletes a worktree", async () => {
     const { agentManager, agentStorage } = createTestDeps();
-    const tempDir = await mkdtemp(join(tmpdir(), "paseo-mcp-archive-worktree-"));
+    const tempDir = realpathSync.native(
+      await mkdtemp(join(tmpdir(), "paseo-mcp-archive-worktree-")),
+    );
     const repoDir = join(tempDir, "repo");
     const paseoHome = join(tempDir, ".paseo");
 
     try {
-      execSync(`git init ${JSON.stringify(repoDir)}`, { stdio: "pipe" });
-      execSync("git config user.email test@example.com", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config user.name Test", { cwd: repoDir, stdio: "pipe" });
-      execSync("git config commit.gpgsign false", { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["init", repoDir], { stdio: "pipe" });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["config", "commit.gpgsign", "false"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
       await writeFile(join(repoDir, "README.md"), "hello\n");
-      execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
-      execSync("git commit -m init", { cwd: repoDir, stdio: "pipe" });
-      execSync("git branch -M main", { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["add", "README.md"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["commit", "-m", "init"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["branch", "-M", "main"], { cwd: repoDir, stdio: "pipe" });
 
       const workspaceGitService = {
         getSnapshot: vi.fn(async () => null),
@@ -1126,9 +1170,9 @@ describe("create_agent MCP tool", () => {
     });
     const tool = registeredTool(server, "list_worktrees");
 
-    const response = await tool.callback({ cwd: "/tmp/repo" });
+    const response = await tool.callback({ cwd: REPO_CWD });
 
-    expect(workspaceGitService.listWorktrees).toHaveBeenCalledWith("/tmp/repo", {
+    expect(workspaceGitService.listWorktrees).toHaveBeenCalledWith(REPO_CWD, {
       reason: "mcp:list-worktrees",
     });
     expect(response.structuredContent.worktrees).toEqual([
@@ -1214,7 +1258,7 @@ describe("create_agent MCP tool", () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockResolvedValue({
       id: "agent-injected-123",
-      cwd: "/tmp/repo",
+      cwd: REPO_CWD,
       lifecycle: "idle",
       currentModeId: null,
       availableModes: [],
@@ -1662,7 +1706,7 @@ describe("agent snapshot MCP serialization", () => {
       createManagedAgent({
         id: "agent-compact",
         provider: "codex",
-        cwd: "/tmp/repo",
+        cwd: REPO_CWD,
         config: { model: "gpt-5.4", thinkingOptionId: "high" },
         runtimeInfo: { provider: "codex", sessionId: "session-123", model: "gpt-5.4" },
         labels: { role: "researcher" },
@@ -1687,7 +1731,7 @@ describe("agent snapshot MCP serialization", () => {
           thinkingOptionId: "high",
           effectiveThinkingOptionId: "high",
           status: "idle",
-          cwd: "/tmp/repo",
+          cwd: REPO_CWD,
           createdAt: expect.any(String),
           updatedAt: expect.any(String),
           lastUserMessageAt: null,
@@ -1916,28 +1960,32 @@ describe("agent snapshot MCP serialization", () => {
     spies.agentManager.listAgents.mockReturnValue([
       createManagedAgent({
         id: "running-target",
-        cwd: "/tmp/target",
+        cwd: TARGET_CWD,
         lifecycle: "running",
         updatedAt: new Date(recent),
       }),
       createManagedAgent({
         id: "idle-target",
-        cwd: "/tmp/target",
+        cwd: TARGET_CWD,
         lifecycle: "idle",
         updatedAt: new Date(recent),
       }),
       createManagedAgent({
         id: "old-running-target",
-        cwd: "/tmp/target",
+        cwd: TARGET_CWD,
         lifecycle: "running",
         createdAt: new Date(old),
         updatedAt: new Date(old),
       }),
     ]);
     spies.agentStorage.list.mockResolvedValue([
-      createStoredRecord({ id: "recent-archived", cwd: "/tmp/target", archivedAt: recent }),
-      createStoredRecord({ id: "old-archived", cwd: "/tmp/target", archivedAt: old }),
-      createStoredRecord({ id: "recent-other-cwd", cwd: "/tmp/other", archivedAt: recent }),
+      createStoredRecord({ id: "recent-archived", cwd: TARGET_CWD, archivedAt: recent }),
+      createStoredRecord({ id: "old-archived", cwd: TARGET_CWD, archivedAt: old }),
+      createStoredRecord({
+        id: "recent-other-cwd",
+        cwd: resolvePath("/tmp/other"),
+        archivedAt: recent,
+      }),
     ]);
 
     const server = await createAgentMcpServer({
@@ -1950,7 +1998,7 @@ describe("agent snapshot MCP serialization", () => {
     });
     const tool = registeredTool(server, "list_agents");
     const response = await tool.callback({
-      cwd: "/tmp/target",
+      cwd: TARGET_CWD,
       includeArchived: true,
       sinceHours: 48,
       statuses: ["running", "closed"],
@@ -2009,7 +2057,7 @@ describe("agent snapshot MCP serialization", () => {
     spies.agentStorage.list.mockResolvedValue([
       createStoredRecord({
         id: "stored-archived-compact",
-        cwd: "/tmp/repo",
+        cwd: REPO_CWD,
         updatedAt: now,
         lastActivityAt: now,
         archivedAt: now,
@@ -2033,7 +2081,7 @@ describe("agent snapshot MCP serialization", () => {
       },
     });
     const tool = registeredTool(server, "list_agents");
-    const response = await tool.callback({ cwd: "/tmp/repo", includeArchived: true });
+    const response = await tool.callback({ cwd: REPO_CWD, includeArchived: true });
     const item = agentsOf(response)[0];
 
     expect(item).toEqual({
@@ -2045,7 +2093,7 @@ describe("agent snapshot MCP serialization", () => {
       thinkingOptionId: null,
       effectiveThinkingOptionId: null,
       status: "closed",
-      cwd: "/tmp/repo",
+      cwd: REPO_CWD,
       createdAt: "2026-04-11T00:00:00.000Z",
       updatedAt: now,
       lastUserMessageAt: null,
