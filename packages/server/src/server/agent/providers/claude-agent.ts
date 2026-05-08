@@ -1381,16 +1381,6 @@ export class ClaudeAgentClient implements AgentClient {
   }
 }
 
-async function resolveClaudeBinary(): Promise<string> {
-  const found = await findExecutable("claude");
-  if (found) {
-    return found;
-  }
-  throw new Error(
-    "Claude binary not found. Install Claude Code (https://github.com/anthropics/claude-code) and ensure it is available in your shell PATH.",
-  );
-}
-
 async function resolveClaudeVersion(
   runtimeSettings?: ProviderRuntimeSettings,
 ): Promise<string | null> {
@@ -2293,7 +2283,7 @@ class ClaudeAgentSession implements AgentSession {
       ],
     });
 
-    const claudeBinary = await resolveClaudeBinary();
+    const claudeBinary = await findExecutable("claude");
     this.logger.debug(
       {
         claudeBinary,
@@ -2314,7 +2304,7 @@ class ClaudeAgentSession implements AgentSession {
       allowDangerouslySkipPermissions: true,
       agents: this.defaults?.agents,
       canUseTool: this.handlePermissionRequest,
-      pathToClaudeCodeExecutable: claudeBinary,
+      ...(claudeBinary ? { pathToClaudeCodeExecutable: claudeBinary } : {}),
       // Use Claude Code preset system prompt and load CLAUDE.md files
       // Append provider-agnostic system prompt and orchestrator instructions for agents.
       systemPrompt: {
