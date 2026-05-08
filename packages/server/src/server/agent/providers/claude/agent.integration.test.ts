@@ -269,7 +269,7 @@ describe("ClaudeAgentSession integration", () => {
         ),
       ).toBe(true);
     } finally {
-      await claudeQuery.return?.();
+      await query.return?.();
     }
   }, 60_000);
 
