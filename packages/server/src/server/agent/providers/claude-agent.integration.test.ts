@@ -6,7 +6,7 @@ import pino from "pino";
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import type { AgentSession, AgentStreamEvent, ToolCallTimelineItem } from "../agent-sdk-types.js";
-import { isCommandAvailable } from "../../../utils/executable.js";
+import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
 import { ClaudeAgentClient } from "./claude-agent.js";
 import { streamSession } from "./test-utils/session-stream-adapter.js";
@@ -223,6 +223,8 @@ describe("ClaudeAgentSession integration", () => {
   }, 60_000);
 
   test("supportedModels returns the current abstract Claude SDK model shape", async () => {
+    const claudeBinary = await findExecutable("claude");
+    if (!claudeBinary) throw new Error("claude binary required for this integration test");
     const claudeQuery = query({
       prompt: createEmptyPrompt(),
       options: {
@@ -230,6 +232,7 @@ describe("ClaudeAgentSession integration", () => {
         permissionMode: "plan",
         includePartialMessages: false,
         settingSources: ["user", "project"],
+        pathToClaudeCodeExecutable: claudeBinary,
       },
     });
 
