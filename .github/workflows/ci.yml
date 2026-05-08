@@ -88,7 +88,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install Claude Code CLI for provider tests
+      - name: Install Claude Code CLI for provider tests (Linux only)
+        if: runner.os == 'Linux'
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Build highlight dependency
