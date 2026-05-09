@@ -378,9 +378,9 @@ describe("ClaudeAgentSession integration", () => {
         streamSession(
           handle.session,
           [
-            "Use the Task tool to start a background sub-agent.",
-            "In that task, run the Bash command exactly: sleep 3 && echo BACKGROUND_DONE",
-            "Do not wait for task completion.",
+            "Use the Bash tool with run_in_background.",
+            "Run exactly: sleep 3",
+            "Do not wait for the task result.",
             "Reply immediately with exactly: SPAWNED",
             `When the background task completes later, reply with exactly: ${autonomousWakeToken}`,
           ].join(" "),
