@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 
 import type { ActionStatus } from "@/components/ui/dropdown-menu";
+import type { CheckoutPrMergeMethod, PullRequestMergeable } from "@server/shared/messages";
 
 export type GitActionId =
   | "commit"
@@ -8,6 +9,9 @@ export type GitActionId =
   | "push"
   | "pull-and-push"
   | "pr"
+  | "merge-pr-squash"
+  | "merge-pr-merge"
+  | "merge-pr-rebase"
   | "merge-branch"
   | "merge-from-base"
   | "archive-worktree";
@@ -21,6 +25,8 @@ export interface GitAction {
   status: ActionStatus;
   unavailableMessage?: string;
   icon?: ReactElement;
+  /** When true, a menu separator should be rendered before this item. */
+  startsGroup: boolean;
   handler: () => void;
 }
 
@@ -42,6 +48,10 @@ export interface BuildGitActionsInput {
   githubFeaturesEnabled: boolean;
   hasPullRequest: boolean;
   pullRequestUrl: string | null;
+  pullRequestState: "open" | "closed" | null;
+  pullRequestIsDraft: boolean;
+  pullRequestIsMerged: boolean;
+  pullRequestMergeable: PullRequestMergeable;
   hasRemote: boolean;
   isPaseoOwnedWorktree: boolean;
   isOnBaseBranch: boolean;
@@ -58,7 +68,29 @@ export interface BuildGitActionsInput {
 }
 
 const REMOTE_ACTION_IDS: GitActionId[] = ["pull", "push", "pull-and-push"];
-const FEATURE_ACTION_IDS: GitActionId[] = ["merge-from-base", "merge-branch", "pr"];
+const FEATURE_ACTION_IDS: GitActionId[] = [
+  "merge-from-base",
+  "merge-branch",
+  "pr",
+  "merge-pr-squash",
+  "merge-pr-merge",
+  "merge-pr-rebase",
+];
+
+const MERGE_PR_METHODS: Record<
+  "merge-pr-squash" | "merge-pr-merge" | "merge-pr-rebase",
+  { label: string; method: CheckoutPrMergeMethod }
+> = {
+  "merge-pr-squash": { label: "Squash and merge", method: "squash" },
+  "merge-pr-merge": { label: "Create a merge commit", method: "merge" },
+  "merge-pr-rebase": { label: "Rebase and merge", method: "rebase" },
+};
+
+export function narrowPullRequestState(state: string | null | undefined): "open" | "closed" | null {
+  if (state === "open") return "open";
+  if (state === "closed") return "closed";
+  return null;
+}
 
 export function buildGitActions(input: BuildGitActionsInput): GitActions {
   if (!input.isGit) {
@@ -75,6 +107,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     disabled: input.runtime.commit.disabled,
     status: input.runtime.commit.status,
     icon: input.runtime.commit.icon,
+    startsGroup: false,
     handler: input.runtime.commit.handler,
   });
 
@@ -87,6 +120,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     status: input.runtime.pull.status,
     unavailableMessage: input.runtime.pull.disabled ? undefined : getPullUnavailableMessage(input),
     icon: input.runtime.pull.icon,
+    startsGroup: false,
     handler: input.runtime.pull.handler,
   });
 
@@ -99,6 +133,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     status: input.runtime.push.status,
     unavailableMessage: input.runtime.push.disabled ? undefined : getPushUnavailableMessage(input),
     icon: input.runtime.push.icon,
+    startsGroup: false,
     handler: input.runtime.push.handler,
   });
 
@@ -113,14 +148,19 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
       ? undefined
       : getPullAndPushUnavailableMessage(input),
     icon: input.runtime["pull-and-push"].icon,
+    startsGroup: false,
     handler: input.runtime["pull-and-push"].handler,
   });
 
   allActions.set("pr", buildPrAction(input));
 
+  allActions.set("merge-pr-squash", buildMergePrAction(input, "merge-pr-squash"));
+  allActions.set("merge-pr-merge", buildMergePrAction(input, "merge-pr-merge"));
+  allActions.set("merge-pr-rebase", buildMergePrAction(input, "merge-pr-rebase"));
+
   allActions.set("merge-branch", {
     id: "merge-branch",
-    label: `Merge into ${input.baseRefLabel}`,
+    label: "Merge locally",
     pendingLabel: "Merging...",
     successLabel: "Merged",
     disabled: input.runtime["merge-branch"].disabled,
@@ -129,6 +169,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
       ? undefined
       : getMergeBranchUnavailableMessage(input),
     icon: input.runtime["merge-branch"].icon,
+    startsGroup: false,
     handler: input.runtime["merge-branch"].handler,
   });
 
@@ -143,6 +184,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
       ? undefined
       : getMergeFromBaseUnavailableMessage(input),
     icon: input.runtime["merge-from-base"].icon,
+    startsGroup: true,
     handler: input.runtime["merge-from-base"].handler,
   });
 
@@ -158,6 +200,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
         ? undefined
         : "Archive isn't available here because this workspace was not created as a Paseo worktree",
     icon: input.runtime["archive-worktree"].icon,
+    startsGroup: true,
     handler: input.runtime["archive-worktree"].handler,
   });
 
@@ -195,11 +238,17 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
   if (!input.isOnBaseBranch && canMergeFromBase(input)) {
     return "merge-from-base";
   }
+  if (canMergePr(input) && input.shipDefault === "pr") {
+    return "merge-pr-squash";
+  }
+  if (!input.isOnBaseBranch && input.aheadCount > 0 && input.shipDefault === "merge") {
+    return "merge-branch";
+  }
   if (input.githubFeaturesEnabled && input.hasPullRequest && input.pullRequestUrl) {
     return "pr";
   }
   if (!input.isOnBaseBranch && input.aheadCount > 0) {
-    return input.shipDefault === "merge" ? "merge-branch" : "pr";
+    return "pr";
   }
   return null;
 }
@@ -218,6 +267,7 @@ function buildPrAction(input: BuildGitActionsInput): GitAction {
           ? undefined
           : "View PR isn't available right now because GitHub isn't connected",
       icon: input.runtime.pr.icon,
+      startsGroup: false,
       handler: input.runtime.pr.handler,
     };
   }
@@ -233,7 +283,29 @@ function buildPrAction(input: BuildGitActionsInput): GitAction {
       ? undefined
       : getCreatePrUnavailableMessage(input),
     icon: input.runtime.pr.icon,
+    startsGroup: false,
     handler: input.runtime.pr.handler,
+  };
+}
+
+function buildMergePrAction(
+  input: BuildGitActionsInput,
+  id: "merge-pr-squash" | "merge-pr-merge" | "merge-pr-rebase",
+): GitAction {
+  const runtime = input.runtime[id];
+  const config = MERGE_PR_METHODS[id];
+  const unavailableMessage = getMergePrUnavailableMessage(input);
+  return {
+    id,
+    label: config.label,
+    pendingLabel: "Merging PR...",
+    successLabel: "PR merged",
+    disabled: runtime.disabled || shouldDisableMergePrAction(input),
+    status: runtime.status,
+    unavailableMessage: runtime.disabled ? undefined : unavailableMessage,
+    icon: runtime.icon,
+    startsGroup: id === "merge-pr-squash",
+    handler: runtime.handler,
   };
 }
 
@@ -251,6 +323,22 @@ function canMergeFromBase(input: BuildGitActionsInput): boolean {
     input.baseRefAvailable &&
     !input.hasUncommittedChanges &&
     input.behindBaseCount > 0
+  );
+}
+
+function canMergePr(input: BuildGitActionsInput): boolean {
+  return (
+    input.githubFeaturesEnabled &&
+    input.hasPullRequest &&
+    input.pullRequestState === "open" &&
+    !input.pullRequestIsDraft &&
+    !input.pullRequestIsMerged &&
+    input.pullRequestMergeable === "MERGEABLE" &&
+    input.aheadCount > 0 &&
+    !input.hasUncommittedChanges &&
+    input.behindOfOrigin === 0 &&
+    input.aheadOfOrigin === 0 &&
+    !canMergeFromBase(input)
   );
 }
 
@@ -327,4 +415,35 @@ function getMergeFromBaseUnavailableMessage(input: BuildGitActionsInput): string
     return `Update isn't available because this branch is already up to date with ${input.baseRefLabel}`;
   }
   return undefined;
+}
+
+function getMergePrUnavailableMessage(input: BuildGitActionsInput): string | undefined {
+  if (!input.githubFeaturesEnabled) {
+    return "Merge PR isn't available right now because GitHub isn't connected";
+  }
+  if (!input.hasPullRequest) {
+    return "Merge PR isn't available because there isn't a pull request yet";
+  }
+  if (input.pullRequestIsDraft) {
+    return "Merge PR isn't available because the pull request is still a draft";
+  }
+  if (input.pullRequestIsMerged) {
+    return "Merge PR isn't available because the pull request is already merged";
+  }
+  if (input.pullRequestState === "closed") {
+    return "Merge PR isn't available because the pull request is closed";
+  }
+  if (input.pullRequestMergeable === "CONFLICTING") {
+    return "Merge PR isn't available because the pull request has conflicts";
+  }
+  return undefined;
+}
+
+function shouldDisableMergePrAction(input: BuildGitActionsInput): boolean {
+  return (
+    input.pullRequestIsDraft ||
+    input.pullRequestIsMerged ||
+    input.pullRequestState === "closed" ||
+    input.pullRequestMergeable === "CONFLICTING"
+  );
 }

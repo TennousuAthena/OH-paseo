@@ -17,7 +17,7 @@ import {
   usePrPaneData,
   type UsePrPaneDataResult,
 } from "./use-pr-pane-data";
-import { useWorkspacePrHint } from "./use-checkout-pr-status-query";
+import { useWorkspacePrHint } from "@/git/use-pr-status-query";
 
 type CheckoutPrStatus = NonNullable<CheckoutPrStatusResponse["payload"]["status"]>;
 type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
@@ -67,6 +67,7 @@ function status(overrides: Partial<CheckoutPrStatus> = {}): CheckoutPrStatus {
     headRefName: "feature/pr-pane",
     isMerged: false,
     isDraft: false,
+    mergeable: "UNKNOWN",
     checks: [],
     reviewDecision: null,
     repoOwner: "getpaseo",

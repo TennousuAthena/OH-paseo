@@ -270,6 +270,7 @@ type GitMutationRefreshReason =
   | "push"
   | "merge-to-base"
   | "merge-from-base"
+  | "merge-pr"
   | "create-pr"
   | "switch-branch"
   | "create-branch"
@@ -2011,6 +2012,7 @@ export class Session {
     });
   }
 
+  // eslint-disable-next-line complexity
   private dispatchCheckoutMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "checkout_status_request":
@@ -2046,6 +2048,8 @@ export class Session {
         return this.handleCheckoutPushRequest(msg);
       case "checkout_pr_create_request":
         return this.handleCheckoutPrCreateRequest(msg);
+      case "checkout_pr_merge_request":
+        return this.handleCheckoutPrMergeRequest(msg);
       case "checkout_pr_status_request":
         return this.handleCheckoutPrStatusRequest(msg);
       case "pull_request_timeline_request":
@@ -5275,6 +5279,47 @@ export class Session {
           cwd,
           url: null,
           number: null,
+          error: toCheckoutError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  private async handleCheckoutPrMergeRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout_pr_merge_request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+
+    try {
+      const snapshot = await this.workspaceGitService.getSnapshot(cwd);
+      const prNumber = snapshot.github.pullRequest?.number;
+      if (typeof prNumber !== "number") {
+        throw new Error("Unable to determine GitHub pull request number for merge");
+      }
+
+      await this.github.mergePullRequest({
+        cwd,
+        prNumber,
+        mergeMethod: msg.mergeMethod,
+      });
+      await this.notifyGitMutation(cwd, "merge-pr", { invalidateGithub: true });
+
+      this.emit({
+        type: "checkout_pr_merge_response",
+        payload: {
+          cwd,
+          success: true,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "checkout_pr_merge_response",
+        payload: {
+          cwd,
+          success: false,
           error: toCheckoutError(error),
           requestId,
         },
@@ -8755,6 +8800,7 @@ export function normalizeCheckoutPrStatusPayload(
     headRefName: status.headRefName,
     isMerged: status.isMerged,
     isDraft: status.isDraft ?? false,
+    mergeable: status.mergeable ?? "UNKNOWN",
     checks: status.checks ?? [],
     checksStatus: status.checksStatus,
     reviewDecision: status.reviewDecision,
