@@ -4,36 +4,29 @@
 
 ### Added
 
-- **Import existing Claude, Codex, and OpenCode sessions** straight into Paseo — pick up a conversation you started in the terminal and keep going from the app, with full timeline rehydration. ([#766](https://github.com/getpaseo/paseo/pull/766))
-- **Subagents now appear in a collapsible section above the composer** so you can see and jump into the agents your main agent has spawned, without leaving the workspace. ([#532](https://github.com/getpaseo/paseo/pull/532))
-- **Merge PR action in the checkout pane** — merge a pull request directly from Paseo, with a real-GitHub end-to-end test backing it. ([#814](https://github.com/getpaseo/paseo/pull/814))
-- **Project-level prompts for metadata generation** — customize how titles and summaries are generated per project. ([#836](https://github.com/getpaseo/paseo/pull/836))
-- **Grouped project settings** with inline links to the relevant docs. ([#837](https://github.com/getpaseo/paseo/pull/837))
-- **Create an empty workspace without writing a prompt** — useful for opening a project just to browse or import a session. ([#834](https://github.com/getpaseo/paseo/pull/834))
-- **Import-agent pill above the draft composer** so you can quickly resume a recent terminal session as a Paseo agent. ([#833](https://github.com/getpaseo/paseo/pull/833))
-- **Rich context menu on desktop** — copy link, copy image, and spellcheck suggestions in the Electron desktop app.
-- **Codex `/archive` integration** — archiving a Codex-backed agent now archives the underlying native Codex thread too. ([#827](https://github.com/getpaseo/paseo/pull/827) by [@32r4](https://github.com/32r4))
+- **Import existing Claude, Codex, and OpenCode sessions** into Paseo — pick up a conversation you started in the terminal and keep going from the app, with the full timeline. ([#766](https://github.com/getpaseo/paseo/pull/766), [#833](https://github.com/getpaseo/paseo/pull/833))
+- **Subagents now appear in a collapsible section above the composer** so you can jump into agents your main agent spawned. ([#532](https://github.com/getpaseo/paseo/pull/532))
+- Merge a pull request directly from the checkout pane. ([#814](https://github.com/getpaseo/paseo/pull/814))
+- Customize the per-project prompts Paseo uses to auto-generate agent titles, branch names, commit messages, and pull request descriptions. ([#836](https://github.com/getpaseo/paseo/pull/836))
+- Open an empty workspace without typing a prompt first. ([#834](https://github.com/getpaseo/paseo/pull/834))
+- Project settings are now grouped with inline links to the relevant docs. ([#837](https://github.com/getpaseo/paseo/pull/837))
+- Rich context menu on desktop — copy link, copy image, and spellcheck suggestions.
+- Archiving a Codex-backed agent now archives the underlying native Codex thread too. ([#827](https://github.com/getpaseo/paseo/pull/827) by [@32r4](https://github.com/32r4))
 
 ### Improved
 
-- Workspace navigation auto-focuses the agent that needs your attention. ([#828](https://github.com/getpaseo/paseo/pull/828))
-- MCP `create_agent` inherits the caller's unattended mode when launching an agent on a different provider, instead of falling back to attended.
-- Subagent task notifications no longer flicker on archive, and the subagents track displays correctly across reloads.
+- Opening a workspace auto-focuses the agent that needs your attention. ([#828](https://github.com/getpaseo/paseo/pull/828))
+- An unattended agent that spawns a sub-agent on a different provider via MCP now starts the sub-agent in unattended mode too.
 
 ### Fixed
 
-- **Reload now properly rehydrates the timeline from disk** under a fresh epoch, so a reloaded imported agent picks up new entries instead of getting stuck on the previous view.
-- **Chat fanout and system-injected agent prompts unified** — fixes inconsistent delivery and formatting of system messages routed to multiple agents. ([#830](https://github.com/getpaseo/paseo/pull/830))
-- iOS project picker now submits the typed path correctly. ([#829](https://github.com/getpaseo/paseo/issues/829), [#831](https://github.com/getpaseo/paseo/pull/831))
-- The composer's working directory now sources from the agent's actual state, not the draft hook, so it stays in sync after reloads.
-- Workspace open no longer auto-focuses subagents.
-- Ephemeral Claude session transcripts are deleted on close so internal generator runs don't pollute the import sheet.
-- Markdown link clicks no longer trigger the underlying anchor's default behavior.
-- `QueryProvider` is hoisted above `PortalProvider` so portaled sheets can read from the React Query client.
+- iOS project picker now submits the typed path. ([#831](https://github.com/getpaseo/paseo/pull/831))
+- System messages and chat mentions routed to multiple agents now reach every recipient consistently. ([#830](https://github.com/getpaseo/paseo/pull/830))
+- Clicking a Markdown link in agent output no longer reloads the desktop app on top of opening the link.
 
 ### Security
 
-- **Local state file permissions are now restricted** so daemon keypairs, persisted config, and token stores are readable only by the owner. ([#825](https://github.com/getpaseo/paseo/pull/825) by [@joaosa](https://github.com/joaosa))
+- Local state files (daemon keypair, stored credentials, persisted config) are now readable only by the owning user. ([#825](https://github.com/getpaseo/paseo/pull/825) by [@joaosa](https://github.com/joaosa))
 
 ## 0.1.70 - 2026-05-08
 
