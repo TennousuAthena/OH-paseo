@@ -908,7 +908,12 @@ function MarkdownLink({
   }
 
   return (
-    <a href={href} onClick={preventAnchorNavigation} style={MARKDOWN_LINK_ANCHOR_STYLE}>
+    <a
+      href={href}
+      onClickCapture={preventAnchorNavigation}
+      onAuxClickCapture={preventAnchorNavigation}
+      style={MARKDOWN_LINK_ANCHOR_STYLE}
+    >
       <Pressable
         accessibilityRole="link"
         onPress={handlePress}
