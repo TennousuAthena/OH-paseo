@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, type PressableStateCallbackType, ScrollView, Text, View } from "react-native";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import type { DaemonClient, FetchRecentProviderSessionEntry } from "@server/client/daemon-client";
 import type { AgentProvider } from "@server/server/agent/agent-sdk-types";
 import { IMPORTABLE_PROVIDERS } from "@server/shared/importable-providers";
-import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { getProviderIcon } from "@/components/provider-icons";
 import { formatTimeAgo } from "@/utils/time";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
@@ -14,11 +16,7 @@ const IMPORTABLE_PROVIDER_IDS: Set<string> = new Set(IMPORTABLE_PROVIDERS);
 const PER_PROVIDER_LIMIT = 15;
 const IMPORT_SHEET_SNAP_POINTS = ["70%", "92%"];
 const DISABLED_ACCESSIBILITY_STATE = { disabled: true };
-
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
-const activityIndicatorColorMapping = (theme: { colors: { foregroundMuted: string } }) => ({
-  color: theme.colors.foregroundMuted,
-});
+const ALL_FILTER_VALUE = "__all__";
 
 type RecentProviderSessionsClient = Pick<
   DaemonClient,
@@ -188,8 +186,9 @@ function SheetStatusMessages({
   showEmptyState,
   allAlreadyImported,
 }: SheetStatusMessagesProps) {
+  const { theme } = useUnistyles();
   if (!isClientReady) {
-    return <Text style={styles.statusText}>Connect to a workspace to import agents.</Text>;
+    return <Text style={styles.statusText}>Connect to a workspace to import sessions</Text>;
   }
   if (isSnapshotUnsupported) {
     return <Text style={styles.statusText}>Update the host to import sessions.</Text>;
@@ -201,7 +200,7 @@ function SheetStatusMessages({
       ) : null}
       {isLoadingSessions ? (
         <View style={styles.statusRow}>
-          <ThemedActivityIndicator size="small" uniProps={activityIndicatorColorMapping} />
+          <LoadingSpinner color={theme.colors.foregroundMuted} />
           <Text style={styles.statusText}>Loading recent sessions...</Text>
         </View>
       ) : null}
@@ -227,65 +226,23 @@ function SheetStatusMessages({
   );
 }
 
-interface ProviderFilterBadgeProps {
-  testID: string;
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}
-
-function ProviderFilterBadge({ testID, label, selected, onPress }: ProviderFilterBadgeProps) {
-  const accessibilityState = useMemo(() => ({ selected }), [selected]);
-  const containerStyle = useMemo(
-    () => [
-      styles.filterBadge,
-      selected ? styles.filterBadgeSelected : styles.filterBadgeUnselected,
-    ],
-    [selected],
-  );
-  const textStyle = useMemo(
-    () => [
-      styles.filterBadgeLabel,
-      selected ? styles.filterBadgeLabelSelected : styles.filterBadgeLabelUnselected,
-    ],
-    [selected],
-  );
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={accessibilityState}
-      onPress={onPress}
-      style={containerStyle}
-      testID={testID}
-    >
-      <Text style={textStyle} numberOfLines={1}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function ProviderFilterBadgeItem({
-  provider,
-  label,
-  selected,
-  onSelect,
-}: {
-  provider: string;
-  label: string;
-  selected: boolean;
-  onSelect: (provider: string) => void;
-}) {
-  const handlePress = useCallback(() => onSelect(provider), [onSelect, provider]);
-  return (
-    <ProviderFilterBadge
-      testID={`workspace-import-filter-${provider}`}
-      label={label}
-      selected={selected}
-      onPress={handlePress}
-    />
-  );
+function buildProviderFilterOptions(
+  providers: ReadonlyArray<string>,
+  providerLabelById: ReadonlyMap<string, string>,
+): SegmentedControlOption<string>[] {
+  const options: SegmentedControlOption<string>[] = [
+    { value: ALL_FILTER_VALUE, label: "All", testID: "workspace-import-filter-all" },
+  ];
+  for (const provider of providers) {
+    const ProviderIcon = getProviderIcon(provider);
+    options.push({
+      value: provider,
+      label: providerLabelById.get(provider) ?? provider,
+      testID: `workspace-import-filter-${provider}`,
+      icon: ({ color, size }) => <ProviderIcon color={color} size={size} />,
+    });
+  }
+  return options;
 }
 
 function WorkspaceImportSheetRow({
@@ -311,6 +268,14 @@ function WorkspaceImportSheetRow({
   const handlePress = useCallback(() => {
     onImportSession(entry);
   }, [entry, onImportSession]);
+  const pressableStyle = useCallback(
+    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.row,
+      Boolean(hovered) && styles.rowHovered,
+      pressed && styles.rowPressed,
+    ],
+    [],
+  );
 
   return (
     <Pressable
@@ -318,25 +283,23 @@ function WorkspaceImportSheetRow({
       onPress={handlePress}
       accessibilityRole="button"
       accessibilityState={accessibilityState}
-      style={styles.row}
+      style={pressableStyle}
       testID={`workspace-import-session-${entry.providerId}-${entry.providerHandleId}`}
     >
-      <View style={styles.rowHeader}>
-        <View style={styles.rowProvider}>
-          <ProviderIcon size={theme.fontSize.sm} color={theme.colors.foregroundMuted} />
-          <Text style={styles.providerLabel} numberOfLines={1}>
-            {entry.providerLabel}
-          </Text>
-        </View>
-        <Text style={styles.lastActivity}>{lastActivity}</Text>
+      <View style={styles.rowIconWrap}>
+        <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
       </View>
-      <Text style={styles.rowTitle} numberOfLines={1}>
-        {title}
-      </Text>
-      <Text style={styles.promptPreview} numberOfLines={2}>
-        {promptPreview}
-      </Text>
-      {importing ? <Text style={styles.importingText}>Importing...</Text> : null}
+      <View style={styles.rowContent}>
+        <View style={styles.rowHeader}>
+          <Text style={styles.rowTitle} numberOfLines={1}>
+            {title}
+          </Text>
+          <Text style={styles.rowMeta}>{importing ? "Importing..." : lastActivity}</Text>
+        </View>
+        <Text style={styles.rowPreview} numberOfLines={2}>
+          {promptPreview}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -390,22 +353,28 @@ export function WorkspaceImportSheet({
     [queries],
   );
 
-  const badgeProviders = useMemo(() => [...(providersToFetch ?? [])].sort(), [providersToFetch]);
+  const filterProviders = useMemo(() => [...(providersToFetch ?? [])].sort(), [providersToFetch]);
 
-  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<string>(ALL_FILTER_VALUE);
 
   useEffect(() => {
-    if (!visible || (selectedProvider !== null && !badgeProviders.includes(selectedProvider))) {
-      setSelectedProvider(null);
+    if (
+      !visible ||
+      (selectedProvider !== ALL_FILTER_VALUE && !filterProviders.includes(selectedProvider))
+    ) {
+      setSelectedProvider(ALL_FILTER_VALUE);
     }
-  }, [visible, badgeProviders, selectedProvider]);
+  }, [visible, filterProviders, selectedProvider]);
 
   const visibleEntries = useMemo(() => {
-    if (selectedProvider === null) return aggregatedEntries;
+    if (selectedProvider === ALL_FILTER_VALUE) return aggregatedEntries;
     return aggregatedEntries.filter((entry) => entry.providerId === selectedProvider);
   }, [aggregatedEntries, selectedProvider]);
 
-  const handleSelectAll = useCallback(() => setSelectedProvider(null), []);
+  const filterOptions = useMemo(
+    () => buildProviderFilterOptions(filterProviders, providerLabelById),
+    [filterProviders, providerLabelById],
+  );
 
   const importMutation = useMutation({
     mutationFn: async (entry: FetchRecentProviderSessionEntry) => {
@@ -460,39 +429,30 @@ export function WorkspaceImportSheet({
     allQueriesSettled &&
     aggregatedEntries.length === 0;
   const allAlreadyImported = showEmptyState && totalAlreadyImportedCount > 0;
-  const showBadges = badgeProviders.length > 1;
+  const showFilter = filterProviders.length > 1;
 
   return (
     <AdaptiveModalSheet
       visible={visible}
       onClose={onClose}
-      title="Import agent"
+      title="Import session"
       testID="workspace-import-sheet"
       desktopMaxWidth={560}
       snapPoints={IMPORT_SHEET_SNAP_POINTS}
     >
-      {showBadges ? (
+      {showFilter ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterRow}
-          testID="workspace-import-filters"
         >
-          <ProviderFilterBadge
-            testID="workspace-import-filter-all"
-            label="All"
-            selected={selectedProvider === null}
-            onPress={handleSelectAll}
+          <SegmentedControl
+            testID="workspace-import-filters"
+            size="sm"
+            options={filterOptions}
+            value={selectedProvider}
+            onValueChange={setSelectedProvider}
           />
-          {badgeProviders.map((provider) => (
-            <ProviderFilterBadgeItem
-              key={provider}
-              provider={provider}
-              label={providerLabelById.get(provider) ?? provider}
-              selected={selectedProvider === provider}
-              onSelect={setSelectedProvider}
-            />
-          ))}
         </ScrollView>
       ) : null}
       <SheetStatusMessages
@@ -524,89 +484,65 @@ export function WorkspaceImportSheet({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  filterRow: {
+    flexDirection: "row",
+    paddingBottom: theme.spacing[2],
+  },
   list: {
-    gap: theme.spacing[2],
+    gap: theme.spacing[1],
   },
   row: {
-    gap: theme.spacing[1],
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-    borderRadius: theme.borderRadius.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
+    marginHorizontal: -theme.spacing[2],
+    borderRadius: theme.borderRadius.lg,
+  },
+  rowHovered: {
     backgroundColor: theme.colors.surface1,
-    padding: theme.spacing[3],
+  },
+  rowPressed: {
+    backgroundColor: theme.colors.surface2,
+  },
+  rowIconWrap: {
+    width: theme.iconSize.md,
+    paddingTop: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: theme.spacing[1],
   },
   rowHeader: {
-    minWidth: 0,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "baseline",
     justifyContent: "space-between",
     gap: theme.spacing[2],
   },
-  rowProvider: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  providerLabel: {
-    flex: 1,
-    minWidth: 0,
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-  },
-  filterRow: {
-    flexDirection: "row",
-    gap: theme.spacing[2],
-    paddingBottom: theme.spacing[2],
-  },
-  filterBadge: {
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.full,
-    borderWidth: theme.borderWidth[1],
-  },
-  filterBadgeSelected: {
-    backgroundColor: theme.colors.surface3,
-    borderColor: theme.colors.borderAccent,
-  },
-  filterBadgeUnselected: {
-    backgroundColor: "transparent",
-    borderColor: theme.colors.border,
-  },
-  filterBadgeLabel: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-  },
-  filterBadgeLabelSelected: {
-    color: theme.colors.foreground,
-  },
-  filterBadgeLabelUnselected: {
-    color: theme.colors.foregroundMuted,
-  },
-  lastActivity: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
   rowTitle: {
+    flex: 1,
+    minWidth: 0,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
   },
-  promptPreview: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    lineHeight: 19,
-  },
-  importingText: {
+  rowMeta: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
+  },
+  rowPreview: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    lineHeight: 20,
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
   },
   statusText: {
     color: theme.colors.foregroundMuted,

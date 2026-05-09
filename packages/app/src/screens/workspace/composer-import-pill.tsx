@@ -22,7 +22,7 @@ export function ComposerImportPill({ onPress, disabled = false }: ComposerImport
       <Pressable
         testID="composer-import-agent-pill"
         accessibilityRole="button"
-        accessibilityLabel="Import agent"
+        accessibilityLabel="Import session"
         onPress={onPress}
         disabled={disabled}
         onHoverIn={handleHoverIn}
@@ -31,7 +31,7 @@ export function ComposerImportPill({ onPress, disabled = false }: ComposerImport
       >
         <ThemedImportIcon size={14} uniProps={iconColorMapping} />
         <Text style={styles.label} numberOfLines={1}>
-          Import agent
+          Import session
         </Text>
       </Pressable>
     </View>

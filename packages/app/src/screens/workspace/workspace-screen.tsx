@@ -881,7 +881,7 @@ function WorkspaceHeaderMenu({
           disabled={importAgentDisabled}
           onSelect={onOpenImportSheet}
         >
-          Import agent...
+          Import session
         </DropdownMenuItem>
         <DropdownMenuItem
           testID="workspace-header-copy-path"

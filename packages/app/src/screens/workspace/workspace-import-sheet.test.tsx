@@ -11,14 +11,17 @@ import { WorkspaceImportSheet } from "@/screens/workspace/workspace-import-sheet
 
 const { theme } = vi.hoisted(() => ({
   theme: {
-    spacing: { 1: 4, 1.5: 6, 2: 8, 3: 12, 4: 16 },
+    spacing: { 1: 4, 1.5: 6, 2: 8, 3: 12, 4: 16, 6: 24 },
     borderWidth: { 1: 1 },
-    borderRadius: { md: 6, full: 9999 },
+    borderRadius: { md: 6, lg: 8, full: 9999 },
     fontSize: { xs: 11, sm: 13, base: 15 },
     fontWeight: { normal: "400", medium: "500", semibold: "600" },
+    iconSize: { sm: 14, md: 16 },
+    opacity: { 50: 0.5 },
     colors: {
       foreground: "#fff",
       foregroundMuted: "#aaa",
+      surface0: "#000",
       surface1: "#111",
       surface2: "#222",
       surface3: "#333",
@@ -56,6 +59,42 @@ vi.mock("@/constants/layout", () => ({
 
 vi.mock("@/components/provider-icons", () => ({
   getProviderIcon: () => () => null,
+}));
+
+vi.mock("@/components/ui/loading-spinner", () => ({
+  LoadingSpinner: () =>
+    React.createElement("span", { "data-testid": "workspace-import-loading-spinner" }),
+}));
+
+vi.mock("@/components/ui/segmented-control", () => ({
+  SegmentedControl: ({
+    options,
+    value,
+    onValueChange,
+    testID,
+  }: {
+    options: ReadonlyArray<{ value: string; label: string; testID?: string }>;
+    value: string;
+    onValueChange: (value: string) => void;
+    testID?: string;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-testid": testID },
+      options.map((option) =>
+        React.createElement(
+          "button",
+          {
+            key: option.value,
+            type: "button",
+            "data-testid": option.testID,
+            "data-selected": value === option.value,
+            onClick: () => onValueChange(option.value),
+          },
+          option.label,
+        ),
+      ),
+    ),
 }));
 
 vi.mock("@/components/adaptive-modal-sheet", () => ({
@@ -349,9 +388,8 @@ describe("WorkspaceImportSheet", () => {
       });
     });
 
-    await screen.findByText("Claude Code");
+    await screen.findByText("Implement the importer sheet");
     screen.getByText("2h ago");
-    screen.getByText("Implement the importer sheet");
     screen.getByText("Make the rows readable and provider opaque");
   });
 

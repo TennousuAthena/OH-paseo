@@ -179,6 +179,45 @@ test("listImportableProviderSessions filters, sorts, limits, and projects import
   });
 });
 
+test("listImportableProviderSessions filters out metadata generation sessions", async () => {
+  const cwd = "/tmp/project";
+  const descriptors = [
+    makeDescriptor({
+      sessionId: "metadata-session",
+      nativeHandle: "metadata-handle",
+      cwd,
+      title: "Generate metadata for a coding agent based on the user prom...",
+      lastActivityAt: "2026-04-30T12:05:00.000Z",
+      firstPrompt:
+        "Generate metadata for a coding agent based on the user prompt.\nTitle: short descriptive label (<= 40 chars).",
+    }),
+    makeDescriptor({
+      sessionId: "real-session",
+      nativeHandle: "real-handle",
+      cwd,
+      title: "Real session",
+      lastActivityAt: "2026-04-30T12:00:00.000Z",
+      firstPrompt: "hey hey",
+    }),
+  ];
+
+  const result = await listImportableProviderSessions({
+    request: makeRequest({ cwd, providers: ["codex"] }),
+    agentManager: {
+      listAgents: () => [],
+      listImportablePersistedAgents: async () => descriptors,
+    } satisfies Pick<AgentManager, "listAgents" | "listImportablePersistedAgents">,
+    agentStorage: {
+      list: async () => [],
+    } satisfies Pick<AgentStorage, "list">,
+    providerRegistry: { codex: { label: "Codex" } },
+  });
+
+  expect(result.entries).toHaveLength(1);
+  expect(result.entries[0].providerHandleId).toBe("real-handle");
+  expect(result.filteredAlreadyImportedCount).toBe(0);
+});
+
 test("listImportableProviderSessions rejects invalid since values", async () => {
   await expect(
     listImportableProviderSessions({

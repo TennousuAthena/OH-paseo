@@ -16,6 +16,9 @@ import type {
 
 type ImportAgentRequestMessage = z.infer<typeof ImportAgentRequestMessageSchema>;
 
+const METADATA_GENERATION_PROMPT_PREFIX =
+  "Generate metadata for a coding agent based on the user prompt.";
+
 export interface NormalizedImportAgentRequest {
   provider: string;
   providerHandleId: string;
@@ -91,6 +94,9 @@ export async function listImportableProviderSessions(
     if (sinceTimestamp !== null && descriptor.lastActivityAt.getTime() < sinceTimestamp) {
       continue;
     }
+    if (isMetadataGenerationDescriptor(descriptor)) {
+      continue;
+    }
     const providerHandleId =
       descriptor.persistence.nativeHandle ?? descriptor.persistence.sessionId;
     if (importedHandles.has(toProviderSessionHandleKey(descriptor.provider, providerHandleId))) {
@@ -142,6 +148,14 @@ async function collectImportedProviderSessionHandles(
 
 function toProviderSessionHandleKey(provider: string, providerHandleId: string): string {
   return `${provider}\0${providerHandleId}`;
+}
+
+function isMetadataGenerationDescriptor(descriptor: PersistedAgentDescriptor): boolean {
+  for (const item of descriptor.timeline) {
+    if (item.type !== "user_message") continue;
+    return item.text.trimStart().startsWith(METADATA_GENERATION_PROMPT_PREFIX);
+  }
+  return false;
 }
 
 function collectProviderSessionHandleKeys(
