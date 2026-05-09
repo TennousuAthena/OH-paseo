@@ -212,7 +212,7 @@ describe("SubagentsSection", () => {
   });
 
   describe("header copy", () => {
-    it("renders '2 subagents' when two rows have no running and no attention state", () => {
+    it("renders '2 subagents' when two rows are not running", () => {
       render([row({ id: "child-a" }), row({ id: "child-b" })]);
       expect(queryByTestId("subagents-section-header")?.textContent).toBe("2 subagents");
     });
@@ -228,14 +228,12 @@ describe("SubagentsSection", () => {
       );
     });
 
-    it("renders '1 subagent · 1 needs attention' for a single attention row", () => {
+    it("renders '1 subagent' for a finished row that still requires attention upstream", () => {
       render([row({ id: "child-a", requiresAttention: true })]);
-      expect(queryByTestId("subagents-section-header")?.textContent).toBe(
-        "1 subagent · 1 needs attention",
-      );
+      expect(queryByTestId("subagents-section-header")?.textContent).toBe("1 subagent");
     });
 
-    it("renders '5 subagents · 2 running · 1 needs attention' when both suffixes apply", () => {
+    it("renders '5 subagents · 2 running' when finished rows require attention upstream", () => {
       render([
         row({ id: "a", status: "running" }),
         row({ id: "b", status: "running" }),
@@ -244,31 +242,27 @@ describe("SubagentsSection", () => {
         row({ id: "e" }),
       ]);
       expect(queryByTestId("subagents-section-header")?.textContent).toBe(
-        "5 subagents · 2 running · 1 needs attention",
+        "5 subagents · 2 running",
       );
     });
   });
 
-  it("counts attention only from amber (idle + requiresAttention) rows", () => {
+  it("ignores requiresAttention for non-running header copy", () => {
     render([
       row({ id: "a", status: "error", requiresAttention: false }),
       row({ id: "b", status: "idle", requiresAttention: false }),
       row({ id: "c", status: "idle", requiresAttention: true }),
     ]);
-    expect(queryByTestId("subagents-section-header")?.textContent).toBe(
-      "3 subagents · 1 needs attention",
-    );
+    expect(queryByTestId("subagents-section-header")?.textContent).toBe("3 subagents");
   });
 
-  it("excludes errored or running rows from the needs attention count", () => {
+  it("still counts running rows even when they require attention", () => {
     render([
       row({ id: "a", status: "error", requiresAttention: true }),
       row({ id: "b", status: "running", requiresAttention: true }),
       row({ id: "c", status: "idle", requiresAttention: true }),
     ]);
-    expect(queryByTestId("subagents-section-header")?.textContent).toBe(
-      "3 subagents · 1 running · 1 needs attention",
-    );
+    expect(queryByTestId("subagents-section-header")?.textContent).toBe("3 subagents · 1 running");
   });
 
   it("renders each row through the shared workspace tab icon primitives", () => {

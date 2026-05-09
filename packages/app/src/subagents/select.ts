@@ -1,3 +1,4 @@
+import { usePendingArchiveAgentIds } from "@/hooks/use-archive-agent";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useSessionStore, type Agent } from "@/stores/session-store";
@@ -34,6 +35,7 @@ function toSubagentRow(agent: Agent): SubagentRow {
 export function selectSubagentsForParent(
   state: SessionStoreSnapshot,
   params: SelectSubagentsParams,
+  pendingArchiveIds: ReadonlySet<string>,
 ): SubagentRow[] {
   const agents = state.sessions[params.serverId]?.agents;
   if (!agents || agents.size === 0) {
@@ -42,7 +44,11 @@ export function selectSubagentsForParent(
 
   const rows: SubagentRow[] = [];
   for (const agent of agents.values()) {
-    if (agent.archivedAt || agent.parentAgentId !== params.parentAgentId) {
+    if (
+      agent.archivedAt ||
+      pendingArchiveIds.has(agent.id) ||
+      agent.parentAgentId !== params.parentAgentId
+    ) {
       continue;
     }
     rows.push(toSubagentRow(agent));
@@ -57,9 +63,10 @@ export function selectSubagentsForParent(
 }
 
 export function useSubagentsForParent(params: SelectSubagentsParams): SubagentRow[] {
+  const pendingArchiveIds = usePendingArchiveAgentIds(params.serverId);
   return useStoreWithEqualityFn(
     useSessionStore,
-    (state) => selectSubagentsForParent(state, params),
+    (state) => selectSubagentsForParent(state, params, pendingArchiveIds),
     equal,
   );
 }

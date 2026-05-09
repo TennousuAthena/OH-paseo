@@ -5,6 +5,7 @@ import { useSessionStore, type Agent } from "@/stores/session-store";
 
 const SERVER_ID = "server-1";
 const AGENT_TIMESTAMP = new Date("2026-03-08T10:00:00.000Z");
+const EMPTY_PENDING_ARCHIVE_IDS = new Set<string>();
 
 const AGENT_DEFAULTS: Agent = {
   serverId: SERVER_ID,
@@ -71,10 +72,14 @@ describe("selectSubagentsForParent", () => {
       }),
     ]);
 
-    const rows = selectSubagentsForParent(useSessionStore.getState(), {
-      serverId: SERVER_ID,
-      parentAgentId: "parent-a",
-    });
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      {
+        serverId: SERVER_ID,
+        parentAgentId: "parent-a",
+      },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
 
     expect(rows.map((row) => row.id)).toEqual(["child-a"]);
   });
@@ -89,10 +94,14 @@ describe("selectSubagentsForParent", () => {
       makeAgent({ id: "unrelated" }),
     ]);
 
-    const rows = selectSubagentsForParent(useSessionStore.getState(), {
-      serverId: SERVER_ID,
-      parentAgentId: "parent-a",
-    });
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      {
+        serverId: SERVER_ID,
+        parentAgentId: "parent-a",
+      },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
 
     expect(rows.map((row) => row.id)).toEqual(["child-a"]);
   });
@@ -104,14 +113,22 @@ describe("selectSubagentsForParent", () => {
       makeAgent({ id: "grandchild", parentAgentId: "child" }),
     ]);
 
-    const parentRows = selectSubagentsForParent(useSessionStore.getState(), {
-      serverId: SERVER_ID,
-      parentAgentId: "parent",
-    });
-    const childRows = selectSubagentsForParent(useSessionStore.getState(), {
-      serverId: SERVER_ID,
-      parentAgentId: "child",
-    });
+    const parentRows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      {
+        serverId: SERVER_ID,
+        parentAgentId: "parent",
+      },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
+    const childRows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      {
+        serverId: SERVER_ID,
+        parentAgentId: "child",
+      },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
 
     expect(parentRows.map((row) => row.id)).toEqual(["child"]);
     expect(childRows.map((row) => row.id)).toEqual(["grandchild"]);
@@ -137,10 +154,14 @@ describe("selectSubagentsForParent", () => {
       }),
     ]);
 
-    const rows = selectSubagentsForParent(useSessionStore.getState(), {
-      serverId: SERVER_ID,
-      parentAgentId: "parent",
-    });
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      {
+        serverId: SERVER_ID,
+        parentAgentId: "parent",
+      },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
 
     expect(rows.map((row) => row.id)).toEqual(["first", "second", "third"]);
   });
@@ -162,10 +183,14 @@ describe("selectSubagentsForParent", () => {
       }),
     ]);
 
-    const rows = selectSubagentsForParent(useSessionStore.getState(), {
-      serverId: SERVER_ID,
-      parentAgentId: "parent",
-    });
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      {
+        serverId: SERVER_ID,
+        parentAgentId: "parent",
+      },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
 
     expect(rows).toEqual([
       {
@@ -195,16 +220,24 @@ describe("selectSubagentsForParent", () => {
     setAgents([makeAgent({ id: "parent-a" }), makeAgent({ id: "parent-b" }), child]);
 
     expect(
-      selectSubagentsForParent(useSessionStore.getState(), {
-        serverId: SERVER_ID,
-        parentAgentId: "parent-a",
-      }).map((row) => row.id),
+      selectSubagentsForParent(
+        useSessionStore.getState(),
+        {
+          serverId: SERVER_ID,
+          parentAgentId: "parent-a",
+        },
+        EMPTY_PENDING_ARCHIVE_IDS,
+      ).map((row) => row.id),
     ).toEqual(["child"]);
     expect(
-      selectSubagentsForParent(useSessionStore.getState(), {
-        serverId: SERVER_ID,
-        parentAgentId: "parent-b",
-      }).map((row) => row.id),
+      selectSubagentsForParent(
+        useSessionStore.getState(),
+        {
+          serverId: SERVER_ID,
+          parentAgentId: "parent-b",
+        },
+        EMPTY_PENDING_ARCHIVE_IDS,
+      ).map((row) => row.id),
     ).toEqual([]);
 
     setAgents([
@@ -214,16 +247,68 @@ describe("selectSubagentsForParent", () => {
     ]);
 
     expect(
-      selectSubagentsForParent(useSessionStore.getState(), {
-        serverId: SERVER_ID,
-        parentAgentId: "parent-a",
-      }).map((row) => row.id),
+      selectSubagentsForParent(
+        useSessionStore.getState(),
+        {
+          serverId: SERVER_ID,
+          parentAgentId: "parent-a",
+        },
+        EMPTY_PENDING_ARCHIVE_IDS,
+      ).map((row) => row.id),
     ).toEqual([]);
     expect(
-      selectSubagentsForParent(useSessionStore.getState(), {
-        serverId: SERVER_ID,
-        parentAgentId: "parent-b",
-      }).map((row) => row.id),
+      selectSubagentsForParent(
+        useSessionStore.getState(),
+        {
+          serverId: SERVER_ID,
+          parentAgentId: "parent-b",
+        },
+        EMPTY_PENDING_ARCHIVE_IDS,
+      ).map((row) => row.id),
     ).toEqual(["child"]);
+  });
+
+  it("excludes children whose archive is pending", () => {
+    setAgents([
+      makeAgent({ id: "parent" }),
+      makeAgent({ id: "child-a", parentAgentId: "parent" }),
+      makeAgent({ id: "child-b", parentAgentId: "parent" }),
+    ]);
+
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      {
+        serverId: SERVER_ID,
+        parentAgentId: "parent",
+      },
+      new Set(["child-b"]),
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["child-a"]);
+  });
+
+  it("returns the shared empty array when pending archive hides the last child", () => {
+    setAgents([makeAgent({ id: "parent" }), makeAgent({ id: "child", parentAgentId: "parent" })]);
+
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      {
+        serverId: SERVER_ID,
+        parentAgentId: "parent",
+      },
+      new Set(["child"]),
+    );
+
+    expect(rows).toEqual([]);
+    expect(rows).toBe(
+      selectSubagentsForParent(
+        useSessionStore.getState(),
+        {
+          serverId: SERVER_ID,
+          parentAgentId: "missing-parent",
+        },
+        EMPTY_PENDING_ARCHIVE_IDS,
+      ),
+    );
   });
 });

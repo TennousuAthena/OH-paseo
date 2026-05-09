@@ -33,26 +33,15 @@ const SUBAGENTS_LIST_MAX_HEIGHT = 200;
 
 function formatHeaderLabel(rows: SubagentRow[]): string {
   let runningCount = 0;
-  let attentionCount = 0;
   for (const row of rows) {
     if (row.status === "running") {
       runningCount += 1;
-    }
-    const bucket = deriveSidebarStateBucket({
-      status: row.status,
-      requiresAttention: row.requiresAttention,
-    });
-    if (bucket === "attention") {
-      attentionCount += 1;
     }
   }
 
   const parts = [`${rows.length} ${rows.length === 1 ? "subagent" : "subagents"}`];
   if (runningCount > 0) {
     parts.push(`${runningCount} running`);
-  }
-  if (attentionCount > 0) {
-    parts.push(`${attentionCount} needs attention`);
   }
   return parts.join(" · ");
 }
@@ -82,7 +71,7 @@ function buildRowPresentation(row: SubagentRow): WorkspaceTabPresentation {
     icon: getProviderIcon(row.provider),
     statusBucket: deriveSidebarStateBucket({
       status: row.status,
-      requiresAttention: row.requiresAttention,
+      requiresAttention: false,
     }),
   };
 }

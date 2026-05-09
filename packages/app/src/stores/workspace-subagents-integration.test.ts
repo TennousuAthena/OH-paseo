@@ -209,10 +209,14 @@ describe("workspace subagents integration", () => {
 
     expect(getWorkspaceTabIds(workspaceKey!)).toEqual(["agent_parent-agent"]);
     expect(
-      selectSubagentsForParent(useSessionStore.getState(), {
-        serverId: SERVER_ID,
-        parentAgentId: "parent-agent",
-      }).map((row) => row.id),
+      selectSubagentsForParent(
+        useSessionStore.getState(),
+        {
+          serverId: SERVER_ID,
+          parentAgentId: "parent-agent",
+        },
+        new Set(),
+      ).map((row) => row.id),
     ).toEqual(["child-agent"]);
   });
 });
