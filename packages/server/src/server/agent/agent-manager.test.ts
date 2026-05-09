@@ -1090,6 +1090,17 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
       return new TestAgentSession(config);
     }
 
+    async listModels() {
+      return [
+        {
+          provider: "codex",
+          id: "gpt-5.4",
+          label: "GPT-5.4",
+          isDefault: true,
+        },
+      ];
+    }
+
     async resumeSession(
       handle: AgentPersistenceHandle,
       overrides?: Partial<AgentSessionConfig>,
@@ -1156,6 +1167,7 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
     },
   });
   expect(client.lastResumeOverrides).toMatchObject({
+    model: "gpt-5.4",
     modeId: "auto",
     systemPrompt: "new prompt",
     mcpServers: {
@@ -5506,3 +5518,109 @@ test("replaceAgentRun succeeds when foreground turn terminal event is never deli
   expect(manager.getAgent(snapshot.id)?.lifecycle).toBe("idle");
   expect(manager.getAgent(snapshot.id)?.activeForegroundTurnId).toBeNull();
 }, 10_000);
+
+class RecordingPersistedAgentsClient implements AgentClient {
+  readonly capabilities = TEST_CAPABILITIES;
+  calls = 0;
+
+  constructor(public readonly provider: AgentProvider) {}
+
+  async isAvailable(): Promise<boolean> {
+    return true;
+  }
+
+  async createSession(): Promise<AgentSession> {
+    throw new Error(`unexpected createSession for ${this.provider}`);
+  }
+
+  async resumeSession(): Promise<AgentSession> {
+    throw new Error(`unexpected resumeSession for ${this.provider}`);
+  }
+
+  async listModels() {
+    return [];
+  }
+
+  async listPersistedAgents(): Promise<PersistedAgentDescriptor[]> {
+    this.calls += 1;
+    return [
+      {
+        provider: this.provider,
+        sessionId: `${this.provider}-session`,
+        cwd: "/tmp/recent",
+        title: null,
+        lastActivityAt: new Date("2026-01-01T00:00:00Z"),
+        persistence: { provider: this.provider, sessionId: `${this.provider}-session` },
+        timeline: [],
+      },
+    ];
+  }
+}
+
+test.each([
+  [
+    "disabled",
+    "claude",
+    "codex",
+    {
+      claude: { enabled: true, derivedFromProviderId: null },
+      codex: { enabled: false, derivedFromProviderId: null },
+    },
+  ],
+  [
+    "derived",
+    "claude",
+    "zai",
+    {
+      claude: { enabled: true, derivedFromProviderId: null },
+      zai: { enabled: true, derivedFromProviderId: "claude" },
+    },
+  ],
+  [
+    "outside importable allowlist",
+    "claude",
+    "gemini",
+    {
+      claude: { enabled: true, derivedFromProviderId: null },
+      gemini: { enabled: true, derivedFromProviderId: null },
+    },
+  ],
+])(
+  "listImportablePersistedAgents skips %s providers in fan-out",
+  async (_reason, includedProvider, skippedProvider, providerDefinitions) => {
+    const includedClient = new RecordingPersistedAgentsClient(includedProvider);
+    const skippedClient = new RecordingPersistedAgentsClient(skippedProvider);
+    const manager = new AgentManager({
+      clients: { [includedProvider]: includedClient, [skippedProvider]: skippedClient },
+      providerDefinitions,
+      logger,
+    });
+
+    const result = await manager.listImportablePersistedAgents();
+
+    expect(includedClient.calls).toBe(1);
+    expect(skippedClient.calls).toBe(0);
+    expect(result.map((d) => d.provider)).toEqual([includedProvider]);
+  },
+);
+
+test("listImportablePersistedAgents narrows to the providerFilter when supplied", async () => {
+  const claudeClient = new RecordingPersistedAgentsClient("claude");
+  const codexClient = new RecordingPersistedAgentsClient("codex");
+  const manager = new AgentManager({
+    clients: { claude: claudeClient, codex: codexClient },
+    providerDefinitions: {
+      claude: { enabled: true, derivedFromProviderId: null },
+      codex: { enabled: true, derivedFromProviderId: null },
+    },
+    logger,
+  });
+
+  const result = await manager.listImportablePersistedAgents({
+    providerFilter: new Set(["claude"]),
+  });
+
+  expect(claudeClient.calls).toBe(1);
+  expect(codexClient.calls).toBe(0);
+  expect(result.map((d) => d.provider)).toEqual(["claude"]);
+});

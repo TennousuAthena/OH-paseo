@@ -170,8 +170,18 @@ const CODEX_MODES: AgentMode[] = [
 
 const DEFAULT_CODEX_MODE_ID = "auto";
 
+interface CodexAppServerClientLike {
+  request(method: string, params?: unknown): Promise<unknown>;
+  notify(method: string, params?: unknown): void;
+  dispose(): Promise<void>;
+}
+
 interface CodexAppServerAgentDeps {
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
+  _createCodexClient?: (
+    child: ChildProcessWithoutNullStreams,
+    logger: Logger,
+  ) => CodexAppServerClientLike;
 }
 
 const MODE_PRESETS: Record<
@@ -702,6 +712,20 @@ const CodexModelListResponseSchema = z.object({
     )
     .optional(),
 });
+
+function filterCodexThreadsByCwd(
+  threads: Array<Record<string, unknown>>,
+  cwd: string | undefined,
+): Array<Record<string, unknown>> {
+  if (!cwd) {
+    return threads;
+  }
+  // thread/list rows carry an optional cwd. The descriptor builder later
+  // falls back to process.cwd() if the field is missing, so we only match
+  // here when the row genuinely carries a cwd string — otherwise threads
+  // with no cwd would falsely match the daemon's own cwd.
+  return threads.filter((thread) => typeof thread.cwd === "string" && thread.cwd === cwd);
+}
 
 class CodexAppServerClient {
   private readonly rl: readline.Interface;
@@ -1731,7 +1755,7 @@ async function loadCodexThreadHistoryTimeline(params: {
   return timeline;
 }
 
-function readCodexThread(client: CodexAppServerClient, threadId: string): Promise<unknown> {
+function readCodexThread(client: CodexAppServerClientLike, threadId: string): Promise<unknown> {
   return client.request("thread/read", {
     threadId,
     includeTurns: true,
@@ -4769,6 +4793,13 @@ export class CodexAppServerAgentClient implements AgentClient {
     launchContext?: AgentLaunchContext,
     options?: AgentCreateSessionOptions,
   ): Promise<AgentSession> {
+    if (options?.persistSession === false) {
+      this.logger.debug(
+        "Codex app-server does not expose an ephemeral-session option; persistSession=false is currently a no-op",
+      );
+      // TODO: Honor persistSession=false if app-server adds support, or route
+      // utility generations through `codex exec --ephemeral` in a larger change.
+    }
     const sessionConfig: AgentSessionConfig = { ...config, provider: CODEX_PROVIDER };
     const goalsEnabled = await this.resolveGoalsEnabled();
     const session = new CodexAppServerAgentSession(
@@ -4814,15 +4845,23 @@ export class CodexAppServerAgentClient implements AgentClient {
     options?: ListPersistedAgentsOptions,
   ): Promise<PersistedAgentDescriptor[]> {
     const child = await this.spawnAppServer();
-    const client = new CodexAppServerClient(child, this.logger);
+    const client =
+      this.deps._createCodexClient?.(child, this.logger) ??
+      new CodexAppServerClient(child, this.logger);
 
     try {
       await client.request("initialize", buildCodexAppServerInitializeParams());
       client.notify("initialized", {});
 
       const limit = options?.limit ?? 20;
-      const response = toObjectRecord(await client.request("thread/list", { limit }));
-      const threads = Array.isArray(response?.data) ? response.data : [];
+      // thread/list returns the cheap `cwd` field. When the caller supplied
+      // a cwd hint we filter here so the per-thread `thread/read includeTurns`
+      // hydration below only runs for matching threads. Fetch a wider window
+      // when filtering since most threads will be from other cwds.
+      const listLimit = options?.cwd ? Math.max(limit, 50) : limit;
+      const response = toObjectRecord(await client.request("thread/list", { limit: listLimit }));
+      const allThreads = Array.isArray(response?.data) ? response.data.filter(isRecord) : [];
+      const threads = filterCodexThreadsByCwd(allThreads, options?.cwd);
       const descriptors: PersistedAgentDescriptor[] = await Promise.all(
         threads.slice(0, limit).map(async (thread) => {
           const threadId = typeof thread.id === "string" ? thread.id : "";

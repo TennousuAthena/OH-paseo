@@ -131,6 +131,11 @@ import type {
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import {
+  ImportSessionsRequestError,
+  listImportableProviderSessions,
+  normalizeImportAgentRequest,
+} from "./agent/import-sessions.js";
+import {
   checkoutLiteFromGitSnapshot,
   normalizeWorkspaceId as normalizePersistedWorkspaceId,
   deriveProjectGroupingName,
@@ -662,7 +667,7 @@ class VoiceFeatureUnavailableError extends Error {
 
 interface BuildImportPersistenceHandleInput {
   provider: AgentProvider;
-  sessionId: string;
+  providerHandleId: string;
   cwd?: string;
 }
 
@@ -672,8 +677,8 @@ function buildImportPersistenceHandle(
   const cwd = input.cwd ?? process.cwd();
   return {
     provider: input.provider,
-    sessionId: input.sessionId,
-    nativeHandle: input.sessionId,
+    sessionId: input.providerHandleId,
+    nativeHandle: input.providerHandleId,
     metadata: {
       provider: input.provider,
       cwd,
@@ -1819,6 +1824,8 @@ export class Session {
         return this.handleFetchAgents(msg);
       case "fetch_agent_history_request":
         return this.handleFetchAgentHistory(msg);
+      case "fetch_recent_provider_sessions_request":
+        return this.handleFetchRecentProviderSessions(msg);
       case "fetch_agent_request":
         return this.handleFetchAgent(msg.agentId, msg.requestId);
       case "delete_agent_request":
@@ -3172,11 +3179,26 @@ export class Session {
   private async handleImportAgentRequest(
     msg: Extract<SessionInboundMessage, { type: "import_agent_request" }>,
   ): Promise<void> {
-    const { provider, sessionId, cwd, labels, requestId } = msg;
-    this.sessionLogger.info({ sessionId, provider }, `Importing agent ${sessionId} (${provider})`);
+    const normalized = normalizeImportAgentRequest(msg);
+    if ("error" in normalized) {
+      this.emit({
+        type: "status",
+        payload: {
+          status: "agent_create_failed",
+          requestId: msg.requestId,
+          error: normalized.error,
+        },
+      });
+      return;
+    }
+    const { provider, providerHandleId, cwd, labels, requestId } = normalized;
+    this.sessionLogger.info(
+      { providerHandleId, provider },
+      `Importing agent ${providerHandleId} (${provider})`,
+    );
 
     try {
-      const descriptor = await this.agentManager.findPersistedAgent(provider, sessionId);
+      const descriptor = await this.agentManager.findPersistedAgent(provider, providerHandleId);
       if (!descriptor && provider === "opencode" && !cwd) {
         throw new Error(
           "OpenCode sessions require --cwd when the session cannot be found in persisted agents",
@@ -3185,7 +3207,7 @@ export class Session {
 
       const handle = descriptor
         ? applyImportCwdOverride(descriptor.persistence, cwd)
-        : buildImportPersistenceHandle({ provider, sessionId, cwd });
+        : buildImportPersistenceHandle({ provider, providerHandleId, cwd });
       const overrides = cwd ? ({ cwd } satisfies Partial<AgentSessionConfig>) : undefined;
 
       await this.unarchiveAgentByHandle(handle);
@@ -6673,6 +6695,49 @@ export class Session {
       const code = error instanceof SessionRequestError ? error.code : "fetch_agent_history_failed";
       const message = error instanceof Error ? error.message : "Failed to fetch agent history";
       this.sessionLogger.error({ err: error }, "Failed to handle fetch_agent_history_request");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: request.requestId,
+          requestType: request.type,
+          error: message,
+          code,
+        },
+      });
+    }
+  }
+
+  private async handleFetchRecentProviderSessions(
+    request: Extract<SessionInboundMessage, { type: "fetch_recent_provider_sessions_request" }>,
+  ): Promise<void> {
+    try {
+      const result = await listImportableProviderSessions({
+        request,
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        providerRegistry: this.getProviderRegistry(),
+      });
+      this.emit({
+        type: "fetch_recent_provider_sessions_response",
+        payload: {
+          requestId: request.requestId,
+          entries: result.entries,
+          ...(result.filteredAlreadyImportedCount > 0
+            ? { filteredAlreadyImportedCount: result.filteredAlreadyImportedCount }
+            : {}),
+        },
+      });
+    } catch (error) {
+      const code =
+        error instanceof ImportSessionsRequestError
+          ? error.code
+          : "fetch_recent_provider_sessions_failed";
+      const message =
+        error instanceof Error ? error.message : "Failed to fetch recent provider sessions";
+      this.sessionLogger.error(
+        { err: error },
+        "Failed to handle fetch_recent_provider_sessions_request",
+      );
       this.emit({
         type: "rpc_error",
         payload: {

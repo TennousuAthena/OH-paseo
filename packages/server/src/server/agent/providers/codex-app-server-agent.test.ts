@@ -15,6 +15,7 @@ import type {
 } from "../agent-sdk-types.js";
 import {
   __codexAppServerInternals,
+  CodexAppServerAgentClient,
   codexAppServerTurnInputFromPrompt,
 } from "./codex-app-server-agent.js";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
@@ -1654,5 +1655,64 @@ describe("Codex app-server provider", () => {
         }),
       }),
     );
+  });
+});
+
+describe("Codex persisted sessions", () => {
+  test("listPersistedAgents returns only sessions whose cwd matches the requested cwd", async () => {
+    const allThreads = [
+      {
+        id: "thread-a1",
+        cwd: "/workspace/project-a",
+        preview: "First A session",
+        createdAt: 1000,
+        updatedAt: 2000,
+      },
+      {
+        id: "thread-a2",
+        cwd: "/workspace/project-a",
+        preview: "Second A session",
+        createdAt: 1500,
+        updatedAt: 2500,
+      },
+      {
+        id: "thread-b1",
+        cwd: "/workspace/project-b",
+        preview: "B session",
+        createdAt: 3000,
+        updatedAt: 4000,
+      },
+    ];
+
+    const fakeClient = {
+      request: async (method: string) => {
+        if (method === "thread/list") return { data: allThreads };
+        if (method === "thread/read") return { thread: { turns: [] } };
+        return {};
+      },
+      notify: () => {},
+      dispose: async () => {},
+    };
+
+    const provider = new CodexAppServerAgentClient(createTestLogger(), undefined, {
+      _createCodexClient: () => fakeClient,
+    });
+    castInternals<{ spawnAppServer: () => Promise<ChildProcessWithoutNullStreams> }>(
+      provider,
+    ).spawnAppServer = async () => {
+      const child = new EventEmitter() as ChildProcessWithoutNullStreams;
+      child.exitCode = 0;
+      child.signalCode = null;
+      child.stdin = new PassThrough();
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.kill = vi.fn(() => true) as ChildProcessWithoutNullStreams["kill"];
+      return child;
+    };
+
+    const descriptors = await provider.listPersistedAgents({ cwd: "/workspace/project-a" });
+
+    expect(descriptors.map((d) => d.sessionId).sort()).toEqual(["thread-a1", "thread-a2"]);
+    expect(descriptors.every((d) => d.cwd === "/workspace/project-a")).toBe(true);
   });
 });
