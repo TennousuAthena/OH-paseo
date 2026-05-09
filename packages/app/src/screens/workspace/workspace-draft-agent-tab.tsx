@@ -310,7 +310,6 @@ export function WorkspaceDraftAgentTab({
   );
   const draftInput = useAgentInputDraft({
     draftKey: draftStoreKey,
-    initialCwd: workspaceDirectory ?? "",
     composer: {
       initialServerId: serverId,
       initialValues: workspaceDirectory ? { workingDir: workspaceDirectory } : undefined,
@@ -338,7 +337,7 @@ export function WorkspaceDraftAgentTab({
   const isCompact = useIsCompactFormFactor();
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
-    cwd: draftInput.cwd,
+    cwd: composerState.workingDir,
     workspaceId,
   });
   const workspaceAttachments = useWorkspaceAttachments(workspaceAttachmentScopeKey);
@@ -613,7 +612,7 @@ export function WorkspaceDraftAgentTab({
             workspaceAttachments={workspaceAttachments}
             onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
             onChangeAttachments={draftInput.setAttachments}
-            cwd={draftInput.cwd}
+            cwd={composerState.workingDir}
             clearDraft={draftInput.clear}
             autoFocus={shouldAutoFocusWorkspaceDraftComposer({ isPaneFocused, isSubmitting })}
             onAddImages={handleAddImagesCallback}

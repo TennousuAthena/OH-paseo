@@ -151,7 +151,6 @@ export function WorkspaceSetupDialog() {
   const isConnected = useHostRuntimeIsConnected(serverId);
   const chatDraft = useAgentInputDraft({
     draftKey: `workspace-setup:${serverId}:${sourceDirectory}`,
-    initialCwd: sourceDirectory,
     composer: buildChatDraftComposerArgs({
       serverId,
       isConnected,
@@ -393,7 +392,7 @@ export function WorkspaceSetupDialog() {
           onChangeText={chatDraft.setText}
           attachments={chatDraft.attachments}
           onChangeAttachments={chatDraft.setAttachments}
-          cwd={chatDraft.cwd}
+          cwd={sourceDirectory}
           clearDraft={chatDraft.clear}
           autoFocus
           commandDraftConfig={composerState?.commandDraftConfig}

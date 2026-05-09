@@ -353,7 +353,6 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
       attachments: attachments.filter(
         (attachment): attachment is UserComposerAttachment => attachment.kind !== "review",
       ),
-      cwd: workspaceDirectory,
     },
   });
   useWorkspaceDraftSubmissionStore.getState().setPending({
@@ -421,7 +420,6 @@ export function NewWorkspaceScreen({
   const draftKey = `new-workspace:${serverId}:${sourceDirectory}`;
   const chatDraft = useAgentInputDraft({
     draftKey,
-    initialCwd: sourceDirectory,
     composer: buildComposerConfig({
       serverId,
       isConnected,
@@ -751,7 +749,7 @@ export function NewWorkspaceScreen({
             onChangeText={chatDraft.setText}
             attachments={chatDraft.attachments}
             onChangeAttachments={chatDraft.setAttachments}
-            cwd={chatDraft.cwd}
+            cwd={sourceDirectory}
             clearDraft={handleClearDraft}
             autoFocus
             commandDraftConfig={composerState?.commandDraftConfig}
