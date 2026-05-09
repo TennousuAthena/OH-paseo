@@ -879,17 +879,23 @@ export class AgentManager {
     return this.registerSession(session, normalizedConfig, resolvedAgentId, options);
   }
 
-  // Hot-reload an active agent session with config overrides while preserving
-  // in-memory timeline state.
+  // Hot-reload an active agent session with config overrides. By default the
+  // in-memory timeline is preserved (used for voice-mode toggles and similar
+  // config swaps). When `rehydrateFromDisk` is set, the timeline is wiped so a
+  // new epoch is minted and provider history is re-streamed — this is what the
+  // user-facing "Reload agent" action wants when the on-disk session was
+  // mutated outside Paseo.
   async reloadAgentSession(
     agentId: string,
     overrides?: Partial<AgentSessionConfig>,
+    options?: { rehydrateFromDisk?: boolean },
   ): Promise<ManagedAgent> {
     let existing = this.requireSessionAgent(agentId);
     if (this.hasInFlightRun(agentId)) {
       await this.cancelAgentRun(agentId);
       existing = this.requireSessionAgent(agentId);
     }
+    const rehydrateFromDisk = options?.rehydrateFromDisk ?? false;
     const preservedHistoryPrimed = existing.historyPrimed;
     const preservedLastUsage = existing.lastUsage;
     const preservedLastError = existing.lastError;
@@ -919,13 +925,21 @@ export class AgentManager {
     this.foregroundRuns.clearAgent(agentId, existing);
     await this.closeReloadedSession(existing.session, agentId);
 
+    if (rehydrateFromDisk) {
+      // Wipe both durable and in-memory timeline so registerSession mints a
+      // new epoch and hydrateTimelineFromProvider re-streams the freshly read
+      // provider history into an empty timeline.
+      await this.deleteCommittedTimeline(agentId);
+      this.timelineStore.delete(agentId);
+    }
+
     // Preserve existing labels and timeline during reload.
     return this.registerSession(session, normalizedConfig, agentId, {
       labels: existing.labels,
       createdAt: existing.createdAt,
       updatedAt: existing.updatedAt,
       lastUserMessageAt: existing.lastUserMessageAt,
-      historyPrimed: preservedHistoryPrimed,
+      historyPrimed: rehydrateFromDisk ? false : preservedHistoryPrimed,
       lastUsage: preservedLastUsage,
       lastError: preservedLastError,
       attention: preservedAttention,

@@ -2441,14 +2441,28 @@ function WorkspaceScreenContent({
         return;
       }
 
+      toast.show("Reloading agent…", { durationMs: null });
       try {
         await client.refreshAgent(agentId);
+        // Send the existing cursor so the server detects the new epoch and
+        // returns reset:true. Without a cursor, the server returns reset:false
+        // and the client takes the incremental path, where new-epoch rows are
+        // dropped against the stale cursor.
+        const sessionState = useSessionStore.getState().sessions[normalizedServerId];
+        const currentCursor = sessionState?.agentTimelineCursor.get(agentId);
+        await client.fetchAgentTimeline(agentId, {
+          direction: "tail",
+          projection: "canonical",
+          ...(currentCursor
+            ? { cursor: { epoch: currentCursor.epoch, seq: currentCursor.endSeq } }
+            : {}),
+        });
         toast.show("Reloaded agent", { variant: "success" });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to reload agent");
       }
     },
-    [client, isConnected, toast],
+    [client, isConnected, normalizedServerId, toast],
   );
 
   const handleCopyWorkspacePath = useCallback(async () => {

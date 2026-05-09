@@ -3306,7 +3306,9 @@ export class Session {
       const existing = this.agentManager.getAgent(agentId);
       if (existing) {
         await this.interruptAgentIfRunning(agentId);
-        snapshot = await this.agentManager.reloadAgentSession(agentId);
+        snapshot = await this.agentManager.reloadAgentSession(agentId, undefined, {
+          rehydrateFromDisk: true,
+        });
       } else {
         const record = await this.agentStorage.get(agentId);
         if (!record) {
