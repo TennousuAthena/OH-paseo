@@ -150,6 +150,7 @@ import {
   classifyBulkClosableTabs,
   closeBulkWorkspaceTabs,
 } from "@/screens/workspace/workspace-bulk-close";
+import { resolveCloseAgentTabPolicy } from "@/subagents";
 import { findAdjacentPane } from "@/utils/split-navigation";
 import { isAbsolutePath } from "@/utils/path";
 import { useIsCompactFormFactor, supportsDesktopPaneSplits } from "@/constants/layout";
@@ -1889,6 +1890,7 @@ function WorkspaceScreenContent({
       agentsHydrated: hasHydratedAgents,
       terminalsHydrated: terminalsQuery.isSuccess,
       activeAgentIds: Array.from(workspaceAgentVisibility.activeAgentIds),
+      autoOpenAgentIds: Array.from(workspaceAgentVisibility.autoOpenAgentIds),
       knownAgentIds: Array.from(workspaceAgentVisibility.knownAgentIds),
       knownTerminalIds,
       standaloneTerminalIds,
@@ -2273,9 +2275,10 @@ function WorkspaceScreenContent({
 
         const agent =
           useSessionStore.getState().sessions[normalizedServerId]?.agents?.get(agentId) ?? null;
+        const closePolicy = resolveCloseAgentTabPolicy(agent);
         const isRunning = agent?.status === "running" || agent?.status === "initializing";
 
-        if (isRunning) {
+        if (isRunning && closePolicy.kind === "archive-on-close") {
           const confirmed = await confirmDialog({
             title: "Archive running agent?",
             message:
@@ -2296,6 +2299,10 @@ function WorkspaceScreenContent({
             tabId,
             target: { kind: "agent", agentId },
           });
+        }
+
+        if (closePolicy.kind === "layout-only") {
+          return;
         }
 
         // Errors (e.g. timeout) are handled by the mutation's onSettled callback
