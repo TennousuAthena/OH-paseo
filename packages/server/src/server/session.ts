@@ -173,6 +173,7 @@ import {
   writePaseoConfigForEdit,
   type ProjectConfigRpcError,
 } from "../utils/paseo-config-file.js";
+import { buildMetadataPrompt } from "../utils/build-metadata-prompt.js";
 import { archivePersistedWorkspaceRecord } from "./workspace-archive-service.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import type { ScriptRouteStore } from "./script-proxy.js";
@@ -3110,6 +3111,7 @@ export class Session {
       agentManager: this.agentManager,
       agentId: snapshot.id,
       cwd: snapshot.cwd,
+      workspaceGitService: this.workspaceGitService,
       initialPrompt: trimmedPrompt,
       explicitTitle: params.explicitTitle,
       paseoHome: this.paseoHome,
@@ -3284,6 +3286,7 @@ export class Session {
       agentManager: this.agentManager,
       agentId: snapshot.id,
       cwd: snapshot.cwd,
+      workspaceGitService: this.workspaceGitService,
       initialPrompt,
       explicitTitle,
       paseoHome: this.paseoHome,
@@ -3445,6 +3448,7 @@ export class Session {
         return generateBranchNameFromFirstAgentContext({
           agentManager: this.agentManager,
           cwd,
+          workspaceGitService: this.workspaceGitService,
           firstAgentContext,
           logger: this.sessionLogger,
         });
@@ -3906,14 +3910,19 @@ export class Session {
       diff.diff.length > maxPatchChars
         ? `${diff.diff.slice(0, maxPatchChars)}\n\n... (diff truncated to ${maxPatchChars} chars)\n`
         : diff.diff;
-    const prompt = [
-      "Write a concise git commit message for the changes below.",
-      "Return JSON only with a single field 'message'.",
-      "",
-      fileList,
-      "",
-      patch.length > 0 ? patch : "(No diff available)",
-    ].join("\n");
+    const prompt = await buildMetadataPrompt({
+      cwd,
+      workspaceGitService: this.workspaceGitService,
+      configKey: "commitMessage",
+      before: "Write a concise git commit message for the changes below.",
+      after: [
+        "Return JSON only with a single field 'message'.",
+        "",
+        fileList,
+        "",
+        patch.length > 0 ? patch : "(No diff available)",
+      ].join("\n"),
+    });
     try {
       const result = await generateStructuredAgentResponseWithFallback({
         manager: this.agentManager,
@@ -3973,14 +3982,19 @@ export class Session {
       diff.diff.length > maxPatchChars
         ? `${diff.diff.slice(0, maxPatchChars)}\n\n... (diff truncated to ${maxPatchChars} chars)\n`
         : diff.diff;
-    const prompt = [
-      "Write a pull request title and body for the changes below.",
-      "Return JSON only with fields 'title' and 'body'.",
-      "",
-      fileList,
-      "",
-      patch.length > 0 ? patch : "(No diff available)",
-    ].join("\n");
+    const prompt = await buildMetadataPrompt({
+      cwd,
+      workspaceGitService: this.workspaceGitService,
+      configKey: "pullRequest",
+      before: "Write a pull request title and body for the changes below.",
+      after: [
+        "Return JSON only with fields 'title' and 'body'.",
+        "",
+        fileList,
+        "",
+        patch.length > 0 ? patch : "(No diff available)",
+      ].join("\n"),
+    });
     try {
       return await generateStructuredAgentResponseWithFallback({
         manager: this.agentManager,
