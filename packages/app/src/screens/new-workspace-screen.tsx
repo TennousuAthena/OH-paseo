@@ -30,6 +30,7 @@ import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/t
 import type { ImageAttachment, MessagePayload } from "@/components/message-input";
 import type { AgentAttachment, GitHubSearchItem } from "@server/shared/messages";
 import type { AgentProvider } from "@server/server/agent/agent-sdk-types";
+import { isEmptyWorkspaceSubmission, runCreateEmptyWorkspace } from "./new-workspace-empty";
 import { pickerItemToCheckoutRequest, type PickerItem } from "./new-workspace-picker-item";
 import { syncPickerPrAttachment } from "./new-workspace-picker-state";
 
@@ -398,7 +399,7 @@ export function NewWorkspaceScreen({
   const [createdWorkspace, setCreatedWorkspace] = useState<ReturnType<
     typeof normalizeWorkspaceDescriptor
   > | null>(null);
-  const [pendingAction, setPendingAction] = useState<"chat" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"chat" | "empty" | null>(null);
   const [pickerSelection, setPickerSelection] = useState<PickerSelection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearchQuery, setPickerSearchQuery] = useState("");
@@ -602,11 +603,21 @@ export function NewWorkspaceScreen({
     [buildCreateWorktreeInput, createdWorkspace, mergeWorkspaces, serverId, withConnectedClient],
   );
 
-  const handleCreateChatAgent = useCallback(
+  const handleSubmitNewWorkspace = useCallback(
     async (payload: MessagePayload) => {
       try {
-        setPendingAction("chat");
         setErrorMessage(null);
+        if (isEmptyWorkspaceSubmission(payload)) {
+          setPendingAction("empty");
+          await runCreateEmptyWorkspace({
+            payload,
+            ensureWorkspace,
+            serverId,
+          });
+          return;
+        }
+
+        setPendingAction("chat");
         await runCreateChatAgent({
           payload,
           composerState,
@@ -729,11 +740,11 @@ export function NewWorkspaceScreen({
             agentId={`new-workspace:${serverId}:${sourceDirectory}`}
             serverId={serverId}
             isPaneFocused={true}
-            onSubmitMessage={handleCreateChatAgent}
+            onSubmitMessage={handleSubmitNewWorkspace}
             allowEmptySubmit={true}
             submitButtonAccessibilityLabel="Create"
             submitIcon="return"
-            isSubmitLoading={pendingAction === "chat"}
+            isSubmitLoading={pendingAction !== null}
             submitBehavior="preserve-and-lock"
             blurOnSubmit={true}
             value={chatDraft.text}
