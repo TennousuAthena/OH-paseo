@@ -908,15 +908,27 @@ function MarkdownLink({
   }
 
   return (
-    <Pressable
-      accessibilityRole="link"
-      onPress={handlePress}
-      onHoverIn={handleHoverIn}
-      onHoverOut={handleHoverOut}
-    >
-      <Text style={hoveredTextStyle}>{children}</Text>
-    </Pressable>
+    <a href={href} onClick={preventAnchorNavigation} style={MARKDOWN_LINK_ANCHOR_STYLE}>
+      <Pressable
+        accessibilityRole="link"
+        onPress={handlePress}
+        onHoverIn={handleHoverIn}
+        onHoverOut={handleHoverOut}
+      >
+        <Text style={hoveredTextStyle}>{children}</Text>
+      </Pressable>
+    </a>
   );
+}
+
+const MARKDOWN_LINK_ANCHOR_STYLE: React.CSSProperties = {
+  display: "contents",
+  color: "inherit",
+  textDecoration: "none",
+};
+
+function preventAnchorNavigation(event: React.MouseEvent<HTMLAnchorElement>): void {
+  event.preventDefault();
 }
 
 function getInlineCodeAutoLinkUrl(
