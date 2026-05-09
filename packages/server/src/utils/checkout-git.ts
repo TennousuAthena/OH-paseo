@@ -870,6 +870,10 @@ async function getWorktreePathForBranch(cwd: string, branchName: string): Promis
   }
 }
 
+export async function localBranchExists(cwd: string, branchName: string): Promise<boolean> {
+  return doesGitRefExist(cwd, `refs/heads/${branchName}`);
+}
+
 export async function renameCurrentBranch(
   cwd: string,
   newName: string,
