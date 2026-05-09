@@ -38,6 +38,10 @@ export function pickAttentionAgent(agents: Agent[]): string | null {
       continue;
     }
 
+    if (agent.parentAgentId) {
+      continue;
+    }
+
     const priority = getAttentionPriority(agent.attentionReason);
     if (priority === null) {
       continue;

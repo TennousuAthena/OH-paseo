@@ -213,6 +213,40 @@ describe("pickAttentionAgent", () => {
     ).toBe("older-permission-agent");
   });
 
+  it("ignores subagents even when they require attention", () => {
+    expect(
+      pickAttentionAgent([
+        createAgent({
+          id: "subagent",
+          parentAgentId: "parent-agent",
+          requiresAttention: true,
+          attentionReason: "permission",
+          attentionTimestamp: new Date("2026-01-01T00:00:00.000Z"),
+        }),
+        createAgent({
+          id: "top-level-agent",
+          requiresAttention: true,
+          attentionReason: "finished",
+          attentionTimestamp: new Date("2026-01-02T00:00:00.000Z"),
+        }),
+      ]),
+    ).toBe("top-level-agent");
+  });
+
+  it("returns null when only subagents require attention", () => {
+    expect(
+      pickAttentionAgent([
+        createAgent({
+          id: "subagent",
+          parentAgentId: "parent-agent",
+          requiresAttention: true,
+          attentionReason: "permission",
+          attentionTimestamp: new Date("2026-01-01T00:00:00.000Z"),
+        }),
+      ]),
+    ).toBeNull();
+  });
+
   it("ignores agents with requiresAttention true but null reason", () => {
     expect(
       pickAttentionAgent([
