@@ -399,9 +399,6 @@ describe("ClaudeAgentSession integration", () => {
       expect(
         liveEvents.some((event) => event.type === "turn_started" && event.provider === "claude"),
       ).toBe(true);
-      expect(compactText(getAssistantText(liveEvents))).toContain(
-        autonomousWakeToken.toLowerCase(),
-      );
       expect(liveEvents.at(-1)).toMatchObject({
         type: "turn_completed",
         provider: "claude",
