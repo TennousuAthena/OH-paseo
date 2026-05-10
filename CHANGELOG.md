@@ -33,6 +33,7 @@
 - iOS project picker now submits the typed path. ([#831](https://github.com/getpaseo/paseo/pull/831))
 - System messages and chat mentions routed to multiple agents now reach every recipient consistently. ([#830](https://github.com/getpaseo/paseo/pull/830))
 - Clicking a Markdown link in agent output no longer reloads the desktop app on top of opening the link.
+- macOS desktop tab-jump shortcuts now use Cmd+Option+1-9, avoiding conflicts with Option-based international keyboard characters such as `@`.
 
 ### Security
 

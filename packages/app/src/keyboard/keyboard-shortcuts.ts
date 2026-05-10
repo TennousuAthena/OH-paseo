@@ -293,10 +293,23 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
 
   // --- Tab index jump ---
   {
+    id: "workspace-tab-navigate-index-cmd-alt-digit-mac-desktop",
+    action: "workspace.tab.navigate.index",
+    combo: "Cmd+Alt+Digit",
+    when: { mac: true, desktop: true, commandCenter: false },
+    payload: { type: "index" },
+    help: {
+      id: "workspace-tab-jump-index",
+      section: "navigation",
+      label: "Jump to tab",
+      keys: ["mod", "alt", "1-9"],
+    },
+  },
+  {
     id: "workspace-tab-navigate-index-alt-digit-desktop",
     action: "workspace.tab.navigate.index",
     combo: "Alt+Digit",
-    when: { desktop: true, commandCenter: false },
+    when: { mac: false, desktop: true, commandCenter: false },
     payload: { type: "index" },
     help: {
       id: "workspace-tab-jump-index",
