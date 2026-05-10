@@ -12,7 +12,7 @@ import {
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { isWeb as platformIsWeb } from "@/constants/platform";
+import { isNative, isWeb as platformIsWeb } from "@/constants/platform";
 import { ArrowLeft, ChevronDown, ChevronRight, Search, Star } from "lucide-react-native";
 import type { AgentModelDefinition, AgentProvider } from "@server/server/agent/agent-sdk-types";
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
@@ -443,7 +443,7 @@ function ProviderSearchInput({
   const { theme } = useUnistyles();
   const inputRef = useRef<TextInput>(null);
   const isMobile = useIsCompactFormFactor();
-  const InputComponent = isMobile ? BottomSheetTextInput : TextInput;
+  const InputComponent = isMobile && isNative ? BottomSheetTextInput : TextInput;
 
   useEffect(() => {
     if (!autoFocus || !platformIsWeb || !inputRef.current) return () => {};

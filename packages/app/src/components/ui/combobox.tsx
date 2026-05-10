@@ -38,7 +38,7 @@ import {
   shouldShowCustomComboboxOption,
 } from "./combobox-options";
 import type { ComboboxOptionModel } from "./combobox-options";
-import { isWeb } from "@/constants/platform";
+import { isNative, isWeb } from "@/constants/platform";
 import {
   IsolatedBottomSheetModal,
   useIsolatedBottomSheetVisibility,
@@ -148,7 +148,7 @@ export function SearchInput({
 }: SearchInputProps): ReactElement {
   const { theme } = useUnistyles();
   const inputRef = useRef<TextInput>(null);
-  const InputComponent = useBottomSheetInput ? BottomSheetTextInput : TextInput;
+  const InputComponent = useBottomSheetInput && isNative ? BottomSheetTextInput : TextInput;
 
   useEffect(() => {
     if (autoFocus && IS_WEB && inputRef.current) {

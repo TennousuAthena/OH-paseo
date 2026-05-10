@@ -19,7 +19,7 @@ import {
   IsolatedBottomSheetModal,
   useIsolatedBottomSheetVisibility,
 } from "@/components/ui/isolated-bottom-sheet-modal";
-import { isWeb } from "@/constants/platform";
+import { isNative, isWeb } from "@/constants/platform";
 
 type EscHandler = () => void;
 const escStack: EscHandler[] = [];
@@ -333,7 +333,7 @@ export const AdaptiveTextInput = forwardRef<TextInput, TextInputProps>(
   function AdaptiveTextInput(props, ref) {
     const isMobile = useIsCompactFormFactor();
 
-    if (isMobile) {
+    if (isMobile && isNative) {
       return <BottomSheetTextInput ref={ref as unknown as Ref<never>} {...props} />;
     }
 
