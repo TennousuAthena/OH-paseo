@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.73 - 2026-05-10
+
+### Fixed
+
+- **OpenCode agents work again on OpenCode 1.14.42+.** ([#895](https://github.com/getpaseo/paseo/pull/895), [#902](https://github.com/getpaseo/paseo/pull/902), [#904](https://github.com/getpaseo/paseo/pull/904) by [@atomlink-ye](https://github.com/atomlink-ye), [@plutofog](https://github.com/plutofog))
+- Web: opening a workspace no longer hangs in browsers without `crypto.randomUUID`. ([#858](https://github.com/getpaseo/paseo/pull/858) by [@cokekitten](https://github.com/cokekitten))
+- Codex sub-agent child tool calls now report a final failure state instead of staying as "running". ([#899](https://github.com/getpaseo/paseo/pull/899))
+- Old relay pairing URLs without an explicit TLS flag work again. ([#896](https://github.com/getpaseo/paseo/pull/896))
+- macOS: the tab-jump shortcut no longer collides with system shortcuts. ([#859](https://github.com/getpaseo/paseo/pull/859) by [@nikuscs](https://github.com/nikuscs))
+- Web: the composer no longer triggers a bottom-sheet keyboard on desktop browsers. ([#898](https://github.com/getpaseo/paseo/pull/898) by [@nikuscs](https://github.com/nikuscs))
+- Windows: git operations no longer flash a console window on each invocation. ([#897](https://github.com/getpaseo/paseo/pull/897))
+- File explorer no longer follows symlinks outside the workspace root. ([#847](https://github.com/getpaseo/paseo/pull/847) by [@joaosa](https://github.com/joaosa))
+- Desktop only opens external URLs via http(s) and mailto schemes. ([#845](https://github.com/getpaseo/paseo/pull/845) by [@joaosa](https://github.com/joaosa))
+- MCP debug request logs now redact request bodies. ([#842](https://github.com/getpaseo/paseo/pull/842) by [@joaosa](https://github.com/joaosa))
+
 ## 0.1.72 - 2026-05-10
 
 ### Fixed
