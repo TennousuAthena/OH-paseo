@@ -34,7 +34,7 @@ jobs:
         run: git fetch --no-tags origin main:refs/remotes/origin/main
 
       - name: Install server dependencies
-        run: npm install --workspace=@getpaseo/server --include-workspace-root
+        run: npm ci --workspace=@getpaseo/server --include-workspace-root
 
       - name: Install Claude Code CLI for provider tests
         run: npm install -g @anthropic-ai/claude-code
