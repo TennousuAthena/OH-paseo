@@ -74,10 +74,6 @@ const OPENCODE_CAPABILITIES: AgentCapabilityFlags = {
 const OPENCODE_BUILD_MODE_ID = "build";
 const OPENCODE_FULL_ACCESS_MODE_ID = "full-access";
 const OPENCODE_STORAGE_SESSION_LIMIT = 200;
-const DEFAULT_OPENCODE_EOF_RECOVERY_POLICY = {
-  maxAttempts: 600,
-  delayMs: 1_000,
-};
 
 const DEFAULT_MODES: AgentMode[] = [
   {
@@ -146,11 +142,6 @@ interface OpenCodePersistedAssistantCompletion {
   messageId: string;
   text: string;
   usage?: AgentUsage;
-}
-
-interface OpenCodeEofRecoveryPolicy {
-  maxAttempts: number;
-  delayMs: number;
 }
 
 type OpenCodeAgentConfig = AgentSessionConfig & { provider: "opencode" };
@@ -913,10 +904,6 @@ async function readOpenCodePersistedAssistantCompletion(
   return null;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function hasStrongPersistedCompletionEvidence(
   message: OpenCodeStoredMessage,
   parts: OpenCodeStoredPart[],
@@ -1056,7 +1043,6 @@ export const __openCodeInternals = {
 
 interface OpenCodeAgentClientDeps {
   runtime?: OpenCodeRuntime;
-  eofRecoveryPolicy?: OpenCodeEofRecoveryPolicy;
 }
 
 class ProductionOpenCodeRuntime implements OpenCodeRuntime {
@@ -1088,7 +1074,6 @@ export class OpenCodeAgentClient implements AgentClient {
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly modelContextWindows = new Map<string, number>();
   private readonly storageRoot: string;
-  private readonly eofRecoveryPolicy: OpenCodeEofRecoveryPolicy;
 
   constructor(
     logger: Logger,
@@ -1099,7 +1084,6 @@ export class OpenCodeAgentClient implements AgentClient {
     this.logger = logger.child({ module: "agent", provider: "opencode" });
     this.runtimeSettings = runtimeSettings;
     this.storageRoot = storageRoot ?? resolveOpenCodeStorageRoot();
-    this.eofRecoveryPolicy = deps.eofRecoveryPolicy ?? DEFAULT_OPENCODE_EOF_RECOVERY_POLICY;
     this.runtime =
       deps.runtime ??
       new ProductionOpenCodeRuntime(
@@ -1147,7 +1131,6 @@ export class OpenCodeAgentClient implements AgentClient {
         new Map(this.modelContextWindows),
         acquisition.release,
         options?.persistSession,
-        this.eofRecoveryPolicy,
       );
     } catch (error) {
       acquisition.release();
@@ -1189,8 +1172,6 @@ export class OpenCodeAgentClient implements AgentClient {
         this.storageRoot,
         new Map(this.modelContextWindows),
         acquisition.release,
-        undefined,
-        this.eofRecoveryPolicy,
       );
     } catch (error) {
       acquisition.release();
@@ -2321,7 +2302,6 @@ class OpenCodeAgentSession implements AgentSession {
   private selectedModelContextWindowMaxTokens: number | undefined;
   private releaseServer: (() => void) | null;
   private readonly persistSession: boolean;
-  private readonly eofRecoveryPolicy: OpenCodeEofRecoveryPolicy;
   private deletedFromProvider = false;
   private foregroundAssistantMessageEmitted = false;
   private foregroundAssistantText = "";
@@ -2337,7 +2317,6 @@ class OpenCodeAgentSession implements AgentSession {
     modelContextWindowsByModelKey: ReadonlyMap<string, number> = new Map(),
     releaseServer?: () => void,
     persistSession = true,
-    eofRecoveryPolicy: OpenCodeEofRecoveryPolicy = DEFAULT_OPENCODE_EOF_RECOVERY_POLICY,
   ) {
     this.config = config;
     this.client = client;
@@ -2348,7 +2327,6 @@ class OpenCodeAgentSession implements AgentSession {
     this.currentMode = normalizeOpenCodeModeId(config.modeId);
     this.releaseServer = releaseServer ?? null;
     this.persistSession = persistSession;
-    this.eofRecoveryPolicy = eofRecoveryPolicy;
     this.selectedModelContextWindowMaxTokens = this.resolveConfiguredModelContextWindowMaxTokens(
       config.model,
     );
@@ -2692,7 +2670,12 @@ class OpenCodeAgentSession implements AgentSession {
       return false;
     }
 
-    const completion = await this.waitForPersistedAssistantCompletion(turnId);
+    const completion = await readOpenCodePersistedAssistantCompletion(
+      this.storageRoot,
+      this.sessionId,
+      this.foregroundKnownMessageIds,
+      this.foregroundTurnStartedAt,
+    );
     if (!completion || this.activeForegroundTurnId !== turnId) {
       return false;
     }
@@ -2747,32 +2730,6 @@ class OpenCodeAgentSession implements AgentSession {
       turnId,
     );
     return true;
-  }
-
-  private async waitForPersistedAssistantCompletion(
-    turnId: string,
-  ): Promise<OpenCodePersistedAssistantCompletion | null> {
-    for (let attempt = 0; attempt < this.eofRecoveryPolicy.maxAttempts; attempt += 1) {
-      if (this.foregroundTurnStartedAt === null || this.activeForegroundTurnId !== turnId) {
-        return null;
-      }
-
-      const completion = await readOpenCodePersistedAssistantCompletion(
-        this.storageRoot,
-        this.sessionId,
-        this.foregroundKnownMessageIds,
-        this.foregroundTurnStartedAt,
-      );
-      if (completion) {
-        return completion;
-      }
-
-      if (attempt < this.eofRecoveryPolicy.maxAttempts - 1) {
-        await sleep(this.eofRecoveryPolicy.delayMs);
-      }
-    }
-
-    return null;
   }
 
   private resolvePersistedAssistantRecoveryText(completedText: string): string | null {

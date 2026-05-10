@@ -13,7 +13,6 @@ import {
 } from "./opencode-agent.js";
 import { streamSession } from "./test-utils/session-stream-adapter.js";
 import type {
-  AgentSession,
   AgentSessionConfig,
   AgentStreamEvent,
   ToolCallTimelineItem,
@@ -42,8 +41,6 @@ interface TurnResult {
   turnFailed: boolean;
   error?: string;
 }
-
-const FAST_OPENCODE_EOF_RECOVERY_POLICY = { maxAttempts: 5, delayMs: 1 };
 
 async function collectTurnEvents(iterator: AsyncGenerator<AgentStreamEvent>): Promise<TurnResult> {
   const result: TurnResult = {
@@ -79,140 +76,6 @@ async function collectTurnEvents(iterator: AsyncGenerator<AgentStreamEvent>): Pr
   }
 
   return result;
-}
-
-interface FakeOpenCodeStream {
-  stream: AsyncIterable<OpenCodeEvent>;
-  close: () => void;
-  closed: Promise<void>;
-}
-
-function createFakeOpenCodeStream(events: OpenCodeEvent[] = []): FakeOpenCodeStream {
-  let releaseStream!: () => void;
-  const canEnd = new Promise<void>((resolve) => {
-    releaseStream = resolve;
-  });
-  let notifyEnded!: () => void;
-  const closed = new Promise<void>((resolve) => {
-    notifyEnded = resolve;
-  });
-
-  return {
-    close: releaseStream,
-    closed,
-    stream: {
-      [Symbol.asyncIterator]: () => {
-        let index = 0;
-        return {
-          next: async () => {
-            if (index < events.length) {
-              return { done: false, value: events[index++] };
-            }
-            await canEnd;
-            notifyEnded();
-            return { done: true, value: undefined };
-          },
-        };
-      },
-    },
-  };
-}
-
-function createFakeOpenCode(stream: FakeOpenCodeStream, onPrompt: () => void | Promise<void>) {
-  return {
-    event: {
-      subscribe: async () => ({ stream: stream.stream }),
-    },
-    provider: {
-      list: async () => ({ data: { connected: [], all: [] }, error: undefined }),
-    },
-    session: {
-      create: async () => ({ data: { id: "ses_unit_test" }, error: undefined }),
-      promptAsync: async () => {
-        await onPrompt();
-        return { data: {}, error: undefined };
-      },
-      abort: async () => ({ data: true, error: undefined }),
-      update: async () => ({ data: true, error: undefined }),
-      delete: async () => ({ data: true, error: undefined }),
-    },
-  } as never;
-}
-
-async function createSessionWithFakeOpenCode(params: {
-  storageRoot: string;
-  cwd: string;
-  stream: FakeOpenCodeStream;
-  onPrompt: () => void | Promise<void>;
-}): Promise<AgentSession> {
-  const fakeClient = createFakeOpenCode(params.stream, params.onPrompt);
-  const client = new OpenCodeAgentClient(createTestLogger(), undefined, params.storageRoot, {
-    runtime: {
-      acquireServer: async () => ({
-        server: { port: 0, url: "http://localhost" },
-        release: () => {},
-      }),
-      ensureServerRunning: async () => ({ port: 0, url: "http://localhost" }),
-      createClient: () => fakeClient,
-      shutdown: async () => undefined,
-    },
-    eofRecoveryPolicy: FAST_OPENCODE_EOF_RECOVERY_POLICY,
-  });
-
-  return client.createSession({ provider: "opencode", cwd: params.cwd });
-}
-
-function observeTurn(session: AgentSession) {
-  const events: AgentStreamEvent[] = [];
-  let resolveTerminal!: (event: AgentStreamEvent) => void;
-  const terminal = new Promise<AgentStreamEvent>((resolve) => {
-    resolveTerminal = resolve;
-  });
-
-  session.subscribe((event) => {
-    events.push(event);
-    if (
-      event.type === "turn_completed" ||
-      event.type === "turn_failed" ||
-      event.type === "turn_canceled"
-    ) {
-      resolveTerminal(event);
-    }
-  });
-
-  return {
-    terminal,
-    assistantMessages: () =>
-      events
-        .flatMap((event) => (event.type === "timeline" ? [event.item] : []))
-        .filter((item): item is AssistantMessageTimelineItem => item.type === "assistant_message"),
-  };
-}
-
-function openCodeAssistantStarted(messageId: string): OpenCodeEvent {
-  return {
-    type: "message.updated",
-    properties: {
-      info: {
-        id: messageId,
-        sessionID: "ses_unit_test",
-        role: "assistant",
-      },
-    },
-  } as OpenCodeEvent;
-}
-
-function openCodeTextDelta(messageId: string, partId: string, delta: string): OpenCodeEvent {
-  return {
-    type: "message.part.delta",
-    properties: {
-      sessionID: "ses_unit_test",
-      messageID: messageId,
-      partID: partId,
-      field: "text",
-      delta,
-    },
-  } as OpenCodeEvent;
 }
 
 function isBinaryInstalled(binary: string): boolean {
@@ -808,7 +671,6 @@ describe("OpenCode adapter startTurn error handling", () => {
         createClient: vi.fn().mockReturnValue(fakeClient),
         shutdown: vi.fn().mockResolvedValue(undefined),
       },
-      eofRecoveryPolicy: FAST_OPENCODE_EOF_RECOVERY_POLICY,
     });
 
     const session = await client.createSession({ provider: "opencode", cwd });
@@ -832,126 +694,6 @@ describe("OpenCode adapter startTurn error handling", () => {
 
     dateNowSpy.mockRestore();
     rmSync(storageRoot, { recursive: true, force: true });
-  });
-
-  test("recovers SSE EOF when persisted assistant completion appears after the stream closes", async () => {
-    const storageRoot = mkdtempSync(path.join(os.tmpdir(), "opencode-storage-"));
-    const cwd = "/tmp/test";
-    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(2000);
-
-    try {
-      writeOpenCodeStoredSession(storageRoot, cwd);
-      const stream = createFakeOpenCodeStream();
-      const session = await createSessionWithFakeOpenCode({
-        storageRoot,
-        cwd,
-        stream,
-        onPrompt: stream.close,
-      });
-      const turn = observeTurn(session);
-
-      await session.startTurn("hello");
-      await stream.closed;
-      writeRecoveredAssistantCompletion(storageRoot, "msg_assistant", "Recovered assistant reply");
-
-      expect((await turn.terminal).type).toBe("turn_completed");
-      expect(
-        turn
-          .assistantMessages()
-          .map((message) => message.text)
-          .join(""),
-      ).toBe("Recovered assistant reply");
-    } finally {
-      dateNowSpy.mockRestore();
-      rmSync(storageRoot, { recursive: true, force: true });
-    }
-  });
-
-  test("recovers delayed persisted completion without duplicating text already streamed before EOF", async () => {
-    const storageRoot = mkdtempSync(path.join(os.tmpdir(), "opencode-storage-"));
-    const cwd = "/tmp/test";
-    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(2000);
-    let completionWriteSettled: Promise<void> = Promise.resolve();
-    const writeDelayedCompletion = async () => {
-      await nextMacrotask();
-      writeRecoveredAssistantCompletion(storageRoot, "msg_assistant", "Recovered assistant reply");
-    };
-
-    try {
-      writeOpenCodeStoredSession(storageRoot, cwd);
-      const stream = createFakeOpenCodeStream([
-        openCodeAssistantStarted("msg_assistant"),
-        openCodeTextDelta("msg_assistant", "prt_text", "Recovered "),
-      ]);
-      const session = await createSessionWithFakeOpenCode({
-        storageRoot,
-        cwd,
-        stream,
-        onPrompt: async () => {
-          stream.close();
-          completionWriteSettled = writeDelayedCompletion();
-          await completionWriteSettled;
-        },
-      });
-      const turn = observeTurn(session);
-
-      await session.startTurn("hello");
-      await stream.closed;
-
-      expect((await turn.terminal).type).toBe("turn_completed");
-      const assistantMessages = turn.assistantMessages();
-      expect(assistantMessages.map((message) => message.text).join("")).toBe(
-        "Recovered assistant reply",
-      );
-      expect(assistantMessages.map((message) => message.text)).toEqual([
-        "Recovered ",
-        "assistant reply",
-      ]);
-    } finally {
-      await completionWriteSettled;
-      dateNowSpy.mockRestore();
-      rmSync(storageRoot, { recursive: true, force: true });
-    }
-  });
-
-  test("ignores old completed assistant messages while waiting for delayed current-turn completion", async () => {
-    const storageRoot = mkdtempSync(path.join(os.tmpdir(), "opencode-storage-"));
-    const cwd = "/tmp/test";
-    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(2000);
-
-    try {
-      writeOpenCodeStoredSession(storageRoot, cwd);
-      writeOpenCodeAssistantCompletion(storageRoot, "msg_assistant_old", "Old assistant reply", {
-        created: 1500,
-        completed: 1600,
-        partStart: 1500,
-        partEnd: 1550,
-      });
-      const stream = createFakeOpenCodeStream();
-      const session = await createSessionWithFakeOpenCode({
-        storageRoot,
-        cwd,
-        stream,
-        onPrompt: stream.close,
-      });
-      const turn = observeTurn(session);
-
-      await session.startTurn("hello");
-      await stream.closed;
-      writeRecoveredAssistantCompletion(
-        storageRoot,
-        "msg_assistant_current",
-        "Current assistant reply",
-      );
-
-      expect((await turn.terminal).type).toBe("turn_completed");
-      expect(turn.assistantMessages().map((message) => message.text)).toEqual([
-        "Current assistant reply",
-      ]);
-    } finally {
-      dateNowSpy.mockRestore();
-      rmSync(storageRoot, { recursive: true, force: true });
-    }
   });
 
   test("keeps SSE EOF as turn_failed without persisted completion evidence", async () => {
@@ -1021,7 +763,6 @@ describe("OpenCode adapter startTurn error handling", () => {
         createClient: vi.fn().mockReturnValue(fakeClient),
         shutdown: vi.fn().mockResolvedValue(undefined),
       },
-      eofRecoveryPolicy: FAST_OPENCODE_EOF_RECOVERY_POLICY,
     });
 
     const session = await client.createSession({ provider: "opencode", cwd });
@@ -1126,7 +867,6 @@ describe("OpenCode adapter startTurn error handling", () => {
         createClient: vi.fn().mockReturnValue(fakeClient),
         shutdown: vi.fn().mockResolvedValue(undefined),
       },
-      eofRecoveryPolicy: FAST_OPENCODE_EOF_RECOVERY_POLICY,
     });
 
     const session = await client.createSession({ provider: "opencode", cwd });
@@ -1317,52 +1057,4 @@ function writeOpenCodeJson(storageRoot: string, relativePath: string, value: unk
   const filePath = path.join(storageRoot, relativePath);
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, JSON.stringify(value), "utf8");
-}
-
-function writeOpenCodeStoredSession(storageRoot: string, cwd: string): void {
-  writeOpenCodeJson(storageRoot, "session/project-1/ses_unit_test.json", {
-    id: "ses_unit_test",
-    directory: cwd,
-    time: { created: 1000, updated: 3000 },
-  });
-}
-
-function nextMacrotask(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-function writeRecoveredAssistantCompletion(
-  storageRoot: string,
-  messageId: string,
-  text: string,
-): void {
-  writeOpenCodeAssistantCompletion(storageRoot, messageId, text, {
-    created: 2000,
-    completed: 2500,
-    partStart: 2100,
-    partEnd: 2400,
-  });
-}
-
-function writeOpenCodeAssistantCompletion(
-  storageRoot: string,
-  messageId: string,
-  text: string,
-  time: { created: number; completed: number; partStart: number; partEnd: number },
-): void {
-  writeOpenCodeJson(storageRoot, `message/ses_unit_test/${messageId}.json`, {
-    id: messageId,
-    sessionID: "ses_unit_test",
-    role: "assistant",
-    finish: "stop",
-    time: { created: time.created, completed: time.completed },
-  });
-  writeOpenCodeJson(storageRoot, `part/${messageId}/prt_text.json`, {
-    id: "prt_text",
-    sessionID: "ses_unit_test",
-    messageID: messageId,
-    type: "text",
-    text,
-    time: { start: time.partStart, end: time.partEnd },
-  });
 }
