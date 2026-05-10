@@ -1,13 +1,27 @@
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import type { AgentManager, ManagedAgent } from "./agent-manager.js";
 import type { AgentStorage, StoredAgentRecord } from "./agent-storage.js";
 import type { FetchRecentProviderSessionsRequestMessage } from "../../shared/messages.js";
-import type { PersistedAgentDescriptor } from "./agent-sdk-types.js";
+import type { AgentTimelineItem, PersistedAgentDescriptor } from "./agent-sdk-types.js";
 import {
   ImportSessionsRequestError,
+  importProviderSession,
   listImportableProviderSessions,
   normalizeImportAgentRequest,
 } from "./import-sessions.js";
+
+const TEST_CAPABILITIES = {
+  supportsStreaming: true,
+  supportsSessionPersistence: true,
+  supportsDynamicModes: false,
+  supportsMcpServers: false,
+  supportsReasoningStream: false,
+  supportsToolInvocations: true,
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function makeDescriptor(args: {
   provider?: string;
@@ -38,6 +52,49 @@ function makeDescriptor(args: {
       ...(args.lastPrompt ? [{ type: "user_message" as const, text: args.lastPrompt }] : []),
     ],
   };
+}
+
+function makeManagedAgent(args: {
+  id?: string;
+  provider?: string;
+  cwd: string;
+  sessionId: string;
+  nativeHandle?: string;
+  title?: string | null;
+}): ManagedAgent {
+  const provider = args.provider ?? "codex";
+  return {
+    id: args.id ?? "00000000-0000-4000-8000-000000000632",
+    provider,
+    cwd: args.cwd,
+    capabilities: TEST_CAPABILITIES,
+    config: { provider, cwd: args.cwd, title: args.title },
+    createdAt: new Date("2026-04-30T00:00:00.000Z"),
+    updatedAt: new Date("2026-04-30T00:00:00.000Z"),
+    availableModes: [],
+    currentModeId: null,
+    pendingPermissions: new Map(),
+    bufferedPermissionResolutions: new Map(),
+    inFlightPermissionResponses: new Set(),
+    pendingReplacement: false,
+    persistence: {
+      provider,
+      sessionId: args.sessionId,
+      ...(args.nativeHandle ? { nativeHandle: args.nativeHandle } : {}),
+      metadata: { provider, cwd: args.cwd },
+    },
+    historyPrimed: true,
+    lastUserMessageAt: null,
+    attention: { requiresAttention: false },
+    foregroundTurnWaiters: new Set(),
+    finalizedForegroundTurnIds: new Set(),
+    unsubscribeSession: null,
+    internal: false,
+    labels: {},
+    lifecycle: "closed",
+    session: null,
+    activeForegroundTurnId: null,
+  } satisfies ManagedAgent;
 }
 
 function makeRequest(
@@ -262,4 +319,145 @@ test("normalizeImportAgentRequest accepts new and legacy import handle shapes", 
     provider: "codex",
     providerHandleId: "thread-2",
   });
+});
+
+test("importProviderSession resumes by provider handle, hydrates the timeline, and applies title metadata", async () => {
+  const cwd = "/tmp/imported-agent";
+  const timeline: AgentTimelineItem[] = [
+    { type: "user_message", text: "Trace recent provider sessions\n\nkeep it tight" },
+    { type: "assistant_message", text: "I will inspect the provider listing." },
+  ];
+  const snapshot = makeManagedAgent({
+    id: "00000000-0000-4000-8000-000000000633",
+    provider: "custom-codex",
+    cwd,
+    sessionId: "thread-imported",
+    nativeHandle: "provider-thread-imported",
+    title: null,
+  });
+  const descriptor = makeDescriptor({
+    provider: "custom-codex",
+    sessionId: "thread-imported",
+    nativeHandle: "provider-thread-imported",
+    cwd,
+    title: null,
+    firstPrompt: "Trace recent provider sessions",
+    lastActivityAt: "2026-04-30T00:00:00.000Z",
+  });
+  const agentManager = {
+    findPersistedAgent: vi.fn().mockResolvedValue(descriptor),
+    resumeAgentFromPersistence: vi.fn().mockResolvedValue(snapshot),
+    hydrateTimelineFromProvider: vi.fn().mockResolvedValue(undefined),
+    getTimeline: vi.fn().mockReturnValue(timeline),
+    setTitle: vi.fn().mockResolvedValue(undefined),
+    notifyAgentState: vi.fn(),
+  } as unknown as AgentManager;
+  const agentStorage = {
+    list: vi.fn().mockResolvedValue([]),
+    get: vi.fn().mockResolvedValue(null),
+  } as unknown as AgentStorage;
+  const scheduleAgentMetadataGeneration = vi.fn();
+
+  const result = await importProviderSession({
+    request: {
+      requestId: "import-thread",
+      provider: "custom-codex",
+      providerHandleId: "provider-thread-imported",
+      cwd,
+    },
+    agentManager,
+    agentStorage,
+    logger: { warn: vi.fn(), error: vi.fn() } as never,
+    deps: { scheduleAgentMetadataGeneration },
+  });
+
+  expect(agentManager.findPersistedAgent).toHaveBeenCalledWith(
+    "custom-codex",
+    "provider-thread-imported",
+  );
+  expect(agentManager.resumeAgentFromPersistence).toHaveBeenCalledWith(
+    descriptor.persistence,
+    { cwd },
+    undefined,
+    { labels: undefined },
+  );
+  expect(agentManager.hydrateTimelineFromProvider).toHaveBeenCalledWith(snapshot.id);
+  expect(agentManager.setTitle).toHaveBeenCalledWith(snapshot.id, "Trace recent provider sessions");
+  expect(scheduleAgentMetadataGeneration).toHaveBeenCalledWith(
+    expect.objectContaining({
+      agentManager,
+      agentId: snapshot.id,
+      cwd,
+      initialPrompt: "Trace recent provider sessions\n\nkeep it tight",
+      explicitTitle: null,
+    }),
+  );
+  expect(result).toEqual({ snapshot, timelineSize: 2 });
+});
+
+test("importProviderSession builds a fallback handle when a non-OpenCode provider has no descriptor", async () => {
+  const cwd = "/tmp/imported-agent";
+  const snapshot = makeManagedAgent({
+    provider: "codex",
+    cwd,
+    sessionId: "thread-imported",
+    nativeHandle: "thread-imported",
+  });
+  const agentManager = {
+    findPersistedAgent: vi.fn().mockResolvedValue(null),
+    resumeAgentFromPersistence: vi.fn().mockResolvedValue(snapshot),
+    hydrateTimelineFromProvider: vi.fn().mockResolvedValue(undefined),
+    getTimeline: vi.fn().mockReturnValue([]),
+    setTitle: vi.fn().mockResolvedValue(undefined),
+    notifyAgentState: vi.fn(),
+  } as unknown as AgentManager;
+  const agentStorage = {
+    list: vi.fn().mockResolvedValue([]),
+    get: vi.fn().mockResolvedValue(null),
+  } as unknown as AgentStorage;
+
+  await importProviderSession({
+    request: {
+      requestId: "import-thread",
+      provider: "codex",
+      providerHandleId: "thread-imported",
+      cwd,
+    },
+    agentManager,
+    agentStorage,
+    logger: { warn: vi.fn(), error: vi.fn() } as never,
+  });
+
+  expect(agentManager.resumeAgentFromPersistence).toHaveBeenCalledWith(
+    {
+      provider: "codex",
+      sessionId: "thread-imported",
+      nativeHandle: "thread-imported",
+      metadata: { provider: "codex", cwd },
+    },
+    { cwd },
+    undefined,
+    { labels: undefined },
+  );
+});
+
+test("importProviderSession requires cwd for missing OpenCode descriptors", async () => {
+  const agentManager = {
+    findPersistedAgent: vi.fn().mockResolvedValue(null),
+  } as unknown as AgentManager;
+
+  await expect(
+    importProviderSession({
+      request: {
+        requestId: "import-thread",
+        provider: "opencode",
+        providerHandleId: "thread-imported",
+      },
+      agentManager,
+      agentStorage: { list: vi.fn() } as unknown as AgentStorage,
+      logger: { warn: vi.fn(), error: vi.fn() } as never,
+    }),
+  ).rejects.toThrow(
+    "OpenCode sessions require --cwd when the session cannot be found in persisted agents",
+  );
 });
