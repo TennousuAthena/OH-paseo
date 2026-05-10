@@ -7,7 +7,8 @@ vi.mock("@opencode-ai/sdk/v2/client", () => ({
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
-import { OpenCodeAgentClient, OpenCodeServerManager } from "./opencode-agent.js";
+import { OpenCodeAgentClient } from "./opencode-agent.js";
+import { createTestOpenCodeServerManager } from "./opencode/test-server-manager.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -17,30 +18,29 @@ afterEach(() => {
 test("allows a slow provider.list call to succeed instead of failing after 10 seconds", async () => {
   vi.useFakeTimers();
 
-  const providerList = vi.fn(
-    () =>
-      new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            data: {
-              connected: ["zai"],
-              all: [
-                {
-                  id: "zai",
-                  name: "Z.AI",
-                  models: {
-                    "glm-5.1": {
-                      name: "GLM 5.1",
-                      limit: { context: 128_000 },
-                    },
+  async function providerList(): Promise<unknown> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          data: {
+            connected: ["zai"],
+            all: [
+              {
+                id: "zai",
+                name: "Z.AI",
+                models: {
+                  "glm-5.1": {
+                    name: "GLM 5.1",
+                    limit: { context: 128_000 },
                   },
                 },
-              ],
-            },
-          });
-        }, 15_000);
-      }),
-  );
+              },
+            ],
+          },
+        });
+      }, 15_000);
+    });
+  }
 
   vi.mocked(createOpencodeClient).mockReturnValue({
     provider: {
@@ -48,14 +48,10 @@ test("allows a slow provider.list call to succeed instead of failing after 10 se
     },
   } as never);
 
-  vi.spyOn(OpenCodeServerManager, "getInstance").mockReturnValue({
-    acquire: vi.fn().mockResolvedValue({
-      server: { port: 1234, url: "http://127.0.0.1:1234" },
-      release: vi.fn(),
-    }),
-  } as never);
-
-  const client = new OpenCodeAgentClient(createTestLogger());
+  const serverManager = createTestOpenCodeServerManager();
+  const client = new OpenCodeAgentClient(createTestLogger(), undefined, undefined, {
+    serverManager,
+  });
   const modelsPromise = client.listModels({ cwd: "/tmp/opencode-models", force: false });
 
   await vi.advanceTimersByTimeAsync(15_000);
@@ -72,7 +68,7 @@ test("allows a slow provider.list call to succeed instead of failing after 10 se
 test("passes explicit refresh force through server acquisition", async () => {
   vi.mocked(createOpencodeClient).mockReturnValue({
     provider: {
-      list: vi.fn().mockResolvedValue({
+      list: async () => ({
         data: {
           connected: ["openai"],
           all: [{ id: "openai", name: "OpenAI", models: {} }],
@@ -80,15 +76,13 @@ test("passes explicit refresh force through server acquisition", async () => {
       }),
     },
   } as never);
-  const acquire = vi.fn().mockResolvedValue({
-    server: { port: 1234, url: "http://127.0.0.1:1234" },
-    release: vi.fn(),
-  });
-  vi.spyOn(OpenCodeServerManager, "getInstance").mockReturnValue({ acquire } as never);
+  const serverManager = createTestOpenCodeServerManager();
 
-  const client = new OpenCodeAgentClient(createTestLogger());
+  const client = new OpenCodeAgentClient(createTestLogger(), undefined, undefined, {
+    serverManager,
+  });
 
   await client.listModels({ cwd: "/tmp/opencode-models", force: true });
 
-  expect(acquire).toHaveBeenCalledWith({ force: true });
+  expect(serverManager.acquisitions).toEqual([{ force: true, released: true }]);
 });

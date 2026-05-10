@@ -8,7 +8,8 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import type { AgentStreamEvent } from "../agent-sdk-types.js";
-import { OpenCodeAgentClient, OpenCodeServerManager } from "./opencode-agent.js";
+import { OpenCodeAgentClient } from "./opencode-agent.js";
+import { createTestOpenCodeServerManager } from "./opencode/test-server-manager.js";
 
 interface MockOpenCodeClientOptions {
   agents?: unknown[];
@@ -21,15 +22,6 @@ function createEventStream(events: unknown[]): AsyncGenerator<never> {
       yield event as never;
     }
   })();
-}
-
-function mockServerManager(): void {
-  vi.spyOn(OpenCodeServerManager, "getInstance").mockReturnValue({
-    acquire: vi.fn().mockResolvedValue({
-      server: { port: 1234, url: "http://127.0.0.1:1234" },
-      release: vi.fn(),
-    }),
-  } as never);
 }
 
 function mockOpenCodeClient(options: MockOpenCodeClientOptions = {}) {
@@ -121,7 +113,7 @@ describe("OpenCode full-access mode", () => {
   });
 
   test("includes virtual full-access mode with dynamic OpenCode agents", async () => {
-    mockServerManager();
+    const serverManager = createTestOpenCodeServerManager();
     mockOpenCodeClient({
       agents: [
         { name: "build", mode: "primary", hidden: false, description: "Build agent" },
@@ -129,7 +121,9 @@ describe("OpenCode full-access mode", () => {
       ],
     });
 
-    const client = new OpenCodeAgentClient(createTestLogger());
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, undefined, {
+      serverManager,
+    });
     const modes = await client.listModes({ cwd: "/tmp/project", force: false });
 
     expect(modes.map((mode) => mode.id)).toEqual(["build", "plan", "full-access", "paseo-custom"]);
@@ -140,10 +134,12 @@ describe("OpenCode full-access mode", () => {
   });
 
   test("reports full-access but sends prompts through OpenCode build agent", async () => {
-    mockServerManager();
+    const serverManager = createTestOpenCodeServerManager();
     const { promptAsync } = mockOpenCodeClient();
 
-    const client = new OpenCodeAgentClient(createTestLogger());
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, undefined, {
+      serverManager,
+    });
     const session = await client.createSession({
       provider: "opencode",
       cwd: "/tmp/project",
@@ -161,13 +157,15 @@ describe("OpenCode full-access mode", () => {
   });
 
   test("auto-approves tool permissions in full-access without surfacing them", async () => {
-    mockServerManager();
+    const serverManager = createTestOpenCodeServerManager();
     const { permissionReply } = mockOpenCodeClient({
       events: [toolPermissionEvent(), idleEvent()],
     });
     const receivedEvents: AgentStreamEvent[] = [];
 
-    const client = new OpenCodeAgentClient(createTestLogger());
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, undefined, {
+      serverManager,
+    });
     const session = await client.createSession({
       provider: "opencode",
       cwd: "/tmp/project",
@@ -190,13 +188,15 @@ describe("OpenCode full-access mode", () => {
   });
 
   test("keeps questions separate from full-access tool auto-approval", async () => {
-    mockServerManager();
+    const serverManager = createTestOpenCodeServerManager();
     const { permissionReply, questionReply } = mockOpenCodeClient({
       events: [questionEvent(), idleEvent()],
     });
     const receivedEvents: AgentStreamEvent[] = [];
 
-    const client = new OpenCodeAgentClient(createTestLogger());
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, undefined, {
+      serverManager,
+    });
     const session = await client.createSession({
       provider: "opencode",
       cwd: "/tmp/project",

@@ -7,7 +7,8 @@ vi.mock("@opencode-ai/sdk/v2/client", () => ({
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
-import { OpenCodeAgentClient, OpenCodeServerManager } from "./opencode-agent.js";
+import { OpenCodeAgentClient } from "./opencode-agent.js";
+import { createTestOpenCodeServerManager } from "./opencode/test-server-manager.js";
 
 function createDeferred<T>(): {
   promise: Promise<T>;
@@ -49,14 +50,9 @@ describe("OpenCodeAgentSession slash command timeout handling", () => {
       },
     } as never);
 
-    vi.spyOn(OpenCodeServerManager, "getInstance").mockReturnValue({
-      acquire: vi.fn().mockResolvedValue({
-        server: { port: 1234, url: "http://127.0.0.1:1234" },
-        release: vi.fn(),
-      }),
-    } as never);
-
-    const client = new OpenCodeAgentClient(createTestLogger());
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, undefined, {
+      serverManager: createTestOpenCodeServerManager(),
+    });
     const session = await client.createSession({ provider: "opencode", cwd: "/tmp" });
 
     await expect(session.listCommands?.()).resolves.toEqual(
@@ -107,14 +103,9 @@ describe("OpenCodeAgentSession slash command timeout handling", () => {
       },
     } as never);
 
-    vi.spyOn(OpenCodeServerManager, "getInstance").mockReturnValue({
-      acquire: vi.fn().mockResolvedValue({
-        server: { port: 1234, url: "http://127.0.0.1:1234" },
-        release: vi.fn(),
-      }),
-    } as never);
-
-    const client = new OpenCodeAgentClient(createTestLogger());
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, undefined, {
+      serverManager: createTestOpenCodeServerManager(),
+    });
     const session = await client.createSession({ provider: "opencode", cwd: "/tmp" });
 
     await expect(session.run("/compact")).resolves.toMatchObject({
@@ -164,14 +155,9 @@ describe("OpenCodeAgentSession slash command timeout handling", () => {
       },
     } as never);
 
-    vi.spyOn(OpenCodeServerManager, "getInstance").mockReturnValue({
-      acquire: vi.fn().mockResolvedValue({
-        server: { port: 1234, url: "http://127.0.0.1:1234" },
-        release: vi.fn(),
-      }),
-    } as never);
-
-    const client = new OpenCodeAgentClient(createTestLogger());
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, undefined, {
+      serverManager: createTestOpenCodeServerManager(),
+    });
     const session = await client.createSession({ provider: "opencode", cwd: "/tmp" });
 
     const runPromise = session.run("/help");
