@@ -74,6 +74,10 @@ const OPENCODE_CAPABILITIES: AgentCapabilityFlags = {
 const OPENCODE_BUILD_MODE_ID = "build";
 const OPENCODE_FULL_ACCESS_MODE_ID = "full-access";
 const OPENCODE_STORAGE_SESSION_LIMIT = 200;
+const DEFAULT_OPENCODE_EOF_RECOVERY_POLICY = {
+  maxAttempts: 600,
+  delayMs: 1_000,
+};
 
 const DEFAULT_MODES: AgentMode[] = [
   {
@@ -137,6 +141,17 @@ const OpenCodeStoredPartSchema = z
 type OpenCodeStoredSession = z.infer<typeof OpenCodeStoredSessionSchema>;
 type OpenCodeStoredMessage = z.infer<typeof OpenCodeStoredMessageSchema>;
 type OpenCodeStoredPart = z.infer<typeof OpenCodeStoredPartSchema>;
+
+interface OpenCodePersistedAssistantCompletion {
+  messageId: string;
+  text: string;
+  usage?: AgentUsage;
+}
+
+interface OpenCodeEofRecoveryPolicy {
+  maxAttempts: number;
+  delayMs: number;
+}
 
 type OpenCodeAgentConfig = AgentSessionConfig & { provider: "opencode" };
 type OpenCodeMessageRole = "user" | "assistant";
@@ -818,21 +833,135 @@ async function readOpenCodeSessionTimeline(
 }
 
 async function readOpenCodeMessageText(storageRoot: string, messageId: string): Promise<string> {
+  const parts = await readOpenCodeStoredParts(storageRoot, messageId);
+  return readOpenCodeTextFromParts(parts);
+}
+
+async function readOpenCodeStoredParts(
+  storageRoot: string,
+  messageId: string,
+): Promise<OpenCodeStoredPart[]> {
   const partRoot = path.join(storageRoot, "part", messageId);
   const partFiles = await findJsonFiles(partRoot);
   const parts: OpenCodeStoredPart[] = [];
   for (const file of partFiles) {
     const parsed = await readJsonFile(file, OpenCodeStoredPartSchema);
-    if (parsed?.type === "text" && typeof parsed.text === "string") {
+    if (parsed) {
       parts.push(parsed);
     }
   }
 
+  return parts.sort(
+    (left, right) => getOpenCodePartTimestamp(left) - getOpenCodePartTimestamp(right),
+  );
+}
+
+function readOpenCodeTextFromParts(parts: OpenCodeStoredPart[]): string {
   return parts
-    .sort((left, right) => getOpenCodePartTimestamp(left) - getOpenCodePartTimestamp(right))
+    .filter((part) => part.type === "text" && typeof part.text === "string")
     .map((part) => part.text?.trim() ?? "")
     .filter(Boolean)
     .join("\n\n");
+}
+
+async function readOpenCodePersistedAssistantCompletion(
+  storageRoot: string,
+  sessionId: string,
+  knownMessageIds: ReadonlySet<string>,
+  turnStartedAt: number,
+): Promise<OpenCodePersistedAssistantCompletion | null> {
+  const messageRoot = path.join(storageRoot, "message", sessionId);
+  const messageFiles = await findJsonFiles(messageRoot);
+  const messages: OpenCodeStoredMessage[] = [];
+
+  for (const file of messageFiles) {
+    const parsed = await readJsonFile(file, OpenCodeStoredMessageSchema);
+    if (
+      parsed?.sessionID === sessionId &&
+      parsed.role === "assistant" &&
+      !knownMessageIds.has(parsed.id)
+    ) {
+      messages.push(parsed);
+    }
+  }
+
+  const candidates = messages.sort(
+    (left, right) => getOpenCodeMessageTimestamp(right) - getOpenCodeMessageTimestamp(left),
+  );
+
+  for (const message of candidates) {
+    const parts = (await readOpenCodeStoredParts(storageRoot, message.id)).filter((part) =>
+      isOpenCodePartAtOrAfterTurnStart(part, turnStartedAt),
+    );
+    if (!isOpenCodeMessageAtOrAfterTurnStart(message, turnStartedAt) && parts.length === 0) {
+      continue;
+    }
+
+    const text = readOpenCodeTextFromParts(parts);
+    if (!text || !hasStrongPersistedCompletionEvidence(message, parts, turnStartedAt)) {
+      continue;
+    }
+    const usage = readPersistedStepFinishUsage(parts);
+
+    return {
+      messageId: message.id,
+      text,
+      ...(hasNormalizedOpenCodeUsage(usage) ? { usage } : {}),
+    };
+  }
+
+  return null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function hasStrongPersistedCompletionEvidence(
+  message: OpenCodeStoredMessage,
+  parts: OpenCodeStoredPart[],
+  turnStartedAt: number,
+): boolean {
+  const messageRecord = readOpenCodeRecord(message);
+  const infoRecord = readOpenCodeRecord(messageRecord?.["info"]);
+  const finish =
+    readNonEmptyString(messageRecord?.["finish"]) ?? readNonEmptyString(infoRecord?.["finish"]);
+  const hasCompletedMessage = isOpenCodeTimestampAtOrAfter(message.time?.completed, turnStartedAt);
+  const hasCompletedTextPart = parts.some(
+    (part) => part.type === "text" && typeof part.time?.end === "number",
+  );
+  const hasStepFinish = parts.some((part) => part.type === "step-finish");
+
+  return finish === "stop" && (hasCompletedMessage || hasCompletedTextPart || hasStepFinish);
+}
+
+function readPersistedStepFinishUsage(parts: OpenCodeStoredPart[]): AgentUsage {
+  const usage: AgentUsage = {};
+
+  for (const part of parts.filter((candidate) => candidate.type === "step-finish")) {
+    const partRecord = readOpenCodeRecord(part);
+    const tokensRecord = readOpenCodeRecord(partRecord?.["tokens"]);
+    const cacheRecord = readOpenCodeRecord(tokensRecord?.["cache"]);
+    mergeOpenCodeStepFinishUsage(usage, {
+      cost: partRecord?.["cost"],
+      tokens: tokensRecord
+        ? {
+            input: tokensRecord["input"],
+            output: tokensRecord["output"],
+            reasoning: tokensRecord["reasoning"],
+            total: tokensRecord["total"],
+            cache: cacheRecord
+              ? {
+                  read: cacheRecord["read"],
+                  write: cacheRecord["write"],
+                }
+              : undefined,
+          }
+        : undefined,
+    });
+  }
+
+  return usage;
 }
 
 async function findJsonFiles(root: string): Promise<string[]> {
@@ -880,6 +1009,33 @@ function getOpenCodePartTimestamp(part: OpenCodeStoredPart): number {
   return part.time?.start ?? part.time?.end ?? 0;
 }
 
+function isOpenCodeTimestampAtOrAfter(
+  timestamp: number | undefined,
+  turnStartedAt: number,
+): boolean {
+  return typeof timestamp === "number" && timestamp >= turnStartedAt;
+}
+
+function isOpenCodeMessageAtOrAfterTurnStart(
+  message: OpenCodeStoredMessage,
+  turnStartedAt: number,
+): boolean {
+  return (
+    isOpenCodeTimestampAtOrAfter(message.time?.created, turnStartedAt) ||
+    isOpenCodeTimestampAtOrAfter(message.time?.completed, turnStartedAt)
+  );
+}
+
+function isOpenCodePartAtOrAfterTurnStart(
+  part: OpenCodeStoredPart,
+  turnStartedAt: number,
+): boolean {
+  return (
+    isOpenCodeTimestampAtOrAfter(part.time?.start, turnStartedAt) ||
+    isOpenCodeTimestampAtOrAfter(part.time?.end, turnStartedAt)
+  );
+}
+
 export const __openCodeInternals = {
   buildOpenCodePromptParts,
   buildOpenCodeModelContextWindowLookup,
@@ -900,6 +1056,7 @@ export const __openCodeInternals = {
 
 interface OpenCodeAgentClientDeps {
   runtime?: OpenCodeRuntime;
+  eofRecoveryPolicy?: OpenCodeEofRecoveryPolicy;
 }
 
 class ProductionOpenCodeRuntime implements OpenCodeRuntime {
@@ -931,6 +1088,7 @@ export class OpenCodeAgentClient implements AgentClient {
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly modelContextWindows = new Map<string, number>();
   private readonly storageRoot: string;
+  private readonly eofRecoveryPolicy: OpenCodeEofRecoveryPolicy;
 
   constructor(
     logger: Logger,
@@ -941,6 +1099,7 @@ export class OpenCodeAgentClient implements AgentClient {
     this.logger = logger.child({ module: "agent", provider: "opencode" });
     this.runtimeSettings = runtimeSettings;
     this.storageRoot = storageRoot ?? resolveOpenCodeStorageRoot();
+    this.eofRecoveryPolicy = deps.eofRecoveryPolicy ?? DEFAULT_OPENCODE_EOF_RECOVERY_POLICY;
     this.runtime =
       deps.runtime ??
       new ProductionOpenCodeRuntime(
@@ -984,9 +1143,11 @@ export class OpenCodeAgentClient implements AgentClient {
         client,
         session.id,
         this.logger,
+        this.storageRoot,
         new Map(this.modelContextWindows),
         acquisition.release,
         options?.persistSession,
+        this.eofRecoveryPolicy,
       );
     } catch (error) {
       acquisition.release();
@@ -1025,8 +1186,11 @@ export class OpenCodeAgentClient implements AgentClient {
         client,
         handle.sessionId,
         this.logger,
+        this.storageRoot,
         new Map(this.modelContextWindows),
         acquisition.release,
+        undefined,
+        this.eofRecoveryPolicy,
       );
     } catch (error) {
       acquisition.release();
@@ -2130,6 +2294,7 @@ class OpenCodeAgentSession implements AgentSession {
   private readonly client: OpencodeClient;
   private readonly sessionId: string;
   private readonly logger: Logger;
+  private readonly storageRoot: string;
   private readonly modelContextWindowsByModelKey: ReadonlyMap<string, number>;
   private currentMode: string = "default";
   private pendingPermissions = new Map<string, AgentPermissionRequest>();
@@ -2156,24 +2321,34 @@ class OpenCodeAgentSession implements AgentSession {
   private selectedModelContextWindowMaxTokens: number | undefined;
   private releaseServer: (() => void) | null;
   private readonly persistSession: boolean;
+  private readonly eofRecoveryPolicy: OpenCodeEofRecoveryPolicy;
   private deletedFromProvider = false;
+  private foregroundAssistantMessageEmitted = false;
+  private foregroundAssistantText = "";
+  private foregroundUsageUpdated = false;
+  private foregroundKnownMessageIds = new Set<string>();
+  private foregroundTurnStartedAt: number | null = null;
   constructor(
     config: OpenCodeAgentConfig,
     client: OpencodeClient,
     sessionId: string,
     logger: Logger,
+    storageRoot: string,
     modelContextWindowsByModelKey: ReadonlyMap<string, number> = new Map(),
     releaseServer?: () => void,
     persistSession = true,
+    eofRecoveryPolicy: OpenCodeEofRecoveryPolicy = DEFAULT_OPENCODE_EOF_RECOVERY_POLICY,
   ) {
     this.config = config;
     this.client = client;
     this.sessionId = sessionId;
     this.logger = logger;
+    this.storageRoot = storageRoot;
     this.modelContextWindowsByModelKey = modelContextWindowsByModelKey;
     this.currentMode = normalizeOpenCodeModeId(config.modeId);
     this.releaseServer = releaseServer ?? null;
     this.persistSession = persistSession;
+    this.eofRecoveryPolicy = eofRecoveryPolicy;
     this.selectedModelContextWindowMaxTokens = this.resolveConfiguredModelContextWindowMaxTokens(
       config.model,
     );
@@ -2243,10 +2418,15 @@ class OpenCodeAgentSession implements AgentSession {
       throw new Error("A foreground turn is already active");
     }
 
+    this.foregroundTurnStartedAt = Date.now();
     this.runningToolCalls.clear();
     this.subAgentsByCallId.clear();
     this.subAgentCallIdByChildSessionId.clear();
     this.pendingChildToolPartsBySessionId.clear();
+    this.foregroundAssistantMessageEmitted = false;
+    this.foregroundAssistantText = "";
+    this.foregroundUsageUpdated = false;
+    this.foregroundKnownMessageIds = await this.readPersistedSessionMessageIds();
     const turnAbortController = new AbortController();
     this.abortController = turnAbortController;
     await this.ensureMcpServersConfigured();
@@ -2466,6 +2646,9 @@ class OpenCodeAgentSession implements AgentSession {
       }
 
       if (!turnAbortController.signal.aborted && this.activeForegroundTurnId === turnId) {
+        if (await this.recoverTurnFromPersistedCompletion(turnId)) {
+          return;
+        }
         this.finishForegroundTurn(
           {
             type: "turn_failed",
@@ -2504,6 +2687,123 @@ class OpenCodeAgentSession implements AgentSession {
     }
   }
 
+  private async recoverTurnFromPersistedCompletion(turnId: string): Promise<boolean> {
+    if (this.foregroundTurnStartedAt === null) {
+      return false;
+    }
+
+    const completion = await this.waitForPersistedAssistantCompletion(turnId);
+    if (!completion || this.activeForegroundTurnId !== turnId) {
+      return false;
+    }
+    this.foregroundKnownMessageIds.add(completion.messageId);
+
+    this.logger.warn(
+      { sessionId: this.sessionId, turnId },
+      "Recovered OpenCode turn completion from persisted session state after SSE EOF",
+    );
+
+    const recoveryText = this.resolvePersistedAssistantRecoveryText(completion.text);
+    if (recoveryText === null) {
+      return false;
+    }
+
+    if (recoveryText.length > 0) {
+      this.notifySubscribers(
+        {
+          type: "timeline",
+          provider: "opencode",
+          item: { type: "assistant_message", text: recoveryText },
+        },
+        turnId,
+      );
+      this.foregroundAssistantMessageEmitted = true;
+    }
+
+    if (completion.usage && !this.foregroundUsageUpdated) {
+      this.accumulatedUsage = {
+        ...this.accumulatedUsage,
+        ...completion.usage,
+      };
+      this.notifySubscribers(
+        {
+          type: "usage_updated",
+          provider: "opencode",
+          usage: { ...this.accumulatedUsage },
+        },
+        turnId,
+      );
+      this.foregroundUsageUpdated = true;
+    }
+
+    this.finishForegroundTurn(
+      {
+        type: "turn_completed",
+        provider: "opencode",
+        usage: hasNormalizedOpenCodeUsage(this.accumulatedUsage)
+          ? { ...this.accumulatedUsage }
+          : undefined,
+      },
+      turnId,
+    );
+    return true;
+  }
+
+  private async waitForPersistedAssistantCompletion(
+    turnId: string,
+  ): Promise<OpenCodePersistedAssistantCompletion | null> {
+    for (let attempt = 0; attempt < this.eofRecoveryPolicy.maxAttempts; attempt += 1) {
+      if (this.foregroundTurnStartedAt === null || this.activeForegroundTurnId !== turnId) {
+        return null;
+      }
+
+      const completion = await readOpenCodePersistedAssistantCompletion(
+        this.storageRoot,
+        this.sessionId,
+        this.foregroundKnownMessageIds,
+        this.foregroundTurnStartedAt,
+      );
+      if (completion) {
+        return completion;
+      }
+
+      if (attempt < this.eofRecoveryPolicy.maxAttempts - 1) {
+        await sleep(this.eofRecoveryPolicy.delayMs);
+      }
+    }
+
+    return null;
+  }
+
+  private resolvePersistedAssistantRecoveryText(completedText: string): string | null {
+    if (!this.foregroundAssistantMessageEmitted) {
+      return completedText;
+    }
+
+    if (completedText === this.foregroundAssistantText) {
+      return "";
+    }
+
+    return completedText.startsWith(this.foregroundAssistantText)
+      ? completedText.slice(this.foregroundAssistantText.length)
+      : null;
+  }
+
+  private async readPersistedSessionMessageIds(): Promise<Set<string>> {
+    const messageRoot = path.join(this.storageRoot, "message", this.sessionId);
+    const messageFiles = await findJsonFiles(messageRoot);
+    const messageIds = new Set<string>();
+
+    for (const file of messageFiles) {
+      const parsed = await readJsonFile(file, OpenCodeStoredMessageSchema);
+      if (parsed?.sessionID === this.sessionId) {
+        messageIds.add(parsed.id);
+      }
+    }
+
+    return messageIds;
+  }
+
   private finishForegroundTurn(
     event: Extract<AgentStreamEvent, { type: "turn_completed" | "turn_failed" | "turn_canceled" }>,
     turnId: string,
@@ -2516,6 +2816,7 @@ class OpenCodeAgentSession implements AgentSession {
     } else {
       this.runningToolCalls.clear();
     }
+    this.foregroundTurnStartedAt = null;
     this.activeForegroundTurnId = null;
     // Abort the SSE connection so the SDK tears down the underlying fetch.
     this.abortController?.abort();
@@ -2561,6 +2862,13 @@ class OpenCodeAgentSession implements AgentSession {
 
   private notifySubscribers(event: AgentStreamEvent, turnIdOverride?: string): void {
     const turnId = turnIdOverride ?? this.activeForegroundTurnId;
+    if (event.type === "timeline" && event.item.type === "assistant_message") {
+      this.foregroundAssistantMessageEmitted = true;
+      this.foregroundAssistantText += event.item.text;
+    }
+    if (event.type === "usage_updated") {
+      this.foregroundUsageUpdated = true;
+    }
     const tagged = turnId ? { ...event, turnId } : event;
     for (const callback of this.subscribers) {
       try {
