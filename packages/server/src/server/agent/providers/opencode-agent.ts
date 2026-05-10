@@ -83,6 +83,8 @@ const OPENCODE_STORAGE_SESSION_LIMIT = 200;
 // requests; SSE path broken).
 const OPENCODE_EOF_RECOVERY_TIMEOUT_MS = 5 * 60 * 1000;
 const OPENCODE_EOF_RECOVERY_POLL_INTERVAL_MS = 1_000;
+const OPENCODE_RECOVERY_ABORT_TIMEOUT_MS = 2_000;
+const OPENCODE_PENDING_ABORT_START_TIMEOUT_MS = 10_000;
 // If OpenCode silently rejects the prompt (invalid model/mode/auth), no assistant
 // message is ever persisted. Bound the wait so the turn fails in seconds instead
 // of hanging until the completion cap. Valid models normally persist their first
@@ -2206,6 +2208,7 @@ class OpenCodeAgentSession implements AgentSession {
   private currentMode: string = "default";
   private pendingPermissions = new Map<string, AgentPermissionRequest>();
   private abortController: AbortController | null = null;
+  private pendingAbortPromise: Promise<void> | null = null;
   private accumulatedUsage: AgentUsage = {};
   private mcpConfigured = false;
   private mcpSetupPromise: Promise<void> | null = null;
@@ -2235,8 +2238,8 @@ class OpenCodeAgentSession implements AgentSession {
   private foregroundKnownMessageIds = new Set<string>();
   private foregroundEmittedQuestionIds = new Set<string>();
   private foregroundEmittedPermissionIds = new Set<string>();
-  private foregroundEmittedReasoningPartIds = new Set<string>();
-  private foregroundEmittedToolCallStatusByCallId = new Map<string, string>();
+  private foregroundEmittedReasoningTextLengthByPartId = new Map<string, number>();
+  private foregroundEmittedToolCallSignatureByCallId = new Map<string, string>();
   private foregroundTurnStartedAt: number | null = null;
   private readonly recovery: OpenCodeRecoveryOptions;
   constructor(
@@ -2319,17 +2322,7 @@ class OpenCodeAgentSession implements AgentSession {
     // quickly while still giving OpenCode a chance to confirm the abort
     // cleanly. Drop the timeout once upstream returns abort acknowledgement
     // before tool teardown.
-    const abortPromise = this.client.session
-      .abort({
-        sessionID: this.sessionId,
-        directory: this.config.cwd,
-      })
-      .catch((error) => {
-        this.logger.warn(
-          { err: error, sessionId: this.sessionId, turnId },
-          "OpenCode session.abort rejected",
-        );
-      });
+    const abortPromise = this.beginSessionAbort(turnId, "interrupt");
     await withTimeout(abortPromise, 2_000, "OpenCode session.abort").catch((error) => {
       this.logger.warn(
         { err: error, sessionId: this.sessionId, turnId },
@@ -2344,6 +2337,46 @@ class OpenCodeAgentSession implements AgentSession {
     }
   }
 
+  private beginSessionAbort(turnId: string | null, reason: string): Promise<void> {
+    const abortPromise = this.client.session
+      .abort({
+        sessionID: this.sessionId,
+        directory: this.config.cwd,
+      })
+      .then(() => undefined)
+      .catch((error) => {
+        this.logger.warn(
+          { err: error, sessionId: this.sessionId, turnId, reason },
+          "OpenCode session.abort rejected",
+        );
+      });
+    const trackedAbortPromise = abortPromise.finally(() => {
+      if (this.pendingAbortPromise === trackedAbortPromise) {
+        this.pendingAbortPromise = null;
+      }
+    });
+    this.pendingAbortPromise = trackedAbortPromise;
+    return trackedAbortPromise;
+  }
+
+  private async awaitPendingAbortBeforeStartingTurn(): Promise<void> {
+    const pendingAbortPromise = this.pendingAbortPromise;
+    if (!pendingAbortPromise) {
+      return;
+    }
+
+    await withTimeout(
+      pendingAbortPromise,
+      OPENCODE_PENDING_ABORT_START_TIMEOUT_MS,
+      "OpenCode pending session.abort",
+    ).catch((error) => {
+      this.logger.warn(
+        { err: error, sessionId: this.sessionId },
+        "OpenCode session.abort was still pending before starting the next turn",
+      );
+    });
+  }
+
   async startTurn(
     prompt: AgentPromptInput,
     options?: AgentRunOptions,
@@ -2351,6 +2384,7 @@ class OpenCodeAgentSession implements AgentSession {
     if (this.activeForegroundTurnId) {
       throw new Error("A foreground turn is already active");
     }
+    await this.awaitPendingAbortBeforeStartingTurn();
 
     this.foregroundTurnStartedAt = Date.now();
     this.runningToolCalls.clear();
@@ -2362,8 +2396,8 @@ class OpenCodeAgentSession implements AgentSession {
     this.foregroundUsageUpdated = false;
     this.foregroundEmittedQuestionIds.clear();
     this.foregroundEmittedPermissionIds.clear();
-    this.foregroundEmittedReasoningPartIds.clear();
-    this.foregroundEmittedToolCallStatusByCallId.clear();
+    this.foregroundEmittedReasoningTextLengthByPartId.clear();
+    this.foregroundEmittedToolCallSignatureByCallId.clear();
     this.foregroundKnownMessageIds = await this.readPersistedSessionMessageIds();
     const turnAbortController = new AbortController();
     this.abortController = turnAbortController;
@@ -2746,30 +2780,116 @@ class OpenCodeAgentSession implements AgentSession {
 
       const now = Date.now();
       if (!observedActivity && now >= livenessDeadline) {
-        traceOpenCode("recovery.liveness-exhausted", { turnId, attempt });
-        return false;
+        const deferred = await this.deferForPendingPermissionOrFailRecoveredTurnAfterCap(
+          turnId,
+          attempt,
+          "liveness",
+        );
+        if (deferred) {
+          continue;
+        }
+        return true;
       }
       if (now >= completionDeadline) {
-        traceOpenCode("recovery.exhausted", { turnId, attempt });
-        return false;
+        const deferred = await this.deferForPendingPermissionOrFailRecoveredTurnAfterCap(
+          turnId,
+          attempt,
+          "completion",
+        );
+        if (deferred) {
+          continue;
+        }
+        return true;
       }
       const waitMs = Math.min(this.recovery.pollIntervalMs, completionDeadline - now);
-      if (waitMs <= 0) {
-        traceOpenCode("recovery.exhausted", { turnId, attempt });
-        return false;
-      }
       await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
     }
+  }
+
+  private async deferForPendingPermissionOrFailRecoveredTurnAfterCap(
+    turnId: string,
+    attempt: number,
+    cap: "liveness" | "completion",
+  ): Promise<boolean> {
+    if (this.pendingPermissions.size > 0) {
+      // A pending OpenCode question/permission means the turn is blocked on
+      // user input, not dead. Keep polling until the user response lets the
+      // assistant finish or the turn is canceled.
+      traceOpenCode(`recovery.${cap}-deferred-for-permission`, {
+        turnId,
+        attempt,
+        pendingPermissionIds: Array.from(this.pendingPermissions.keys()),
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, this.recovery.pollIntervalMs));
+      return true;
+    }
+
+    traceOpenCode(cap === "liveness" ? "recovery.liveness-exhausted" : "recovery.exhausted", {
+      turnId,
+      attempt,
+    });
+    await this.failRecoveredTurnAfterCap(turnId, cap);
+    return false;
+  }
+
+  private async failRecoveredTurnAfterCap(
+    turnId: string,
+    cap: "liveness" | "completion",
+  ): Promise<void> {
+    await this.abortOpenCodeSessionAfterRecoveryCap(turnId, cap);
+    this.finishForegroundTurn(
+      {
+        type: "turn_failed",
+        provider: "opencode",
+        error: "OpenCode event stream ended before the turn reached a terminal state",
+      },
+      turnId,
+    );
+  }
+
+  private async abortOpenCodeSessionAfterRecoveryCap(
+    turnId: string,
+    cap: "liveness" | "completion",
+  ): Promise<void> {
+    const abortPromise = this.beginSessionAbort(turnId, `recovery-${cap}`);
+    await withTimeout(
+      abortPromise,
+      OPENCODE_RECOVERY_ABORT_TIMEOUT_MS,
+      "OpenCode session.abort",
+    ).catch((error) => {
+      this.logger.warn(
+        { err: error, sessionId: this.sessionId, turnId, cap },
+        "OpenCode session.abort exceeded the EOF recovery cap",
+      );
+    });
   }
 
   private async pollPendingQuestionsAndPermissions(turnId: string): Promise<number> {
     const [questionsResponse, permissionsResponse] = await Promise.all([
       Promise.resolve()
         .then(() => this.client.question.list({ directory: this.config.cwd }))
-        .catch(() => null),
+        .catch((error) => {
+          traceOpenCode("recovery.question-list.throw", {
+            turnId,
+            error:
+              error instanceof Error
+                ? { name: error.name, message: error.message, stack: error.stack }
+                : String(error),
+          });
+          return null;
+        }),
       Promise.resolve()
         .then(() => this.client.permission.list({ directory: this.config.cwd }))
-        .catch(() => null),
+        .catch((error) => {
+          traceOpenCode("recovery.permission-list.throw", {
+            turnId,
+            error:
+              error instanceof Error
+                ? { name: error.name, message: error.message, stack: error.stack }
+                : String(error),
+          });
+          return null;
+        }),
     ]);
 
     if (this.activeForegroundTurnId !== turnId) return 0;
@@ -2821,10 +2941,25 @@ class OpenCodeAgentSession implements AgentSession {
     | { kind: "in-progress"; messageId: string; parts: readonly OpenCodePart[] }
     | null
   > {
-    const response = await this.client.session.messages({
-      sessionID: this.sessionId,
-      directory: this.config.cwd,
-    });
+    const response = await Promise.resolve()
+      .then(() =>
+        this.client.session.messages({
+          sessionID: this.sessionId,
+          directory: this.config.cwd,
+        }),
+      )
+      .catch((error) => {
+        traceOpenCode("recovery.messages.throw", {
+          error:
+            error instanceof Error
+              ? { name: error.name, message: error.message, stack: error.stack }
+              : String(error),
+        });
+        return null;
+      });
+    if (response === null) {
+      return null;
+    }
     if (response.error || !response.data) {
       return null;
     }
@@ -2849,12 +2984,15 @@ class OpenCodeAgentSession implements AgentSession {
         return { kind: "in-progress", messageId: info.id, parts: item.parts };
       }
 
-      const text = item.parts
+      let text = item.parts
         .filter((part): part is Extract<OpenCodePart, { type: "text" }> => part.type === "text")
         .map((part) => (part.text ?? "").trim())
         .filter((part) => part.length > 0)
         .join("\n\n");
 
+      if (!text) {
+        text = stringifyStructuredAssistantMessage(info.structured) ?? "";
+      }
       if (!text) continue;
 
       const usage: AgentUsage = {};
@@ -2868,13 +3006,16 @@ class OpenCodeAgentSession implements AgentSession {
   private emitIncrementalAssistantParts(parts: readonly OpenCodePart[], turnId: string): void {
     for (const part of parts) {
       if (part.type === "reasoning" && part.text) {
-        if (this.foregroundEmittedReasoningPartIds.has(part.id)) continue;
-        this.foregroundEmittedReasoningPartIds.add(part.id);
+        const emittedTextLength =
+          this.foregroundEmittedReasoningTextLengthByPartId.get(part.id) ?? 0;
+        if (part.text.length <= emittedTextLength) continue;
+        const text = part.text.slice(emittedTextLength);
+        this.foregroundEmittedReasoningTextLengthByPartId.set(part.id, part.text.length);
         this.notifySubscribers(
           {
             type: "timeline",
             provider: "opencode",
-            item: { type: "reasoning", text: part.text },
+            item: { type: "reasoning", text },
           },
           turnId,
         );
@@ -2884,10 +3025,10 @@ class OpenCodeAgentSession implements AgentSession {
       const parsedToolPart = OpencodeToolPartToTimelineItemSchema.safeParse(part);
       if (!parsedToolPart.success || !parsedToolPart.data) continue;
       const callId = parsedToolPart.data.callId;
-      const status = parsedToolPart.data.status;
-      const lastStatus = this.foregroundEmittedToolCallStatusByCallId.get(callId);
-      if (lastStatus === status) continue;
-      this.foregroundEmittedToolCallStatusByCallId.set(callId, status);
+      const signature = this.createRecoveredToolCallSignature(part, parsedToolPart.data);
+      const lastSignature = this.foregroundEmittedToolCallSignatureByCallId.get(callId);
+      if (lastSignature === signature) continue;
+      this.foregroundEmittedToolCallSignatureByCallId.set(callId, signature);
       this.trackToolCall(parsedToolPart.data);
       this.notifySubscribers(
         {
@@ -2898,6 +3039,21 @@ class OpenCodeAgentSession implements AgentSession {
         turnId,
       );
     }
+  }
+
+  private createRecoveredToolCallSignature(
+    part: Extract<OpenCodePart, { type: "tool" }>,
+    item: ToolCallTimelineItem,
+  ): string {
+    const state = (part as { state?: { input?: unknown; output?: unknown; error?: unknown } })
+      .state;
+    return JSON.stringify([
+      item.callId,
+      item.status,
+      state?.input ?? null,
+      state?.output ?? null,
+      state?.error ?? null,
+    ]);
   }
 
   private applyRecoveredAssistantCompletion(
