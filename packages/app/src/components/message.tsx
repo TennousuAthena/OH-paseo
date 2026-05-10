@@ -66,13 +66,8 @@ import * as Clipboard from "expo-clipboard";
 import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import type { AgentAttachment } from "@server/shared/messages";
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
-import { buildToolCallDisplayModel } from "@/utils/tool-call-display";
+import { buildToolCallPresentation } from "@/tool-calls/presentation";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
-import { extractToolCallFilePath } from "@/utils/extract-tool-call-file-path";
-import {
-  hasMeaningfulToolCallDetail,
-  isPendingToolCallDetail,
-} from "@/utils/tool-call-detail-state";
 import {
   parseAssistantFileLink,
   parseInlinePathToken,
@@ -2858,7 +2853,6 @@ export const ToolCall = memo(function ToolCall({
   const { openToolCall } = useToolCallSheet();
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Check if we're on mobile (use bottom sheet) or desktop (inline expand)
   const isMobile = useIsCompactFormFactor();
 
   const effectiveDetail = useMemo<ToolCallDetail | undefined>(() => {
@@ -2875,63 +2869,36 @@ export const ToolCall = memo(function ToolCall({
     return undefined;
   }, [detail, args, result]);
 
-  const displayDetail = useMemo<ToolCallDetail>(
+  const presentation = useMemo(
     () =>
-      effectiveDetail ?? {
-        type: "unknown",
-        input: null,
-        output: null,
-      },
-    [effectiveDetail],
-  );
-
-  const displayModel = useMemo(
-    () =>
-      buildToolCallDisplayModel({
-        name: toolName,
-        status: status === "executing" ? "running" : status,
+      buildToolCallPresentation({
+        toolName,
+        status,
         error: error ?? null,
-        detail: displayDetail,
+        detail: effectiveDetail,
         metadata,
         cwd,
+        resolveIcon: resolveToolCallIcon,
       }),
-    [toolName, status, error, displayDetail, metadata, cwd],
-  );
-  const displayName = displayModel.displayName;
-  const summary = displayModel.summary;
-  const errorText = displayModel.errorText;
-  const IconComponent = resolveToolCallIcon(toolName, effectiveDetail);
-  const isLoadingDetails = isPendingToolCallDetail({
-    detail: effectiveDetail,
-    status,
-    error,
-  });
-  const secondaryLabel = summary;
-
-  // Check if there's any content to display
-  const hasDetails = Boolean(error) || hasMeaningfulToolCallDetail(effectiveDetail);
-  const canOpenDetails = hasDetails || isLoadingDetails;
-
-  const extractedFilePath = useMemo(
-    () => extractToolCallFilePath(effectiveDetail),
-    [effectiveDetail],
+    [toolName, status, error, effectiveDetail, metadata, cwd],
   );
   const handleOpenFile = useMemo(() => {
-    if (!extractedFilePath || !onOpenFilePath) {
+    const openFilePath = presentation.openFilePath;
+    if (!openFilePath || !onOpenFilePath) {
       return undefined;
     }
-    return () => onOpenFilePath(extractedFilePath);
-  }, [extractedFilePath, onOpenFilePath]);
+    return () => onOpenFilePath(openFilePath);
+  }, [presentation.openFilePath, onOpenFilePath]);
 
   const handleToggle = useCallback(() => {
     if (isMobile) {
       openToolCall({
-        toolName,
-        displayName,
-        summary: secondaryLabel,
+        displayName: presentation.displayName,
+        summary: presentation.summary,
         detail: effectiveDetail,
-        errorText,
-        showLoadingSkeleton: isLoadingDetails,
+        errorText: presentation.errorText,
+        icon: presentation.icon,
+        showLoadingSkeleton: presentation.isLoadingDetails,
       });
     } else {
       setIsExpanded((prev) => !prev);
@@ -2939,12 +2906,12 @@ export const ToolCall = memo(function ToolCall({
   }, [
     isMobile,
     openToolCall,
-    toolName,
-    displayName,
-    secondaryLabel,
+    presentation.displayName,
+    presentation.summary,
+    presentation.errorText,
+    presentation.icon,
+    presentation.isLoadingDetails,
     effectiveDetail,
-    errorText,
-    isLoadingDetails,
   ]);
 
   useEffect(() => {
@@ -2980,14 +2947,14 @@ export const ToolCall = memo(function ToolCall({
     return (
       <ToolCallDetailsContent
         detail={effectiveDetail}
-        errorText={errorText}
+        errorText={presentation.errorText}
         maxHeight={400}
-        showLoadingSkeleton={isLoadingDetails}
+        showLoadingSkeleton={presentation.isLoadingDetails}
       />
     );
-  }, [isMobile, effectiveDetail, errorText, isLoadingDetails]);
+  }, [isMobile, effectiveDetail, presentation.errorText, presentation.isLoadingDetails]);
 
-  if (effectiveDetail?.type === "plan") {
+  if (presentation.isPlan && effectiveDetail?.type === "plan") {
     return (
       <PlanCard
         title="Plan"
@@ -3001,13 +2968,13 @@ export const ToolCall = memo(function ToolCall({
   return (
     <ExpandableBadge
       testID="tool-call-badge"
-      label={displayName}
-      secondaryLabel={secondaryLabel}
-      icon={IconComponent}
+      label={presentation.displayName}
+      secondaryLabel={presentation.summary}
+      icon={presentation.icon}
       isExpanded={!isMobile && isExpanded}
-      onToggle={canOpenDetails ? handleToggle : undefined}
+      onToggle={presentation.canOpenDetails ? handleToggle : undefined}
       onOpenFile={handleOpenFile}
-      renderDetails={canOpenDetails && !isMobile ? renderDetails : undefined}
+      renderDetails={presentation.canOpenDetails && !isMobile ? renderDetails : undefined}
       isLoading={status === "running" || status === "executing"}
       isError={status === "failed"}
       isLastInSequence={isLastInSequence}
