@@ -40,6 +40,13 @@ const CLAUDE_MODES: AgentProviderModeDefinition[] = [
     colorTier: "safe",
   },
   {
+    id: "auto",
+    label: "Auto mode",
+    description: "Uses a model classifier to review permission prompts automatically",
+    icon: "ShieldQuestionMark",
+    colorTier: "moderate",
+  },
+  {
     id: "acceptEdits",
     label: "Accept File Edits",
     description: "Automatically approves edit-focused tools without prompting",
