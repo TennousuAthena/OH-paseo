@@ -15,7 +15,9 @@ This usually runs for hours, often overnight. By the time agents are working, yo
 
 ## Prerequisites
 
-Read the **paseo** skill — it carries the surface (worktrees, agents, waiting, scheduling, preferences). Every agent you spawn reads it too.
+This is a Paseo skill. Load the **paseo** skill first — it carries the surface (worktrees, agents, waiting, scheduling, preferences). Every agent you spawn reads it too.
+
+**Do not use your own subagents.** All agents in this skill are Paseo agents, spawned through the Paseo MCP. Your harness's native subagent stack is not in play here.
 
 The role and phase-type vocabulary lives in the roles reference shipped with this skill (`references/roles.md`).
 
