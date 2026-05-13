@@ -30,13 +30,31 @@ import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload } from "@/components/message-input";
 import type { AgentAttachment, GitHubSearchItem } from "@server/shared/messages";
+import type { CreatePaseoWorktreeInput } from "@server/client/daemon-client";
 import type { AgentProvider } from "@server/server/agent/agent-sdk-types";
 import { isEmptyWorkspaceSubmission, runCreateEmptyWorkspace } from "./new-workspace-empty";
-import { pickerItemToCheckoutRequest, type PickerItem } from "./new-workspace-picker-item";
+import {
+  pickerItemToCheckoutRequest,
+  type PickerCheckoutRequest,
+  type PickerItem,
+} from "./new-workspace-picker-item";
 import {
   deriveAutoPickerItemFromAttachments,
   syncPickerPrAttachment,
 } from "./new-workspace-picker-state";
+
+function resolveCheckoutRequest(
+  selectedItem: PickerItem | null,
+  currentBranch: string | null,
+): PickerCheckoutRequest | undefined {
+  const selectedCheckoutRequest = pickerItemToCheckoutRequest(selectedItem);
+  if (selectedCheckoutRequest) return selectedCheckoutRequest;
+  if (!currentBranch) return undefined;
+  return {
+    action: "branch-off",
+    refName: currentBranch,
+  };
+}
 
 interface NewWorkspaceScreenProps {
   serverId: string;
@@ -583,8 +601,12 @@ export function NewWorkspaceScreen({
   }, []);
 
   const buildCreateWorktreeInput = useCallback(
-    (input: { cwd: string; prompt: string; attachments: AgentAttachment[] }) => {
-      const checkoutRequest = pickerItemToCheckoutRequest(selectedItem);
+    (input: {
+      cwd: string;
+      prompt: string;
+      attachments: AgentAttachment[];
+    }): CreatePaseoWorktreeInput => {
+      const checkoutRequest = resolveCheckoutRequest(selectedItem, currentBranch);
       const trimmedPrompt = input.prompt.trim();
       const hasFirstAgentContext = trimmedPrompt.length > 0 || input.attachments.length > 0;
 
@@ -602,7 +624,7 @@ export function NewWorkspaceScreen({
         ...checkoutRequest,
       };
     },
-    [selectedItem],
+    [currentBranch, selectedItem],
   );
 
   const ensureWorkspace = useCallback(
