@@ -34,6 +34,12 @@ Compose: call `create_worktree` first, then `create_agent` with `cwd` set to the
 
 **`archive_agent`** — `{ agentId }`. Interrupts if running, removes from active list.
 
+## Provider features
+
+**`list_provider_features`** — query provider-specific features before setting them. Required: `provider`, `cwd`. Optional: `model`, `modeId`, `thinkingOptionId`, `featureValues`.
+
+Only set feature IDs returned by `list_provider_features`. For Codex fast mode, look for `fast_mode` and pass `features: { "fast_mode": true }` to `create_agent`.
+
 ## Heartbeats
 
 **`create_schedule`** — required: `prompt`. Pick one of `cron` or `every` (`"5m"`, `"1h"`). Optional: `name`, `target` (`self` | `new-agent`), `provider`, `maxRuns`, `expiresIn`. Use for periodic checks on long-running work or recurring maintenance.

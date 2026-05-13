@@ -133,6 +133,7 @@ function buildAgentManagerSpies() {
     cancelAgentRun: vi.fn(),
     getPendingPermissions: vi.fn(),
     getRegisteredProviderIds: vi.fn().mockReturnValue(["claude"]),
+    listDraftFeatures: vi.fn(),
   };
 }
 
@@ -1792,6 +1793,57 @@ describe("provider listing MCP tool", () => {
 
 describe("model listing MCP tool", () => {
   const logger = createTestLogger();
+
+  it("lists provider features for a draft agent configuration", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.listDraftFeatures.mockResolvedValue([
+      {
+        type: "toggle",
+        id: "fast_mode",
+        label: "Fast mode",
+        value: false,
+      },
+    ]);
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      logger,
+    });
+    const tool = registeredTool(server, "list_provider_features");
+    const input = {
+      provider: "codex",
+      cwd: "~/repo",
+      modeId: "full-access",
+      model: "gpt-5.4",
+      thinkingOptionId: "high",
+      featureValues: { fast_mode: true },
+    };
+
+    const parsed = await tool.inputSchema.safeParseAsync(input);
+    expect(parsed.success).toBe(true);
+
+    const response = await tool.handler(input);
+
+    expect(spies.agentManager.listDraftFeatures).toHaveBeenCalledWith({
+      provider: "codex",
+      cwd: expect.stringContaining("repo"),
+      modeId: "full-access",
+      model: "gpt-5.4",
+      thinkingOptionId: "high",
+      featureValues: { fast_mode: true },
+    });
+    expect(response.structuredContent).toEqual({
+      provider: "codex",
+      features: [
+        {
+          type: "toggle",
+          id: "fast_mode",
+          label: "Fast mode",
+          value: false,
+        },
+      ],
+    });
+  });
 
   it("rejects disabled providers without fetching models", async () => {
     const { agentManager, agentStorage } = createTestDeps();

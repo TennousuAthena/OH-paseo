@@ -390,6 +390,26 @@ describe("Suite A: Core Fixes", () => {
     }
   });
 
+  test("list_provider_features returns draft provider features over MCP", async () => {
+    const payload = await callToolStructured(topLevelClient, "list_provider_features", {
+      provider: "claude",
+      cwd: parentAgentCwd,
+      model: "claude-test-model",
+      featureValues: { test_feature: true },
+    });
+
+    expect(payload.provider).toBe("claude");
+    expect(recordArr(payload.features)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "toggle",
+          id: "test_feature",
+          value: true,
+        }),
+      ]),
+    );
+  });
+
   test("create_agent accepts labels param", async () => {
     let agentId: string | null = null;
     try {

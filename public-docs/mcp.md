@@ -53,10 +53,11 @@ The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may
 
 ### Providers
 
-| Tool             | Function                                                  |
-| ---------------- | --------------------------------------------------------- |
-| `list_providers` | List configured agent providers, availability, and modes. |
-| `list_models`    | List models for an agent provider.                        |
+| Tool                     | Function                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| `list_providers`         | List configured agent providers, availability, and modes.                                   |
+| `list_models`            | List models for an agent provider.                                                          |
+| `list_provider_features` | List provider-specific features for a draft agent configuration, such as Codex `fast_mode`. |
 
 ### Worktrees
 

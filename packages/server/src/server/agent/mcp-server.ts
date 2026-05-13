@@ -8,6 +8,7 @@ import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sd
 import type { AgentProvider } from "./agent-sdk-types.js";
 import type { AgentManager, WaitForAgentResult } from "./agent-manager.js";
 import {
+  AgentFeatureSchema,
   AgentPermissionRequestPayloadSchema,
   AgentListItemPayloadSchema,
   AgentPermissionResponseSchema,
@@ -587,6 +588,14 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   const createAgentInputSchema = callerAgentId ? agentToAgentInputSchema : topLevelInputSchema;
   const agentToAgentCreateAgentArgsSchema = z.object(agentToAgentInputSchema).strict();
   const topLevelCreateAgentArgsSchema = z.object(topLevelInputSchema).strict();
+  const listProviderFeaturesInputSchema = {
+    provider: AgentProviderEnum,
+    cwd: z.string().describe("Working directory used to resolve provider feature availability."),
+    modeId: z.string().optional(),
+    model: z.string().optional(),
+    thinkingOptionId: z.string().optional(),
+    featureValues: z.record(z.unknown()).optional(),
+  };
 
   if (options.voiceOnly || options.enableVoiceTools || callerContext?.enableVoiceTools) {
     server.registerTool(
@@ -1808,6 +1817,37 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         structuredContent: ensureValidJson({
           provider,
           models,
+        }),
+      };
+    },
+  );
+
+  server.registerTool(
+    "list_provider_features",
+    {
+      title: "List provider features",
+      description:
+        "List provider-specific features available for a draft agent configuration, such as Codex fast_mode.",
+      inputSchema: listProviderFeaturesInputSchema,
+      outputSchema: {
+        provider: AgentProviderEnum,
+        features: z.array(AgentFeatureSchema),
+      },
+    },
+    async ({ provider, cwd, modeId, model, thinkingOptionId, featureValues }) => {
+      const features = await agentManager.listDraftFeatures({
+        provider,
+        cwd: expandUserPath(cwd),
+        ...(modeId ? { modeId } : {}),
+        ...(model ? { model } : {}),
+        ...(thinkingOptionId ? { thinkingOptionId } : {}),
+        ...(featureValues ? { featureValues } : {}),
+      });
+      return {
+        content: [],
+        structuredContent: ensureValidJson({
+          provider,
+          features,
         }),
       };
     },
