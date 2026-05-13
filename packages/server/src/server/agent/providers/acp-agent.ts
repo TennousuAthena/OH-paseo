@@ -11,6 +11,7 @@ import {
   ClientSideConnection,
   PROTOCOL_VERSION,
   type AgentCapabilities as ACPAgentCapabilities,
+  type Error as ACPError,
   type AnyMessage,
   type Client as ACPClient,
   type ClientCapabilities as ACPClientCapabilities,
@@ -105,6 +106,33 @@ function assertChildWithPipes(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isACPError(value: unknown): value is ACPError {
+  return isRecord(value) && typeof value.message === "string" && typeof value.code === "number";
+}
+
+function summarizeACPRequestError(error: unknown): {
+  message: string;
+  code?: string;
+  diagnostic?: string;
+} {
+  // Promise rejections are untyped, but the ACP SDK rejects JSON-RPC failures as response.error.
+  if (isACPError(error)) {
+    const code = String(error.code);
+    const data = error.data === undefined ? "" : ` | data=${JSON.stringify(error.data)}`;
+    return {
+      message: error.message,
+      code,
+      diagnostic: `${error.message} | code=${code}${data}`,
+    };
+  }
+
+  if (error instanceof Error) {
+    return { message: error.message };
+  }
+
+  return { message: String(error) };
 }
 
 function resolveTerminalCommand(
@@ -1045,12 +1073,13 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         return;
       })
       .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
+        const summary = summarizeACPRequestError(error);
         this.finishTurn({
           type: "turn_failed",
           provider: this.provider,
-          error: message,
-          diagnostic: this.collectDiagnostic(message),
+          error: summary.message,
+          code: summary.code,
+          diagnostic: this.collectDiagnostic(summary.diagnostic ?? summary.message),
           turnId,
         });
       });
