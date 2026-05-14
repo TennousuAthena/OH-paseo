@@ -305,6 +305,29 @@ export function toggleGithubAttachment(
   return [...current, buildGithubAttachment(item)];
 }
 
+interface ToggleGithubAttachmentFromPickerInput {
+  current: UserComposerAttachment[];
+  item: GitHubSearchItem;
+  markGithubAttachmentRemoved: (attachment: UserComposerAttachment) => void;
+}
+
+export function toggleGithubAttachmentFromPicker({
+  current,
+  item,
+  markGithubAttachmentRemoved,
+}: ToggleGithubAttachmentFromPickerInput): UserComposerAttachment[] {
+  const existingAttachment = current.find(
+    (attachment) =>
+      attachment.kind !== "image" &&
+      attachment.item.kind === item.kind &&
+      attachment.item.number === item.number,
+  );
+  if (existingAttachment) {
+    markGithubAttachmentRemoved(existingAttachment);
+  }
+  return toggleGithubAttachment(current, item);
+}
+
 export function findGithubItemByOption(
   items: readonly GitHubSearchItem[],
   optionId: string,

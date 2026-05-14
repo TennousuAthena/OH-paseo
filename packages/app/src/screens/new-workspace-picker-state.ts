@@ -34,18 +34,21 @@ export function syncPickerPrAttachment(input: {
   return { attachments: nextAttachments, attachedPrNumber };
 }
 
-// Suggest a ref picker target derived from composer attachments alone. When the
-// user attaches exactly one PR they almost always want the worktree based on
-// that PR — surface it as the picker's default so the worktree isn't silently
-// branched off main. The caller is responsible for letting manual picks win.
-export function deriveAutoPickerItemFromAttachments(
-  attachments: ReadonlyArray<UserComposerAttachment>,
-): PickerItem | null {
-  let onlyPr: Extract<UserComposerAttachment, { kind: "github_pr" }> | null = null;
-  for (const attachment of attachments) {
+export function findCheckoutHintPrAttachment(input: {
+  attachments: ReadonlyArray<UserComposerAttachment>;
+  selectedItem: PickerItem | null;
+  dismissedPrNumbers: ReadonlySet<number>;
+}): Extract<UserComposerAttachment, { kind: "github_pr" }> | null {
+  const selectedPrNumber =
+    input.selectedItem?.kind === "github-pr" ? input.selectedItem.item.number : null;
+
+  for (const attachment of input.attachments) {
     if (attachment.kind !== "github_pr") continue;
-    if (onlyPr) return null;
-    onlyPr = attachment;
+    const prNumber = attachment.item.number;
+    if (prNumber === selectedPrNumber) continue;
+    if (input.dismissedPrNumbers.has(prNumber)) continue;
+    return attachment;
   }
-  return onlyPr ? { kind: "github-pr", item: onlyPr.item } : null;
+
+  return null;
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AgentAttachment, GitHubSearchItem } from "@server/shared/messages";
 import type {
   AttachmentMetadata,
@@ -19,6 +19,7 @@ import {
   removeComposerAttachmentAtIndex,
   sendQueuedComposerMessageNow,
   toggleGithubAttachment,
+  toggleGithubAttachmentFromPicker,
   type AgentStreamWriter,
   type AttachmentPersister,
   type ComposerCancelClient,
@@ -693,6 +694,36 @@ describe("toggleGithubAttachment", () => {
       { kind: "github_pr", item: prItem },
       { kind: "github_issue", item: otherIssue },
     ]);
+  });
+});
+
+describe("toggleGithubAttachmentFromPicker", () => {
+  it("marks an existing GitHub item as removed when picker toggle removes it", () => {
+    const markGithubAttachmentRemoved = vi.fn();
+    const attachment: UserComposerAttachment = { kind: "github_pr", item: prItem };
+
+    const next = toggleGithubAttachmentFromPicker({
+      current: [attachment],
+      item: prItem,
+      markGithubAttachmentRemoved,
+    });
+
+    expect(next).toEqual([]);
+    expect(markGithubAttachmentRemoved).toHaveBeenCalledTimes(1);
+    expect(markGithubAttachmentRemoved).toHaveBeenCalledWith(attachment);
+  });
+
+  it("does not mark a GitHub item removed when picker toggle adds it", () => {
+    const markGithubAttachmentRemoved = vi.fn();
+
+    const next = toggleGithubAttachmentFromPicker({
+      current: [],
+      item: issueItem,
+      markGithubAttachmentRemoved,
+    });
+
+    expect(next).toEqual([{ kind: "github_issue", item: issueItem }]);
+    expect(markGithubAttachmentRemoved).not.toHaveBeenCalled();
   });
 });
 

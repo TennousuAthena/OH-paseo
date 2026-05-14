@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { GitHubSearchItem } from "@server/shared/messages";
-import {
-  deriveAutoPickerItemFromAttachments,
-  syncPickerPrAttachment,
-} from "./new-workspace-picker-state";
+import { findCheckoutHintPrAttachment, syncPickerPrAttachment } from "./new-workspace-picker-state";
 
 function makePrItem(number: number, title: string, headRefName = "feature/x"): GitHubSearchItem {
   return {
@@ -20,7 +17,9 @@ function makePrItem(number: number, title: string, headRefName = "feature/x"): G
   };
 }
 
-function prAttachment(item: GitHubSearchItem): UserComposerAttachment {
+function prAttachment(
+  item: GitHubSearchItem,
+): Extract<UserComposerAttachment, { kind: "github_pr" }> {
   return { kind: "github_pr", item };
 }
 
@@ -98,34 +97,53 @@ describe("syncPickerPrAttachment", () => {
   });
 });
 
-describe("deriveAutoPickerItemFromAttachments", () => {
-  it("returns null when there are no attachments", () => {
-    expect(deriveAutoPickerItemFromAttachments([])).toBeNull();
+describe("findCheckoutHintPrAttachment", () => {
+  it("returns the first attached PR that is not selected or dismissed", () => {
+    const first = prAttachment(makePrItem(101, "A"));
+    const second = prAttachment(makePrItem(202, "B"));
+
+    expect(
+      findCheckoutHintPrAttachment({
+        attachments: [issueAttachment(44), first, second],
+        selectedItem: null,
+        dismissedPrNumbers: new Set(),
+      }),
+    ).toBe(first);
   });
 
-  it("returns the PR when exactly one is attached", () => {
-    const pr = makePrItem(923, "Nix overridable npm deps hash");
-    expect(deriveAutoPickerItemFromAttachments([prAttachment(pr)])).toEqual({
-      kind: "github-pr",
-      item: pr,
-    });
+  it("skips the selected PR and offers the next attached PR", () => {
+    const selected = prAttachment(makePrItem(101, "A"));
+    const next = prAttachment(makePrItem(202, "B"));
+
+    expect(
+      findCheckoutHintPrAttachment({
+        attachments: [selected, next],
+        selectedItem: { kind: "github-pr", item: selected.item },
+        dismissedPrNumbers: new Set(),
+      }),
+    ).toBe(next);
   });
 
-  it("returns null when multiple PRs are attached", () => {
-    const a = makePrItem(101, "A");
-    const b = makePrItem(202, "B");
-    expect(deriveAutoPickerItemFromAttachments([prAttachment(a), prAttachment(b)])).toBeNull();
+  it("skips dismissed PRs and ignores issues", () => {
+    const dismissed = prAttachment(makePrItem(101, "A"));
+    const next = prAttachment(makePrItem(202, "B"));
+
+    expect(
+      findCheckoutHintPrAttachment({
+        attachments: [issueAttachment(44), dismissed, next],
+        selectedItem: null,
+        dismissedPrNumbers: new Set([101]),
+      }),
+    ).toBe(next);
   });
 
-  it("ignores non-PR attachments", () => {
-    expect(deriveAutoPickerItemFromAttachments([issueAttachment(44)])).toBeNull();
-  });
-
-  it("returns the lone PR even when other non-PR attachments are present", () => {
-    const pr = makePrItem(923, "Nix overridable npm deps hash");
-    expect(deriveAutoPickerItemFromAttachments([issueAttachment(44), prAttachment(pr)])).toEqual({
-      kind: "github-pr",
-      item: pr,
-    });
+  it("returns null when only issues qualify", () => {
+    expect(
+      findCheckoutHintPrAttachment({
+        attachments: [issueAttachment(44)],
+        selectedItem: null,
+        dismissedPrNumbers: new Set(),
+      }),
+    ).toBeNull();
   });
 });
