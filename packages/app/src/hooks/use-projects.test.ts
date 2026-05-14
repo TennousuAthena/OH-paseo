@@ -255,6 +255,7 @@ describe("useProjects", () => {
       "hostCount",
       "hosts",
       "onlineHostCount",
+      "projectCustomName",
       "projectKey",
       "projectName",
       "totalWorkspaceCount",

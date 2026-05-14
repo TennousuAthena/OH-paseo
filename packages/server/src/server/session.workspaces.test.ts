@@ -4395,6 +4395,145 @@ test("subscribed fetch_workspaces includes git enrichment in the initial snapsho
   );
 });
 
+test("project.rename.request stores customName and emits an updated workspace descriptor", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = asTestSession(
+    createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) }),
+  );
+
+  const project = createPersistedProjectRecord({
+    projectId: "remote:github.com/acme/repo",
+    rootPath: REPO_CWD,
+    kind: "git",
+    displayName: "acme/repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-1",
+    projectId: project.projectId,
+    cwd: REPO_CWD,
+    kind: "local_checkout",
+    displayName: "main",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+
+  const projects = new Map([[project.projectId, project]]);
+  session.projectRegistry.get = async (id: string) => projects.get(id) ?? null;
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.projectRegistry.upsert = async (record: unknown) => {
+    const parsed = record as typeof project;
+    projects.set(parsed.projectId, parsed);
+  };
+  session.workspaceRegistry.list = async () => [workspace];
+  session.workspaceRegistry.get = async (id: string) =>
+    id === workspace.workspaceId ? workspace : null;
+
+  session.workspaceUpdatesSubscription = {
+    subscriptionId: "sub-workspaces",
+    filter: {},
+    isBootstrapping: false,
+    lastEmittedByWorkspaceId: new Map(),
+    pendingUpdatesByWorkspaceId: new Map(),
+  };
+
+  await session.handleMessage({
+    type: "project.rename.request",
+    projectId: project.projectId,
+    customName: "  My Fork  ",
+    requestId: "req-rename-1",
+  });
+
+  const response = findByType(emitted, "project.rename.response");
+  expect(response?.payload).toEqual({
+    requestId: "req-rename-1",
+    projectId: project.projectId,
+    accepted: true,
+    customName: "My Fork",
+    error: null,
+  });
+
+  expect(projects.get(project.projectId)?.customName).toBe("My Fork");
+
+  const update = findByType(emitted, "workspace_update");
+  expect(update?.payload).toMatchObject({
+    kind: "upsert",
+    workspace: {
+      id: "ws-1",
+      projectDisplayName: "My Fork",
+      projectCustomName: "My Fork",
+    },
+  });
+});
+
+test("project.rename.request with whitespace-only customName clears the override", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = asTestSession(
+    createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) }),
+  );
+
+  const project = createPersistedProjectRecord({
+    projectId: "remote:github.com/acme/repo",
+    rootPath: REPO_CWD,
+    kind: "git",
+    displayName: "acme/repo",
+    customName: "My Fork",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+
+  const projects = new Map([[project.projectId, project]]);
+  session.projectRegistry.get = async (id: string) => projects.get(id) ?? null;
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.projectRegistry.upsert = async (record: unknown) => {
+    const parsed = record as typeof project;
+    projects.set(parsed.projectId, parsed);
+  };
+  session.workspaceRegistry.list = async () => [];
+
+  await session.handleMessage({
+    type: "project.rename.request",
+    projectId: project.projectId,
+    customName: "   ",
+    requestId: "req-rename-clear",
+  });
+
+  const response = findByType(emitted, "project.rename.response");
+  expect(response?.payload).toEqual({
+    requestId: "req-rename-clear",
+    projectId: project.projectId,
+    accepted: true,
+    customName: null,
+    error: null,
+  });
+  expect(projects.get(project.projectId)?.customName).toBeNull();
+});
+
+test("project.rename.request returns accepted=false when project is not found", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = asTestSession(
+    createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) }),
+  );
+  session.projectRegistry.get = async () => null;
+
+  await session.handleMessage({
+    type: "project.rename.request",
+    projectId: "does-not-exist",
+    customName: "X",
+    requestId: "req-rename-missing",
+  });
+
+  const response = findByType(emitted, "project.rename.response");
+  expect(response?.payload).toMatchObject({
+    requestId: "req-rename-missing",
+    projectId: "does-not-exist",
+    accepted: false,
+    customName: null,
+  });
+  expect(response?.payload.error).toBeTruthy();
+});
+
 test("resolveRegisteredWorkspaceIdForCwd does not match home directory as a prefix", () => {
   const session = createSessionForWorkspaceTests();
   const home = homedir();

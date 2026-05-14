@@ -393,6 +393,62 @@ describe("WorkspaceReconciliationService", () => {
     expect(projects.get("p1")!.displayName).toBe("new-owner/new-repo");
   });
 
+  test("preserves customName even when the derived displayName changes", async () => {
+    const dir = createTempGitRepo("reconcile-customname-");
+    tempDirs.push(dir);
+
+    const { projects, workspaces, projectRegistry, workspaceRegistry } = createTestRegistries();
+
+    projects.set(
+      "p1",
+      createPersistedProjectRecord({
+        projectId: "p1",
+        rootPath: dir,
+        kind: "git",
+        displayName: "old-owner/old-repo",
+        customName: "My Fork",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+    workspaces.set(
+      "w1",
+      createPersistedWorkspaceRecord({
+        workspaceId: "w1",
+        projectId: "p1",
+        cwd: dir,
+        kind: "local_checkout",
+        displayName: "main",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+
+    execFileSync("git", ["remote", "add", "origin", "git@github.com:new-owner/new-repo.git"], {
+      cwd: dir,
+      stdio: "ignore",
+    });
+
+    const service = new WorkspaceReconciliationService({
+      projectRegistry,
+      workspaceRegistry,
+      logger: createTestLogger(),
+      workspaceGitService: createWorkspaceGitServiceStub({
+        [dir]: {
+          projectKind: "git",
+          projectDisplayName: "new-owner/new-repo",
+          workspaceDisplayName: "main",
+          gitRemote: "git@github.com:new-owner/new-repo.git",
+        },
+      }),
+    });
+
+    await service.runOnce();
+
+    expect(projects.get("p1")!.displayName).toBe("new-owner/new-repo");
+    expect(projects.get("p1")!.customName).toBe("My Fork");
+  });
+
   test("updates workspace display name when branch changes", async () => {
     const dir = createTempGitRepo("reconcile-branch-");
     tempDirs.push(dir);
