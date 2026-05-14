@@ -1463,6 +1463,7 @@ export const FirstAgentContextSchema = z.object({
 export const CreatePaseoWorktreeRequestSchema = z.object({
   type: z.literal("create_paseo_worktree_request"),
   cwd: z.string(),
+  projectId: z.string().optional(),
   worktreeSlug: z.string().optional(),
   nameContext: z.string().optional(),
   attachments: AgentAttachmentsSchema.optional(),
