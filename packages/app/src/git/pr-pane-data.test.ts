@@ -14,6 +14,24 @@ import {
 type CheckoutPrStatus = NonNullable<CheckoutPrStatusResponse["payload"]["status"]>;
 type PullRequestTimeline = PullRequestTimelineResponse["payload"];
 
+const githubStatus: CheckoutPrStatus["github"] = {
+  mergeStateStatus: null,
+  autoMergeRequest: null,
+  viewerCanEnableAutoMerge: false,
+  viewerCanDisableAutoMerge: false,
+  viewerCanMergeAsAdmin: false,
+  viewerCanUpdateBranch: false,
+  repository: {
+    autoMergeAllowed: false,
+    mergeCommitAllowed: false,
+    squashMergeAllowed: false,
+    rebaseMergeAllowed: false,
+    viewerDefaultMergeMethod: null,
+  },
+  isMergeQueueEnabled: false,
+  isInMergeQueue: false,
+};
+
 const baseStatus: CheckoutPrStatus = {
   number: 42,
   url: "https://github.com/getpaseo/paseo/pull/42",
@@ -26,6 +44,7 @@ const baseStatus: CheckoutPrStatus = {
   mergeable: "UNKNOWN",
   checks: [],
   reviewDecision: null,
+  github: githubStatus,
 };
 
 const baseTimeline: PullRequestTimeline = {

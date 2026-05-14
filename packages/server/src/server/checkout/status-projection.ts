@@ -115,7 +115,7 @@ export function normalizeCheckoutPrStatusPayload(
   if (!status) {
     return null;
   }
-  return {
+  const payload: CheckoutPrStatusPayloadStatus = {
     number: status.number,
     url: status.url,
     title: status.title,
@@ -131,4 +131,8 @@ export function normalizeCheckoutPrStatusPayload(
     checksStatus: status.checksStatus,
     reviewDecision: status.reviewDecision,
   };
+  if (status.github) {
+    payload.github = status.github;
+  }
+  return payload;
 }

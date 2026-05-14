@@ -54,6 +54,24 @@ vi.mock("@/runtime/host-runtime", () => ({
 const cwd = "/repo";
 const serverId = "server-1";
 
+const githubStatus: CheckoutPrStatus["github"] = {
+  mergeStateStatus: null,
+  autoMergeRequest: null,
+  viewerCanEnableAutoMerge: false,
+  viewerCanDisableAutoMerge: false,
+  viewerCanMergeAsAdmin: false,
+  viewerCanUpdateBranch: false,
+  repository: {
+    autoMergeAllowed: false,
+    mergeCommitAllowed: false,
+    squashMergeAllowed: false,
+    rebaseMergeAllowed: false,
+    viewerDefaultMergeMethod: null,
+  },
+  isMergeQueueEnabled: false,
+  isInMergeQueue: false,
+};
+
 function status(overrides: Partial<CheckoutPrStatus> = {}): CheckoutPrStatus {
   return {
     number: 42,
@@ -69,6 +87,7 @@ function status(overrides: Partial<CheckoutPrStatus> = {}): CheckoutPrStatus {
     reviewDecision: null,
     repoOwner: "getpaseo",
     repoName: "paseo",
+    github: githubStatus,
     ...overrides,
   };
 }

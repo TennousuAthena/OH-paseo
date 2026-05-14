@@ -22,6 +22,7 @@ import {
 } from "../utils/checkout-git.js";
 import {
   createGitHubService,
+  type GitHubPullRequestStatusFacts,
   type GitHubService,
   type PullRequestMergeable,
 } from "../services/github-service.js";
@@ -92,6 +93,7 @@ export interface WorkspaceGitRuntimeSnapshot {
       }>;
       checksStatus?: "none" | "pending" | "success" | "failure";
       reviewDecision?: "approved" | "changes_requested" | "pending" | null;
+      github?: GitHubPullRequestStatusFacts;
     } | null;
     error: { message: string } | null;
   };
@@ -1324,7 +1326,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     request: WorkspaceGitRefreshRequest,
   ): Promise<WorkspaceGitRuntimeSnapshot> {
     if (target.refreshState.status === "in-flight") {
-      if (request.force && !target.refreshState.force) {
+      const needsForcedRefresh = request.force && !target.refreshState.force;
+      const needsGitHubRefresh =
+        request.force && request.includeGitHub && !target.refreshState.includeGitHub;
+      if (needsForcedRefresh || needsGitHubRefresh) {
         target.refreshState.queued = this.mergeQueuedRefresh(target.refreshState.queued, request);
       }
       return target.refreshState.promise;
@@ -1424,10 +1429,12 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
 
     const force = queued.force || request.force;
+    const upgradesForce = request.force && !queued.force;
+    const upgradesGitHub = request.includeGitHub && !queued.includeGitHub;
     return {
       force,
       includeGitHub: queued.includeGitHub || request.includeGitHub,
-      reason: request.force && !queued.force ? request.reason : queued.reason,
+      reason: upgradesForce || upgradesGitHub ? request.reason : queued.reason,
       notify: queued.notify || request.notify,
     };
   }

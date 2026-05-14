@@ -146,6 +146,8 @@ There is no dedicated welcome message; the server emits a `status` session messa
 
 **Top-level WS envelopes** are `hello`, `recording_state`, `ping`/`pong`, and `session` (which wraps the rich union of session messages).
 
+New session RPCs use dotted names with `.request` and `.response` suffixes, such as `checkout.github.set_auto_merge.request` and `checkout.github.set_auto_merge.response`. See [rpc-namespacing.md](rpc-namespacing.md) for the convention and migration rules for older flat RPC names.
+
 **Notable session message types:**
 
 - `agent_update` — Agent state changed (status, title, labels)

@@ -11,6 +11,8 @@ import {
   GitHubCommandError,
   createGitHubService,
   resolveGitHubRepo,
+  type GitHubCurrentPullRequestStatus,
+  type GitHubPullRequestStatusFacts,
   type GitHubService,
   type PullRequestMergeable,
 } from "../services/github-service.js";
@@ -2318,6 +2320,7 @@ export interface PullRequestStatus {
   checks?: PullRequestCheck[];
   checksStatus?: ChecksStatus;
   reviewDecision?: ReviewDecision;
+  github?: GitHubPullRequestStatusFacts;
 }
 
 export interface PullRequestStatusResult {
@@ -2402,7 +2405,7 @@ export async function getPullRequestStatus(
       return status;
     })
     .catch((error) => {
-      if (error instanceof GitHubCommandError) {
+      if (!options?.force && error instanceof GitHubCommandError) {
         const stale = lastSuccessfulPullRequestStatus.get(cacheKey);
         if (stale) {
           return stale;
@@ -2433,11 +2436,25 @@ async function getPullRequestStatusUncached(
   }
   try {
     const lookupTarget = await resolvePullRequestStatusLookupTarget(cwd, head);
-    const status = await github.getCurrentPullRequestStatus({
-      cwd,
-      ...lookupTarget,
-      reason: options?.reason,
-    });
+    let status: GitHubCurrentPullRequestStatus | null;
+    if (options?.force) {
+      const reason = options.reason;
+      if (!reason) {
+        throw new Error("Forced PR status read requires a reason");
+      }
+      status = await github.getCurrentPullRequestStatus({
+        cwd,
+        ...lookupTarget,
+        force: true,
+        reason,
+      });
+    } else {
+      status = await github.getCurrentPullRequestStatus({
+        cwd,
+        ...lookupTarget,
+        reason: options?.reason,
+      });
+    }
     return {
       status,
       githubFeaturesEnabled: true,

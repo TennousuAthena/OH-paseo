@@ -1708,6 +1708,30 @@ const x = 1;
     expect(callCount).toBe(1);
   });
 
+  it("passes forced PR status reads through to the GitHub service", async () => {
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
+
+    const requested: Array<{ force?: boolean; reason?: string }> = [];
+    const github = createGitHubServiceForStatus(null);
+    github.getCurrentPullRequestStatus = async (options) => {
+      requested.push({
+        ...(options.force ? { force: options.force } : {}),
+        ...(options.reason ? { reason: options.reason } : {}),
+      });
+      return createPullRequestStatus();
+    };
+
+    await getPullRequestStatus(repoDir, github, {
+      force: true,
+      reason: "merge-pr-validation",
+    });
+
+    expect(requested).toEqual([{ force: true, reason: "merge-pr-validation" }]);
+  });
+
   it("expires cached PR status after the TTL", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
     execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
@@ -1775,6 +1799,39 @@ const x = 1;
     } finally {
       __resetPullRequestStatusCacheForTests();
     }
+  });
+
+  it("does not use stale PR status fallback for forced GitHub errors", async () => {
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
+
+    const github = createGitHubServiceForStatus(null);
+    github.getCurrentPullRequestStatus = async () =>
+      createPullRequestStatus({
+        url: "https://github.com/getpaseo/paseo/pull/123",
+      });
+
+    const fresh = await getPullRequestStatus(repoDir, github);
+    expect(fresh.status?.url).toContain("/pull/123");
+
+    const error = new GitHubCommandError({
+      args: ["pr", "view"],
+      cwd: repoDir,
+      exitCode: 1,
+      stderr: "could not resolve host: github.com",
+    });
+    github.getCurrentPullRequestStatus = async () => {
+      throw error;
+    };
+
+    await expect(
+      getPullRequestStatus(repoDir, github, {
+        force: true,
+        reason: "merge-pr-validation",
+      }),
+    ).rejects.toBe(error);
   });
 
   it("clears stale PR status after a successful no-PR refresh", async () => {

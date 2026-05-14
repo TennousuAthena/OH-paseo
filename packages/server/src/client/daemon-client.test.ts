@@ -1586,6 +1586,118 @@ test("requests checkout merge from base via RPC", async () => {
   });
 });
 
+test("requests GitHub auto-merge enable via namespaced RPC", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const promise = client.checkoutGithubSetAutoMerge(
+    "/tmp/project",
+    { enabled: true, method: "squash" },
+    "req-enable-auto-merge",
+  );
+
+  expect(mock.sent).toHaveLength(1);
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request.type).toBe("checkout.github.set_auto_merge.request");
+  expect(request.cwd).toBe("/tmp/project");
+  expect(request.enabled).toBe(true);
+  expect(request.mergeMethod).toBe("squash");
+  expect(request.requestId).toBe("req-enable-auto-merge");
+
+  mock.triggerMessage(
+    JSON.stringify({
+      type: "session",
+      message: {
+        type: "checkout.github.set_auto_merge.response",
+        payload: {
+          cwd: "/tmp/project",
+          enabled: true,
+          requestId: "req-enable-auto-merge",
+          success: true,
+          error: null,
+        },
+      },
+    }),
+  );
+
+  await expect(promise).resolves.toEqual({
+    cwd: "/tmp/project",
+    enabled: true,
+    requestId: "req-enable-auto-merge",
+    success: true,
+    error: null,
+  });
+});
+
+test("requests GitHub auto-merge disable via namespaced RPC", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const promise = client.checkoutGithubSetAutoMerge(
+    "/tmp/project",
+    { enabled: false },
+    "req-disable-auto-merge",
+  );
+
+  expect(mock.sent).toHaveLength(1);
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request.type).toBe("checkout.github.set_auto_merge.request");
+  expect(request.cwd).toBe("/tmp/project");
+  expect(request.enabled).toBe(false);
+  expect(request.mergeMethod).toBeUndefined();
+  expect(request.requestId).toBe("req-disable-auto-merge");
+
+  mock.triggerMessage(
+    JSON.stringify({
+      type: "session",
+      message: {
+        type: "checkout.github.set_auto_merge.response",
+        payload: {
+          cwd: "/tmp/project",
+          enabled: false,
+          requestId: "req-disable-auto-merge",
+          success: true,
+          error: null,
+        },
+      },
+    }),
+  );
+
+  await expect(promise).resolves.toEqual({
+    cwd: "/tmp/project",
+    enabled: false,
+    requestId: "req-disable-auto-merge",
+    success: true,
+    error: null,
+  });
+});
+
 test("requests checkout pull via RPC", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

@@ -97,6 +97,13 @@ export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSpli
     [theme.colors.foreground, toast],
   );
 
+  const handlePrimaryPress = useCallback(() => {
+    if (!gitActions.primary) {
+      return;
+    }
+    handleActionSelect(gitActions.primary);
+  }, [gitActions.primary, handleActionSelect]);
+
   const overflowMenuButtonStyle = useMemo(() => [styles.iconButton, styles.overflowMenuButton], []);
 
   const primaryDisabled = gitActions.primary?.disabled;
@@ -124,7 +131,7 @@ export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSpli
           <Pressable
             testID="changes-primary-cta"
             style={primaryPressableStyle}
-            onPress={gitActions.primary.handler}
+            onPress={handlePrimaryPress}
             disabled={gitActions.primary.disabled}
             accessibilityRole="button"
             accessibilityLabel={gitActions.primary.label}

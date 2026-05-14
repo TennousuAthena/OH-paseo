@@ -1,7 +1,11 @@
 import type { ReactElement } from "react";
 
 import type { ActionStatus } from "@/components/ui/dropdown-menu";
-import type { CheckoutPrMergeMethod, PullRequestMergeable } from "@server/shared/messages";
+import type {
+  CheckoutPrMergeMethod,
+  CheckoutPrStatusResponse,
+  PullRequestMergeable,
+} from "@server/shared/messages";
 
 export type GitActionId =
   | "commit"
@@ -12,6 +16,10 @@ export type GitActionId =
   | "merge-pr-squash"
   | "merge-pr-merge"
   | "merge-pr-rebase"
+  | "enable-pr-auto-merge-squash"
+  | "enable-pr-auto-merge-merge"
+  | "enable-pr-auto-merge-rebase"
+  | "disable-pr-auto-merge"
   | "merge-branch"
   | "merge-from-base"
   | "archive-worktree";
@@ -46,12 +54,14 @@ interface GitActionRuntimeState {
 export interface BuildGitActionsInput {
   isGit: boolean;
   githubFeaturesEnabled: boolean;
+  githubAutoMergeActionsEnabled: boolean;
   hasPullRequest: boolean;
   pullRequestUrl: string | null;
   pullRequestState: "open" | "closed" | null;
   pullRequestIsDraft: boolean;
   pullRequestIsMerged: boolean;
   pullRequestMergeable: PullRequestMergeable;
+  pullRequestGithub: PullRequestGithubStatus | null;
   hasRemote: boolean;
   isPaseoOwnedWorktree: boolean;
   isOnBaseBranch: boolean;
@@ -67,24 +77,117 @@ export interface BuildGitActionsInput {
   runtime: Record<GitActionId, GitActionRuntimeState>;
 }
 
-const REMOTE_ACTION_IDS: GitActionId[] = ["pull", "push", "pull-and-push"];
-const FEATURE_ACTION_IDS: GitActionId[] = [
-  "merge-from-base",
-  "merge-branch",
-  "pr",
-  "merge-pr-squash",
-  "merge-pr-merge",
-  "merge-pr-rebase",
+type PullRequestActionId = Extract<
+  GitActionId,
+  | "pr"
+  | "merge-pr-squash"
+  | "merge-pr-merge"
+  | "merge-pr-rebase"
+  | "enable-pr-auto-merge-squash"
+  | "enable-pr-auto-merge-merge"
+  | "enable-pr-auto-merge-rebase"
+  | "disable-pr-auto-merge"
+>;
+type PullRequestDirectMergeActionId = Extract<
+  GitActionId,
+  "merge-pr-squash" | "merge-pr-merge" | "merge-pr-rebase"
+>;
+type PullRequestAutoMergeEnableActionId = Extract<
+  GitActionId,
+  "enable-pr-auto-merge-squash" | "enable-pr-auto-merge-merge" | "enable-pr-auto-merge-rebase"
+>;
+type PullRequestActionRole = "status" | "direct" | "auto";
+type PullRequestGithubStatus = NonNullable<CheckoutPrStatusResponse["payload"]["status"]>["github"];
+
+interface PullRequestActionModel {
+  readonly id: PullRequestActionId;
+  readonly role: PullRequestActionRole;
+  readonly build: (input: BuildGitActionsInput) => GitAction;
+}
+
+interface PullRequestDirectMergeActionModel {
+  readonly id: PullRequestDirectMergeActionId;
+  readonly role: "direct";
+  readonly label: string;
+  readonly method: CheckoutPrMergeMethod;
+  readonly startsGroup: boolean;
+}
+
+interface PullRequestAutoMergeEnableActionModel {
+  readonly id: PullRequestAutoMergeEnableActionId;
+  readonly role: "auto";
+  readonly label: string;
+  readonly method: CheckoutPrMergeMethod;
+  readonly startsGroup: boolean;
+}
+
+const PULL_REQUEST_DIRECT_MERGE_ACTION_MODELS = [
+  {
+    id: "merge-pr-squash",
+    role: "direct",
+    label: "Squash and merge",
+    method: "squash",
+    startsGroup: true,
+  },
+  {
+    id: "merge-pr-merge",
+    role: "direct",
+    label: "Create a merge commit",
+    method: "merge",
+    startsGroup: false,
+  },
+  {
+    id: "merge-pr-rebase",
+    role: "direct",
+    label: "Rebase and merge",
+    method: "rebase",
+    startsGroup: false,
+  },
+] as const satisfies readonly PullRequestDirectMergeActionModel[];
+
+const PULL_REQUEST_AUTO_MERGE_ENABLE_ACTION_MODELS = [
+  {
+    id: "enable-pr-auto-merge-squash",
+    role: "auto",
+    label: "Enable auto-merge with squash",
+    method: "squash",
+    startsGroup: true,
+  },
+  {
+    id: "enable-pr-auto-merge-merge",
+    role: "auto",
+    label: "Enable auto-merge with merge commit",
+    method: "merge",
+    startsGroup: false,
+  },
+  {
+    id: "enable-pr-auto-merge-rebase",
+    role: "auto",
+    label: "Enable auto-merge with rebase",
+    method: "rebase",
+    startsGroup: false,
+  },
+] as const satisfies readonly PullRequestAutoMergeEnableActionModel[];
+
+const PULL_REQUEST_ACTION_MODELS: readonly PullRequestActionModel[] = [
+  { id: "pr", role: "status", build: buildPrAction },
+  ...PULL_REQUEST_DIRECT_MERGE_ACTION_MODELS.map((model) => ({
+    ...model,
+    build: (input: BuildGitActionsInput) => buildDirectPullRequestMergeAction(input, model),
+  })),
+  ...PULL_REQUEST_AUTO_MERGE_ENABLE_ACTION_MODELS.map((model) => ({
+    ...model,
+    build: (input: BuildGitActionsInput) => buildEnablePullRequestAutoMergeAction(input, model),
+  })),
+  {
+    id: "disable-pr-auto-merge",
+    role: "auto",
+    build: buildDisablePullRequestAutoMergeAction,
+  },
 ];
 
-const MERGE_PR_METHODS: Record<
-  "merge-pr-squash" | "merge-pr-merge" | "merge-pr-rebase",
-  { label: string; method: CheckoutPrMergeMethod }
-> = {
-  "merge-pr-squash": { label: "Squash and merge", method: "squash" },
-  "merge-pr-merge": { label: "Create a merge commit", method: "merge" },
-  "merge-pr-rebase": { label: "Rebase and merge", method: "rebase" },
-};
+const REMOTE_ACTION_IDS: GitActionId[] = ["pull", "push", "pull-and-push"];
+const GITHUB_DIRECT_MERGE_STATE_ALLOWLIST = new Set(["CLEAN", "HAS_HOOKS"]);
 
 export function narrowPullRequestState(state: string | null | undefined): "open" | "closed" | null {
   if (state === "open") return "open";
@@ -152,11 +255,9 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     handler: input.runtime["pull-and-push"].handler,
   });
 
-  allActions.set("pr", buildPrAction(input));
-
-  allActions.set("merge-pr-squash", buildMergePrAction(input, "merge-pr-squash"));
-  allActions.set("merge-pr-merge", buildMergePrAction(input, "merge-pr-merge"));
-  allActions.set("merge-pr-rebase", buildMergePrAction(input, "merge-pr-rebase"));
+  for (const model of PULL_REQUEST_ACTION_MODELS) {
+    allActions.set(model.id, model.build(input));
+  }
 
   allActions.set("merge-branch", {
     id: "merge-branch",
@@ -209,7 +310,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
 
   const secondaryIds = [...REMOTE_ACTION_IDS];
   if (!input.isOnBaseBranch) {
-    secondaryIds.push(...FEATURE_ACTION_IDS);
+    secondaryIds.push(...getFeatureActionIds(input));
   }
   if (input.isPaseoOwnedWorktree) {
     secondaryIds.push("archive-worktree");
@@ -239,7 +340,10 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
     return "merge-from-base";
   }
   if (canMergePr(input) && input.shipDefault === "pr") {
-    return "merge-pr-squash";
+    return getDefaultDirectPullRequestMergeActionId(input);
+  }
+  if (canEnablePrAutoMerge(input) && input.shipDefault === "pr") {
+    return getDefaultEnablePullRequestAutoMergeActionId(input);
   }
   if (!input.isOnBaseBranch && input.aheadCount > 0 && input.shipDefault === "merge") {
     return "merge-branch";
@@ -251,6 +355,41 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
     return "pr";
   }
   return null;
+}
+
+function getPullRequestActionIds(filter: {
+  roles: readonly PullRequestActionRole[];
+  input: BuildGitActionsInput;
+}): PullRequestActionId[] {
+  return PULL_REQUEST_ACTION_MODELS.filter((model) => filter.roles.includes(model.role))
+    .filter((model) => shouldShowPullRequestAction(filter.input, model.id))
+    .map((model) => model.id);
+}
+
+function getFeatureActionIds(input: BuildGitActionsInput): GitActionId[] {
+  return [
+    "merge-from-base",
+    "merge-branch",
+    ...getPullRequestActionIds({ roles: ["status", "direct", "auto"], input }),
+  ];
+}
+
+function getDefaultDirectPullRequestMergeActionId(
+  input: BuildGitActionsInput,
+): PullRequestDirectMergeActionId {
+  return (
+    getPreferredDirectPullRequestMergeActionModel(input)?.id ??
+    PULL_REQUEST_DIRECT_MERGE_ACTION_MODELS[0].id
+  );
+}
+
+function getDefaultEnablePullRequestAutoMergeActionId(
+  input: BuildGitActionsInput,
+): PullRequestAutoMergeEnableActionId {
+  return (
+    getPreferredEnablePullRequestAutoMergeActionModel(input)?.id ??
+    PULL_REQUEST_AUTO_MERGE_ENABLE_ACTION_MODELS[0].id
+  );
 }
 
 function buildPrAction(input: BuildGitActionsInput): GitAction {
@@ -288,23 +427,60 @@ function buildPrAction(input: BuildGitActionsInput): GitAction {
   };
 }
 
-function buildMergePrAction(
+function buildDirectPullRequestMergeAction(
   input: BuildGitActionsInput,
-  id: "merge-pr-squash" | "merge-pr-merge" | "merge-pr-rebase",
+  model: PullRequestDirectMergeActionModel,
 ): GitAction {
-  const runtime = input.runtime[id];
-  const config = MERGE_PR_METHODS[id];
+  const runtime = input.runtime[model.id];
   const unavailableMessage = getMergePrUnavailableMessage(input);
   return {
-    id,
-    label: config.label,
+    id: model.id,
+    label: model.label,
     pendingLabel: "Merging PR...",
     successLabel: "PR merged",
     disabled: runtime.disabled || shouldDisableMergePrAction(input),
     status: runtime.status,
     unavailableMessage: runtime.disabled ? undefined : unavailableMessage,
     icon: runtime.icon,
-    startsGroup: id === "merge-pr-squash",
+    startsGroup: model.startsGroup,
+    handler: runtime.handler,
+  };
+}
+
+function buildEnablePullRequestAutoMergeAction(
+  input: BuildGitActionsInput,
+  model: PullRequestAutoMergeEnableActionModel,
+): GitAction {
+  const runtime = input.runtime[model.id];
+  return {
+    id: model.id,
+    label: model.label,
+    pendingLabel: "Enabling auto-merge...",
+    successLabel: "Auto-merge enabled",
+    disabled: runtime.disabled,
+    status: runtime.status,
+    icon: runtime.icon,
+    startsGroup: model.startsGroup,
+    handler: runtime.handler,
+  };
+}
+
+function buildDisablePullRequestAutoMergeAction(input: BuildGitActionsInput): GitAction {
+  const runtime = input.runtime["disable-pr-auto-merge"];
+  const unavailableMessage =
+    input.pullRequestGithub?.viewerCanDisableAutoMerge === true
+      ? undefined
+      : "Auto-merge is enabled, but this account can't disable it";
+  return {
+    id: "disable-pr-auto-merge",
+    label: "Auto-merge enabled",
+    pendingLabel: "Disabling auto-merge...",
+    successLabel: "Auto-merge disabled",
+    disabled: runtime.disabled || input.pullRequestGithub?.viewerCanDisableAutoMerge !== true,
+    status: runtime.status,
+    unavailableMessage: runtime.disabled ? undefined : unavailableMessage,
+    icon: runtime.icon,
+    startsGroup: true,
     handler: runtime.handler,
   };
 }
@@ -327,18 +503,55 @@ function canMergeFromBase(input: BuildGitActionsInput): boolean {
 }
 
 function canMergePr(input: BuildGitActionsInput): boolean {
-  return (
+  const github = input.pullRequestGithub;
+  const canMergeFromTopLevelStatus =
     input.githubFeaturesEnabled &&
     input.hasPullRequest &&
     input.pullRequestState === "open" &&
     !input.pullRequestIsDraft &&
     !input.pullRequestIsMerged &&
-    input.pullRequestMergeable === "MERGEABLE" &&
+    input.pullRequestMergeable !== "CONFLICTING" &&
     input.aheadCount > 0 &&
     !input.hasUncommittedChanges &&
     input.behindOfOrigin === 0 &&
     input.aheadOfOrigin === 0 &&
-    !canMergeFromBase(input)
+    !canMergeFromBase(input);
+
+  if (!canMergeFromTopLevelStatus) {
+    return false;
+  }
+
+  if (!hasPullRequestGithubFacts(github)) {
+    return input.pullRequestMergeable === "MERGEABLE";
+  }
+
+  return (
+    GITHUB_DIRECT_MERGE_STATE_ALLOWLIST.has(github.mergeStateStatus ?? "") &&
+    github.autoMergeRequest === null &&
+    !github.isMergeQueueEnabled &&
+    !github.isInMergeQueue &&
+    getAllowedDirectPullRequestMergeActionModels(input).length > 0
+  );
+}
+
+function canEnablePrAutoMerge(input: BuildGitActionsInput): boolean {
+  const github = input.pullRequestGithub;
+  return (
+    input.githubFeaturesEnabled &&
+    input.githubAutoMergeActionsEnabled &&
+    input.hasPullRequest &&
+    input.pullRequestState === "open" &&
+    !input.pullRequestIsDraft &&
+    !input.pullRequestIsMerged &&
+    input.pullRequestMergeable !== "CONFLICTING" &&
+    hasPullRequestGithubFacts(github) &&
+    github.autoMergeRequest === null &&
+    github.mergeStateStatus === "BLOCKED" &&
+    github.repository.autoMergeAllowed &&
+    github.viewerCanEnableAutoMerge &&
+    !github.isMergeQueueEnabled &&
+    !github.isInMergeQueue &&
+    getAllowedAutoMergeEnableActionModels(input).length > 0
   );
 }
 
@@ -436,14 +649,131 @@ function getMergePrUnavailableMessage(input: BuildGitActionsInput): string | und
   if (input.pullRequestMergeable === "CONFLICTING") {
     return "Merge PR isn't available because the pull request has conflicts";
   }
+  if (!hasPullRequestGithubFacts(input.pullRequestGithub)) {
+    return undefined;
+  }
+  if (input.pullRequestGithub?.isMergeQueueEnabled || input.pullRequestGithub?.isInMergeQueue) {
+    return "Merge PR isn't available here because this repository uses a merge queue";
+  }
+  if (!GITHUB_DIRECT_MERGE_STATE_ALLOWLIST.has(input.pullRequestGithub?.mergeStateStatus ?? "")) {
+    return "Merge PR isn't available until GitHub reports the pull request is ready to merge";
+  }
   return undefined;
 }
 
 function shouldDisableMergePrAction(input: BuildGitActionsInput): boolean {
-  return (
-    input.pullRequestIsDraft ||
-    input.pullRequestIsMerged ||
-    input.pullRequestState === "closed" ||
-    input.pullRequestMergeable === "CONFLICTING"
+  return !canMergePr(input);
+}
+
+function shouldShowPullRequestAction(
+  input: BuildGitActionsInput,
+  id: PullRequestActionId,
+): boolean {
+  if (id === "pr") {
+    return true;
+  }
+  if (id === "disable-pr-auto-merge") {
+    return (
+      input.githubAutoMergeActionsEnabled &&
+      hasPullRequestGithubFacts(input.pullRequestGithub) &&
+      input.pullRequestGithub.autoMergeRequest !== null
+    );
+  }
+  if (isDirectPullRequestMergeActionId(id)) {
+    return canMergePr(input) && getAllowedDirectPullRequestMergeActionIds(input).includes(id);
+  }
+  if (isEnablePullRequestAutoMergeActionId(id)) {
+    return canEnablePrAutoMerge(input) && getAllowedAutoMergeEnableActionIds(input).includes(id);
+  }
+  return false;
+}
+
+function isDirectPullRequestMergeActionId(
+  id: PullRequestActionId,
+): id is PullRequestDirectMergeActionId {
+  return PULL_REQUEST_DIRECT_MERGE_ACTION_MODELS.some((model) => model.id === id);
+}
+
+function isEnablePullRequestAutoMergeActionId(
+  id: PullRequestActionId,
+): id is PullRequestAutoMergeEnableActionId {
+  return PULL_REQUEST_AUTO_MERGE_ENABLE_ACTION_MODELS.some((model) => model.id === id);
+}
+
+function getAllowedDirectPullRequestMergeActionIds(
+  input: BuildGitActionsInput,
+): PullRequestDirectMergeActionId[] {
+  return getAllowedDirectPullRequestMergeActionModels(input).map((model) => model.id);
+}
+
+function getAllowedAutoMergeEnableActionIds(
+  input: BuildGitActionsInput,
+): PullRequestAutoMergeEnableActionId[] {
+  return getAllowedAutoMergeEnableActionModels(input).map((model) => model.id);
+}
+
+function getAllowedDirectPullRequestMergeActionModels(
+  input: BuildGitActionsInput,
+): readonly PullRequestDirectMergeActionModel[] {
+  return PULL_REQUEST_DIRECT_MERGE_ACTION_MODELS.filter((model) =>
+    isPullRequestMergeMethodAllowed(input, model.method),
   );
+}
+
+function getAllowedAutoMergeEnableActionModels(
+  input: BuildGitActionsInput,
+): readonly PullRequestAutoMergeEnableActionModel[] {
+  return PULL_REQUEST_AUTO_MERGE_ENABLE_ACTION_MODELS.filter((model) =>
+    isPullRequestMergeMethodAllowed(input, model.method),
+  );
+}
+
+function getPreferredDirectPullRequestMergeActionModel(
+  input: BuildGitActionsInput,
+): PullRequestDirectMergeActionModel | null {
+  const allowed = getAllowedDirectPullRequestMergeActionModels(input);
+  const preferred = normalizeGithubMergeMethod(
+    input.pullRequestGithub?.repository.viewerDefaultMergeMethod ?? null,
+  );
+  return allowed.find((model) => model.method === preferred) ?? allowed[0] ?? null;
+}
+
+function getPreferredEnablePullRequestAutoMergeActionModel(
+  input: BuildGitActionsInput,
+): PullRequestAutoMergeEnableActionModel | null {
+  const allowed = getAllowedAutoMergeEnableActionModels(input);
+  const preferred = normalizeGithubMergeMethod(
+    input.pullRequestGithub?.repository.viewerDefaultMergeMethod ?? null,
+  );
+  return allowed.find((model) => model.method === preferred) ?? allowed[0] ?? null;
+}
+
+function isPullRequestMergeMethodAllowed(
+  input: BuildGitActionsInput,
+  method: CheckoutPrMergeMethod,
+): boolean {
+  const repository = input.pullRequestGithub?.repository;
+  if (!repository) {
+    return true;
+  }
+  if (method === "squash") {
+    return repository.squashMergeAllowed;
+  }
+  if (method === "merge") {
+    return repository.mergeCommitAllowed;
+  }
+  return repository.rebaseMergeAllowed;
+}
+
+function hasPullRequestGithubFacts(
+  github: PullRequestGithubStatus | null,
+): github is NonNullable<PullRequestGithubStatus> {
+  return github !== null && github !== undefined;
+}
+
+function normalizeGithubMergeMethod(value: string | null): CheckoutPrMergeMethod | null {
+  if (value === "SQUASH") return "squash";
+  if (value === "MERGE") return "merge";
+  if (value === "REBASE") return "rebase";
+  return null;
 }

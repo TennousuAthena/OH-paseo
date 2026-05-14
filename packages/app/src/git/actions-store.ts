@@ -32,6 +32,10 @@ export type CheckoutGitAsyncActionId =
   | "merge-pr-squash"
   | "merge-pr-merge"
   | "merge-pr-rebase"
+  | "enable-pr-auto-merge-squash"
+  | "enable-pr-auto-merge-merge"
+  | "enable-pr-auto-merge-rebase"
+  | "disable-pr-auto-merge"
   | "merge-branch"
   | "merge-from-base"
   | "archive-worktree";
@@ -50,6 +54,13 @@ function resolveClient(serverId: string) {
     throw new Error("Daemon client unavailable");
   }
   return client;
+}
+
+function assertGitHubAutoMergeActionsSupported(serverId: string) {
+  const session = useSessionStore.getState().sessions[serverId];
+  if (session?.serverInfo?.features?.checkoutGithubSetAutoMerge !== true) {
+    throw new Error("Update the host to use GitHub auto-merge actions.");
+  }
 }
 
 function setStatus(
@@ -231,6 +242,12 @@ interface CheckoutGitActionsStoreState {
     cwd: string;
     method: CheckoutPrMergeMethod;
   }) => Promise<void>;
+  enablePrAutoMerge: (params: {
+    serverId: string;
+    cwd: string;
+    method: CheckoutPrMergeMethod;
+  }) => Promise<void>;
+  disablePrAutoMerge: (params: { serverId: string; cwd: string }) => Promise<void>;
   mergeBranch: (params: { serverId: string; cwd: string; baseRef: string }) => Promise<void>;
   mergeFromBase: (params: { serverId: string; cwd: string; baseRef: string }) => Promise<void>;
   archiveWorktree: (params: {
@@ -385,6 +402,38 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
       run: async () => {
         const client = resolveClient(serverId);
         const payload = await client.checkoutPrMerge(cwd, { method });
+        if (payload.error) {
+          throw new Error(payload.error.message);
+        }
+      },
+    });
+  },
+
+  enablePrAutoMerge: async ({ serverId, cwd, method }) => {
+    assertGitHubAutoMergeActionsSupported(serverId);
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: `enable-pr-auto-merge-${method}`,
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.checkoutGithubSetAutoMerge(cwd, { enabled: true, method });
+        if (payload.error) {
+          throw new Error(payload.error.message);
+        }
+      },
+    });
+  },
+
+  disablePrAutoMerge: async ({ serverId, cwd }) => {
+    assertGitHubAutoMergeActionsSupported(serverId);
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "disable-pr-auto-merge",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.checkoutGithubSetAutoMerge(cwd, { enabled: false });
         if (payload.error) {
           throw new Error(payload.error.message);
         }

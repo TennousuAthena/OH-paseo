@@ -79,11 +79,11 @@ function createCheckoutStatus(
   };
 }
 
-function createPullRequestStatusResult(): PullRequestStatusResult {
+function createPullRequestStatusResult(title = "Update feature"): PullRequestStatusResult {
   return {
     status: {
       url: "https://github.com/acme/repo/pull/123",
-      title: "Update feature",
+      title,
       state: "open",
       baseRefName: "main",
       headRefName: "feature",
@@ -533,6 +533,61 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     await Promise.all([first, second]);
 
     expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
+
+    service.dispose();
+  });
+
+  test("a forced GitHub-inclusive call during an in-flight forced git refresh queues a GitHub refresh", async () => {
+    const forcedGitRefresh = createDeferred<CheckoutStatusGit>();
+    const getCheckoutStatus = vi
+      .fn<() => Promise<CheckoutStatusGit>>()
+      .mockImplementationOnce(async () => forcedGitRefresh.promise)
+      .mockImplementation(async () => createCheckoutStatus(REPO_CWD));
+    const getPullRequestStatus = vi
+      .fn()
+      .mockResolvedValueOnce(createPullRequestStatusResult("Stale cached PR"))
+      .mockResolvedValueOnce(createPullRequestStatusResult("Fresh validation PR"));
+    const service = createService({ getCheckoutStatus, getPullRequestStatus });
+
+    const gitRefresh = service.getSnapshot(REPO_CWD, {
+      force: true,
+      includeGitHub: false,
+      reason: "watch",
+    });
+    await flushPromises();
+
+    const validationRefresh = service.getSnapshot(REPO_CWD, {
+      force: true,
+      includeGitHub: true,
+      reason: "merge-pr-validation",
+    });
+    await flushPromises();
+
+    expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
+
+    forcedGitRefresh.resolve(createCheckoutStatus(REPO_CWD));
+
+    await expect(validationRefresh).resolves.toEqual(
+      createSnapshot(REPO_CWD, {
+        github: {
+          pullRequest: {
+            url: "https://github.com/acme/repo/pull/123",
+            title: "Fresh validation PR",
+            state: "open",
+            baseRefName: "main",
+            headRefName: "feature",
+            isMerged: false,
+          },
+        },
+      }),
+    );
+    await gitRefresh;
+
+    expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
+    expect(getPullRequestStatus).toHaveBeenNthCalledWith(2, REPO_CWD, expect.anything(), {
+      force: true,
+      reason: "merge-pr-validation",
+    });
 
     service.dispose();
   });

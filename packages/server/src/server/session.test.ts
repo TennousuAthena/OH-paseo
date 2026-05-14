@@ -46,6 +46,7 @@ import {
   createProviderSnapshotManagerStub,
 } from "./test-utils/session-stubs.js";
 import { isPlatform } from "../test-utils/platform.js";
+import type { GitHubPullRequestStatusFacts } from "../services/github-service.js";
 
 interface SessionHandlerInternals {
   startVoiceTurnController(): Promise<void>;
@@ -64,6 +65,7 @@ interface SessionHandlerInternals {
   handleCheckoutCommitRequest(params: unknown): Promise<unknown>;
   handleCheckoutPrCreateRequest(params: unknown): Promise<unknown>;
   handleCheckoutPrMergeRequest(params: unknown): Promise<unknown>;
+  handleCheckoutGithubSetAutoMergeRequest(params: unknown): Promise<unknown>;
   handleCheckoutPullRequest(params: unknown): Promise<unknown>;
   handleCheckoutPushRequest(params: unknown): Promise<unknown>;
   handleCheckoutStatusRequest(params: unknown): Promise<unknown>;
@@ -1971,6 +1973,23 @@ describe("session checkout pull request merge", () => {
         github: {
           pullRequest: {
             number: 42,
+            github: {
+              mergeStateStatus: "CLEAN",
+              autoMergeRequest: null,
+              viewerCanEnableAutoMerge: false,
+              viewerCanDisableAutoMerge: false,
+              viewerCanMergeAsAdmin: false,
+              viewerCanUpdateBranch: false,
+              repository: {
+                autoMergeAllowed: true,
+                mergeCommitAllowed: true,
+                squashMergeAllowed: true,
+                rebaseMergeAllowed: true,
+                viewerDefaultMergeMethod: "SQUASH",
+              },
+              isMergeQueueEnabled: false,
+              isInMergeQueue: false,
+            },
           },
         },
       }),
@@ -1988,8 +2007,33 @@ describe("session checkout pull request merge", () => {
       cwd: "/tmp/request-worktree",
       prNumber: 42,
       mergeMethod: "squash",
+      status: {
+        number: 42,
+        github: {
+          mergeStateStatus: "CLEAN",
+          autoMergeRequest: null,
+          viewerCanEnableAutoMerge: false,
+          viewerCanDisableAutoMerge: false,
+          viewerCanMergeAsAdmin: false,
+          viewerCanUpdateBranch: false,
+          repository: {
+            autoMergeAllowed: true,
+            mergeCommitAllowed: true,
+            squashMergeAllowed: true,
+            rebaseMergeAllowed: true,
+            viewerDefaultMergeMethod: "SQUASH",
+          },
+          isMergeQueueEnabled: false,
+          isInMergeQueue: false,
+        },
+      },
     });
-    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
+    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(1, "/tmp/request-worktree", {
+      force: true,
+      includeGitHub: true,
+      reason: "merge-pr-validation",
+    });
+    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(2, "/tmp/request-worktree", {
       force: true,
       reason: "merge-pr",
     });
@@ -2005,6 +2049,131 @@ describe("session checkout pull request merge", () => {
     });
   });
 
+  test("rejects direct merge when fresh GitHub facts block a warm clean snapshot", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      mergePullRequest: vi.fn(
+        async (input: { status?: { github?: { mergeStateStatus?: string | null } } }) => {
+          if (input.status?.github?.mergeStateStatus === "BLOCKED") {
+            throw new Error("GitHub does not report this pull request as ready for direct merge");
+          }
+          return { success: true };
+        },
+      ),
+    };
+    const createSnapshot = (mergeStateStatus: "CLEAN" | "BLOCKED") => ({
+      github: {
+        pullRequest: {
+          number: 42,
+          github: {
+            mergeStateStatus,
+            autoMergeRequest: null,
+            viewerCanEnableAutoMerge: false,
+            viewerCanDisableAutoMerge: false,
+            viewerCanMergeAsAdmin: false,
+            viewerCanUpdateBranch: false,
+            repository: {
+              autoMergeAllowed: true,
+              mergeCommitAllowed: true,
+              squashMergeAllowed: true,
+              rebaseMergeAllowed: true,
+              viewerDefaultMergeMethod: "SQUASH",
+            },
+            isMergeQueueEnabled: false,
+            isInMergeQueue: false,
+          },
+        },
+      },
+    });
+    const workspaceGitService = {
+      getSnapshot: vi.fn(async (_cwd: string, options?: { force?: boolean }) =>
+        createSnapshot(options?.force ? "BLOCKED" : "CLEAN"),
+      ),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await asSessionInternals(session).handleCheckoutPrMergeRequest({
+      type: "checkout_pr_merge_request",
+      cwd: "/tmp/request-worktree",
+      mergeMethod: "squash",
+      requestId: "request-pr-merge-fresh-blocked",
+    });
+
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledTimes(1);
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
+      force: true,
+      includeGitHub: true,
+      reason: "merge-pr-validation",
+    });
+    expect(github.mergePullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: expect.objectContaining({
+          github: expect.objectContaining({ mergeStateStatus: "BLOCKED" }),
+        }),
+      }),
+    );
+    expect(github.invalidate).not.toHaveBeenCalled();
+    expect(messages).toContainEqual({
+      type: "checkout_pr_merge_response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        success: false,
+        error: {
+          code: "UNKNOWN",
+          message: "GitHub does not report this pull request as ready for direct merge",
+        },
+        requestId: "request-pr-merge-fresh-blocked",
+      },
+    });
+  });
+
+  test("rejects direct merge when the current pull request is missing GitHub merge facts", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      mergePullRequest: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockResolvedValue({
+        github: {
+          pullRequest: {
+            number: 42,
+            mergeable: "MERGEABLE",
+          },
+        },
+      }),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await asSessionInternals(session).handleCheckoutPrMergeRequest({
+      type: "checkout_pr_merge_request",
+      cwd: "/tmp/request-worktree",
+      mergeMethod: "squash",
+      requestId: "request-pr-merge-missing-github-facts",
+    });
+
+    expect(github.mergePullRequest).not.toHaveBeenCalled();
+    expect(github.invalidate).not.toHaveBeenCalled();
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
+      force: true,
+      includeGitHub: true,
+      reason: "merge-pr-validation",
+    });
+    expect(messages).toContainEqual({
+      type: "checkout_pr_merge_response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        success: false,
+        error: {
+          code: "UNKNOWN",
+          message: "GitHub merge facts are unavailable for this pull request",
+        },
+        requestId: "request-pr-merge-missing-github-facts",
+      },
+    });
+  });
+
   test("surfaces merge errors verbatim", async () => {
     const messages: unknown[] = [];
     const github = {
@@ -2016,6 +2185,23 @@ describe("session checkout pull request merge", () => {
         github: {
           pullRequest: {
             number: 42,
+            github: {
+              mergeStateStatus: "CLEAN",
+              autoMergeRequest: null,
+              viewerCanEnableAutoMerge: false,
+              viewerCanDisableAutoMerge: false,
+              viewerCanMergeAsAdmin: false,
+              viewerCanUpdateBranch: false,
+              repository: {
+                autoMergeAllowed: true,
+                mergeCommitAllowed: true,
+                squashMergeAllowed: true,
+                rebaseMergeAllowed: true,
+                viewerDefaultMergeMethod: "SQUASH",
+              },
+              isMergeQueueEnabled: false,
+              isInMergeQueue: false,
+            },
           },
         },
       }),
@@ -2039,6 +2225,362 @@ describe("session checkout pull request merge", () => {
           message: "base branch has conflicts",
         },
         requestId: "request-pr-merge-failure",
+      },
+    });
+  });
+});
+
+describe("session checkout pull request auto-merge", () => {
+  const autoMergeGithubFacts = (
+    overrides: Partial<GitHubPullRequestStatusFacts> = {},
+  ): GitHubPullRequestStatusFacts => ({
+    mergeStateStatus: "BLOCKED",
+    autoMergeRequest: null,
+    viewerCanEnableAutoMerge: true,
+    viewerCanDisableAutoMerge: false,
+    viewerCanMergeAsAdmin: false,
+    viewerCanUpdateBranch: false,
+    repository: {
+      autoMergeAllowed: true,
+      mergeCommitAllowed: true,
+      squashMergeAllowed: true,
+      rebaseMergeAllowed: true,
+      viewerDefaultMergeMethod: "SQUASH",
+    },
+    isMergeQueueEnabled: false,
+    isInMergeQueue: false,
+    ...overrides,
+  });
+
+  test("enables auto-merge for the current pull request and refreshes GitHub state", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      enablePullRequestAutoMerge: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockResolvedValue({
+        github: {
+          pullRequest: {
+            number: 42,
+            mergeable: "MERGEABLE",
+            github: autoMergeGithubFacts(),
+          },
+        },
+      }),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await asSessionInternals(session).handleCheckoutGithubSetAutoMergeRequest({
+      type: "checkout.github.set_auto_merge.request",
+      cwd: "/tmp/request-worktree",
+      enabled: true,
+      mergeMethod: "squash",
+      requestId: "request-pr-auto-merge-enable",
+    });
+
+    expect(github.enablePullRequestAutoMerge).toHaveBeenCalledWith({
+      cwd: "/tmp/request-worktree",
+      prNumber: 42,
+      mergeMethod: "squash",
+      status: {
+        number: 42,
+        mergeable: "MERGEABLE",
+        github: autoMergeGithubFacts(),
+      },
+    });
+    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(1, "/tmp/request-worktree", {
+      force: true,
+      includeGitHub: true,
+      reason: "auto-merge-validation",
+    });
+    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(2, "/tmp/request-worktree", {
+      force: true,
+      reason: "enable-pr-auto-merge",
+    });
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
+    expect(messages).toContainEqual({
+      type: "checkout.github.set_auto_merge.response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        enabled: true,
+        success: true,
+        error: null,
+        requestId: "request-pr-auto-merge-enable",
+      },
+    });
+  });
+
+  test("disables auto-merge for the current pull request and refreshes GitHub state", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      disablePullRequestAutoMerge: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockResolvedValue({
+        github: {
+          pullRequest: {
+            number: 42,
+            github: autoMergeGithubFacts({
+              autoMergeRequest: {
+                enabledAt: "2026-05-13T17:00:00Z",
+                mergeMethod: "SQUASH",
+                enabledBy: "moboudra",
+              },
+              viewerCanEnableAutoMerge: false,
+              viewerCanDisableAutoMerge: true,
+            }),
+          },
+        },
+      }),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await asSessionInternals(session).handleCheckoutGithubSetAutoMergeRequest({
+      type: "checkout.github.set_auto_merge.request",
+      cwd: "/tmp/request-worktree",
+      enabled: false,
+      requestId: "request-pr-auto-merge-disable",
+    });
+
+    expect(github.disablePullRequestAutoMerge).toHaveBeenCalledWith({
+      cwd: "/tmp/request-worktree",
+      prNumber: 42,
+      status: {
+        number: 42,
+        github: autoMergeGithubFacts({
+          autoMergeRequest: {
+            enabledAt: "2026-05-13T17:00:00Z",
+            mergeMethod: "SQUASH",
+            enabledBy: "moboudra",
+          },
+          viewerCanEnableAutoMerge: false,
+          viewerCanDisableAutoMerge: true,
+        }),
+      },
+    });
+    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(1, "/tmp/request-worktree", {
+      force: true,
+      includeGitHub: true,
+      reason: "auto-merge-validation",
+    });
+    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(2, "/tmp/request-worktree", {
+      force: true,
+      reason: "disable-pr-auto-merge",
+    });
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
+    expect(messages).toContainEqual({
+      type: "checkout.github.set_auto_merge.response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        enabled: false,
+        success: true,
+        error: null,
+        requestId: "request-pr-auto-merge-disable",
+      },
+    });
+  });
+
+  test("surfaces auto-merge errors verbatim", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      enablePullRequestAutoMerge: vi.fn().mockRejectedValue(new Error("auto-merge is disabled")),
+    };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockResolvedValue({
+        github: {
+          pullRequest: {
+            number: 42,
+            github: autoMergeGithubFacts(),
+          },
+        },
+      }),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await asSessionInternals(session).handleCheckoutGithubSetAutoMergeRequest({
+      type: "checkout.github.set_auto_merge.request",
+      cwd: "/tmp/request-worktree",
+      enabled: true,
+      mergeMethod: "merge",
+      requestId: "request-pr-auto-merge-failure",
+    });
+
+    expect(messages).toContainEqual({
+      type: "checkout.github.set_auto_merge.response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        enabled: true,
+        success: false,
+        error: {
+          code: "UNKNOWN",
+          message: "auto-merge is disabled",
+        },
+        requestId: "request-pr-auto-merge-failure",
+      },
+    });
+  });
+
+  test("rejects auto-merge enable when the requested method is disabled", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      enablePullRequestAutoMerge: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockResolvedValue({
+        github: {
+          pullRequest: {
+            number: 42,
+            github: autoMergeGithubFacts({
+              repository: {
+                autoMergeAllowed: true,
+                mergeCommitAllowed: true,
+                squashMergeAllowed: false,
+                rebaseMergeAllowed: true,
+                viewerDefaultMergeMethod: "MERGE",
+              },
+            }),
+          },
+        },
+      }),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await asSessionInternals(session).handleCheckoutGithubSetAutoMergeRequest({
+      type: "checkout.github.set_auto_merge.request",
+      cwd: "/tmp/request-worktree",
+      enabled: true,
+      mergeMethod: "squash",
+      requestId: "request-pr-auto-merge-method-disabled",
+    });
+
+    expect(github.enablePullRequestAutoMerge).not.toHaveBeenCalled();
+    expect(github.invalidate).not.toHaveBeenCalled();
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
+      force: true,
+      includeGitHub: true,
+      reason: "auto-merge-validation",
+    });
+    expect(messages).toContainEqual({
+      type: "checkout.github.set_auto_merge.response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        enabled: true,
+        success: false,
+        error: {
+          code: "UNKNOWN",
+          message: "Auto-merge is not available because squash is disabled",
+        },
+        requestId: "request-pr-auto-merge-method-disabled",
+      },
+    });
+  });
+
+  test("rejects auto-merge disable when the viewer cannot disable it", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      disablePullRequestAutoMerge: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockResolvedValue({
+        github: {
+          pullRequest: {
+            number: 42,
+            github: autoMergeGithubFacts({
+              autoMergeRequest: {
+                enabledAt: "2026-05-13T17:00:00Z",
+                mergeMethod: "SQUASH",
+                enabledBy: "someone-else",
+              },
+              viewerCanEnableAutoMerge: false,
+              viewerCanDisableAutoMerge: false,
+            }),
+          },
+        },
+      }),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await asSessionInternals(session).handleCheckoutGithubSetAutoMergeRequest({
+      type: "checkout.github.set_auto_merge.request",
+      cwd: "/tmp/request-worktree",
+      enabled: false,
+      requestId: "request-pr-auto-merge-disable-forbidden",
+    });
+
+    expect(github.disablePullRequestAutoMerge).not.toHaveBeenCalled();
+    expect(github.invalidate).not.toHaveBeenCalled();
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
+      force: true,
+      includeGitHub: true,
+      reason: "auto-merge-validation",
+    });
+    expect(messages).toContainEqual({
+      type: "checkout.github.set_auto_merge.response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        enabled: false,
+        success: false,
+        error: {
+          code: "UNKNOWN",
+          message: "GitHub does not allow this viewer to disable auto-merge",
+        },
+        requestId: "request-pr-auto-merge-disable-forbidden",
+      },
+    });
+  });
+
+  test("rejects auto-merge disable requests that include a merge method", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      disablePullRequestAutoMerge: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockResolvedValue({
+        github: {
+          pullRequest: {
+            number: 42,
+            github: autoMergeGithubFacts({
+              autoMergeRequest: {
+                enabledAt: "2026-05-13T17:00:00Z",
+                mergeMethod: "SQUASH",
+                enabledBy: "moboudra",
+              },
+              viewerCanEnableAutoMerge: false,
+              viewerCanDisableAutoMerge: true,
+            }),
+          },
+        },
+      }),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await asSessionInternals(session).handleCheckoutGithubSetAutoMergeRequest({
+      type: "checkout.github.set_auto_merge.request",
+      cwd: "/tmp/request-worktree",
+      enabled: false,
+      mergeMethod: "squash",
+      requestId: "request-pr-auto-merge-disable-with-method",
+    });
+
+    expect(github.disablePullRequestAutoMerge).not.toHaveBeenCalled();
+    expect(github.invalidate).not.toHaveBeenCalled();
+    expect(messages).toContainEqual({
+      type: "checkout.github.set_auto_merge.response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        enabled: false,
+        success: false,
+        error: {
+          code: "UNKNOWN",
+          message: "mergeMethod is not allowed when disabling auto-merge",
+        },
+        requestId: "request-pr-auto-merge-disable-with-method",
       },
     });
   });
