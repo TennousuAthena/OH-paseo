@@ -421,6 +421,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     try {
       const status = await this.deps.getCheckoutStatus(normalizedCwd, {
         paseoHome: this.paseoHome,
+        logger: this.logger,
       });
       if (!status.isGit) {
         return checkoutLiteFromGitSnapshot(normalizedCwd, {
@@ -1491,7 +1492,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
 
     const cwd = target.cwd;
-    const context: CheckoutContext = { paseoHome: this.paseoHome };
+    const context: CheckoutContext = { paseoHome: this.paseoHome, logger: this.logger };
     const checkoutStatus = await this.deps.getCheckoutStatus(cwd, context);
     if (!checkoutStatus.isGit) {
       target.latestSnapshotLoadedAtMs = now.getTime();

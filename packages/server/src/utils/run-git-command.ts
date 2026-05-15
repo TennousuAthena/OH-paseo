@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import pLimit from "p-limit";
+import type { Logger } from "pino";
 import type { ProcessEnvRecord } from "../server/paseo-env.js";
 import { spawnProcess } from "./spawn.js";
 
@@ -13,6 +15,7 @@ export interface GitCommandOptions {
   cwd: string;
   env?: ProcessEnvRecord;
   envOverlay?: ProcessEnvRecord;
+  logger?: Pick<Logger, "trace">;
   timeout?: number;
   maxOutputBytes?: number;
   acceptExitCodes?: number[];
@@ -39,6 +42,10 @@ function mergeEnvOverlays(
   return { ...env, ...envOverlay };
 }
 
+function getEnvOverlayKeys(envOverlay: ProcessEnvRecord | undefined): string[] {
+  return Object.keys(envOverlay ?? {}).sort();
+}
+
 export function runGitCommand(
   args: string[],
   options: GitCommandOptions,
@@ -50,10 +57,29 @@ export function runGitCommand(
         const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
         const acceptExitCodes = options.acceptExitCodes ?? [0];
         const command = formatGitCommand(args);
+        const envOverlay = mergeEnvOverlays(options.env, options.envOverlay);
+        const startedAt = Date.now();
+        const logger = typeof options.logger?.trace === "function" ? options.logger : undefined;
+        const traceContext = logger
+          ? {
+              command: "git",
+              args,
+              cwd: options.cwd,
+              cwdExists: existsSync(options.cwd),
+              timeout,
+              maxOutputBytes,
+              acceptExitCodes,
+              envOverlayKeys: getEnvOverlayKeys(envOverlay),
+            }
+          : null;
+
+        if (logger && traceContext) {
+          logger.trace(traceContext, "Spawning git command");
+        }
 
         const child = spawnProcess("git", args, {
           cwd: options.cwd,
-          envOverlay: mergeEnvOverlays(options.env, options.envOverlay),
+          envOverlay,
           shell: false,
           stdio: ["ignore", "pipe", "pipe"],
         });
@@ -119,6 +145,16 @@ export function runGitCommand(
         });
 
         child.on("error", (error) => {
+          if (logger && traceContext) {
+            logger.trace(
+              {
+                ...traceContext,
+                err: error,
+                durationMs: Date.now() - startedAt,
+              },
+              "Git command process error",
+            );
+          }
           settle(() => reject(error));
         });
 
@@ -130,6 +166,20 @@ export function runGitCommand(
             exitCode,
             signal,
           };
+          if (logger && traceContext) {
+            logger.trace(
+              {
+                ...traceContext,
+                durationMs: Date.now() - startedAt,
+                exitCode,
+                signal,
+                truncated,
+                stdoutBytes,
+                stderrBytes,
+              },
+              "Git command closed",
+            );
+          }
 
           if (!truncated && !acceptExitCodes.includes(exitCode ?? -1)) {
             const stderrPreview = result.stderr.trim() || "(no stderr)";

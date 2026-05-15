@@ -2,6 +2,7 @@ import { resolve, dirname, basename } from "path";
 import { existsSync, realpathSync } from "fs";
 import { open as openFile, readFile, stat as statFile } from "fs/promises";
 import { TTLCache } from "@isaacs/ttlcache";
+import type { Logger } from "pino";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
 import { parseGitHubRepoFromRemote } from "../server/workspace-git-metadata.js";
@@ -712,6 +713,7 @@ export interface MergeFromBaseOptions {
 
 export interface CheckoutContext {
   paseoHome?: string;
+  logger?: Pick<Logger, "trace">;
 }
 
 function isGitError(error: unknown): boolean {
@@ -767,11 +769,12 @@ async function getRebaseHeadBranch(cwd: string): Promise<string | null> {
   return results.find((result): result is string => result !== null) ?? null;
 }
 
-async function getWorktreeRoot(cwd: string): Promise<string | null> {
+async function getWorktreeRoot(cwd: string, context?: CheckoutContext): Promise<string | null> {
   try {
     const { stdout } = await runGitCommand(["rev-parse", "--show-toplevel"], {
       cwd,
       envOverlay: READ_ONLY_GIT_ENV,
+      logger: context?.logger,
     });
     return parseGitRevParsePath(stdout);
   } catch {
@@ -960,10 +963,11 @@ async function resolveBaseRefForCwd(
   };
 }
 
-async function isWorkingTreeDirty(cwd: string): Promise<boolean> {
+async function isWorkingTreeDirty(cwd: string, context?: CheckoutContext): Promise<boolean> {
   const { stdout } = await runGitCommand(["status", "--porcelain"], {
     cwd,
     envOverlay: READ_ONLY_GIT_ENV,
+    logger: context?.logger,
   });
   return stdout.trim().length > 0;
 }
@@ -986,11 +990,16 @@ export async function hasOriginRemote(cwd: string): Promise<boolean> {
   return url !== null;
 }
 
-async function getGitConfigValue(cwd: string, key: string): Promise<string | null> {
+async function getGitConfigValue(
+  cwd: string,
+  key: string,
+  context?: CheckoutContext,
+): Promise<string | null> {
   try {
     const { stdout } = await runGitCommand(["config", "--get", key], {
       cwd,
       envOverlay: READ_ONLY_GIT_ENV,
+      logger: context?.logger,
     });
     const value = stdout.trim();
     return value.length > 0 ? value : null;
@@ -1151,20 +1160,29 @@ function normalizeComparisonBaseRefName(input: string): ComparisonBaseRefName {
   return { localName, originRef: `origin/${localName}` };
 }
 
-async function doesGitRefExist(cwd: string, fullRef: string): Promise<boolean> {
+async function doesGitRefExist(
+  cwd: string,
+  fullRef: string,
+  context?: CheckoutContext,
+): Promise<boolean> {
   const result = await runGitCommand(["show-ref", "--verify", "--quiet", fullRef], {
     cwd,
     envOverlay: READ_ONLY_GIT_ENV,
     acceptExitCodes: [0, 1],
+    logger: context?.logger,
   });
   return result.exitCode === 0;
 }
 
-async function resolveBestComparisonBaseRef(cwd: string, baseRef: string): Promise<string> {
+async function resolveBestComparisonBaseRef(
+  cwd: string,
+  baseRef: string,
+  context?: CheckoutContext,
+): Promise<string> {
   const normalized = normalizeComparisonBaseRefName(baseRef);
   const [hasLocal, hasOrigin] = await Promise.all([
-    doesGitRefExist(cwd, `refs/heads/${normalized.localName}`),
-    doesGitRefExist(cwd, `refs/remotes/origin/${normalized.localName}`),
+    doesGitRefExist(cwd, `refs/heads/${normalized.localName}`, context),
+    doesGitRefExist(cwd, `refs/remotes/origin/${normalized.localName}`, context),
   ]);
 
   if (hasOrigin) {
@@ -1218,15 +1236,16 @@ async function getAheadBehind(
   cwd: string,
   baseRef: string,
   currentBranch: string,
+  context?: CheckoutContext,
 ): Promise<AheadBehind | null> {
   const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
   if (!normalizedBaseRef || !currentBranch || normalizedBaseRef === currentBranch) {
     return null;
   }
-  const comparisonBaseRef = await resolveBestComparisonBaseRef(cwd, baseRef);
+  const comparisonBaseRef = await resolveBestComparisonBaseRef(cwd, baseRef, context);
   const { stdout } = await runGitCommand(
     ["rev-list", "--left-right", "--count", `${comparisonBaseRef}...${currentBranch}`],
-    { cwd, envOverlay: READ_ONLY_GIT_ENV },
+    { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
   );
   const [behindRaw, aheadRaw] = stdout.trim().split(/\s+/);
   const behind = Number.parseInt(behindRaw ?? "0", 10);
@@ -1237,16 +1256,20 @@ async function getAheadBehind(
   return { ahead, behind };
 }
 
-async function getAheadOfOrigin(cwd: string, currentBranch: string): Promise<number | null> {
+async function getAheadOfOrigin(
+  cwd: string,
+  currentBranch: string,
+  context?: CheckoutContext,
+): Promise<number | null> {
   if (!currentBranch) {
     return null;
   }
-  const trackedOriginBranch = await getTrackedOriginBranch(cwd, currentBranch);
+  const trackedOriginBranch = await getTrackedOriginBranch(cwd, currentBranch, context);
   const originBranch = trackedOriginBranch ?? currentBranch;
   try {
     const { stdout } = await runGitCommand(
       ["rev-list", "--count", `origin/${originBranch}..${currentBranch}`],
-      { cwd, envOverlay: READ_ONLY_GIT_ENV },
+      { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
     );
     const count = Number.parseInt(stdout.trim(), 10);
     return Number.isNaN(count) ? null : count;
@@ -1258,6 +1281,7 @@ async function getAheadOfOrigin(cwd: string, currentBranch: string): Promise<num
       const { stdout } = await runGitCommand(["rev-list", "--count", currentBranch], {
         cwd,
         envOverlay: READ_ONLY_GIT_ENV,
+        logger: context?.logger,
       });
       const count = Number.parseInt(stdout.trim(), 10);
       return Number.isNaN(count) ? null : count;
@@ -1267,24 +1291,32 @@ async function getAheadOfOrigin(cwd: string, currentBranch: string): Promise<num
   }
 }
 
-async function getTrackedOriginBranch(cwd: string, currentBranch: string): Promise<string | null> {
-  const remoteName = await getGitConfigValue(cwd, `branch.${currentBranch}.remote`);
+async function getTrackedOriginBranch(
+  cwd: string,
+  currentBranch: string,
+  context?: CheckoutContext,
+): Promise<string | null> {
+  const remoteName = await getGitConfigValue(cwd, `branch.${currentBranch}.remote`, context);
   if (remoteName !== "origin") {
     return null;
   }
 
-  const mergeRef = await getGitConfigValue(cwd, `branch.${currentBranch}.merge`);
+  const mergeRef = await getGitConfigValue(cwd, `branch.${currentBranch}.merge`, context);
   return parseBranchMergeHeadRef(mergeRef);
 }
 
-async function getBehindOfOrigin(cwd: string, currentBranch: string): Promise<number | null> {
+async function getBehindOfOrigin(
+  cwd: string,
+  currentBranch: string,
+  context?: CheckoutContext,
+): Promise<number | null> {
   if (!currentBranch) {
     return null;
   }
   try {
     const { stdout } = await runGitCommand(
       ["rev-list", "--count", `${currentBranch}..origin/${currentBranch}`],
-      { cwd, envOverlay: READ_ONLY_GIT_ENV },
+      { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
     );
     const count = Number.parseInt(stdout.trim(), 10);
     return Number.isNaN(count) ? null : count;
@@ -1305,7 +1337,7 @@ async function inspectCheckoutContext(
   context?: CheckoutContext,
 ): Promise<CheckoutInspectionContext | null> {
   try {
-    const root = await getWorktreeRoot(cwd);
+    const root = await getWorktreeRoot(cwd, context);
     if (!root) {
       return null;
     }
@@ -1453,14 +1485,20 @@ export async function getCheckoutStatus(
   const currentBranch = inspected.currentBranch;
   const remoteUrl = inspected.remoteUrl;
   const paseoWorktree = inspected.paseoWorktree;
-  const isDirty = await isWorkingTreeDirty(cwd);
+  const isDirty = await isWorkingTreeDirty(cwd, context);
   const hasRemote = remoteUrl !== null;
   const { resolvedBaseRef: baseRef } = await resolveBaseRefForCwd(cwd, context);
   const mainRepoRoot = await getMainRepoRoot(cwd).catch(() => null);
   const [aheadBehind, aheadOfOrigin, behindOfOrigin] = await Promise.all([
-    baseRef && currentBranch ? getAheadBehind(cwd, baseRef, currentBranch) : Promise.resolve(null),
-    hasRemote && currentBranch ? getAheadOfOrigin(cwd, currentBranch) : Promise.resolve(null),
-    hasRemote && currentBranch ? getBehindOfOrigin(cwd, currentBranch) : Promise.resolve(null),
+    baseRef && currentBranch
+      ? getAheadBehind(cwd, baseRef, currentBranch, context)
+      : Promise.resolve(null),
+    hasRemote && currentBranch
+      ? getAheadOfOrigin(cwd, currentBranch, context)
+      : Promise.resolve(null),
+    hasRemote && currentBranch
+      ? getBehindOfOrigin(cwd, currentBranch, context)
+      : Promise.resolve(null),
   ]);
 
   if (paseoWorktree.isPaseoOwnedWorktree && baseRef) {
