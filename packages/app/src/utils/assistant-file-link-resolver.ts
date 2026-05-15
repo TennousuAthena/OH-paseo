@@ -15,7 +15,7 @@ export interface AssistantFileLinkSource {
   text?: string;
   markup?: string;
   sourceInfo?: string;
-  sourceType?: string;
+  sourceType?: "inline-code";
 }
 
 export interface DirectorySuggestionEntry {
@@ -163,7 +163,7 @@ export function createAssistantFileLinkResolver(
 }
 
 export function getAssistantFileLinkToken(source: AssistantFileLinkSource): string {
-  if (isLinkifiedSource(source)) {
+  if (isLinkifiedSource(source) || source.sourceType === "inline-code") {
     const text = source.text?.trim();
     if (text && isFileLookingAssistantToken(text)) {
       return text;

@@ -68,7 +68,7 @@ import type { AgentAttachment } from "@server/shared/messages";
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
-import { parseInlinePathToken, type InlinePathTarget } from "@/utils/inline-path";
+import { type InlinePathTarget, parseInlinePathToken } from "@/utils/inline-path";
 import { getMarkdownListMarker, getMarkdownNextSiblingType } from "@/utils/markdown-list";
 import { type AssistantFileLinkSource } from "@/utils/assistant-file-link-resolver";
 import { useAssistantFileLinkResolver } from "@/hooks/use-assistant-file-link-resolver";
@@ -730,21 +730,6 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   containerCompactBottom: {
     paddingBottom: 0,
   },
-  // Used in custom markdownRules for path chip styling
-  pathChip: {
-    backgroundColor: theme.colors.surface2,
-    borderRadius: theme.borderRadius.full,
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: 2,
-    marginRight: theme.spacing[1],
-    marginVertical: 2,
-  },
-  pathChipText: {
-    color: theme.colors.foreground,
-    fontFamily: Fonts.mono,
-    fontSize: 13,
-    userSelect: isWeb ? "text" : "auto",
-  },
   imageFrame: {
     width: "100%",
     minHeight: 160,
@@ -1018,30 +1003,6 @@ function resolveAssistantImageErrorText(fileError: unknown, dataError: unknown):
   return "Unable to load image preview.";
 }
 
-interface InlinePathChipProps {
-  content: string;
-  parsed: InlinePathTarget;
-  onPress: (target: InlinePathTarget) => void;
-}
-
-const INLINE_PATH_CHIP_STYLE = [
-  assistantMessageStylesheet.pathChip,
-  assistantMessageStylesheet.pathChipText,
-];
-
-function InlinePathChip({ content, parsed, onPress }: InlinePathChipProps) {
-  const handlePress = useCallback(() => onPress(parsed), [onPress, parsed]);
-  return (
-    <Text
-      onPress={handlePress}
-      selectable={isWeb ? undefined : false}
-      style={INLINE_PATH_CHIP_STYLE}
-    >
-      {content}
-    </Text>
-  );
-}
-
 function MarkdownLink({
   source,
   style,
@@ -1156,7 +1117,7 @@ function getMarkdownLinkSource(node: AssistantMarkdownAstNode): AssistantFileLin
     text: getMarkdownNodeText(node),
     markup: node.markup,
     sourceInfo: node.sourceInfo,
-    sourceType: node.sourceType,
+    sourceType: node.sourceType === "inline-code" ? "inline-code" : undefined,
   };
 }
 
@@ -1627,6 +1588,46 @@ function MarkdownInheritedCodeLink({
   );
 }
 
+interface MarkdownInlinePathCodeLinkProps {
+  content: string;
+  inheritedStyles: TextStyle;
+  codeInlineStyle: TextStyle;
+  linkStyle: TextStyle;
+  onPress: (source: AssistantFileLinkSource) => void;
+  onPrefetch: (source: AssistantFileLinkSource) => void;
+}
+
+function MarkdownInlinePathCodeLink({
+  content,
+  inheritedStyles,
+  codeInlineStyle,
+  linkStyle,
+  onPress,
+  onPrefetch,
+}: MarkdownInlinePathCodeLinkProps) {
+  const source = useMemo<AssistantFileLinkSource>(
+    () => ({
+      href: content,
+      text: content,
+      sourceType: "inline-code",
+    }),
+    [content],
+  );
+
+  return (
+    <MarkdownInheritedCodeLink
+      source={source}
+      inheritedStyles={inheritedStyles}
+      codeInlineStyle={codeInlineStyle}
+      linkStyle={linkStyle}
+      onPress={onPress}
+      onPrefetch={onPrefetch}
+    >
+      {content}
+    </MarkdownInheritedCodeLink>
+  );
+}
+
 interface MarkdownListItemContentProps {
   contentStyle: ViewStyle;
   children: ReactNode;
@@ -1811,16 +1812,19 @@ export const AssistantMessage = memo(function AssistantMessage({
       ) => {
         const content = node.content ?? "";
         const isLinkedInlineCode = nodeHasParentType(parent, "link");
-        const parsed =
-          onInlinePathPress && !isLinkedInlineCode ? parseInlinePathToken(content) : null;
+        const shouldResolveInlinePath =
+          onInlinePathPress && !isLinkedInlineCode && parseInlinePathToken(content);
 
-        if (parsed && onInlinePathPress) {
+        if (shouldResolveInlinePath) {
           return (
-            <InlinePathChip
+            <MarkdownInlinePathCodeLink
               key={node.key}
               content={content}
-              parsed={parsed}
-              onPress={onInlinePathPress}
+              inheritedStyles={inheritedStyles}
+              codeInlineStyle={styles.code_inline}
+              linkStyle={styles.link}
+              onPress={handleLinkPress}
+              onPrefetch={handleLinkPrefetch}
             />
           );
         }

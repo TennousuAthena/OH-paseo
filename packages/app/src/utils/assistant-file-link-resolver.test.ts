@@ -238,6 +238,44 @@ describe("assistant file link resolver", () => {
     expect(result.opened).toBe(true);
   });
 
+  it("resolves inline-code basename line refs through directory suggestions", async () => {
+    const suggestions = vi.fn(async () =>
+      resolvedSuggestions([
+        { path: "packages/server/src/server/workspace-git-service.ts", kind: "file" },
+      ]),
+    );
+    const openWorkspaceFile = vi.fn();
+    const resolver = createAssistantFileLinkResolver({
+      getDirectorySuggestions: suggestions,
+      openWorkspaceFile,
+      openExternalUrl: vi.fn(),
+    });
+
+    const result = await resolver.open({
+      context: { ...CONTEXT, workspaceRoot: "/Users/test/project" },
+      source: {
+        href: "workspace-git-service.ts:1553",
+        text: "workspace-git-service.ts:1553",
+        sourceType: "inline-code",
+      },
+    });
+
+    expect(suggestions).toHaveBeenCalledWith({
+      query: "workspace-git-service.ts",
+      cwd: "/Users/test/project",
+      includeFiles: true,
+      includeDirectories: false,
+      limit: 1,
+    });
+    expect(openWorkspaceFile).toHaveBeenCalledWith({
+      raw: "workspace-git-service.ts:1553",
+      path: "/Users/test/project/packages/server/src/server/workspace-git-service.ts",
+      lineStart: 1553,
+      lineEnd: undefined,
+    });
+    expect(result.opened).toBe(true);
+  });
+
   it("keeps explicit external URLs external", async () => {
     const openExternalUrl = vi.fn();
     const resolver = createAssistantFileLinkResolver({
@@ -391,5 +429,12 @@ describe("assistant file link resolver", () => {
         sourceInfo: "",
       }),
     ).toBe("http://dumm.md");
+    expect(
+      getAssistantFileLinkToken({
+        href: "workspace-git-service.ts:1553",
+        text: "workspace-git-service.ts:1553",
+        sourceType: "inline-code",
+      }),
+    ).toBe("workspace-git-service.ts:1553");
   });
 });
