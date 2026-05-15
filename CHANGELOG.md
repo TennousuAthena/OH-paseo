@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.1.76 - 2026-05-15
+
+### Added
+
+- **Chat timestamps and turn durations.** Every message shows when it was sent, and each turn surfaces how long the agent took.
+- **Auto Review permission mode for Claude Code and Codex.** Agents stop after each assistant turn for review instead of running unattended. ([#928](https://github.com/getpaseo/paseo/pull/928), [#963](https://github.com/getpaseo/paseo/pull/963) by [@bolasblack](https://github.com/bolasblack))
+- Surface Codex's context compaction events and the `/compact` command in chat.
+- Optional auto-archive for worktrees once their PR merges.
+- Paste a GitHub PR or issue URL into the composer to attach it as context.
+- Surface GitHub auto-merge actions in the PR hover card.
+- Show all PR check counts in the PR hover card.
+- Rename a project to disambiguate duplicates that share a folder name.
+- Confirm before archiving a worktree with uncommitted or unpushed work.
+- Claude Code now picks up models from `~/.claude/settings.json` so custom model lists show up in the model picker.
+- Local Claude Code settings (`.claude/settings.local.json`) apply per workspace.
+- Diagnostics for generic ACP providers surface in the model picker.
+- MCP: control and discover provider features from external orchestrators. ([#909](https://github.com/getpaseo/paseo/pull/909), [#910](https://github.com/getpaseo/paseo/pull/910) by [@kongjiadongyuan](https://github.com/kongjiadongyuan))
+
+### Improved
+
+- Surface Claude error messages in chat instead of ending the turn silently.
+- Ref picker auto-selects when a single PR is attached.
+- New workspace flow honors the currently checked-out branch when branching off. ([#908](https://github.com/getpaseo/paseo/pull/908) by [@sbtobb](https://github.com/sbtobb))
+- OpenCode models from console subscription providers now appear in the model picker. ([#917](https://github.com/getpaseo/paseo/pull/917) by [@t2o2](https://github.com/t2o2))
+- Cursor model picker reflects the models advertised by the Cursor ACP client. ([#958](https://github.com/getpaseo/paseo/pull/958) by [@chrisbanes](https://github.com/chrisbanes))
+
+### Fixed
+
+- iPad hardware Enter submits the composer. ([#919](https://github.com/getpaseo/paseo/pull/919) by [@kongjiadongyuan](https://github.com/kongjiadongyuan))
+- PR status falls back to a non-checks query for fine-grained GitHub tokens. ([#932](https://github.com/getpaseo/paseo/pull/932) by [@32r4](https://github.com/32r4))
+- ACP errors display as readable text instead of `[object Object]`.
+- OpenCode no longer hangs on retry when the upstream provider stalls.
+- Worktree ahead count is correct when the upstream branch has been deleted.
+- Branch-off worktrees track the correct upstream.
+- File changes view works on empty repositories with no commits yet.
+- Assistant message file links open the correct file.
+- Default thinking option matches the selected model's capabilities.
+- Shift+Enter works again in terminal input modes.
+- Duplicate project entries no longer appear after reopening a project.
+- Pi-backed sessions recover after a Copilot 413 instead of staying stuck.
+- Skip probing unrelated executable candidates when launching agents.
+- Relay E2EE reconnects cleanly under racing connect/disconnect.
+- Workspace kind stays in sync with project kind after reconfiguration.
+- zsh integration files install with usable runtime modes.
+- MCP worktree cache refreshes after create and archive. ([#911](https://github.com/getpaseo/paseo/pull/911) by [@kongjiadongyuan](https://github.com/kongjiadongyuan))
+
 ## 0.1.75 - 2026-05-12
 
 ### Added
