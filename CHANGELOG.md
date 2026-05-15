@@ -16,13 +16,13 @@
 - Claude Code now picks up models from `~/.claude/settings.json` so custom model lists show up in the model picker.
 - Local Claude Code settings (`.claude/settings.local.json`) apply per workspace.
 - Diagnostics for generic ACP providers surface in the model picker.
-- MCP: control and discover provider features from external orchestrators. ([#909](https://github.com/getpaseo/paseo/pull/909), [#910](https://github.com/getpaseo/paseo/pull/910) by [@kongjiadongyuan](https://github.com/kongjiadongyuan))
+- Allow setting fast mode for Paseo subagents ([#909](https://github.com/getpaseo/paseo/pull/909), [#910](https://github.com/getpaseo/paseo/pull/910) by [@kongjiadongyuan](https://github.com/kongjiadongyuan))
 
 ### Improved
 
 - Surface Claude error messages in chat instead of ending the turn silently.
-- Ref picker auto-selects when a single PR is attached.
-- New workspace flow honors the currently checked-out branch when branching off. ([#908](https://github.com/getpaseo/paseo/pull/908) by [@sbtobb](https://github.com/sbtobb))
+- Workspace checkout picker auto-selects when a single PR is attached.
+- New workspace flow honors the currently checked-out branch when branching off. ([#909](https://github.com/getpaseo/paseo/pull/908) by [@sbtobb](https://github.com/sbtobb))
 - OpenCode models from console subscription providers now appear in the model picker. ([#917](https://github.com/getpaseo/paseo/pull/917) by [@t2o2](https://github.com/t2o2))
 - Cursor model picker reflects the models advertised by the Cursor ACP client. ([#958](https://github.com/getpaseo/paseo/pull/958) by [@chrisbanes](https://github.com/chrisbanes))
 
