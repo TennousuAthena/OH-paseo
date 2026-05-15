@@ -187,6 +187,10 @@ const WEB_TOOLCALL_SHIMMER_KEYFRAME_CSS = `
 `;
 let webToolCallShimmerRegistered = false;
 const SCROLL_EDGE_EPSILON = 0.5;
+
+// Font size for stream metadata (timestamps, durations, live elapsed timer).
+// Lives between theme.fontSize.xs (12) and theme.fontSize.sm (14); no token.
+export const STREAM_METADATA_FONT_SIZE = 13;
 type ScrollAxis = "x" | "y";
 
 function ensureWebToolCallShimmerKeyframes() {
@@ -318,7 +322,6 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   container: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    paddingHorizontal: theme.spacing[2],
     ...(isWeb ? { userSelect: "text" as const } : {}),
   },
   content: {
@@ -393,6 +396,7 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   },
   copyButton: {
     padding: theme.spacing[1],
+    marginRight: -theme.spacing[1],
   },
   trailingRow: {
     alignSelf: "flex-end",
@@ -409,7 +413,7 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   },
   timestampText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: STREAM_METADATA_FONT_SIZE,
   },
 }));
 
@@ -562,20 +566,20 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
   },
   copyButton: {
     alignSelf: "center",
     padding: theme.spacing[1],
     paddingTop: theme.spacing[1],
     marginTop: 0,
+    marginLeft: -theme.spacing[1],
   },
   labelWrapper: {
     position: "relative",
   },
   labelSizer: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: STREAM_METADATA_FONT_SIZE,
     opacity: 0,
   },
   labelOverlay: {
@@ -583,7 +587,7 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     top: 0,
     left: 0,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: STREAM_METADATA_FONT_SIZE,
   },
 }));
 
@@ -699,7 +703,7 @@ export const LiveElapsed = memo(function LiveElapsed({
 
   return (
     <Text style={style} testID={testID}>
-      {formatDuration(elapsedMs, { mode: "live" })}
+      {formatDuration(elapsedMs)}
     </Text>
   );
 });
@@ -712,13 +716,11 @@ interface AssistantMessageProps {
   serverId?: string;
   client?: DaemonClient | null;
   toast?: ToastApi | null;
-  disableOuterSpacing?: boolean;
   spacing?: "default" | "compactTop" | "compactBottom" | "compactBoth";
 }
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   container: {
-    paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[3],
     ...(isWeb ? { userSelect: "text" as const } : {}),
   },
@@ -727,9 +729,6 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   },
   containerCompactBottom: {
     paddingBottom: 0,
-  },
-  containerSpacing: {
-    marginBottom: theme.spacing[4],
   },
   // Used in custom markdownRules for path chip styling
   pathChip: {
@@ -1259,9 +1258,9 @@ export const TurnCopyButton = memo(function TurnCopyButton({
           ? turnCopyButtonStylesheet.iconHoveredColor.color
           : turnCopyButtonStylesheet.iconColor.color;
         return copied ? (
-          <Check size={18} color={iconColor} />
+          <Check size={16} color={iconColor} />
         ) : (
-          <Copy size={18} color={iconColor} />
+          <Copy size={16} color={iconColor} />
         );
       }}
     </Pressable>
@@ -1270,7 +1269,7 @@ export const TurnCopyButton = memo(function TurnCopyButton({
 
 const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   container: {
-    marginHorizontal: -6,
+    marginHorizontal: -13,
   },
   containerSpacing: {
     marginBottom: theme.spacing[1],
@@ -1341,8 +1340,8 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     flex: 1,
   },
   chevron: {
-    marginLeft: theme.spacing[1],
     flexShrink: 0,
+    transform: [{ scale: 1.3 }],
   },
   openFileButton: {
     marginLeft: theme.spacing[1],
@@ -1355,7 +1354,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     height: 14,
   },
   chevronExpanded: {
-    transform: [{ rotate: "90deg" }],
+    transform: [{ scale: 1.3 }, { rotate: "90deg" }],
   },
   detailWrapper: {
     borderBottomLeftRadius: theme.borderRadius.lg,
@@ -1660,13 +1659,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   serverId,
   client,
   toast,
-  disableOuterSpacing,
   spacing = "default",
 }: AssistantMessageProps) {
-  const resolvedDisableOuterSpacing = useDisableOuterSpacing(
-    disableOuterSpacing ?? spacing !== "default",
-  );
-
   const markdownParser = useMemo(() => {
     const parser = MarkdownIt({ typographer: true, linkify: true });
     const defaultValidateLink = parser.validateLink.bind(parser);
@@ -1943,9 +1937,8 @@ export const AssistantMessage = memo(function AssistantMessage({
         assistantMessageStylesheet.containerCompactTop,
       (spacing === "compactBottom" || spacing === "compactBoth") &&
         assistantMessageStylesheet.containerCompactBottom,
-      !resolvedDisableOuterSpacing && assistantMessageStylesheet.containerSpacing,
     ],
-    [spacing, resolvedDisableOuterSpacing],
+    [spacing],
   );
 
   return (
@@ -1976,7 +1969,6 @@ interface SpeakMessageProps {
 
 const speakMessageStylesheet = StyleSheet.create((theme) => ({
   container: {
-    paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[3],
   },
   containerSpacing: {
@@ -2041,7 +2033,6 @@ interface ActivityLogProps {
 
 const activityLogStylesheet = StyleSheet.create((theme) => ({
   pressable: {
-    marginHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
     overflow: "hidden",
   },
@@ -2610,7 +2601,7 @@ function renderExpandableBadgeIconSlot({
 }): ReactNode {
   if (showChevron) {
     return (
-      <ThemedChevronRightIcon size={14} style={chevronStyle} uniProps={foregroundColorMapping} />
+      <ThemedChevronRightIcon size={12} style={chevronStyle} uniProps={foregroundColorMapping} />
     );
   }
   return iconNode;
@@ -2735,7 +2726,6 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const [isHovered, setIsHovered] = useState(false);
   const [isOpenFileHovered, setIsOpenFileHovered] = useState(false);
-  const [isIconHovered, setIsIconHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
   const isInteractive = Boolean(onToggle);
   const hasDetailContent = Boolean(renderDetails);
@@ -2763,8 +2753,6 @@ const ExpandableBadge = memo(function ExpandableBadge({
   );
   const handleOpenFileHoverIn = useCallback(() => setIsOpenFileHovered(true), []);
   const handleOpenFileHoverOut = useCallback(() => setIsOpenFileHovered(false), []);
-  const handleIconHoverIn = useCallback(() => setIsIconHovered(true), []);
-  const handleIconHoverOut = useCallback(() => setIsIconHovered(false), []);
 
   const nativeGradientIdRef = useRef(
     `shimmer-gradient-${Math.random().toString(36).substring(2, 9)}`,
@@ -2961,7 +2949,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const ThemedIcon = useMemo(() => (icon ? withUnistyles(icon) : null), [icon]);
   const iconNode = renderExpandableBadgeIcon({ isError, isActive, ThemedIcon });
   const iconSlotNode = renderExpandableBadgeIconSlot({
-    showChevron: isInteractive && isHovered && !isIconHovered,
+    showChevron: isInteractive && isHovered,
     chevronStyle,
     iconNode,
   });
@@ -2989,13 +2977,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
         style={pressableStyle}
       >
         <View style={expandableBadgeStylesheet.headerRow}>
-          <View
-            style={expandableBadgeStylesheet.iconBadge}
-            onPointerEnter={isWeb ? handleIconHoverIn : undefined}
-            onPointerLeave={isWeb ? handleIconHoverOut : undefined}
-          >
-            {iconSlotNode}
-          </View>
+          <View style={expandableBadgeStylesheet.iconBadge}>{iconSlotNode}</View>
           <ExpandableBadgeLabelRow
             label={label}
             labelStyle={labelStyle}

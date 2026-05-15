@@ -2,36 +2,32 @@ import { describe, it, expect } from "vitest";
 import { formatDuration, formatMessageTimestamp } from "./time";
 
 describe("formatDuration", () => {
-  it("renders static durations as integers", () => {
-    expect(formatDuration(5_600)).toBe("5s");
-    expect(formatDuration(0)).toBe("0s");
+  it("renders 0-10s with one decimal", () => {
+    expect(formatDuration(0)).toBe("0.0s");
+    expect(formatDuration(5_600)).toBe("5.6s");
+    expect(formatDuration(9_900)).toBe("9.9s");
   });
 
   it("renders 10s-60s as whole seconds", () => {
-    expect(formatDuration(47_000)).toBe("47s");
     expect(formatDuration(10_400)).toBe("10s");
+    expect(formatDuration(12_340)).toBe("12s");
+    expect(formatDuration(47_000)).toBe("47s");
   });
 
-  it("renders minutes and remainder seconds", () => {
+  it("renders minutes and remainder seconds without decimals", () => {
+    expect(formatDuration(75_230)).toBe("1m 15s");
     expect(formatDuration(132_000)).toBe("2m 12s");
     expect(formatDuration(120_000)).toBe("2m");
   });
 
-  it("renders hours and remainder minutes", () => {
+  it("renders hours and remainder minutes without decimals", () => {
     expect(formatDuration(3_900_000)).toBe("1h 5m");
     expect(formatDuration(3_600_000)).toBe("1h");
   });
 
   it("guards against negative and NaN", () => {
-    expect(formatDuration(-1)).toBe("0s");
-    expect(formatDuration(Number.NaN)).toBe("0s");
-  });
-
-  it("keeps one decimal for live durations", () => {
-    expect(formatDuration(5_600, { mode: "live" })).toBe("5.6s");
-    expect(formatDuration(12_340, { mode: "live" })).toBe("12.3s");
-    expect(formatDuration(75_230, { mode: "live" })).toBe("1m 15.2s");
-    expect(formatDuration(0, { mode: "live" })).toBe("0.0s");
+    expect(formatDuration(-1)).toBe("0.0s");
+    expect(formatDuration(Number.NaN)).toBe("0.0s");
   });
 });
 

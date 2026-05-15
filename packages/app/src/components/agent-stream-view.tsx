@@ -44,6 +44,7 @@ import {
   CompactionMarker,
   LiveElapsed,
   MessageOuterSpacingProvider,
+  STREAM_METADATA_FONT_SIZE,
   type InlinePathTarget,
 } from "./message";
 import { PlanCard } from "./plan-card";
@@ -325,7 +326,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           return tightGap;
         }
         if (isToolSequenceItem(item) && belowItem.kind === "assistant_message") {
-          return looseGap;
+          return tightGap;
         }
         if (isSameAssistantBlockGroup({ item, other: belowItem })) {
           return assistantBlockGap;
@@ -908,7 +909,7 @@ function InlineWorkingIndicatorSlot({
   inFlightTurnStartedAt: Date | null;
 }) {
   return (
-    <View style={stylesheet.inlineTurnFooter} testID="turn-working-indicator">
+    <View style={stylesheet.turnFooterSlot} testID="turn-working-indicator">
       <WorkingIndicator variant="inline" inFlightTurnStartedAt={inFlightTurnStartedAt} />
     </View>
   );
@@ -940,11 +941,13 @@ function TurnCopyButtonSlot({ strategy, items, startIndex }: TurnCopyButtonSlotP
     [strategy, items, startIndex],
   );
   return (
-    <AssistantTurnFooter
-      getContent={getContent}
-      startedAt={header?.startedAt}
-      durationMs={header?.durationMs}
-    />
+    <View style={stylesheet.turnFooterSlot}>
+      <AssistantTurnFooter
+        getContent={getContent}
+        startedAt={header?.startedAt}
+        durationMs={header?.durationMs}
+      />
+    </View>
   );
 }
 
@@ -1244,6 +1247,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
     alignSelf: "center",
+    paddingHorizontal: theme.spacing[2],
   },
   listContentContainer: {
     paddingVertical: 0,
@@ -1264,6 +1268,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
     alignSelf: "center",
+    paddingHorizontal: theme.spacing[2],
   },
   emptyState: {
     flex: 1,
@@ -1282,37 +1287,35 @@ const stylesheet = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "flex-start",
     marginTop: theme.spacing[4],
-    paddingLeft: 3,
-    paddingRight: 3,
     paddingTop: theme.spacing[3],
     paddingBottom: theme.spacing[2],
     gap: theme.spacing[2],
   },
-  inlineTurnFooter: {
+  turnFooterSlot: {
+    flexDirection: "row",
+    alignItems: "center",
     alignSelf: "flex-start",
-    marginTop: theme.spacing[2],
-    padding: theme.spacing[2],
-    paddingTop: 0,
+    minHeight: 24,
+    marginTop: theme.spacing[1],
+    paddingBottom: theme.spacing[6],
   },
   inlineWorkingIndicatorFrame: {
-    height: 18,
+    height: 24,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
-    gap: theme.spacing[2],
+    gap: theme.spacing[3],
   },
   workingElapsed: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: STREAM_METADATA_FONT_SIZE,
     fontVariant: ["tabular-nums"],
   },
   workingIndicatorBubble: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: 0,
+    gap: theme.spacing[3],
     paddingVertical: theme.spacing[1],
-    paddingLeft: theme.spacing[2],
     borderRadius: theme.borderRadius.full,
     backgroundColor: "transparent",
     borderWidth: 0,
@@ -1322,6 +1325,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
+    transform: [{ translateY: 1 }],
   },
   workingDot: {
     width: 6,
