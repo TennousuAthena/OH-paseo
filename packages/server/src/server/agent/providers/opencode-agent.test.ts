@@ -618,6 +618,82 @@ describe("OpenCode adapter context-window normalization", () => {
 });
 
 describe("OpenCode adapter startTurn error handling", () => {
+  test("emits turn_started before live OpenCode timeline items", async () => {
+    const globalEvents = [
+      {
+        payload: {
+          type: "server.connected",
+          properties: {},
+        },
+      },
+      {
+        directory: "/tmp/test",
+        payload: {
+          type: "message.updated",
+          properties: {
+            info: {
+              id: "msg_assistant",
+              sessionID: "ses_unit_test",
+              role: "assistant",
+            },
+          },
+        },
+      },
+      {
+        directory: "/tmp/test",
+        payload: {
+          type: "message.part.delta",
+          properties: {
+            sessionID: "ses_unit_test",
+            messageID: "msg_assistant",
+            partID: "prt_text",
+            field: "text",
+            delta: "Hello from global",
+          },
+        },
+      },
+      {
+        directory: "/tmp/test",
+        payload: {
+          type: "session.status",
+          properties: {
+            sessionID: "ses_unit_test",
+            status: { type: "idle" },
+          },
+        },
+      },
+    ];
+    const fakeClient = {
+      global: {
+        event: vi.fn().mockResolvedValue({ stream: createAsyncIterable(globalEvents) }),
+      },
+      session: {
+        promptAsync: vi.fn().mockResolvedValue({ data: {}, error: undefined }),
+      },
+    } as never;
+
+    const session = new __openCodeInternals.OpenCodeAgentSession(
+      { provider: "opencode", cwd: "/tmp/test" },
+      fakeClient,
+      "ses_unit_test",
+      createTestLogger(),
+      "/tmp/opencode-storage",
+    );
+
+    const turn = await collectTurnEvents(streamSession(session, "hello"));
+
+    expect(turn.events.map((event) => event.type)).toEqual([
+      "turn_started",
+      "timeline",
+      "turn_completed",
+    ]);
+    expect(turn.events.map((event) => ("turnId" in event ? event.turnId : undefined))).toEqual([
+      "opencode-turn-0",
+      "opencode-turn-0",
+      "opencode-turn-0",
+    ]);
+  });
+
   test("unwraps OpenCode global event payloads during a turn", async () => {
     const globalEvents = [
       {

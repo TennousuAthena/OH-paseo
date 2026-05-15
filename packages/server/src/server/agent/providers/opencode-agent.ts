@@ -2464,6 +2464,7 @@ class OpenCodeAgentSession implements AgentSession {
       // consumeEventStream already finished the turn with the subscription error.
       return { turnId };
     }
+    this.notifySubscribers({ type: "turn_started", provider: "opencode" }, turnId);
 
     const slashCommand = await this.resolveSlashCommandInvocation(prompt);
     if (slashCommand) {
