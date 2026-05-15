@@ -89,6 +89,12 @@ function SortableItem<T>({
     }),
     [combinedTransform, transition, isDragging],
   );
+  const {
+    role: _dragRole,
+    tabIndex: _dragTabIndex,
+    "aria-roledescription": _dragRoleDescription,
+    ...dragHandleAttributes
+  } = attributes as unknown as Record<string, unknown>;
 
   const info: DraggableRenderItemInfo<T> = {
     item,
@@ -97,7 +103,7 @@ function SortableItem<T>({
     isActive: activeId === id,
     dragHandleProps: useDragHandle
       ? {
-          attributes: attributes as unknown as Record<string, unknown>,
+          attributes: dragHandleAttributes,
           listeners: listeners as unknown as Record<string, unknown>,
           setActivatorNodeRef: setActivatorNodeRef as unknown as (node: unknown) => void,
         }

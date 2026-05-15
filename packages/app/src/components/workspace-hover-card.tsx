@@ -8,7 +8,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Dimensions, Platform, Text, View } from "react-native";
+import { Dimensions, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { CircleCheck, CircleDot, CircleX, ExternalLink } from "lucide-react-native";
@@ -23,6 +23,8 @@ import type { PrHint } from "@/git/use-pr-status-query";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { PrBadge } from "@/components/sidebar-workspace-list";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { isWeb } from "@/constants/platform";
 
 interface Rect {
   x: number;
@@ -84,8 +86,9 @@ export function WorkspaceHoverCard({
   isDragging,
   children,
 }: PropsWithChildren<WorkspaceHoverCardProps>): ReactNode {
-  // Desktop-only: skip on non-web platforms
-  if (Platform.OS !== "web") {
+  const isCompact = useIsCompactFormFactor();
+
+  if (!isWeb || isCompact) {
     return children;
   }
 

@@ -594,7 +594,7 @@ function ProjectKebabMenu({
       <DropdownMenuTrigger
         hitSlop={8}
         style={projectKebabStyle}
-        accessibilityRole="button"
+        accessibilityRole={platformIsWeb ? undefined : "button"}
         accessibilityLabel="Project actions"
         testID={`sidebar-project-kebab-${projectKey}`}
       >
@@ -725,7 +725,7 @@ function WorkspaceKebabMenu({
       <DropdownMenuTrigger
         hitSlop={8}
         style={workspaceKebabStyle}
-        accessibilityRole="button"
+        accessibilityRole={platformIsWeb ? undefined : "button"}
         accessibilityLabel="Workspace actions"
         testID={`sidebar-workspace-kebab-${workspaceKey}`}
       >
@@ -895,7 +895,7 @@ function NewWorktreeButton({
             style={pressableStyle}
             onPress={handlePress}
             disabled={loading}
-            accessibilityRole="button"
+            accessibilityRole={platformIsWeb ? undefined : "button"}
             accessibilityLabel={`Create a new workspace for ${displayName}`}
             testID={testID}
           >
@@ -1187,6 +1187,12 @@ function ProjectHeaderRow({
     drag,
     menuController,
   });
+  const {
+    role: _dragRole,
+    tabIndex: _dragTabIndex,
+    "aria-roledescription": _dragRoleDescription,
+    ...dragAttributes
+  } = dragHandleProps?.attributes ?? {};
 
   const handlePress = useCallback(() => {
     if (interaction.didLongPressRef.current) {
@@ -1250,7 +1256,7 @@ function ProjectHeaderRow({
   if (menuController) {
     return (
       <View
-        {...dragHandleProps?.attributes}
+        {...dragAttributes}
         {...dragHandleProps?.listeners}
         ref={dragHandleProps?.setActivatorNodeRef as unknown as Ref<View>}
         onPointerEnter={handlePointerEnter}
@@ -1258,6 +1264,7 @@ function ProjectHeaderRow({
       >
         <ContextMenuTrigger
           enabledOnMobile={false}
+          accessibilityRole="button"
           style={projectRowStyle}
           onPressIn={interaction.handlePressIn}
           onTouchMove={interaction.handleTouchMove}
@@ -1273,13 +1280,14 @@ function ProjectHeaderRow({
 
   return (
     <View
-      {...dragHandleProps?.attributes}
+      {...dragAttributes}
       {...dragHandleProps?.listeners}
       ref={dragHandleProps?.setActivatorNodeRef as unknown as Ref<View>}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
     >
       <Pressable
+        accessibilityRole="button"
         style={projectRowStyle}
         onPressIn={interaction.handlePressIn}
         onTouchMove={interaction.handleTouchMove}
@@ -1328,6 +1336,12 @@ function WorkspaceRowInner({
     drag,
     menuController,
   });
+  const {
+    role: _dragRole,
+    tabIndex: _dragTabIndex,
+    "aria-roledescription": _dragRoleDescription,
+    ...dragAttributes
+  } = dragHandleProps?.attributes ?? {};
 
   const handlePress = useCallback(() => {
     if (interaction.didLongPressRef.current) {
@@ -1369,7 +1383,7 @@ function WorkspaceRowInner({
   return (
     <WorkspaceHoverCard workspace={workspace} prHint={prHint} isDragging={isDragging}>
       <View
-        {...dragHandleProps?.attributes}
+        {...dragAttributes}
         {...dragHandleProps?.listeners}
         ref={dragHandleProps?.setActivatorNodeRef as unknown as Ref<View>}
         style={styles.workspaceRowContainer}
