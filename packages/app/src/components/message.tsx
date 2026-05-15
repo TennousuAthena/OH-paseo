@@ -450,19 +450,18 @@ export const UserMessage = memo(function UserMessage({
 }: UserMessageProps) {
   const isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);
-  const [isCopyHovered, setIsCopyHovered] = useState(false);
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const hasText = message.trim().length > 0;
   const hasImages = images.length > 0;
   const hasAttachments = attachments.length > 0;
-  const showTrailingRow = hasText && (isCompact || isNative || isHovered || isCopyHovered);
+  const showTrailingRow = hasText && (isCompact || isNative || isHovered);
   const formattedTimestamp = useMemo(
     () => formatMessageTimestamp(new Date(timestamp)),
     [timestamp],
   );
 
-  const handleHoverIn = useCallback(() => setIsHovered(true), []);
-  const handleHoverOut = useCallback(() => setIsHovered(false), []);
+  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
+  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
   const getMessageContent = useCallback(() => message, [message]);
 
   const containerStyle = useMemo(
@@ -502,39 +501,41 @@ export const UserMessage = memo(function UserMessage({
 
   return (
     <View style={containerStyle}>
-      <View style={userMessageStylesheet.content}>
-        <Pressable onHoverIn={handleHoverIn} onHoverOut={handleHoverOut}>
-          <View style={userMessageStylesheet.bubble}>
-            {hasImages ? (
-              <View style={imagePreviewContainerStyle}>
-                {images.map((image) => (
-                  <View key={image.id} style={userMessageStylesheet.imagePill}>
-                    <UserMessageAttachmentThumbnail image={image} />
-                  </View>
-                ))}
-              </View>
-            ) : null}
-            {hasAttachments ? (
-              <View style={attachmentPreviewContainerStyle}>
-                {attachments.map((attachment, index) => (
-                  <View
-                    key={`${attachment.type}:${"number" in attachment ? attachment.number : index}`}
-                    style={userMessageStylesheet.structuredAttachmentPill}
-                  >
-                    <Text style={userMessageStylesheet.structuredAttachmentText} numberOfLines={1}>
-                      {getUserMessageAttachmentLabel(attachment)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-            {hasText ? (
-              <Text selectable style={userMessageStylesheet.text}>
-                {message}
-              </Text>
-            ) : null}
-          </View>
-        </Pressable>
+      <View
+        style={userMessageStylesheet.content}
+        onPointerEnter={handlePointerEnter}
+        onPointerLeave={handlePointerLeave}
+      >
+        <View style={userMessageStylesheet.bubble}>
+          {hasImages ? (
+            <View style={imagePreviewContainerStyle}>
+              {images.map((image) => (
+                <View key={image.id} style={userMessageStylesheet.imagePill}>
+                  <UserMessageAttachmentThumbnail image={image} />
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {hasAttachments ? (
+            <View style={attachmentPreviewContainerStyle}>
+              {attachments.map((attachment, index) => (
+                <View
+                  key={`${attachment.type}:${"number" in attachment ? attachment.number : index}`}
+                  style={userMessageStylesheet.structuredAttachmentPill}
+                >
+                  <Text style={userMessageStylesheet.structuredAttachmentText} numberOfLines={1}>
+                    {getUserMessageAttachmentLabel(attachment)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {hasText ? (
+            <Text selectable style={userMessageStylesheet.text}>
+              {message}
+            </Text>
+          ) : null}
+        </View>
         {hasText ? (
           <View style={trailingRowStyle} pointerEvents={showTrailingRow ? "auto" : "none"}>
             <Text style={userMessageStylesheet.timestampText}>{formattedTimestamp}</Text>
@@ -542,7 +543,6 @@ export const UserMessage = memo(function UserMessage({
               getContent={getMessageContent}
               containerStyle={userMessageStylesheet.copyButton}
               accessibilityLabel="Copy message"
-              onHoverChange={setIsCopyHovered}
             />
           </View>
         ) : null}
@@ -1202,7 +1202,6 @@ interface TurnCopyButtonProps {
   containerStyle?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
   copiedAccessibilityLabel?: string;
-  onHoverChange?: (hovered: boolean) => void;
 }
 
 export const TurnCopyButton = memo(function TurnCopyButton({
@@ -1210,7 +1209,6 @@ export const TurnCopyButton = memo(function TurnCopyButton({
   containerStyle,
   accessibilityLabel,
   copiedAccessibilityLabel,
-  onHoverChange,
 }: TurnCopyButtonProps) {
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1242,8 +1240,6 @@ export const TurnCopyButton = memo(function TurnCopyButton({
     };
   }, []);
 
-  const handleHoverIn = useCallback(() => onHoverChange?.(true), [onHoverChange]);
-  const handleHoverOut = useCallback(() => onHoverChange?.(false), [onHoverChange]);
   const pressableStyle = useMemo(
     () => [turnCopyButtonStylesheet.container, containerStyle],
     [containerStyle],
@@ -1252,8 +1248,6 @@ export const TurnCopyButton = memo(function TurnCopyButton({
   return (
     <Pressable
       onPress={handleCopy}
-      onHoverIn={handleHoverIn}
-      onHoverOut={handleHoverOut}
       style={pressableStyle}
       accessibilityRole="button"
       accessibilityLabel={
