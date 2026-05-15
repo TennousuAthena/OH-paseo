@@ -3158,14 +3158,12 @@ class CodexAppServerAgentSession implements AgentSession {
     }
     const skill = this.cachedSkills.find((entry) => entry.name === commandName);
     if (skill) {
+      const trimmedArgs = args?.trim() ?? "";
+      const text = trimmedArgs ? `$${skill.name} ${trimmedArgs}` : `$${skill.name}`;
       const input: CodexPromptContentBlock[] = [
         { type: "skill", name: skill.name, path: skill.path },
+        { type: "text", text },
       ];
-      if (args && args.trim().length > 0) {
-        input.push({ type: "text", text: args.trim() });
-      } else {
-        input.push({ type: "text", text: `$${skill.name}` });
-      }
       return input;
     }
 

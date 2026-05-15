@@ -874,7 +874,7 @@ describe("Codex app-server provider", () => {
           },
           {
             type: "text",
-            text: "in a worktree, remember to use Claude for the UI",
+            text: "$paseo-implement in a worktree, remember to use Claude for the UI",
             text_elements: [],
           },
         ],

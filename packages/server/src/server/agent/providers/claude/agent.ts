@@ -3097,29 +3097,7 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     if (message.subtype === "task_notification") {
-      // TODO: subagent timelines are best-effort. Subagent task_notifications
-      // arrive without parent_tool_use_id but with tool_use_id pointing at the
-      // parent's Task call, so they slip past the sidechain router and pollute
-      // the parent timeline. Drop them here; eventually thread them into the
-      // parent Task tool call's sub_agent log instead.
-      const taskUseId = message.tool_use_id;
-      const cachedTool = taskUseId ? this.toolUseCache.get(taskUseId) : undefined;
-      if (cachedTool?.name === "Task") {
-        return;
-      }
-      const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(message);
-      if (taskNotificationItem) {
-        events.push({
-          type: "timeline",
-          item: taskNotificationItem,
-          provider: "claude",
-        });
-      }
-      const usage = readUsageFromTaskNotification(message);
-      if (typeof usage === "number") {
-        this.lastContextWindowUsedTokens = usage;
-        events.push(this.createUsageUpdatedEvent(usage));
-      }
+      this.appendTaskNotificationEvents(message, events);
       return;
     }
     if (message.subtype === "task_progress") {
@@ -3128,6 +3106,35 @@ class ClaudeAgentSession implements AgentSession {
       if (typeof this.lastContextWindowUsedTokens === "number") {
         events.push(this.createUsageUpdatedEvent(this.lastContextWindowUsedTokens));
       }
+    }
+  }
+
+  private appendTaskNotificationEvents(
+    message: Extract<SDKMessage, { type: "system"; subtype: "task_notification" }>,
+    events: AgentStreamEvent[],
+  ): void {
+    // TODO: subagent timelines are best-effort. Subagent task_notifications
+    // arrive without parent_tool_use_id but with tool_use_id pointing at the
+    // parent's Task call, so they slip past the sidechain router and pollute
+    // the parent timeline. Drop them here; eventually thread them into the
+    // parent Task tool call's sub_agent log instead.
+    const taskUseId = message.tool_use_id;
+    const cachedTool = taskUseId ? this.toolUseCache.get(taskUseId) : undefined;
+    if (cachedTool?.name === "Task") {
+      return;
+    }
+    const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(message);
+    if (taskNotificationItem) {
+      events.push({
+        type: "timeline",
+        item: taskNotificationItem,
+        provider: "claude",
+      });
+    }
+    const usage = readUsageFromTaskNotification(message);
+    if (typeof usage === "number") {
+      this.lastContextWindowUsedTokens = usage;
+      events.push(this.createUsageUpdatedEvent(usage));
     }
   }
 
@@ -3222,6 +3229,24 @@ class ClaudeAgentSession implements AgentSession {
   ): void {
     const usage = this.convertUsage(message, message.modelUsage);
     if (message.subtype === "success") {
+      // Built-in slash commands (e.g. /voice, /usage, "Unknown command: …")
+      // run client-side in the Claude CLI with no model turn — output_tokens
+      // is 0 and the user-visible text is carried in `result`. Surface it as
+      // an assistant message so the turn doesn't end silently. Normal turns
+      // have output_tokens > 0 and their text is already in the stream.
+      const resultText = typeof message.result === "string" ? message.result.trim() : "";
+      const outputTokens = message.usage?.output_tokens;
+      if (resultText.length > 0 && outputTokens === 0) {
+        events.push({
+          type: "timeline",
+          provider: "claude",
+          item: {
+            type: "assistant_message",
+            text: resultText,
+            messageId: message.uuid,
+          },
+        });
+      }
       events.push({ type: "turn_completed", provider: "claude", usage });
       return;
     }

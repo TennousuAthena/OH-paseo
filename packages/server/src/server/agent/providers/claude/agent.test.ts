@@ -1398,4 +1398,67 @@ describe("ClaudeAgentSession context window usage", () => {
       contextWindowUsedTokens: 62,
     });
   });
+
+  test("result.result is surfaced as an assistant message when no model output was produced", async () => {
+    const session = await createSessionForTest();
+
+    const events = session.translateMessageToEvents({
+      type: "result",
+      subtype: "success",
+      result: "Unknown command: /foo-doesnt-exist",
+      is_error: false,
+      duration_ms: 2,
+      duration_api_ms: 0,
+      num_turns: 0,
+      stop_reason: null,
+      total_cost_usd: 0,
+      usage: {
+        input_tokens: 0,
+        cache_read_input_tokens: 0,
+        output_tokens: 0,
+      },
+      permission_denials: [],
+      uuid: "result-unknown-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    expect(events).toContainEqual({
+      type: "timeline",
+      provider: "claude",
+      item: {
+        type: "assistant_message",
+        text: "Unknown command: /foo-doesnt-exist",
+        messageId: "result-unknown-1",
+      },
+    });
+    expect(events.some((event) => event.type === "turn_completed")).toBe(true);
+  });
+
+  test("result.result is not duplicated when the model produced output during the turn", async () => {
+    const session = await createSessionForTest();
+
+    const events = session.translateMessageToEvents({
+      type: "result",
+      subtype: "success",
+      result: "Here is the answer.",
+      is_error: false,
+      duration_ms: 100,
+      duration_api_ms: 80,
+      num_turns: 1,
+      stop_reason: null,
+      total_cost_usd: 0.01,
+      usage: {
+        input_tokens: 10,
+        cache_read_input_tokens: 0,
+        output_tokens: 42,
+      },
+      permission_denials: [],
+      uuid: "result-normal-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    const timelineEvents = events.filter((event) => event.type === "timeline");
+    expect(timelineEvents).toEqual([]);
+    expect(events.some((event) => event.type === "turn_completed")).toBe(true);
+  });
 });
