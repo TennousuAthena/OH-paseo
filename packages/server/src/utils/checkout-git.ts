@@ -539,6 +539,15 @@ function buildGitDiffArgs(args: { ignoreWhitespace?: boolean; extra: string[] })
 
 const TRACKED_DIFF_NUMSTAT_MAX_BYTES = 2 * 1024 * 1024; // 2MB
 const TRACKED_MAX_CHANGED_LINES = 40_000;
+const EMPTY_TREE_OBJECT_ID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+function isUnbornHeadDiffError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes("--name-status HEAD") &&
+    error.message.includes("ambiguous argument 'HEAD'")
+  );
+}
 
 async function getTrackedNumstatByPath(
   cwd: string,
@@ -1926,7 +1935,17 @@ export async function getCheckoutDiff(
   }
 
   const ignoreWhitespace = compare.ignoreWhitespace === true;
-  const changes = await listCheckoutFileChanges(cwd, refsForDiff, ignoreWhitespace);
+  let effectiveRefsForDiff = refsForDiff;
+  let changes: CheckoutFileChange[];
+  try {
+    changes = await listCheckoutFileChanges(cwd, effectiveRefsForDiff, ignoreWhitespace);
+  } catch (error) {
+    if (!isUnbornHeadDiffError(error)) {
+      throw error;
+    }
+    effectiveRefsForDiff = { ...refsForDiff, baseRef: EMPTY_TREE_OBJECT_ID };
+    changes = await listCheckoutFileChanges(cwd, effectiveRefsForDiff, ignoreWhitespace);
+  }
   changes.sort((a, b) => {
     if (a.path === b.path) return 0;
     return a.path < b.path ? -1 : 1;
@@ -1957,7 +1976,7 @@ export async function getCheckoutDiff(
 
   const trackedNumstatByPath =
     trackedChanges.length > 0
-      ? await getTrackedNumstatByPath(cwd, refsForDiff, ignoreWhitespace)
+      ? await getTrackedNumstatByPath(cwd, effectiveRefsForDiff, ignoreWhitespace)
       : new Map<string, FileStat>();
   const trackedDiffPaths: string[] = [];
   const trackedPlaceholderByPath = new Map<
@@ -1984,7 +2003,7 @@ export async function getCheckoutDiff(
     const trackedDiffResult = await runGitCommand(
       buildGitDiffArgs({
         ignoreWhitespace,
-        extra: [...getCheckoutDiffRefArgs(refsForDiff), "--", ...trackedDiffPaths],
+        extra: [...getCheckoutDiffRefArgs(effectiveRefsForDiff), "--", ...trackedDiffPaths],
       }),
       {
         cwd,
@@ -2020,7 +2039,7 @@ export async function getCheckoutDiff(
       trackedPlaceholderByPath,
       trackedDiffText,
       trackedDiffTruncated,
-      refsForDiff,
+      refsForDiff: effectiveRefsForDiff,
       ignoreWhitespace,
       structured,
       appendDiff,

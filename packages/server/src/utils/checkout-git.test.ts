@@ -204,6 +204,41 @@ describe("checkout git utilities", () => {
     expect(branch).toBeNull();
   });
 
+  it("returns untracked files in an uncommitted diff before the first commit", async () => {
+    const unbornRepo = join(tempDir, "unborn-repo");
+    mkdirSync(unbornRepo, { recursive: true });
+    execFileSync("git", ["init", "-b", "main"], { cwd: unbornRepo });
+    writeFileSync(join(unbornRepo, "greeting.txt"), "hello\n");
+
+    const diff = await getCheckoutDiff(unbornRepo, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+
+    expect(diff.structured).toEqual([
+      {
+        path: "greeting.txt",
+        isNew: true,
+        isDeleted: false,
+        additions: 1,
+        deletions: 0,
+        hunks: [
+          {
+            oldStart: 0,
+            oldCount: 0,
+            newStart: 1,
+            newCount: 1,
+            lines: [
+              { type: "header", content: "@@ -0,0 +1 @@" },
+              { type: "add", content: "hello" },
+            ],
+          },
+        ],
+        status: "ok",
+      },
+    ]);
+  });
+
   it("returns the branch being rebased when HEAD is detached during a rebase", async () => {
     execFileSync("git", ["checkout", "-b", "feature/rebase-test"], { cwd: repoDir });
     writeFileSync(join(repoDir, "file.txt"), "feature\n");
