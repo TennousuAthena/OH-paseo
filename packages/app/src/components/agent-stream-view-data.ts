@@ -1,4 +1,5 @@
 import type { StreamItem } from "@/types/stream";
+import { SPACING } from "@/styles/theme";
 
 export function isSameAssistantBlockGroup(params: {
   item: StreamItem | null | undefined;
@@ -28,24 +29,35 @@ export function getAssistantBlockSpacing(params: {
   return "default";
 }
 
-export interface NeighborResolver {
-  getNeighborItem(
-    items: StreamItem[],
-    index: number,
-    relation: "above" | "below",
-  ): StreamItem | undefined;
-}
+const isUserMessageItem = (item?: StreamItem | null) => item?.kind === "user_message";
+const isToolSequenceItem = (item?: StreamItem | null) =>
+  item?.kind === "tool_call" || item?.kind === "thought" || item?.kind === "todo_list";
 
-// null → auxiliary working indicator; non-null → inline footer on that block.
-export function resolveInlineWorkingIndicatorItemId(
-  status: string,
-  liveHeadItems: StreamItem[],
-  strategy: NeighborResolver,
-): string | null {
-  if (status !== "running") return null;
-  const footerItem = liveHeadItems.find((item, index, items) => {
-    if (item.kind !== "assistant_message") return false;
-    return strategy.getNeighborItem(items, index, "below") === undefined;
-  });
-  return footerItem?.id ?? null;
+export function getGapBetweenStreamItems(
+  item: StreamItem | null,
+  belowItem: StreamItem | null,
+): number {
+  if (!item || !belowItem) {
+    return 0;
+  }
+
+  if (isUserMessageItem(item) && isUserMessageItem(belowItem)) {
+    return SPACING[1];
+  }
+  if (isToolSequenceItem(item) && isToolSequenceItem(belowItem)) {
+    return 0;
+  }
+  if (item.kind === "user_message" && isToolSequenceItem(belowItem)) {
+    return SPACING[4];
+  }
+  if (item.kind === "assistant_message" && isToolSequenceItem(belowItem)) {
+    return SPACING[1];
+  }
+  if (isToolSequenceItem(item) && belowItem.kind === "assistant_message") {
+    return SPACING[1];
+  }
+  if (isSameAssistantBlockGroup({ item, other: belowItem })) {
+    return SPACING[3];
+  }
+  return SPACING[4];
 }

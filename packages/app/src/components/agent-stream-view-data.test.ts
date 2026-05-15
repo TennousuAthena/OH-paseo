@@ -1,20 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StreamItem } from "@/types/stream";
-import type { NeighborResolver } from "./agent-stream-view-data";
-import {
-  getAssistantBlockSpacing,
-  isSameAssistantBlockGroup,
-  resolveInlineWorkingIndicatorItemId,
-} from "./agent-stream-view-data";
-
-// Minimal forward-order resolver: "below" = next item in array.
-// Matches web strategy rendering order (chronological, top-to-bottom).
-const forwardStrategy: NeighborResolver = {
-  getNeighborItem(items, index, relation) {
-    const neighborIndex = relation === "below" ? index + 1 : index - 1;
-    return items[neighborIndex];
-  },
-};
+import { getAssistantBlockSpacing, isSameAssistantBlockGroup } from "./agent-stream-view-data";
 
 function assistantBlock(params: {
   id: string;
@@ -133,48 +119,5 @@ describe("getAssistantBlockSpacing", () => {
     expect(
       getAssistantBlockSpacing({ item: headBlock, aboveItem: tailBlock, belowItem: null }),
     ).toBe("compactTop");
-  });
-});
-
-describe("resolveInlineWorkingIndicatorItemId", () => {
-  it("returns null when the agent is not running", () => {
-    const head = assistantBlock({ id: "head", blockGroupId: "group-1", blockIndex: 0 });
-    expect(resolveInlineWorkingIndicatorItemId("idle", [head], forwardStrategy)).toBeNull();
-  });
-
-  it("returns the last assistant block id when running with a single head block", () => {
-    const head = assistantBlock({ id: "group-1:head", blockGroupId: "group-1", blockIndex: 0 });
-    expect(resolveInlineWorkingIndicatorItemId("running", [head], forwardStrategy)).toBe(
-      "group-1:head",
-    );
-  });
-
-  it("returns null when live head contains only a tool call (uses auxiliary indicator instead)", () => {
-    const tc = toolCallBlock("tool-1");
-    expect(resolveInlineWorkingIndicatorItemId("running", [tc], forwardStrategy)).toBeNull();
-  });
-
-  it("returns the footer assistant block when history and streaming head coexist", () => {
-    const historyBlock = assistantBlock({
-      id: "group-1:block:0",
-      blockGroupId: "group-1",
-      blockIndex: 0,
-    });
-    const streamingBlock = assistantBlock({
-      id: "group-2:head",
-      blockGroupId: "group-2",
-      blockIndex: 0,
-    });
-    // historyBlock is in streamItems (tail), not liveHead — liveHead holds only the streaming block
-    expect(resolveInlineWorkingIndicatorItemId("running", [streamingBlock], forwardStrategy)).toBe(
-      "group-2:head",
-    );
-    expect(
-      resolveInlineWorkingIndicatorItemId(
-        "running",
-        [historyBlock, streamingBlock],
-        forwardStrategy,
-      ),
-    ).toBe("group-2:head");
   });
 });

@@ -92,19 +92,15 @@ export function formatMessageTimestamp(date: Date, now: Date = new Date()): stri
 
 /**
  * Format a duration as a compact human-readable string.
- * - 0-10s: one decimal ("3.4s")
- * - 10s-60s: whole seconds ("47s")
+ * - 0-60s: whole seconds ("47s")
  * - Minutes/hours: integers only ("2m 12s", "1h 5m")
  */
 export function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs < 0) {
-    return "0.0s";
+    return "0s";
   }
   const totalSeconds = durationMs / 1000;
 
-  if (totalSeconds < 10) {
-    return `${totalSeconds.toFixed(1)}s`;
-  }
   if (totalSeconds < 60) {
     return `${Math.floor(totalSeconds)}s`;
   }

@@ -2,13 +2,10 @@ import { describe, it, expect } from "vitest";
 import { formatDuration, formatMessageTimestamp } from "./time";
 
 describe("formatDuration", () => {
-  it("renders 0-10s with one decimal", () => {
-    expect(formatDuration(0)).toBe("0.0s");
-    expect(formatDuration(5_600)).toBe("5.6s");
-    expect(formatDuration(9_900)).toBe("9.9s");
-  });
-
-  it("renders 10s-60s as whole seconds", () => {
+  it("renders sub-minute durations as whole seconds", () => {
+    expect(formatDuration(0)).toBe("0s");
+    expect(formatDuration(5_600)).toBe("5s");
+    expect(formatDuration(9_900)).toBe("9s");
     expect(formatDuration(10_400)).toBe("10s");
     expect(formatDuration(12_340)).toBe("12s");
     expect(formatDuration(47_000)).toBe("47s");
@@ -26,8 +23,8 @@ describe("formatDuration", () => {
   });
 
   it("guards against negative and NaN", () => {
-    expect(formatDuration(-1)).toBe("0.0s");
-    expect(formatDuration(Number.NaN)).toBe("0.0s");
+    expect(formatDuration(-1)).toBe("0s");
+    expect(formatDuration(Number.NaN)).toBe("0s");
   });
 });
 

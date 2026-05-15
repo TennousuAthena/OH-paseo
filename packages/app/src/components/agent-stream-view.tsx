@@ -17,34 +17,24 @@ import {
   Platform,
   ActivityIndicator,
   type PressableStateCallbackType,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
-import Animated, {
-  FadeIn,
-  FadeOut,
-  cancelAnimation,
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, ChevronDown, X } from "lucide-react-native";
 import { usePanelStore } from "@/stores/panel-store";
 import {
   AssistantMessage,
-  AssistantTurnFooter,
   SpeakMessage,
   UserMessage,
   ActivityLog,
   ToolCall,
   TodoListCard,
   CompactionMarker,
-  LiveElapsed,
   MessageOuterSpacingProvider,
-  STREAM_METADATA_FONT_SIZE,
   type InlinePathTarget,
 } from "./message";
 import { PlanCard } from "./plan-card";
@@ -65,18 +55,21 @@ import { QuestionFormCard } from "./question-form-card";
 import { ToolCallSheetProvider } from "./tool-call-sheet";
 import {
   buildAgentStreamRenderModel,
-  collectAssistantTurnContentForStreamRenderStrategy,
   getStreamNeighborItem,
   resolveStreamRenderStrategy,
   type AgentStreamRenderModel,
   type StreamSegmentRenderers,
   type StreamViewportHandle,
 } from "./agent-stream-render-strategy";
+import { getAssistantBlockSpacing, getGapBetweenStreamItems } from "./agent-stream-view-data";
 import {
-  getAssistantBlockSpacing,
-  isSameAssistantBlockGroup,
-  resolveInlineWorkingIndicatorItemId,
-} from "./agent-stream-view-data";
+  CompletedTurnFooterRow,
+  resolveBottomTurnFooterHost,
+  shouldRenderCompletedTurnFooter,
+  TurnFooter,
+  type TurnContentStrategy,
+  type TurnFooterHost,
+} from "./agent-stream-turn-footer";
 import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
@@ -86,22 +79,153 @@ import { normalizeInlinePathTarget } from "@/utils/inline-path";
 import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import {
-  getWorkingIndicatorDotStrength,
-  WORKING_INDICATOR_CYCLE_MS,
-  WORKING_INDICATOR_OFFSETS,
-} from "@/utils/working-indicator";
-import { findInFlightTurnStartedAt, findTurnHeaderForAssistantTurn } from "@/timeline/turn-time";
+import { findInFlightTurnStartedAt } from "@/timeline/turn-time";
 import { isWeb } from "@/constants/platform";
-import { SPACING, type Theme } from "@/styles/theme";
-
-const isUserMessageItem = (item?: StreamItem) => item?.kind === "user_message";
-const isToolSequenceItem = (item?: StreamItem) =>
-  item?.kind === "tool_call" || item?.kind === "thought" || item?.kind === "todo_list";
+import type { Theme } from "@/styles/theme";
 
 interface StreamItemBoundarySeams {
   aboveItem?: StreamItem | null;
   belowItem?: StreamItem | null;
+  suppressTurnFooter?: boolean;
+}
+
+function renderLiveAuxiliaryNode(input: {
+  pendingPermissions: ReactNode;
+  turnFooter: ReactNode;
+}): ReactNode {
+  if (!input.pendingPermissions && !input.turnFooter) {
+    return null;
+  }
+  return (
+    <>
+      {input.turnFooter}
+      {input.pendingPermissions ? (
+        <View style={stylesheet.contentWrapper}>
+          <View style={stylesheet.listHeaderContent}>{input.pendingPermissions}</View>
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+function renderPendingPermissionsNode(input: {
+  pendingPermissions: PendingPermission[];
+  client: DaemonClient | null;
+}): ReactNode {
+  if (input.pendingPermissions.length === 0) {
+    return null;
+  }
+  return (
+    <View style={stylesheet.permissionsContainer}>
+      {input.pendingPermissions.map((permission) => (
+        <PermissionRequestCard key={permission.key} permission={permission} client={input.client} />
+      ))}
+    </View>
+  );
+}
+
+function renderStreamItemWithTurnFooter(input: {
+  content: ReactNode;
+  item: StreamItem;
+  nextItem: StreamItem | undefined;
+  items: StreamItem[];
+  index: number;
+  agentStatus: string;
+  suppressTurnFooter: boolean | undefined;
+  strategy: TurnContentStrategy;
+}): ReactNode {
+  if (!input.content) {
+    return null;
+  }
+
+  const showCompletedFooter = shouldRenderCompletedTurnFooter({
+    item: input.item,
+    belowItem: input.nextItem,
+    agentStatus: input.agentStatus,
+    suppressTurnFooter: input.suppressTurnFooter,
+  });
+  const gapBelow = showCompletedFooter
+    ? 0
+    : getGapBetweenStreamItems(input.item, input.nextItem ?? null);
+
+  return (
+    <>
+      <StreamItemWrapper gapBelow={gapBelow}>{input.content}</StreamItemWrapper>
+      {showCompletedFooter ? (
+        <CompletedTurnFooterRow
+          strategy={input.strategy}
+          items={input.items}
+          startIndex={input.index}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function renderListEmptyComponent(input: {
+  renderModel: AgentStreamRenderModel;
+  emptyStateStyle: StyleProp<ViewStyle>;
+}): ReactNode {
+  if (
+    input.renderModel.boundary.hasVirtualizedHistory ||
+    input.renderModel.boundary.hasMountedHistory ||
+    input.renderModel.boundary.hasLiveHead ||
+    input.renderModel.auxiliary.pendingPermissions ||
+    input.renderModel.auxiliary.turnFooter
+  ) {
+    return null;
+  }
+
+  return (
+    <View style={input.emptyStateStyle}>
+      <Text style={stylesheet.emptyStateText}>Start chatting with this agent...</Text>
+    </View>
+  );
+}
+
+function renderHistoryStreamItem(input: {
+  item: StreamItem;
+  historyIndexById: Map<string, number>;
+  historyItems: StreamItem[];
+  lastHistoryItem: StreamItem | null;
+  firstLiveHeadItem: StreamItem | null;
+  bottomTurnFooterHost: TurnFooterHost | null;
+  renderStreamItem: (
+    item: StreamItem,
+    index: number,
+    items: StreamItem[],
+    seams?: StreamItemBoundarySeams,
+  ) => ReactNode;
+}): ReactNode {
+  const historyIndex = input.historyIndexById.get(input.item.id);
+  if (historyIndex === undefined) {
+    return null;
+  }
+  const seamBelowItem =
+    input.item.id === input.lastHistoryItem?.id ? input.firstLiveHeadItem : null;
+  return input.renderStreamItem(input.item, historyIndex, input.historyItems, {
+    belowItem: seamBelowItem,
+    suppressTurnFooter: input.item.id === input.bottomTurnFooterHost?.itemId,
+  });
+}
+
+function renderLiveHeadStreamItem(input: {
+  item: StreamItem;
+  index: number;
+  items: StreamItem[];
+  lastHistoryItem: StreamItem | null;
+  bottomTurnFooterHost: TurnFooterHost | null;
+  renderStreamItem: (
+    item: StreamItem,
+    index: number,
+    items: StreamItem[],
+    seams?: StreamItemBoundarySeams,
+  ) => ReactNode;
+}): ReactNode {
+  return input.renderStreamItem(input.item, input.index, input.items, {
+    aboveItem: input.index === 0 ? input.lastHistoryItem : null,
+    suppressTurnFooter: input.item.id === input.bottomTurnFooterHost?.itemId,
+  });
 }
 
 export interface AgentStreamViewHandle {
@@ -268,15 +392,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         isMobileBreakpoint: isMobile,
       });
     }, [isMobile, streamHead, streamItems]);
-    const inlineWorkingIndicatorItemId = useMemo(
-      () =>
-        resolveInlineWorkingIndicatorItemId(
-          agent.status,
-          baseRenderModel.segments.liveHead,
-          streamRenderStrategy,
-        ),
-      [agent.status, baseRenderModel.segments.liveHead, streamRenderStrategy],
-    );
     const inFlightTurnStartedAt = useMemo(
       () =>
         findInFlightTurnStartedAt({
@@ -302,39 +417,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const scrollToBottom = useCallback(() => {
       viewportRef.current?.scrollToBottom("jump-to-bottom");
     }, []);
-
-    const tightGap = SPACING[1];
-    const assistantBlockGap = SPACING[3];
-    const looseGap = SPACING[4];
-
-    const getGapBetween = useCallback(
-      (item: StreamItem | null, belowItem: StreamItem | null) => {
-        if (!item || !belowItem) {
-          return 0;
-        }
-
-        if (isUserMessageItem(item) && isUserMessageItem(belowItem)) {
-          return tightGap;
-        }
-        if (isToolSequenceItem(item) && isToolSequenceItem(belowItem)) {
-          return 0;
-        }
-        if (item.kind === "user_message" && isToolSequenceItem(belowItem)) {
-          return looseGap;
-        }
-        if (item.kind === "assistant_message" && isToolSequenceItem(belowItem)) {
-          return tightGap;
-        }
-        if (isToolSequenceItem(item) && belowItem.kind === "assistant_message") {
-          return tightGap;
-        }
-        if (isSameAssistantBlockGroup({ item, other: belowItem })) {
-          return assistantBlockGap;
-        }
-        return looseGap;
-      },
-      [assistantBlockGap, looseGap, tightGap],
-    );
 
     const setInlineDetailsExpanded = useCallback(
       (itemId: string, expanded: boolean) => {
@@ -563,7 +645,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
           case "turn_header":
             // Purely a data carrier - duration renders next to the assistant
-            // turn's copy button (TurnCopyButtonSlot), and the in-flight
+            // turn's copy button (CompletedTurnFooter), and the in-flight
             // ticker renders next to the WorkingIndicator dots.
             return null;
 
@@ -574,6 +656,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [renderUserMessageItem, renderAssistantMessageItem, renderThoughtItem, renderToolCallItem],
     );
 
+    const bottomTurnFooterHost = useMemo(() => {
+      return resolveBottomTurnFooterHost({
+        agentStatus: agent.status,
+        history: baseRenderModel.history,
+        liveHead: baseRenderModel.segments.liveHead,
+        isInverted: streamRenderStrategy.getFlatListInverted(),
+      });
+    }, [
+      agent.status,
+      baseRenderModel.history,
+      baseRenderModel.segments.liveHead,
+      streamRenderStrategy,
+    ]);
+
     const renderStreamItem = useCallback(
       (
         item: StreamItem,
@@ -582,47 +678,24 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         seams: StreamItemBoundarySeams = {},
       ) => {
         const content = renderStreamItemContent(item, index, items, seams);
-        if (!content) {
-          return null;
-        }
-
         const nextItem = getStreamNeighborItem({
           strategy: streamRenderStrategy,
           items,
           index,
           relation: "below",
         });
-        const gapBelow = getGapBetween(item, nextItem ?? null);
-        const isEndOfAssistantTurn =
-          item.kind === "assistant_message" &&
-          (nextItem?.kind === "user_message" ||
-            (nextItem === undefined && agent.status !== "running"));
-        const isRunningAssistantTurnFooter =
-          item.kind === "assistant_message" && item.id === inlineWorkingIndicatorItemId;
-        let footer: ReactNode = null;
-        if (isRunningAssistantTurnFooter) {
-          footer = <InlineWorkingIndicatorSlot inFlightTurnStartedAt={inFlightTurnStartedAt} />;
-        } else if (isEndOfAssistantTurn) {
-          footer = (
-            <TurnCopyButtonSlot strategy={streamRenderStrategy} items={items} startIndex={index} />
-          );
-        }
-
-        return (
-          <StreamItemWrapper gapBelow={gapBelow}>
-            {content}
-            {footer}
-          </StreamItemWrapper>
-        );
+        return renderStreamItemWithTurnFooter({
+          content,
+          item,
+          nextItem,
+          items,
+          index,
+          agentStatus: agent.status,
+          suppressTurnFooter: seams.suppressTurnFooter,
+          strategy: streamRenderStrategy,
+        });
       },
-      [
-        getGapBetween,
-        renderStreamItemContent,
-        agent.status,
-        streamRenderStrategy,
-        inlineWorkingIndicatorItemId,
-        inFlightTurnStartedAt,
-      ],
+      [renderStreamItemContent, agent.status, streamRenderStrategy],
     );
 
     const pendingPermissionItems = useMemo(
@@ -630,63 +703,49 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [pendingPermissions, agentId],
     );
 
-    const showAuxiliaryWorkingIndicator =
-      agent.status === "running" && inlineWorkingIndicatorItemId === null;
+    const showRunningTurnFooter = agent.status === "running";
     const pendingPermissionsNode = useMemo(
       () =>
-        pendingPermissionItems.length > 0 ? (
-          <View style={stylesheet.permissionsContainer}>
-            {pendingPermissionItems.map((permission) => (
-              <PermissionRequestCard key={permission.key} permission={permission} client={client} />
-            ))}
-          </View>
-        ) : null,
+        renderPendingPermissionsNode({
+          pendingPermissions: pendingPermissionItems,
+          client,
+        }),
       [client, pendingPermissionItems],
     );
-    const workingIndicatorNode = useMemo(
+    const turnFooterNode = useMemo(
       () =>
-        showAuxiliaryWorkingIndicator ? (
-          <View style={stylesheet.bottomBarWrapper} testID="stream-working-indicator-auxiliary">
-            <WorkingIndicator inFlightTurnStartedAt={inFlightTurnStartedAt} />
-          </View>
+        showRunningTurnFooter || bottomTurnFooterHost ? (
+          <TurnFooter
+            isRunning={showRunningTurnFooter}
+            inFlightTurnStartedAt={inFlightTurnStartedAt}
+            host={bottomTurnFooterHost}
+            strategy={streamRenderStrategy}
+          />
         ) : null,
-      [showAuxiliaryWorkingIndicator, inFlightTurnStartedAt],
+      [showRunningTurnFooter, inFlightTurnStartedAt, bottomTurnFooterHost, streamRenderStrategy],
     );
     const renderModel = useMemo<AgentStreamRenderModel>(() => {
       return {
         ...baseRenderModel,
         boundary: {
           ...baseRenderModel.boundary,
-          historyToHeadGap: getGapBetween(
+          historyToHeadGap: getGapBetweenStreamItems(
             baseRenderModel.history.at(-1) ?? null,
             baseRenderModel.segments.liveHead[0] ?? null,
           ),
         },
         auxiliary: {
           pendingPermissions: pendingPermissionsNode,
-          workingIndicator: workingIndicatorNode,
+          turnFooter: turnFooterNode,
         },
       };
-    }, [baseRenderModel, getGapBetween, pendingPermissionsNode, workingIndicatorNode]);
+    }, [baseRenderModel, pendingPermissionsNode, turnFooterNode]);
 
     const emptyStateStyle = useMemo(() => [stylesheet.emptyState, stylesheet.contentWrapper], []);
-    const listEmptyComponent = useMemo(() => {
-      if (
-        renderModel.boundary.hasVirtualizedHistory ||
-        renderModel.boundary.hasMountedHistory ||
-        renderModel.boundary.hasLiveHead ||
-        renderModel.auxiliary.pendingPermissions ||
-        renderModel.auxiliary.workingIndicator
-      ) {
-        return null;
-      }
-
-      return (
-        <View style={emptyStateStyle}>
-          <Text style={stylesheet.emptyStateText}>Start chatting with this agent...</Text>
-        </View>
-      );
-    }, [renderModel, emptyStateStyle]);
+    const listEmptyComponent = useMemo(
+      () => renderListEmptyComponent({ renderModel, emptyStateStyle }),
+      [renderModel, emptyStateStyle],
+    );
 
     const historyItems = renderModel.history;
     const _liveHeadItems = renderModel.segments.liveHead;
@@ -703,17 +762,24 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     }, [historyItems]);
 
     const renderHistoryRow = useCallback(
-      (item: StreamItem) => {
-        const historyIndex = historyIndexById.get(item.id);
-        if (historyIndex === undefined) {
-          return null;
-        }
-        const seamBelowItem = item.id === lastHistoryItem?.id ? firstLiveHeadItem : null;
-        return renderStreamItem(item, historyIndex, historyItems, {
-          belowItem: seamBelowItem,
-        });
-      },
-      [firstLiveHeadItem, historyIndexById, historyItems, lastHistoryItem?.id, renderStreamItem],
+      (item: StreamItem) =>
+        renderHistoryStreamItem({
+          item,
+          historyIndexById,
+          historyItems,
+          lastHistoryItem,
+          firstLiveHeadItem,
+          bottomTurnFooterHost,
+          renderStreamItem,
+        }),
+      [
+        bottomTurnFooterHost,
+        firstLiveHeadItem,
+        historyIndexById,
+        historyItems,
+        lastHistoryItem,
+        renderStreamItem,
+      ],
     );
 
     const renderHistoryVirtualizedRow = useCallback<
@@ -725,32 +791,22 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
     const renderLiveHeadRow = useCallback<StreamSegmentRenderers["renderLiveHeadRow"]>(
       (item, index, items) =>
-        renderStreamItem(item, index, items, {
-          aboveItem: index === 0 ? lastHistoryItem : null,
+        renderLiveHeadStreamItem({
+          item,
+          index,
+          items,
+          lastHistoryItem,
+          bottomTurnFooterHost,
+          renderStreamItem,
         }),
-      [lastHistoryItem, renderStreamItem],
+      [bottomTurnFooterHost, lastHistoryItem, renderStreamItem],
     );
-    const liveAuxiliaryHeaderStyle = useMemo(() => {
-      let headerPadding: { paddingBottom: number } | { paddingTop: number } | null;
-      if (!boundary.hasLiveHead) headerPadding = null;
-      else if (streamRenderStrategy.getFlatListInverted())
-        headerPadding = { paddingBottom: looseGap };
-      else headerPadding = { paddingTop: looseGap };
-      return [stylesheet.listHeaderContent, headerPadding];
-    }, [boundary.hasLiveHead, streamRenderStrategy, looseGap]);
     const renderLiveAuxiliary = useCallback<StreamSegmentRenderers["renderLiveAuxiliary"]>(() => {
-      if (!auxiliary.pendingPermissions && !auxiliary.workingIndicator) {
-        return null;
-      }
-      return (
-        <View style={stylesheet.contentWrapper}>
-          <View style={liveAuxiliaryHeaderStyle}>
-            {auxiliary.pendingPermissions}
-            {auxiliary.workingIndicator}
-          </View>
-        </View>
-      );
-    }, [auxiliary.pendingPermissions, auxiliary.workingIndicator, liveAuxiliaryHeaderStyle]);
+      return renderLiveAuxiliaryNode({
+        pendingPermissions: auxiliary.pendingPermissions,
+        turnFooter: auxiliary.turnFooter,
+      });
+    }, [auxiliary.pendingPermissions, auxiliary.turnFooter]);
 
     const renderers = useMemo<StreamSegmentRenderers>(
       () => ({
@@ -821,135 +877,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
 export const AgentStreamView = memo(AgentStreamViewComponent);
 AgentStreamView.displayName = "AgentStreamView";
-
-function WorkingIndicator({
-  variant = "auxiliary",
-  inFlightTurnStartedAt = null,
-}: {
-  variant?: "auxiliary" | "inline";
-  inFlightTurnStartedAt?: Date | null;
-}) {
-  const progress = useSharedValue(0);
-
-  useEffect(() => {
-    progress.value = 0;
-    progress.value = withRepeat(
-      withTiming(1, {
-        duration: WORKING_INDICATOR_CYCLE_MS,
-        easing: Easing.linear,
-      }),
-      -1,
-      false,
-    );
-
-    return () => {
-      cancelAnimation(progress);
-      progress.value = 0;
-    };
-  }, [progress]);
-
-  const translateDistance = -2;
-  const dotOneStyle = useAnimatedStyle(() => {
-    const strength = getWorkingIndicatorDotStrength(progress.value, WORKING_INDICATOR_OFFSETS[0]);
-    return {
-      opacity: 0.3 + strength * 0.7,
-      transform: [{ translateY: strength * translateDistance }],
-    };
-  });
-
-  const dotTwoStyle = useAnimatedStyle(() => {
-    const strength = getWorkingIndicatorDotStrength(progress.value, WORKING_INDICATOR_OFFSETS[1]);
-    return {
-      opacity: 0.3 + strength * 0.7,
-      transform: [{ translateY: strength * translateDistance }],
-    };
-  });
-
-  const dotThreeStyle = useAnimatedStyle(() => {
-    const strength = getWorkingIndicatorDotStrength(progress.value, WORKING_INDICATOR_OFFSETS[2]);
-    return {
-      opacity: 0.3 + strength * 0.7,
-      transform: [{ translateY: strength * translateDistance }],
-    };
-  });
-
-  const dotOneCombinedStyle = useMemo(() => [stylesheet.workingDot, dotOneStyle], [dotOneStyle]);
-  const dotTwoCombinedStyle = useMemo(() => [stylesheet.workingDot, dotTwoStyle], [dotTwoStyle]);
-  const dotThreeCombinedStyle = useMemo(
-    () => [stylesheet.workingDot, dotThreeStyle],
-    [dotThreeStyle],
-  );
-
-  const containerStyle =
-    variant === "inline"
-      ? stylesheet.inlineWorkingIndicatorFrame
-      : stylesheet.workingIndicatorBubble;
-
-  return (
-    <View style={containerStyle}>
-      <View style={stylesheet.workingDotsRow}>
-        <Animated.View style={dotOneCombinedStyle} />
-        <Animated.View style={dotTwoCombinedStyle} />
-        <Animated.View style={dotThreeCombinedStyle} />
-      </View>
-      {inFlightTurnStartedAt ? (
-        <LiveElapsed
-          startedAt={inFlightTurnStartedAt}
-          style={stylesheet.workingElapsed}
-          testID="turn-working-elapsed"
-        />
-      ) : null}
-    </View>
-  );
-}
-
-function InlineWorkingIndicatorSlot({
-  inFlightTurnStartedAt,
-}: {
-  inFlightTurnStartedAt: Date | null;
-}) {
-  return (
-    <View style={stylesheet.turnFooterSlot} testID="turn-working-indicator">
-      <WorkingIndicator variant="inline" inFlightTurnStartedAt={inFlightTurnStartedAt} />
-    </View>
-  );
-}
-
-// Permission Request Card Component
-type TurnContentStrategy = Parameters<
-  typeof collectAssistantTurnContentForStreamRenderStrategy
->[0]["strategy"];
-
-interface TurnCopyButtonSlotProps {
-  strategy: TurnContentStrategy;
-  items: StreamItem[];
-  startIndex: number;
-}
-
-function TurnCopyButtonSlot({ strategy, items, startIndex }: TurnCopyButtonSlotProps) {
-  const getContent = useCallback(
-    () =>
-      collectAssistantTurnContentForStreamRenderStrategy({
-        strategy,
-        items,
-        startIndex,
-      }),
-    [strategy, items, startIndex],
-  );
-  const header = useMemo(
-    () => findTurnHeaderForAssistantTurn({ strategy, items, startIndex }),
-    [strategy, items, startIndex],
-  );
-  return (
-    <View style={stylesheet.turnFooterSlot}>
-      <AssistantTurnFooter
-        getContent={getContent}
-        startedAt={header?.startedAt}
-        durationMs={header?.durationMs}
-      />
-    </View>
-  );
-}
 
 interface ToolCallSlotProps extends Omit<
   ComponentProps<typeof ToolCall>,
@@ -1281,57 +1208,6 @@ const stylesheet = StyleSheet.create((theme) => ({
   },
   listHeaderContent: {
     gap: theme.spacing[3],
-  },
-  bottomBarWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    marginTop: theme.spacing[4],
-    paddingTop: theme.spacing[3],
-    paddingBottom: theme.spacing[2],
-    gap: theme.spacing[2],
-  },
-  turnFooterSlot: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    minHeight: 24,
-    marginTop: theme.spacing[1],
-    paddingBottom: theme.spacing[6],
-  },
-  inlineWorkingIndicatorFrame: {
-    height: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    gap: theme.spacing[3],
-  },
-  workingElapsed: {
-    color: theme.colors.foregroundMuted,
-    fontSize: STREAM_METADATA_FONT_SIZE,
-    fontVariant: ["tabular-nums"],
-  },
-  workingIndicatorBubble: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: "transparent",
-    borderWidth: 0,
-    alignSelf: "flex-start",
-  },
-  workingDotsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    transform: [{ translateY: 1 }],
-  },
-  workingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.colors.foregroundMuted,
   },
   syncingIndicator: {
     flexDirection: "row",
