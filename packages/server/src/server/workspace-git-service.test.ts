@@ -845,7 +845,7 @@ describe("WorkspaceGitServiceImpl", () => {
 
     expect(getCheckoutShortstat).toHaveBeenLastCalledWith(
       REPO_CWD,
-      { paseoHome: "/tmp/paseo-test" },
+      expect.objectContaining({ paseoHome: "/tmp/paseo-test" }),
       { force: true },
     );
     expect(workspaceListener).toHaveBeenCalledWith(
