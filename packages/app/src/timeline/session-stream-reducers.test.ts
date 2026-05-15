@@ -1,4 +1,3 @@
-import invariant from "tiny-invariant";
 import { describe, expect, it } from "vitest";
 import type { AgentStreamEventPayload } from "@server/shared/messages";
 import type { StreamItem } from "@/types/stream";
@@ -241,12 +240,10 @@ describe("processTimelineResponse", () => {
     });
 
     const user = result.tail.find((item) => item.kind === "user_message");
-    const header = result.tail.find((item) => item.kind === "turn_header");
+    const assistant = result.tail.find((item) => item.kind === "assistant_message");
 
     expect(user?.timestamp.toISOString()).toBe("2025-01-01T12:00:03.000Z");
-    invariant(header?.kind === "turn_header");
-    expect(header.startedAt.toISOString()).toBe("2025-01-01T12:00:04.000Z");
-    expect(header.completedAt?.toISOString()).toBe("2025-01-01T12:00:04.000Z");
+    expect(assistant?.timestamp.toISOString()).toBe("2025-01-01T12:00:04.000Z");
   });
 
   it("sets cursor to null when reset=true but no cursors in payload", () => {

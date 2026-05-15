@@ -10,7 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
-import { findTurnHeaderForAssistantTurn } from "@/timeline/turn-time";
+import type { TurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
 import {
   getWorkingIndicatorDotStrength,
@@ -28,6 +28,7 @@ export type TurnContentStrategy = StreamStrategy;
 export interface TurnFooterHost {
   itemId: string;
   items: StreamItem[];
+  timing?: TurnTiming;
   startIndex: number;
 }
 
@@ -36,11 +37,13 @@ export function resolveBottomTurnFooterHost(input: {
   history: StreamItem[];
   liveHead: StreamItem[];
   isInverted: boolean;
+  timingByAssistantId: Map<string, TurnTiming>;
 }): TurnFooterHost | null {
   if (input.agentStatus === "running") {
     return null;
   }
-  const footerItems = input.liveHead.length > 0 ? input.liveHead : input.history;
+  const usesLiveHead = input.liveHead.length > 0;
+  const footerItems = usesLiveHead ? input.liveHead : input.history;
   const startIndex = input.isInverted ? 0 : footerItems.length - 1;
   const item = footerItems[startIndex];
   if (!item || item.kind !== "assistant_message") {
@@ -49,6 +52,7 @@ export function resolveBottomTurnFooterHost(input: {
   return {
     itemId: item.id,
     items: footerItems,
+    timing: input.timingByAssistantId.get(item.id),
     startIndex,
   };
 }
@@ -89,22 +93,34 @@ export const TurnFooter = memo(function TurnFooter({
     return null;
   }
   return (
-    <CompletedTurnFooterRow strategy={strategy} items={host.items} startIndex={host.startIndex} />
+    <CompletedTurnFooterRow
+      strategy={strategy}
+      items={host.items}
+      timing={host.timing}
+      startIndex={host.startIndex}
+    />
   );
 });
 
 export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   strategy,
   items,
+  timing,
   startIndex,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
+  timing?: TurnTiming;
   startIndex: number;
 }) {
   return (
     <TurnFooterRow>
-      <CompletedTurnFooter strategy={strategy} items={items} startIndex={startIndex} />
+      <CompletedTurnFooter
+        strategy={strategy}
+        items={items}
+        timing={timing}
+        startIndex={startIndex}
+      />
     </TurnFooterRow>
   );
 });
@@ -194,10 +210,12 @@ function RunningTurnFooter({ inFlightTurnStartedAt }: { inFlightTurnStartedAt: D
 function CompletedTurnFooter({
   strategy,
   items,
+  timing,
   startIndex,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
+  timing?: TurnTiming;
   startIndex: number;
 }) {
   const getContent = useCallback(
@@ -209,16 +227,12 @@ function CompletedTurnFooter({
       }),
     [strategy, items, startIndex],
   );
-  const header = useMemo(
-    () => findTurnHeaderForAssistantTurn({ strategy, items, startIndex }),
-    [strategy, items, startIndex],
-  );
   return (
     <View style={stylesheet.turnFooterSlot}>
       <AssistantTurnFooter
         getContent={getContent}
-        startedAt={header?.startedAt}
-        durationMs={header?.durationMs}
+        completedAt={timing?.completedAt}
+        durationMs={timing?.durationMs}
       />
     </View>
   );

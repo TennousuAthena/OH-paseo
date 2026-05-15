@@ -1462,6 +1462,28 @@ function readCodexHistoryTimestamp(item: unknown): string | null {
   );
 }
 
+function readCodexTurnHistoryTimestamp(
+  turn: unknown,
+  timelineItem: AgentTimelineItem,
+): string | null {
+  const record = toObjectRecord(turn);
+  if (!record) {
+    return null;
+  }
+
+  const startedAt =
+    normalizeProviderReplayTimestamp(record.startedAt) ??
+    normalizeProviderReplayTimestamp(record.started_at);
+  const completedAt =
+    normalizeProviderReplayTimestamp(record.completedAt) ??
+    normalizeProviderReplayTimestamp(record.completed_at);
+
+  if (timelineItem.type === "user_message") {
+    return startedAt ?? completedAt;
+  }
+  return completedAt ?? startedAt;
+}
+
 function codexImageOutputFromResult(result: unknown): ProviderImageOutput | null {
   if (typeof result === "string") {
     const trimmed = result.trim();
@@ -1616,7 +1638,8 @@ async function loadCodexThreadHistoryTimeline(params: {
     for (const item of turn.items) {
       const timelineItem = threadItemToTimeline(item, { cwd: params.cwd });
       if (timelineItem) {
-        const timestamp = readCodexHistoryTimestamp(item);
+        const timestamp =
+          readCodexHistoryTimestamp(item) ?? readCodexTurnHistoryTimestamp(turn, timelineItem);
         timeline.push({
           item: timelineItem,
           timestamp: timestamp ?? undefined,

@@ -841,8 +841,8 @@ describe("stream reducer canonical tool calls", () => {
   });
 });
 
-describe("turn headers", () => {
-  it("inserts a live header on turn_started and closes it on turn_completed", () => {
+describe("turn lifecycle events", () => {
+  it("finalizes active stream items without adding timeline rows", () => {
     const startedAt = new Date("2025-01-01T12:00:00Z");
     const completedAt = new Date("2025-01-01T12:00:05Z");
 
@@ -854,16 +854,13 @@ describe("turn headers", () => {
     );
     state = reduceStreamUpdate(state, { type: "turn_completed", provider: "claude" }, completedAt);
 
-    const header = state.find((item) => item.kind === "turn_header");
-    invariant(header?.kind === "turn_header");
-    assert.strictEqual(header.source, "live");
-    assert.strictEqual(header.outcome, "completed");
-    assert.strictEqual(header.durationMs, 5_000);
-    assert.strictEqual(header.startedAt.getTime(), startedAt.getTime());
-    assert.strictEqual(header.completedAt?.getTime(), completedAt.getTime());
+    assert.deepStrictEqual(
+      state.map((item) => item.kind),
+      ["assistant_message"],
+    );
   });
 
-  it("synthesizes a derived header during hydration when turn events are missing", () => {
+  it("hydrates canonical timeline rows without synthetic turn rows", () => {
     const state = hydrateStreamState([
       {
         event: {
@@ -883,24 +880,13 @@ describe("turn headers", () => {
       },
     ]);
 
-    const headers = state.filter((item) => item.kind === "turn_header");
-    assert.strictEqual(headers.length, 1);
-    const [header] = headers;
-    invariant(header?.kind === "turn_header");
-    assert.strictEqual(header.source, "derived");
-    assert.strictEqual(header.outcome, "completed");
-    assert.strictEqual(header.durationMs, 3_000);
-    // Header should sit between the user message and the first assistant item.
-    const kinds = state.map((item) => item.kind);
-    assert.deepStrictEqual(kinds, [
-      "user_message",
-      "turn_header",
-      "assistant_message",
-      "assistant_message",
-    ]);
+    assert.deepStrictEqual(
+      state.map((item) => item.kind),
+      ["user_message", "assistant_message", "assistant_message"],
+    );
   });
 
-  it("does not synthesize a derived header when a live header is already present", () => {
+  it("does not materialize turn_started events during hydration", () => {
     const startedAt = new Date("2025-01-01T14:00:00Z");
     const state = hydrateStreamState([
       {
@@ -918,15 +904,13 @@ describe("turn headers", () => {
       },
     ]);
 
-    const headers = state.filter((item) => item.kind === "turn_header");
-    assert.strictEqual(headers.length, 1);
-    const header = headers[0];
-    invariant(header?.kind === "turn_header");
-    assert.strictEqual(header.source, "live");
-    assert.strictEqual(header.completedAt, undefined);
+    assert.deepStrictEqual(
+      state.map((item) => item.kind),
+      ["user_message", "assistant_message"],
+    );
   });
 
-  it("skips synthesis for turns with no assistant output", () => {
+  it("keeps adjacent user messages as adjacent timeline rows", () => {
     const state = hydrateStreamState([
       {
         event: {
@@ -946,7 +930,9 @@ describe("turn headers", () => {
       },
     ]);
 
-    const headers = state.filter((item) => item.kind === "turn_header");
-    assert.strictEqual(headers.length, 0);
+    assert.deepStrictEqual(
+      state.map((item) => item.kind),
+      ["user_message", "user_message"],
+    );
   });
 });

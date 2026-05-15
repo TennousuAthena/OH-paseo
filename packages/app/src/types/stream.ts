@@ -3,11 +3,6 @@ import type { AgentAttachment, AgentStreamEventPayload } from "@server/shared/me
 import type { AttachmentMetadata } from "@/attachments/types";
 import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
-import {
-  appendLiveTurnHeader,
-  completeLastTurnHeader,
-  synthesizeMissingTurnHeaders,
-} from "@/timeline/turn-time";
 
 /**
  * Simple hash function for deterministic ID generation
@@ -55,21 +50,7 @@ export type StreamItem =
   | ToolCallItem
   | TodoListItem
   | ActivityLogItem
-  | CompactionItem
-  | TurnHeaderItem;
-
-export type TurnHeaderOutcome = "completed" | "failed" | "canceled";
-
-export interface TurnHeaderItem {
-  kind: "turn_header";
-  id: string;
-  timestamp: Date;
-  startedAt: Date;
-  completedAt?: Date;
-  durationMs?: number;
-  outcome?: TurnHeaderOutcome;
-  source: "live" | "derived";
-}
+  | CompactionItem;
 
 export type UserMessageImageAttachment = AttachmentMetadata;
 
@@ -723,15 +704,10 @@ export function reduceStreamUpdate(
     case "timeline":
       return reduceTimelineEvent(state, event, timestamp, source);
     case "thread_started":
-      return finalizeActiveThoughts(state);
     case "turn_started":
-      return appendLiveTurnHeader(finalizeActiveThoughts(state), timestamp);
     case "turn_completed":
-      return completeLastTurnHeader(finalizeActiveThoughts(state), timestamp, "completed");
     case "turn_failed":
-      return completeLastTurnHeader(finalizeActiveThoughts(state), timestamp, "failed");
     case "turn_canceled":
-      return completeLastTurnHeader(finalizeActiveThoughts(state), timestamp, "canceled");
     case "permission_requested":
     case "permission_resolved":
     case "attention_required":
@@ -755,7 +731,7 @@ export function hydrateStreamState(
     return reduceStreamUpdate(state, event, timestamp, options);
   }, []);
 
-  return synthesizeMissingTurnHeaders(finalizeActiveThoughts(hydrated));
+  return finalizeActiveThoughts(hydrated);
 }
 
 /**

@@ -35,6 +35,7 @@ describe("buildAgentStreamRenderModel", () => {
     const head = [assistantMessage("live-a", 121)];
 
     const model = buildAgentStreamRenderModel({
+      agentStatus: "running",
       tail,
       head,
       platform: "web",
@@ -52,6 +53,7 @@ describe("buildAgentStreamRenderModel", () => {
     const head = [assistantMessage("live-a", 3)];
 
     const model = buildAgentStreamRenderModel({
+      agentStatus: "running",
       tail,
       head,
       platform: "web",
@@ -69,12 +71,14 @@ describe("buildAgentStreamRenderModel", () => {
     const secondHead = [assistantMessage("live-b", 4)];
 
     const first = buildAgentStreamRenderModel({
+      agentStatus: "running",
       tail,
       head: firstHead,
       platform: "native",
       isMobileBreakpoint: false,
     });
     const second = buildAgentStreamRenderModel({
+      agentStatus: "running",
       tail,
       head: secondHead,
       platform: "native",
@@ -84,5 +88,74 @@ describe("buildAgentStreamRenderModel", () => {
     expect(first.history).toBe(second.history);
     expect(first.segments.historyMounted).toBe(second.segments.historyMounted);
     expect(second.segments.liveHead.map((item) => item.id)).toEqual(["live-b"]);
+  });
+
+  it("derives running turn timing across committed history and live head", () => {
+    const tail = [userMessage("u1", 1)];
+    const head = [assistantMessage("live-a", 4)];
+
+    const model = buildAgentStreamRenderModel({
+      agentStatus: "running",
+      tail,
+      head,
+      platform: "web",
+      isMobileBreakpoint: false,
+    });
+
+    expect(model.turnTiming.runningStartedAt).toBe(tail[0]?.timestamp);
+    expect(model.turnTiming.byAssistantId.has("live-a")).toBe(false);
+  });
+
+  it("maps completed turn timing to assistant ids across committed history and live head", () => {
+    const tail = [userMessage("u1", 1)];
+    const head = [assistantMessage("live-a", 4)];
+
+    const model = buildAgentStreamRenderModel({
+      agentStatus: "idle",
+      tail,
+      head,
+      platform: "web",
+      isMobileBreakpoint: false,
+    });
+
+    expect(model.turnTiming.runningStartedAt).toBe(null);
+    expect(model.turnTiming.byAssistantId.get("live-a")).toEqual({
+      startedAt: tail[0]?.timestamp,
+      completedAt: head[0]?.timestamp,
+      durationMs: 3000,
+    });
+  });
+
+  it("derives the same timing for native inverted rendering", () => {
+    const tail = [userMessage("u1", 1), assistantMessage("a1", 4)];
+
+    const model = buildAgentStreamRenderModel({
+      agentStatus: "idle",
+      tail,
+      head: [],
+      platform: "native",
+      isMobileBreakpoint: false,
+    });
+
+    expect(model.segments.historyMounted.map((item) => item.id)).toEqual(["a1", "u1"]);
+    expect(model.turnTiming.byAssistantId.get("a1")).toEqual({
+      startedAt: tail[0]?.timestamp,
+      completedAt: tail[1]?.timestamp,
+      durationMs: 3000,
+    });
+  });
+
+  it("does not create completed timing for adjacent user messages", () => {
+    const tail = [userMessage("u1", 1), userMessage("u2", 4)];
+
+    const model = buildAgentStreamRenderModel({
+      agentStatus: "idle",
+      tail,
+      head: [],
+      platform: "web",
+      isMobileBreakpoint: false,
+    });
+
+    expect(model.turnTiming.byAssistantId.size).toBe(0);
   });
 });

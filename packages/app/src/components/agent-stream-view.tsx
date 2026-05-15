@@ -21,7 +21,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import { MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, ChevronDown, X } from "lucide-react-native";
@@ -74,12 +74,10 @@ import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
 } from "./use-bottom-anchor-controller";
-import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { normalizeInlinePathTarget } from "@/utils/inline-path";
 import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { findInFlightTurnStartedAt } from "@/timeline/turn-time";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 
@@ -129,6 +127,7 @@ function renderStreamItemWithTurnFooter(input: {
   item: StreamItem;
   nextItem: StreamItem | undefined;
   items: StreamItem[];
+  timing: AgentStreamRenderModel["turnTiming"]["byAssistantId"];
   index: number;
   agentStatus: string;
   suppressTurnFooter: boolean | undefined;
@@ -155,6 +154,7 @@ function renderStreamItemWithTurnFooter(input: {
         <CompletedTurnFooterRow
           strategy={input.strategy}
           items={input.items}
+          timing={input.timing.get(input.item.id)}
           startIndex={input.index}
         />
       ) : null}
@@ -244,6 +244,8 @@ export interface AgentStreamViewProps {
   toast?: ToastApi | null;
   onOpenWorkspaceFile?: (input: { filePath: string }) => void;
 }
+
+const EMPTY_STREAM_HEAD: StreamItem[] = [];
 
 const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamViewProps>(
   function AgentStreamView(
@@ -386,21 +388,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
+        agentStatus: agent.status,
         tail: streamItems,
-        head: streamHead ?? [],
+        head: streamHead ?? EMPTY_STREAM_HEAD,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
       });
-    }, [isMobile, streamHead, streamItems]);
-    const inFlightTurnStartedAt = useMemo(
-      () =>
-        findInFlightTurnStartedAt({
-          agentStatus: agent.status,
-          liveHead: baseRenderModel.segments.liveHead,
-          tail: streamItems,
-        }),
-      [agent.status, baseRenderModel.segments.liveHead, streamItems],
-    );
+    }, [agent.status, isMobile, streamHead, streamItems]);
     useImperativeHandle(
       ref,
       () => ({
@@ -643,12 +637,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               />
             );
 
-          case "turn_header":
-            // Purely a data carrier - duration renders next to the assistant
-            // turn's copy button (CompletedTurnFooter), and the in-flight
-            // ticker renders next to the WorkingIndicator dots.
-            return null;
-
           default:
             return null;
         }
@@ -662,11 +650,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         history: baseRenderModel.history,
         liveHead: baseRenderModel.segments.liveHead,
         isInverted: streamRenderStrategy.getFlatListInverted(),
+        timingByAssistantId: baseRenderModel.turnTiming.byAssistantId,
       });
     }, [
       agent.status,
       baseRenderModel.history,
       baseRenderModel.segments.liveHead,
+      baseRenderModel.turnTiming.byAssistantId,
       streamRenderStrategy,
     ]);
 
@@ -689,13 +679,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           item,
           nextItem,
           items,
+          timing: baseRenderModel.turnTiming.byAssistantId,
           index,
           agentStatus: agent.status,
           suppressTurnFooter: seams.suppressTurnFooter,
           strategy: streamRenderStrategy,
         });
       },
-      [renderStreamItemContent, agent.status, streamRenderStrategy],
+      [
+        agent.status,
+        baseRenderModel.turnTiming.byAssistantId,
+        renderStreamItemContent,
+        streamRenderStrategy,
+      ],
     );
 
     const pendingPermissionItems = useMemo(
@@ -717,12 +713,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         showRunningTurnFooter || bottomTurnFooterHost ? (
           <TurnFooter
             isRunning={showRunningTurnFooter}
-            inFlightTurnStartedAt={inFlightTurnStartedAt}
+            inFlightTurnStartedAt={baseRenderModel.turnTiming.runningStartedAt}
             host={bottomTurnFooterHost}
             strategy={streamRenderStrategy}
           />
         ) : null,
-      [showRunningTurnFooter, inFlightTurnStartedAt, bottomTurnFooterHost, streamRenderStrategy],
+      [
+        showRunningTurnFooter,
+        baseRenderModel.turnTiming.runningStartedAt,
+        bottomTurnFooterHost,
+        streamRenderStrategy,
+      ],
     );
     const renderModel = useMemo<AgentStreamRenderModel>(() => {
       return {
@@ -748,7 +749,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const historyItems = renderModel.history;
-    const _liveHeadItems = renderModel.segments.liveHead;
     const { boundary, auxiliary } = renderModel;
     const lastHistoryItem = historyItems.at(-1) ?? null;
     const firstLiveHeadItem = renderModel.segments.liveHead[0] ?? null;

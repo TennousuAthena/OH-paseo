@@ -557,7 +557,7 @@ export const UserMessage = memo(function UserMessage({
 
 interface AssistantTurnFooterProps {
   getContent: () => string;
-  startedAt?: Date;
+  completedAt?: Date;
   durationMs?: number;
 }
 
@@ -595,13 +595,13 @@ const TIMESTAMP_REVEAL_MS = 3000;
 
 /**
  * Footer rendered next to the copy button at the end of an assistant turn.
- * Always shows the turn duration; swaps to the start timestamp on hover (web)
+ * Always shows the turn duration; swaps to the end timestamp on hover (web)
  * or tap (native). The hidden sizer keeps the label width stable while the
  * visible text swaps.
  */
 export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   getContent,
-  startedAt,
+  completedAt,
   durationMs,
 }: AssistantTurnFooterProps) {
   const [hovered, setHovered] = useState(false);
@@ -622,8 +622,8 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
     [durationMs],
   );
   const timestampLabel = useMemo(
-    () => (startedAt ? formatMessageTimestamp(startedAt) : ""),
-    [startedAt],
+    () => (completedAt ? formatMessageTimestamp(completedAt) : ""),
+    [completedAt],
   );
 
   const canSwap = Boolean(timestampLabel);
@@ -655,9 +655,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
           onHoverIn={handleHoverIn}
           onHoverOut={handleHoverOut}
           accessibilityRole={canSwap ? "button" : undefined}
-          accessibilityLabel={
-            canSwap ? `${durationLabel}, started ${timestampLabel}` : durationLabel
-          }
+          accessibilityLabel={canSwap ? `${durationLabel}, ended ${timestampLabel}` : durationLabel}
         >
           <View style={assistantTurnFooterStylesheet.labelWrapper}>
             {/* Sizer reserves space for whichever label is longer so the

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { deriveStreamTurnTiming, type StreamTurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
 import {
   findMountedWindowStart,
@@ -32,11 +33,13 @@ export interface StreamRenderAuxiliary {
 export interface AgentStreamRenderModel {
   history: StreamItem[];
   segments: StreamRenderSegments;
+  turnTiming: StreamTurnTiming;
   boundary: StreamHistoryBoundary;
   auxiliary: StreamRenderAuxiliary;
 }
 
 export interface BuildAgentStreamRenderModelInput {
+  agentStatus: string;
   tail: StreamItem[];
   head: StreamItem[];
   platform: "web" | "native";
@@ -54,6 +57,10 @@ const orderedHeadCache = new WeakMap<StreamItem[], Map<string, StreamItem[]>>();
 const splitHistoryCache = new WeakMap<
   StreamItem[],
   Map<string, Pick<AgentStreamRenderModel, "history" | "segments">>
+>();
+const turnTimingCache = new WeakMap<
+  StreamItem[],
+  WeakMap<StreamItem[], Map<string, StreamTurnTiming>>
 >();
 
 function getOrderedItems(params: {
@@ -127,6 +134,30 @@ function splitOrderedTail(params: {
   return split;
 }
 
+function getTurnTiming(params: {
+  agentStatus: string;
+  tail: StreamItem[];
+  head: StreamItem[];
+}): StreamTurnTiming {
+  let cachedByHead = turnTimingCache.get(params.tail);
+  if (!cachedByHead) {
+    cachedByHead = new WeakMap();
+    turnTimingCache.set(params.tail, cachedByHead);
+  }
+  let cachedByStatus = cachedByHead.get(params.head);
+  if (!cachedByStatus) {
+    cachedByStatus = new Map();
+    cachedByHead.set(params.head, cachedByStatus);
+  }
+  const cached = cachedByStatus.get(params.agentStatus);
+  if (cached) {
+    return cached;
+  }
+  const timing = deriveStreamTurnTiming(params);
+  cachedByStatus.set(params.agentStatus, timing);
+  return timing;
+}
+
 export function buildAgentStreamRenderModel(
   input: BuildAgentStreamRenderModelInput,
 ): AgentStreamRenderModel {
@@ -160,6 +191,11 @@ export function buildAgentStreamRenderModel(
     platform: input.platform,
     isMobileBreakpoint: input.isMobileBreakpoint,
   });
+  const turnTiming = getTurnTiming({
+    agentStatus: input.agentStatus,
+    tail: input.tail,
+    head: input.head,
+  });
 
   return {
     history: splitHistory.history,
@@ -167,6 +203,7 @@ export function buildAgentStreamRenderModel(
       ...splitHistory.segments,
       liveHead: orderedHead,
     },
+    turnTiming,
     boundary: {
       hasVirtualizedHistory: splitHistory.segments.historyVirtualized.length > 0,
       hasMountedHistory: splitHistory.segments.historyMounted.length > 0,

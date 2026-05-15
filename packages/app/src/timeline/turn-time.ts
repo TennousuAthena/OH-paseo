@@ -1,146 +1,83 @@
-import type { StreamItem, TurnHeaderItem, TurnHeaderOutcome } from "@/types/stream";
+import type { StreamItem } from "@/types/stream";
 
-export function appendLiveTurnHeader(state: StreamItem[], startedAt: Date): StreamItem[] {
-  const lastHeader = findLastTurnHeader(state);
-  if (lastHeader && lastHeader.completedAt === undefined) {
-    return state;
-  }
-  const header: TurnHeaderItem = {
-    kind: "turn_header",
-    id: `turn_${startedAt.getTime()}_${state.length.toString(36)}`,
-    timestamp: startedAt,
-    startedAt,
-    source: "live",
-  };
-  return [...state, header];
+export interface TurnTiming {
+  startedAt: Date;
+  completedAt: Date;
+  durationMs: number;
 }
 
-export function completeLastTurnHeader(
-  state: StreamItem[],
-  completedAt: Date,
-  outcome: TurnHeaderOutcome,
-): StreamItem[] {
-  for (let i = state.length - 1; i >= 0; i -= 1) {
-    const item = state[i];
-    if (item?.kind !== "turn_header") {
-      continue;
-    }
-    if (item.completedAt !== undefined) {
-      return state;
-    }
-    const updated: TurnHeaderItem = {
-      ...item,
-      completedAt,
-      durationMs: Math.max(0, completedAt.getTime() - item.startedAt.getTime()),
-      outcome,
-    };
-    const next = [...state];
-    next[i] = updated;
-    return next;
-  }
-  return state;
+export interface StreamTurnTiming {
+  byAssistantId: Map<string, TurnTiming>;
+  runningStartedAt: Date | null;
 }
 
-export function synthesizeMissingTurnHeaders(state: StreamItem[]): StreamItem[] {
-  const result: StreamItem[] = [];
-  let segment: StreamItem[] = [];
-  let needsHeader = true;
+export function deriveStreamTurnTiming(params: {
+  agentStatus: string;
+  tail: StreamItem[];
+  head: StreamItem[];
+}): StreamTurnTiming {
+  const byAssistantId = new Map<string, TurnTiming>();
+  let currentUserAt: Date | null = null;
+  let currentLastItemAt: Date | null = null;
+  let currentAssistantIds: string[] = [];
 
-  function flushSegment() {
-    if (segment.length === 0) {
+  const flushCompletedTurn = () => {
+    if (!currentUserAt || !currentLastItemAt || currentAssistantIds.length === 0) {
       return;
     }
-    if (needsHeader) {
-      const first = segment[0];
-      const last = segment[segment.length - 1];
-      const startedAt = first.timestamp;
-      const completedAt = last.timestamp;
-      const header: TurnHeaderItem = {
-        kind: "turn_header",
-        id: `turn_derived_${startedAt.getTime()}_${result.length.toString(36)}`,
-        timestamp: startedAt,
-        startedAt,
-        completedAt,
-        durationMs: Math.max(0, completedAt.getTime() - startedAt.getTime()),
-        outcome: "completed",
-        source: "derived",
-      };
-      result.push(header);
+    const timing: TurnTiming = {
+      startedAt: currentUserAt,
+      completedAt: currentLastItemAt,
+      durationMs: Math.max(0, currentLastItemAt.getTime() - currentUserAt.getTime()),
+    };
+    for (const id of currentAssistantIds) {
+      byAssistantId.set(id, timing);
     }
-    result.push(...segment);
-    segment = [];
-  }
+  };
 
-  for (const item of state) {
+  const visitItem = (item: StreamItem) => {
     if (item.kind === "user_message") {
-      flushSegment();
-      needsHeader = true;
-      result.push(item);
-      continue;
+      flushCompletedTurn();
+      currentUserAt = item.timestamp;
+      currentLastItemAt = null;
+      currentAssistantIds = [];
+      return;
     }
-    if (item.kind === "turn_header") {
-      flushSegment();
-      needsHeader = false;
-      result.push(item);
-      continue;
+    if (!currentUserAt) {
+      return;
     }
-    segment.push(item);
+    currentLastItemAt = item.timestamp;
+    if (item.kind === "assistant_message") {
+      currentAssistantIds.push(item.id);
+    }
+  };
+
+  for (const item of params.tail) {
+    visitItem(item);
+  }
+  for (const item of params.head) {
+    visitItem(item);
   }
 
-  flushSegment();
-  return result;
-}
-
-export function findInFlightTurnStartedAt(params: {
-  agentStatus: string;
-  liveHead: StreamItem[];
-  tail: StreamItem[];
-}): Date | null {
+  const runningStartedAt =
+    params.agentStatus === "running"
+      ? (findLastUserMessageTimestamp(params.head) ?? currentUserAt)
+      : null;
   if (params.agentStatus !== "running") {
-    return null;
+    flushCompletedTurn();
   }
-  const headStartedAt = findLastOpenTurnHeader(params.liveHead)?.startedAt;
-  if (headStartedAt) {
-    return headStartedAt;
-  }
-  return findLastOpenTurnHeader(params.tail)?.startedAt ?? null;
+
+  return {
+    byAssistantId,
+    runningStartedAt,
+  };
 }
 
-export interface TurnHeaderNeighborResolver {
-  getNeighborIndex(index: number, relation: "above" | "below"): number;
-}
-
-export function findTurnHeaderForAssistantTurn(params: {
-  strategy: TurnHeaderNeighborResolver;
-  items: StreamItem[];
-  startIndex: number;
-}): TurnHeaderItem | null {
-  let index = params.startIndex;
-  while (index >= 0 && index < params.items.length) {
-    const item = params.items[index];
-    if (!item) return null;
-    if (item.kind === "turn_header") return item;
-    if (item.kind === "user_message") return null;
-    index = params.strategy.getNeighborIndex(index, "above");
-  }
-  return null;
-}
-
-function findLastTurnHeader(state: StreamItem[]): TurnHeaderItem | null {
-  for (let i = state.length - 1; i >= 0; i -= 1) {
-    const item = state[i];
-    if (item?.kind === "turn_header") {
-      return item;
-    }
-  }
-  return null;
-}
-
-function findLastOpenTurnHeader(state: StreamItem[]): TurnHeaderItem | null {
-  for (let i = state.length - 1; i >= 0; i -= 1) {
-    const item = state[i];
-    if (item?.kind === "turn_header" && item.completedAt === undefined) {
-      return item;
+function findLastUserMessageTimestamp(items: StreamItem[]): Date | null {
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    if (item?.kind === "user_message") {
+      return item.timestamp;
     }
   }
   return null;
