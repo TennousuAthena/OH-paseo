@@ -1,27 +1,24 @@
-import React, { memo, useCallback, useEffect, useMemo, type ReactNode } from "react";
+import React, { memo, useCallback, useMemo, type ReactNode } from "react";
 import { View } from "react-native";
-import Animated, {
-  cancelAnimation,
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from "react-native-reanimated";
-import { StyleSheet } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
+import type { Theme } from "@/styles/theme";
 import type { TurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
-import {
-  getWorkingIndicatorDotStrength,
-  WORKING_INDICATOR_CYCLE_MS,
-  WORKING_INDICATOR_OFFSETS,
-} from "@/utils/working-indicator";
 import {
   collectAssistantTurnContentForStreamRenderStrategy,
   type StreamStrategy,
 } from "./agent-stream-render-strategy";
 import { AssistantTurnFooter, LiveElapsed, STREAM_METADATA_FONT_SIZE } from "./message";
+import { SyncedLoader } from "./synced-loader";
+
+const ThemedSyncedLoader = withUnistyles(SyncedLoader);
+const workingIndicatorColorMapping = (theme: Theme) => ({
+  color:
+    theme.colorScheme === "light"
+      ? theme.colors.palette.amber[700]
+      : theme.colors.palette.amber[500],
+});
 
 export type TurnContentStrategy = StreamStrategy;
 
@@ -130,63 +127,10 @@ const WorkingIndicator = memo(function WorkingIndicator({
 }: {
   inFlightTurnStartedAt?: Date | null;
 }) {
-  const progress = useSharedValue(0);
-
-  useEffect(() => {
-    progress.value = 0;
-    progress.value = withRepeat(
-      withTiming(1, {
-        duration: WORKING_INDICATOR_CYCLE_MS,
-        easing: Easing.linear,
-      }),
-      -1,
-      false,
-    );
-
-    return () => {
-      cancelAnimation(progress);
-      progress.value = 0;
-    };
-  }, [progress]);
-
-  const translateDistance = -2;
-  const dotOneStyle = useAnimatedStyle(() => {
-    const strength = getWorkingIndicatorDotStrength(progress.value, WORKING_INDICATOR_OFFSETS[0]);
-    return {
-      opacity: 0.3 + strength * 0.7,
-      transform: [{ translateY: strength * translateDistance }],
-    };
-  });
-
-  const dotTwoStyle = useAnimatedStyle(() => {
-    const strength = getWorkingIndicatorDotStrength(progress.value, WORKING_INDICATOR_OFFSETS[1]);
-    return {
-      opacity: 0.3 + strength * 0.7,
-      transform: [{ translateY: strength * translateDistance }],
-    };
-  });
-
-  const dotThreeStyle = useAnimatedStyle(() => {
-    const strength = getWorkingIndicatorDotStrength(progress.value, WORKING_INDICATOR_OFFSETS[2]);
-    return {
-      opacity: 0.3 + strength * 0.7,
-      transform: [{ translateY: strength * translateDistance }],
-    };
-  });
-
-  const dotOneCombinedStyle = useMemo(() => [stylesheet.workingDot, dotOneStyle], [dotOneStyle]);
-  const dotTwoCombinedStyle = useMemo(() => [stylesheet.workingDot, dotTwoStyle], [dotTwoStyle]);
-  const dotThreeCombinedStyle = useMemo(
-    () => [stylesheet.workingDot, dotThreeStyle],
-    [dotThreeStyle],
-  );
-
   return (
     <View style={stylesheet.turnFooterContent}>
-      <View style={stylesheet.workingDotsRow}>
-        <Animated.View style={dotOneCombinedStyle} />
-        <Animated.View style={dotTwoCombinedStyle} />
-        <Animated.View style={dotThreeCombinedStyle} />
+      <View style={stylesheet.workingLoader}>
+        <ThemedSyncedLoader size={14} uniProps={workingIndicatorColorMapping} />
       </View>
       {inFlightTurnStartedAt ? (
         <LiveElapsed
@@ -272,16 +216,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     fontSize: STREAM_METADATA_FONT_SIZE,
     fontVariant: ["tabular-nums"],
   },
-  workingDotsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    transform: [{ translateY: 1 }],
-  },
-  workingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.colors.foregroundMuted,
+  workingLoader: {
+    marginLeft: -2,
   },
 }));
