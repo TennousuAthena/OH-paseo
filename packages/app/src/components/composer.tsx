@@ -99,6 +99,7 @@ import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
 import { useGithubSearchQuery } from "@/git/use-github-search-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useComposerGithubAutoAttach } from "./use-composer-github-auto-attach";
+import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
 
 type QueuedMessage = QueuedComposerMessage;
 
@@ -607,6 +608,7 @@ interface ComposerProps {
   serverId: string;
   isPaneFocused: boolean;
   onSubmitMessage?: (payload: MessagePayload) => Promise<void>;
+  onClientSlashCommand?: (command: ClientSlashCommand) => Promise<void>;
   /** When true, the submit button is enabled even without text or images (e.g. external attachment selected). */
   hasExternalContent?: boolean;
   /** When true, the composer can submit even with no text or attachments. */
@@ -807,6 +809,7 @@ export function Composer({
   serverId,
   isPaneFocused,
   onSubmitMessage,
+  onClientSlashCommand,
   hasExternalContent = false,
   allowEmptySubmit = false,
   submitButtonAccessibilityLabel,
@@ -907,6 +910,41 @@ export function Composer({
     `message-input:${serverId}:${agentId}:${Math.random().toString(36).slice(2)}`,
   );
 
+  const runClientSlashCommand = useCallback(
+    (command: ClientSlashCommand): boolean => {
+      if (command.execution !== "immediate" || !onClientSlashCommand) {
+        return false;
+      }
+
+      if (blurOnSubmit) {
+        messageInputRef.current?.blur();
+      }
+      clearDraft("sent");
+      setUserInput("");
+      setSelectedAttachments([]);
+      resetSuppression();
+      setSendError(null);
+      setIsProcessing(true);
+      void onClientSlashCommand(command)
+        .catch((error) => {
+          console.error("[Composer] Failed to run client slash command:", error);
+          setSendError(error instanceof Error ? error.message : String(error));
+        })
+        .finally(() => {
+          setIsProcessing(false);
+        });
+      return true;
+    },
+    [
+      blurOnSubmit,
+      clearDraft,
+      onClientSlashCommand,
+      resetSuppression,
+      setSelectedAttachments,
+      setUserInput,
+    ],
+  );
+
   const autocomplete = useAgentAutocomplete({
     userInput,
     cursorIndex,
@@ -914,6 +952,8 @@ export function Composer({
     serverId,
     agentId,
     draftConfig: commandDraftConfig,
+    canExecuteClientSlashCommand: buildOutgoingAttachments(attachments).length === 0,
+    onClientSlashCommand: runClientSlashCommand,
     onAutocompleteApplied: () => {
       messageInputRef.current?.focus();
     },
@@ -1109,16 +1149,27 @@ export function Composer({
 
   const handleSubmit = useCallback(
     (payload: MessagePayload) => {
+      const outgoingAttachments = buildOutgoingAttachments(attachments);
+      const clientSlashCommand = resolveClientSlashCommand({
+        text: payload.text,
+        hasAttachments: outgoingAttachments.length > 0,
+      });
+      if (clientSlashCommand && runClientSlashCommand(clientSlashCommand)) {
+        return;
+      }
+
       if (blurOnSubmit) {
         messageInputRef.current?.blur();
       }
-      void sendMessageWithContent(
-        payload.text,
-        buildOutgoingAttachments(attachments),
-        payload.forceSend,
-      );
+      void sendMessageWithContent(payload.text, outgoingAttachments, payload.forceSend);
     },
-    [attachments, blurOnSubmit, buildOutgoingAttachments, sendMessageWithContent],
+    [
+      attachments,
+      blurOnSubmit,
+      buildOutgoingAttachments,
+      runClientSlashCommand,
+      sendMessageWithContent,
+    ],
   );
 
   const handlePickImage = useCallback(async () => {
@@ -1280,18 +1331,25 @@ export function Composer({
 
   const handleQueue = useCallback(
     (payload: MessagePayload) => {
-      queueMessage(payload.text, buildOutgoingAttachments(attachments));
+      const outgoingAttachments = buildOutgoingAttachments(attachments);
+      const clientSlashCommand = resolveClientSlashCommand({
+        text: payload.text,
+        hasAttachments: outgoingAttachments.length > 0,
+      });
+      if (clientSlashCommand && runClientSlashCommand(clientSlashCommand)) {
+        return;
+      }
+      queueMessage(payload.text, outgoingAttachments);
     },
-    [attachments, buildOutgoingAttachments, queueMessage],
+    [attachments, buildOutgoingAttachments, queueMessage, runClientSlashCommand],
   );
 
   const hasSendableContent = userInput.trim().length > 0 || selectedAttachments.length > 0;
 
   // Handle keyboard navigation for command autocomplete.
   const handleCommandKeyPress = useCallback(
-    (event: { key: string; preventDefault: () => void }) => {
-      return autocompleteOnKeyPressRef.current(event);
-    },
+    (event: { key: string; preventDefault: () => void }) =>
+      autocompleteOnKeyPressRef.current(event),
     [],
   );
 

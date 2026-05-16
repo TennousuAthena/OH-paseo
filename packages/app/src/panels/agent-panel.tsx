@@ -48,9 +48,11 @@ import {
   deriveRouteBottomAnchorRequest,
 } from "@/screens/agent/agent-ready-screen-bottom-anchor";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
-import { buildDraftStoreKey } from "@/stores/draft-keys";
+import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
 import { type Agent, useSessionStore } from "@/stores/session-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import type { Theme } from "@/styles/theme";
 import { SubagentsSection, useArchiveSubagent, useSubagentsForParent } from "@/subagents";
 import type { PendingPermission } from "@/types/shared";
@@ -60,6 +62,7 @@ import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agen
 import { mergePendingCreateImages } from "@/utils/pending-create-images";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
+import { buildDraftAgentSetup, type ClientSlashCommand } from "@/client-slash-commands";
 
 interface ChatAgentStateShape {
   serverId: string | null;
@@ -1257,7 +1260,11 @@ function ActiveAgentComposer({
   const insets = useSafeAreaInsets();
   const isCompact = useIsCompactFormFactor();
   const paneContext = usePaneContext();
-  const { workspaceId } = paneContext;
+  const { workspaceId, tabId, retargetCurrentTab } = paneContext;
+  const { archiveAgent } = useArchiveAgent();
+  const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
+  const hideWorkspaceAgent = useWorkspaceLayoutStore((state) => state.hideAgent);
+  const unpinWorkspaceAgent = useWorkspaceLayoutStore((state) => state.unpinAgent);
   const subagentRows = useSubagentsForParent({
     serverId,
     parentAgentId: agentId,
@@ -1305,6 +1312,44 @@ function ActiveAgentComposer({
     [isCompact, openFileExplorerForCheckout, serverId, setExplorerTabForCheckout],
   );
 
+  const handleClientSlashCommand = useCallback(
+    async (command: ClientSlashCommand) => {
+      const agent = resolveChatAgentFromSession(useSessionStore.getState(), serverId, agentId);
+      if (!agent) {
+        throw new Error("Agent not found");
+      }
+
+      const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+      if (workspaceKey) {
+        unpinWorkspaceAgent(workspaceKey, agentId);
+        hideWorkspaceAgent(workspaceKey, agentId);
+      }
+
+      if (command.kind === "replace-agent-with-draft") {
+        retargetCurrentTab({
+          kind: "draft",
+          draftId: generateDraftId(),
+          setup: buildDraftAgentSetup(agent),
+        });
+      } else if (workspaceKey) {
+        closeWorkspaceTab(workspaceKey, tabId);
+      }
+
+      await archiveAgent({ serverId, agentId });
+    },
+    [
+      agentId,
+      archiveAgent,
+      closeWorkspaceTab,
+      hideWorkspaceAgent,
+      retargetCurrentTab,
+      serverId,
+      tabId,
+      unpinWorkspaceAgent,
+      workspaceId,
+    ],
+  );
+
   const inputAreaStyle = useMemo(
     () => [styles.inputAreaWrapper, { paddingBottom: insets.bottom }],
     [insets.bottom],
@@ -1336,6 +1381,7 @@ function ActiveAgentComposer({
         onAddImages={onAddImages}
         onComposerHeightChange={onComposerHeightChange}
         onMessageSent={onMessageSent}
+        onClientSlashCommand={handleClientSlashCommand}
       />
     </View>
   );

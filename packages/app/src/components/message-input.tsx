@@ -1455,7 +1455,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const handleSendMessage = useCallback(
       () =>
         sendMessageImpl({
-          value,
+          value: valueRef.current,
           attachments,
           hasExternalContent,
           allowEmptySubmit,
@@ -1466,7 +1466,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         }),
       [
         allowEmptySubmit,
-        value,
         attachments,
         cwd,
         onSubmit,
@@ -1479,14 +1478,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const handleQueueMessage = useCallback(
       () =>
         queueMessageImpl({
-          value,
+          value: valueRef.current,
           attachments,
           cwd,
           onQueue,
           onChangeText,
           onMinimizeHeight: minimizeInputHeight,
         }),
-      [value, attachments, cwd, onQueue, onChangeText, minimizeInputHeight],
+      [attachments, cwd, onQueue, onChangeText, minimizeInputHeight],
     );
 
     const handleDefaultSendAction = useCallback(() => {
@@ -1629,6 +1628,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     const handleInputChange = useCallback(
       (nextValue: string) => {
+        valueRef.current = nextValue;
         onChangeText(nextValue);
       },
       [onChangeText],

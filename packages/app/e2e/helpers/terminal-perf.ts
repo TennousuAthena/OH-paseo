@@ -29,6 +29,11 @@ export interface TerminalPerfDaemonClient {
     featureValues?: Record<string, unknown>;
     initialPrompt?: string;
   }): Promise<{ id: string; status: string }>;
+  waitForAgentUpsert(
+    agentId: string,
+    predicate: (snapshot: { status: string }) => boolean,
+    timeout?: number,
+  ): Promise<{ status: string }>;
   sendAgentMessage(agentId: string, text: string): Promise<void>;
   subscribeTerminal(
     terminalId: string,
