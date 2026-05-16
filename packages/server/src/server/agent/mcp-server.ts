@@ -48,7 +48,12 @@ import type {
   CreatePaseoWorktreeWorkflowResult,
 } from "../worktree-session.js";
 import type { ScheduleService } from "../schedule/service.js";
-import { ScheduleSummarySchema, StoredScheduleSchema } from "../schedule/types.js";
+import {
+  ScheduleRunSchema,
+  ScheduleSummarySchema,
+  StoredScheduleSchema,
+} from "../schedule/types.js";
+import type { ScheduleCadence, UpdateScheduleInput } from "../schedule/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
 import { getAgentProviderDefinition } from "./provider-manifest.js";
 import { resolveAndValidateCreateAgentMode } from "./create-agent-mode.js";
@@ -253,6 +258,113 @@ function resolveScheduleProviderAndModel(params: {
   return {
     provider: provider,
     model,
+  };
+}
+
+function resolveScheduleUpdateProviderAndModel(params: {
+  provider?: string;
+  model?: string | null;
+}): { provider?: string; model?: string | null } {
+  const providerInput = params.provider?.trim();
+  const modelInput = typeof params.model === "string" ? params.model.trim() : params.model;
+
+  if (params.model !== undefined && modelInput === "") {
+    throw new Error("model cannot be empty");
+  }
+
+  if (!providerInput) {
+    return params.model !== undefined ? { model: modelInput } : {};
+  }
+
+  const slashIndex = providerInput.indexOf("/");
+  if (slashIndex === -1) {
+    return {
+      provider: providerInput,
+      ...(params.model !== undefined ? { model: modelInput } : {}),
+    };
+  }
+
+  const provider = providerInput.slice(0, slashIndex).trim();
+  const modelFromProvider = providerInput.slice(slashIndex + 1).trim();
+  if (!provider || !modelFromProvider) {
+    throw new Error("provider must be <provider> or <provider>/<model>");
+  }
+  if (params.model === null) {
+    throw new Error("provider specifies a model but model is null");
+  }
+  if (typeof modelInput === "string" && modelInput !== modelFromProvider) {
+    throw new Error("Conflicting model values provided");
+  }
+
+  return {
+    provider,
+    model: modelInput ?? modelFromProvider,
+  };
+}
+
+interface ScheduleUpdateToolInput {
+  id: string;
+  every?: string;
+  cron?: string;
+  name?: string | null;
+  prompt?: string;
+  maxRuns?: number | null;
+  provider?: string;
+  model?: string | null;
+  mode?: string | null;
+  cwd?: string;
+  expiresIn?: string;
+  clearExpires?: boolean;
+}
+
+function resolveScheduleUpdateCadence(input: ScheduleUpdateToolInput): ScheduleCadence | undefined {
+  if (input.every !== undefined && input.cron !== undefined) {
+    throw new Error("Specify at most one of every or cron");
+  }
+  if (input.every !== undefined) {
+    return { type: "every", everyMs: parseDurationString(input.every) };
+  }
+  if (input.cron !== undefined) {
+    return { type: "cron", expression: input.cron.trim() };
+  }
+  return undefined;
+}
+
+function resolveScheduleUpdateExpiresAt(input: ScheduleUpdateToolInput): string | null | undefined {
+  if (input.expiresIn !== undefined && input.clearExpires) {
+    throw new Error("Specify at most one of expiresIn or clearExpires");
+  }
+  if (input.expiresIn !== undefined) {
+    return new Date(Date.now() + parseDurationString(input.expiresIn)).toISOString();
+  }
+  if (input.clearExpires) {
+    return null;
+  }
+  return undefined;
+}
+
+function buildScheduleUpdateInput(input: ScheduleUpdateToolInput): UpdateScheduleInput {
+  const cadence = resolveScheduleUpdateCadence(input);
+  const expiresAt = resolveScheduleUpdateExpiresAt(input);
+  const providerModelPatch = resolveScheduleUpdateProviderAndModel({
+    provider: input.provider,
+    model: input.model,
+  });
+  const newAgentConfig = {
+    ...(providerModelPatch.provider !== undefined ? { provider: providerModelPatch.provider } : {}),
+    ...(providerModelPatch.model !== undefined ? { model: providerModelPatch.model } : {}),
+    ...(input.mode !== undefined ? { modeId: input.mode } : {}),
+    ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+  };
+
+  return {
+    id: input.id,
+    ...(input.name !== undefined ? { name: input.name } : {}),
+    ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
+    ...(cadence !== undefined ? { cadence } : {}),
+    ...(input.maxRuns !== undefined ? { maxRuns: input.maxRuns } : {}),
+    ...(expiresAt !== undefined ? { expiresAt } : {}),
+    ...(Object.keys(newAgentConfig).length > 0 ? { newAgentConfig } : {}),
   };
 }
 
@@ -1758,6 +1870,93 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       return {
         content: [],
         structuredContent: ensureValidJson({ success: true }),
+      };
+    },
+  );
+
+  server.registerTool(
+    "update_schedule",
+    {
+      title: "Update schedule",
+      description:
+        "Update an existing schedule. Only provided fields are changed; omitted fields remain unchanged.",
+      inputSchema: {
+        id: z.string(),
+        every: z.string().optional().describe("New interval duration string (e.g. 5m, 1h)."),
+        cron: z.string().optional().describe("New cron expression."),
+        name: z.string().nullable().optional().describe("New name (null to clear)."),
+        prompt: z.string().trim().min(1).optional().describe("New prompt text."),
+        maxRuns: z
+          .number()
+          .int()
+          .positive()
+          .nullable()
+          .optional()
+          .describe("New max runs limit (null to clear)."),
+        provider: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe("New provider for new-agent target."),
+        model: z
+          .string()
+          .trim()
+          .min(1)
+          .nullable()
+          .optional()
+          .describe("New model for new-agent target (null to clear)."),
+        mode: z
+          .string()
+          .trim()
+          .min(1)
+          .nullable()
+          .optional()
+          .describe("New mode for new-agent target (null to clear)."),
+        cwd: z.string().trim().min(1).optional().describe("New cwd for new-agent target."),
+        expiresIn: z
+          .string()
+          .optional()
+          .describe("New relative expiry duration (for example: 1h, 2d)."),
+        clearExpires: z.boolean().optional().describe("Clear any schedule expiry."),
+      },
+      outputSchema: StoredScheduleSchema.shape,
+    },
+    async (input) => {
+      if (!scheduleService) {
+        throw new Error("Schedule service is not configured");
+      }
+
+      const schedule = await scheduleService.update(buildScheduleUpdateInput(input));
+
+      return {
+        content: [],
+        structuredContent: ensureValidJson(schedule),
+      };
+    },
+  );
+
+  server.registerTool(
+    "schedule_logs",
+    {
+      title: "Schedule logs",
+      description: "Get the run history (logs) for a schedule.",
+      inputSchema: {
+        id: z.string(),
+      },
+      outputSchema: {
+        runs: z.array(ScheduleRunSchema),
+      },
+    },
+    async ({ id }) => {
+      if (!scheduleService) {
+        throw new Error("Schedule service is not configured");
+      }
+
+      const runs = await scheduleService.logs(id);
+      return {
+        content: [],
+        structuredContent: ensureValidJson({ runs }),
       };
     },
   );
