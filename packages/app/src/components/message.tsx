@@ -68,7 +68,8 @@ import type { AgentAttachment } from "@server/shared/messages";
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
-import { type InlinePathTarget, parseInlinePathToken } from "@/utils/inline-path";
+import { parseInlinePathToken, type InlinePathTarget } from "@/utils/inline-path";
+import type { OpenFileDisposition } from "@/utils/workspace-file-open";
 import { getMarkdownListMarker, getMarkdownNextSiblingType } from "@/utils/markdown-list";
 import { type AssistantFileLinkSource } from "@/utils/assistant-file-link-resolver";
 import { useAssistantFileLinkResolver } from "@/hooks/use-assistant-file-link-resolver";
@@ -91,6 +92,11 @@ import {
 import { PlanCard } from "./plan-card";
 import { useToolCallSheet } from "./tool-call-sheet";
 import { ToolCallDetailsContent } from "./tool-call-details";
+import {
+  AssistantInlineCodePathLink,
+  AssistantMarkdownCodeLink,
+  AssistantMarkdownLink,
+} from "./assistant-file-link";
 import { getCompactionMarkerLabel } from "./message-compaction-label";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
 import { persistAttachmentFromBytes, persistAttachmentFromDataUrl } from "@/attachments/service";
@@ -709,7 +715,7 @@ export const LiveElapsed = memo(function LiveElapsed({
 interface AssistantMessageProps {
   message: string;
   timestamp: number;
-  onInlinePathPress?: (target: InlinePathTarget) => void;
+  onInlinePathPress?: (target: InlinePathTarget, disposition: OpenFileDisposition) => void;
   workspaceRoot?: string;
   serverId?: string;
   client?: DaemonClient | null;
@@ -999,70 +1005,6 @@ function resolveAssistantImageErrorText(fileError: unknown, dataError: unknown):
   if (fileError instanceof Error) return fileError.message;
   if (dataError instanceof Error) return dataError.message;
   return "Unable to load image preview.";
-}
-
-function MarkdownLink({
-  source,
-  style,
-  onPress,
-  onPrefetch,
-  children,
-}: {
-  source: AssistantFileLinkSource;
-  style: StyleProp<TextStyle>;
-  onPress: (source: AssistantFileLinkSource) => void;
-  onPrefetch: (source: AssistantFileLinkSource) => void;
-  children: ReactNode;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const href = source.href;
-  const handlePress = useCallback(() => onPress(source), [onPress, source]);
-  const handlePrefetch = useCallback(() => onPrefetch(source), [onPrefetch, source]);
-  const handleHoverIn = useCallback(() => {
-    setHovered(true);
-    handlePrefetch();
-  }, [handlePrefetch]);
-  const handleHoverOut = useCallback(() => setHovered(false), []);
-  const hoveredTextStyle = useMemo<StyleProp<TextStyle>>(
-    () => [style, hovered && { textDecorationLine: "underline" as const }],
-    [style, hovered],
-  );
-  if (isNative) {
-    return (
-      <Text accessibilityRole="link" onPress={handlePress} style={style}>
-        {children}
-      </Text>
-    );
-  }
-
-  return (
-    <a
-      href={href}
-      onClickCapture={preventAnchorNavigation}
-      onAuxClickCapture={preventAnchorNavigation}
-      style={MARKDOWN_LINK_ANCHOR_STYLE}
-    >
-      <Pressable
-        accessibilityRole="link"
-        onPress={handlePress}
-        onFocus={handlePrefetch}
-        onHoverIn={handleHoverIn}
-        onHoverOut={handleHoverOut}
-      >
-        <Text style={hoveredTextStyle}>{children}</Text>
-      </Pressable>
-    </a>
-  );
-}
-
-const MARKDOWN_LINK_ANCHOR_STYLE: React.CSSProperties = {
-  display: "contents",
-  color: "inherit",
-  textDecoration: "none",
-};
-
-function preventAnchorNavigation(event: React.MouseEvent<HTMLAnchorElement>): void {
-  event.preventDefault();
 }
 
 function getInlineCodeAutoLinkUrl(
@@ -1556,76 +1498,6 @@ function MarkdownInheritedText({
   return <Text style={style}>{children}</Text>;
 }
 
-interface MarkdownInheritedCodeLinkProps {
-  source: AssistantFileLinkSource;
-  inheritedStyles: TextStyle;
-  codeInlineStyle: TextStyle;
-  linkStyle: TextStyle;
-  onPress: (source: AssistantFileLinkSource) => void;
-  onPrefetch: (source: AssistantFileLinkSource) => void;
-  children: ReactNode;
-}
-
-function MarkdownInheritedCodeLink({
-  source,
-  inheritedStyles,
-  codeInlineStyle,
-  linkStyle,
-  onPress,
-  onPrefetch,
-  children,
-}: MarkdownInheritedCodeLinkProps) {
-  const style = useMemo(
-    () => [inheritedStyles, codeInlineStyle, linkStyle],
-    [inheritedStyles, codeInlineStyle, linkStyle],
-  );
-  return (
-    <MarkdownLink source={source} style={style} onPress={onPress} onPrefetch={onPrefetch}>
-      {children}
-    </MarkdownLink>
-  );
-}
-
-interface MarkdownInlinePathCodeLinkProps {
-  content: string;
-  inheritedStyles: TextStyle;
-  codeInlineStyle: TextStyle;
-  linkStyle: TextStyle;
-  onPress: (source: AssistantFileLinkSource) => void;
-  onPrefetch: (source: AssistantFileLinkSource) => void;
-}
-
-function MarkdownInlinePathCodeLink({
-  content,
-  inheritedStyles,
-  codeInlineStyle,
-  linkStyle,
-  onPress,
-  onPrefetch,
-}: MarkdownInlinePathCodeLinkProps) {
-  const source = useMemo<AssistantFileLinkSource>(
-    () => ({
-      href: content,
-      text: content,
-      sourceType: "inline-code",
-    }),
-    [content],
-  );
-
-  return (
-    <MarkdownInheritedCodeLink
-      source={source}
-      inheritedStyles={inheritedStyles}
-      codeInlineStyle={codeInlineStyle}
-      linkStyle={linkStyle}
-      onPress={onPress}
-      onPrefetch={onPrefetch}
-    >
-      {content}
-    </MarkdownInheritedCodeLink>
-  );
-}
-
 interface MarkdownListItemContentProps {
   contentStyle: ViewStyle;
   children: ReactNode;
@@ -1718,8 +1590,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   });
 
   const handleLinkPress = useCallback(
-    (source: AssistantFileLinkSource) => {
-      fileLinkResolver.open({ source });
+    (source: AssistantFileLinkSource, disposition: OpenFileDisposition) => {
+      fileLinkResolver.open({ source, disposition });
     },
     [fileLinkResolver],
   );
@@ -1731,7 +1603,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   );
   const handleMarkdownLinkPress = useCallback(
     (url: string) => {
-      fileLinkResolver.open({ source: { href: url } });
+      fileLinkResolver.open({ source: { href: url }, disposition: "main" });
       // react-native-markdown-display opens the link itself when this returns true.
       // We already handled it above, so return false to avoid duplicate opens.
       return false;
@@ -1815,7 +1687,7 @@ export const AssistantMessage = memo(function AssistantMessage({
 
         if (shouldResolveInlinePath) {
           return (
-            <MarkdownInlinePathCodeLink
+            <AssistantInlineCodePathLink
               key={node.key}
               content={content}
               inheritedStyles={inheritedStyles}
@@ -1823,6 +1695,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               linkStyle={styles.link}
               onPress={handleLinkPress}
               onPrefetch={handleLinkPrefetch}
+              workspaceRoot={workspaceRoot}
             />
           );
         }
@@ -1834,7 +1707,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             content,
           });
           return (
-            <MarkdownInheritedCodeLink
+            <AssistantMarkdownCodeLink
               key={node.key}
               source={source}
               inheritedStyles={inheritedStyles}
@@ -1842,9 +1715,10 @@ export const AssistantMessage = memo(function AssistantMessage({
               linkStyle={styles.link}
               onPress={handleLinkPress}
               onPrefetch={handleLinkPrefetch}
+              workspaceRoot={workspaceRoot}
             >
               {content}
-            </MarkdownInheritedCodeLink>
+            </AssistantMarkdownCodeLink>
           );
         }
 
@@ -1916,12 +1790,13 @@ export const AssistantMessage = memo(function AssistantMessage({
         </MarkdownParagraphView>
       ),
       link: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
-        <MarkdownLink
+        <AssistantMarkdownLink
           key={node.key}
           source={getMarkdownLinkSource(node)}
           style={styles.link}
           onPress={handleLinkPress}
           onPrefetch={handleLinkPrefetch}
+          workspaceRoot={workspaceRoot}
         >
           {Children.map(children, (child) => {
             if (!isValidElement(child)) return child;
@@ -1930,7 +1805,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               style: [childProps.style, { color: styles.link.color }],
             } as Partial<{ style: StyleProp<TextStyle> }>);
           })}
-        </MarkdownLink>
+        </AssistantMarkdownLink>
       ),
       image: (
         node: ASTNode,

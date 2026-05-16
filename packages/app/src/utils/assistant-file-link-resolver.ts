@@ -4,6 +4,7 @@ import {
   type AssistantFileLinkClassification,
   type InlinePathTarget,
 } from "./inline-path";
+import type { OpenFileDisposition } from "./workspace-file-open";
 
 export interface AssistantFileLinkContext {
   serverId?: string;
@@ -36,20 +37,24 @@ export interface AssistantFileLinkResolverDependencies {
     includeDirectories: false;
     limit: number;
   }) => Promise<DirectorySuggestionResult>;
-  openWorkspaceFile: (target: InlinePathTarget) => void;
+  openWorkspaceFile: (target: InlinePathTarget, disposition: OpenFileDisposition) => void;
   openExternalUrl: (url: string) => void | Promise<void>;
   onUnresolvedFileCandidate?: (token: string) => void;
   isCurrentContext?: (context: AssistantFileLinkContext) => boolean;
 }
 
 export interface AssistantFileLinkResolver {
-  prefetch(input: AssistantFileLinkInteraction): Promise<ResolvedAssistantFileLink>;
-  open(input: AssistantFileLinkInteraction): Promise<AssistantFileLinkOpenResult>;
+  prefetch(input: AssistantFileLinkPrefetchInput): Promise<ResolvedAssistantFileLink>;
+  open(input: AssistantFileLinkOpenInput): Promise<AssistantFileLinkOpenResult>;
 }
 
-export interface AssistantFileLinkInteraction {
+export interface AssistantFileLinkPrefetchInput {
   context: AssistantFileLinkContext;
   source: AssistantFileLinkSource;
+}
+
+export interface AssistantFileLinkOpenInput extends AssistantFileLinkPrefetchInput {
+  disposition: OpenFileDisposition;
 }
 
 export type ResolvedAssistantFileLink =
@@ -86,7 +91,9 @@ export function createAssistantFileLinkResolver(
   const cache = new Map<string, CachedAssistantFileLink>();
   const inFlight = new Map<string, Promise<CachedAssistantFileLink>>();
 
-  async function resolve(input: AssistantFileLinkInteraction): Promise<ResolvedAssistantFileLink> {
+  async function resolve(
+    input: AssistantFileLinkPrefetchInput,
+  ): Promise<ResolvedAssistantFileLink> {
     const parsed = parseInteraction(input);
     if (!parsed) {
       return { kind: "ignored" };
@@ -144,7 +151,7 @@ export function createAssistantFileLinkResolver(
       }
 
       if (resolved.kind === "file") {
-        dependencies.openWorkspaceFile(resolved.target);
+        dependencies.openWorkspaceFile(resolved.target, input.disposition);
         return { ...resolved, opened: true };
       }
 
@@ -174,7 +181,7 @@ export function getAssistantFileLinkToken(source: AssistantFileLinkSource): stri
 }
 
 function parseInteraction(
-  input: AssistantFileLinkInteraction,
+  input: AssistantFileLinkPrefetchInput,
 ): ParsedAssistantFileLinkInteraction | null {
   const token = getAssistantFileLinkToken(input.source).trim();
   if (!token) {

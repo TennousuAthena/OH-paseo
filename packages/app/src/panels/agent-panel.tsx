@@ -59,6 +59,7 @@ import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
+import type { OpenFileDisposition } from "@/utils/workspace-file-open";
 import { mergePendingCreateImages } from "@/utils/pending-create-images";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
@@ -288,11 +289,11 @@ function AgentPanel() {
   const { isInteractive } = usePaneFocus();
   invariant(target.kind === "agent", "AgentPanel requires agent target");
 
-  function openWorkspaceFile(input: { filePath: string }) {
-    openFileInWorkspace(input.filePath);
-  }
-
-  const handleOpenWorkspaceFile = useStableEvent(openWorkspaceFile);
+  const handleOpenWorkspaceFile = useStableEvent(
+    ({ filePath, disposition }: { filePath: string; disposition: OpenFileDisposition }) => {
+      openFileInWorkspace(filePath, disposition);
+    },
+  );
 
   return (
     <AgentPanelContent
@@ -365,7 +366,7 @@ function AgentPanelContent({
   serverId: string;
   agentId: string;
   isPaneFocused: boolean;
-  onOpenWorkspaceFile?: (input: { filePath: string }) => void;
+  onOpenWorkspaceFile?: (input: { filePath: string; disposition: OpenFileDisposition }) => void;
 }) {
   const resolvedAgentId = agentId.trim() || undefined;
   const resolvedServerId = serverId.trim() || undefined;
@@ -427,7 +428,7 @@ function AgentPanelBody({
   client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
   isConnected: boolean;
   connectionStatus: HostRuntimeConnectionStatus;
-  onOpenWorkspaceFile?: (input: { filePath: string }) => void;
+  onOpenWorkspaceFile?: (input: { filePath: string; disposition: OpenFileDisposition }) => void;
 }) {
   const { isArchivingAgent: _isArchivingAgent } = useArchiveAgent();
   const hasSession = useSessionStore((state) => Boolean(state.sessions[serverId]));
@@ -592,7 +593,7 @@ function ChatAgentContent({
   client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
   isConnected: boolean;
   connectionStatus: HostRuntimeConnectionStatus;
-  onOpenWorkspaceFile?: (input: { filePath: string }) => void;
+  onOpenWorkspaceFile?: (input: { filePath: string; disposition: OpenFileDisposition }) => void;
 }) {
   const panelToast = useToastHost();
   const { isArchivingAgent } = useArchiveAgent();
@@ -1041,7 +1042,7 @@ function AgentStreamSection({
   routeBottomAnchorRequest: RouteBottomAnchorRequest;
   hasAppliedAuthoritativeHistory: boolean;
   toast: ReturnType<typeof useToastHost>["api"];
-  onOpenWorkspaceFile?: (input: { filePath: string }) => void;
+  onOpenWorkspaceFile?: (input: { filePath: string; disposition: OpenFileDisposition }) => void;
 }) {
   const streamItemsRaw = useSessionStore((state) =>
     agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
