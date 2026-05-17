@@ -1502,6 +1502,9 @@ function WorkspaceScreenContent({
     [normalizedServerId, normalizedWorkspaceId],
   );
   const openWorkspaceTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
+  const openWorkspaceChildTabFocused = useWorkspaceLayoutStore(
+    (state) => state.openChildTabFocused,
+  );
   const focusWorkspacePane = useWorkspaceLayoutStore((state) => state.focusPane);
   const hasHydratedWorkspaces = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.hasHydratedWorkspaces ?? false,
@@ -2039,7 +2042,7 @@ function WorkspaceScreenContent({
   );
 
   const handleOpenFileFromChat = useCallback(
-    (location: WorkspaceFileLocation) => {
+    (location: WorkspaceFileLocation, options?: { parentTabId?: string | null }) => {
       const normalizedLocation = normalizeWorkspaceFileLocation(location);
       if (!normalizedLocation) {
         return;
@@ -2050,25 +2053,36 @@ function WorkspaceScreenContent({
       if (!persistenceKey) {
         return;
       }
-      const tabId = openWorkspaceTabFocused(
-        persistenceKey,
-        createWorkspaceFileTabTarget(normalizedLocation),
-      );
+      const target = createWorkspaceFileTabTarget(normalizedLocation);
+      const tabId = options?.parentTabId
+        ? openWorkspaceChildTabFocused(persistenceKey, target, options.parentTabId)
+        : openWorkspaceTabFocused(persistenceKey, target);
       if (tabId) {
         navigateToTabId(tabId);
       }
     },
-    [isMobile, navigateToTabId, openWorkspaceTabFocused, persistenceKey, showMobileAgent],
+    [
+      isMobile,
+      navigateToTabId,
+      openWorkspaceChildTabFocused,
+      openWorkspaceTabFocused,
+      persistenceKey,
+      showMobileAgent,
+    ],
   );
 
   const handleOpenFileFromChatInSidePane = useCallback(
-    (input: { location: WorkspaceFileLocation; sourcePaneId?: string }) => {
+    (input: {
+      location: WorkspaceFileLocation;
+      sourcePaneId?: string;
+      parentTabId?: string | null;
+    }) => {
       const location = normalizeWorkspaceFileLocation(input.location);
       if (!location) {
         return;
       }
       if (!persistenceKey || isMobile || !input.sourcePaneId) {
-        handleOpenFileFromChat(location);
+        handleOpenFileFromChat(location, { parentTabId: input.parentTabId });
         return;
       }
 
@@ -2088,7 +2102,9 @@ function WorkspaceScreenContent({
         });
       }
 
-      const tabId = openWorkspaceTabFocused(persistenceKey, target);
+      const tabId = input.parentTabId
+        ? openWorkspaceChildTabFocused(persistenceKey, target, input.parentTabId)
+        : openWorkspaceTabFocused(persistenceKey, target);
       if (tabId) {
         navigateToTabId(tabId);
       }
@@ -2098,6 +2114,7 @@ function WorkspaceScreenContent({
       isMobile,
       focusWorkspacePane,
       navigateToTabId,
+      openWorkspaceChildTabFocused,
       openWorkspaceTabFocused,
       persistenceKey,
       splitWorkspacePaneEmpty,
@@ -2756,7 +2773,7 @@ function WorkspaceScreenContent({
           if (input.focusPaneBeforeOpen && input.paneId) {
             focusWorkspacePane(persistenceKey, input.paneId);
           }
-          const tabId = openWorkspaceTabFocused(persistenceKey, target);
+          const tabId = openWorkspaceChildTabFocused(persistenceKey, target, input.tab.tabId);
           if (tabId) {
             navigateToTabId(tabId);
           }
@@ -2782,10 +2799,11 @@ function WorkspaceScreenContent({
             handleOpenFileFromChatInSidePane({
               location: request.location,
               sourcePaneId: input.paneId ?? undefined,
+              parentTabId: input.tab.tabId,
             });
             return;
           }
-          handleOpenFileFromChat(request.location);
+          handleOpenFileFromChat(request.location, { parentTabId: input.tab.tabId });
         },
         onOpenImportSheet: openImportSheet,
       }),
@@ -2798,7 +2816,7 @@ function WorkspaceScreenContent({
       normalizedServerId,
       normalizedWorkspaceId,
       openImportSheet,
-      openWorkspaceTabFocused,
+      openWorkspaceChildTabFocused,
       persistenceKey,
       convertWorkspaceDraftToAgent,
       retargetWorkspaceTab,

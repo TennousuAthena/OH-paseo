@@ -429,6 +429,90 @@ describe("workspace-layout-store actions", () => {
     expect(pane.focusedTabId).toBe(secondTabId);
   });
 
+  it("closing a focused middle tab selects the tab to its right", () => {
+    const workspaceKey = createWorkspaceKey();
+    const firstTabId = "draft-1";
+    const closedTabId = "draft-2";
+    const rightTabId = "draft-3";
+
+    workspaceLayoutStore.setState((state) => ({
+      ...state,
+      layoutByWorkspace: {
+        ...state.layoutByWorkspace,
+        [workspaceKey]: {
+          root: createPane({
+            id: "main",
+            tabIds: [firstTabId, closedTabId, rightTabId],
+            focusedTabId: closedTabId,
+          }),
+          focusedPaneId: "main",
+        },
+      },
+    }));
+
+    workspaceLayoutStore.getState().closeTab(workspaceKey, closedTabId);
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    const pane = findPaneById(layout.root, "main")!;
+
+    expect(pane.tabIds).toEqual([firstTabId, rightTabId]);
+    expect(pane.focusedTabId).toBe(rightTabId);
+  });
+
+  it("closing a focused child tab returns to its parent before using tab-strip order", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    const parentTabId = store.openTabFocused(workspaceKey, {
+      kind: "draft",
+      draftId: "draft-parent",
+    });
+    const childTabId = store.openChildTabFocused(
+      workspaceKey,
+      { kind: "draft", draftId: "draft-child" },
+      parentTabId!,
+    );
+    const rightTabId = store.openTabFocused(workspaceKey, {
+      kind: "draft",
+      draftId: "draft-right",
+    });
+    store.focusTab(workspaceKey, childTabId!);
+
+    workspaceLayoutStore.getState().closeTab(workspaceKey, childTabId!);
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    const pane = findPaneById(layout.root, "main")!;
+
+    expect(pane.tabIds).toEqual([parentTabId, rightTabId]);
+    expect(pane.focusedTabId).toBe(parentTabId);
+  });
+
+  it("closing a focused last tab selects the tab to its left", () => {
+    const workspaceKey = createWorkspaceKey();
+    const leftTabId = "draft-1";
+    const closedTabId = "draft-2";
+
+    workspaceLayoutStore.setState((state) => ({
+      ...state,
+      layoutByWorkspace: {
+        ...state.layoutByWorkspace,
+        [workspaceKey]: {
+          root: createPane({
+            id: "main",
+            tabIds: [leftTabId, closedTabId],
+            focusedTabId: closedTabId,
+          }),
+          focusedPaneId: "main",
+        },
+      },
+    }));
+
+    workspaceLayoutStore.getState().closeTab(workspaceKey, closedTabId);
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    const pane = findPaneById(layout.root, "main")!;
+
+    expect(pane.tabIds).toEqual([leftTabId]);
+    expect(pane.focusedTabId).toBe(leftTabId);
+  });
+
   it("unfocuses and restores the previous focused pane", () => {
     const workspaceKey = createWorkspaceKey();
     const store = workspaceLayoutStore.getState();
