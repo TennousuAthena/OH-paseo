@@ -184,7 +184,7 @@ const lightSemanticColors = {
   accent: "#20744A",
   accentBright: "#239956",
   accentForeground: "#ffffff",
-  accentSubtle: darkenRgba("#20744A", 0.3, 0.15, 0.3),
+  accentSubtle: darkenRgba("#20744A", 0.3, 0.15, 0.15),
 
   // Semantic
   destructive: "#b04138", // dark warm red on white — calm but unambiguously red
@@ -299,7 +299,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     accent: tint.accent,
     accentBright: tint.accentBright,
     accentForeground: "#ffffff",
-    accentSubtle: darkenRgba(tint.accent, 0.3, 0.2, 0.3),
+    accentSubtle: darkenRgba(tint.accent, 0.3, 0.2, 0.15),
 
     destructive: tint.destructive,
     destructiveForeground: "#ffffff",
