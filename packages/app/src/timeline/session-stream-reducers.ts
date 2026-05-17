@@ -3,7 +3,12 @@ import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 import type { Agent } from "@/stores/session-store";
 import { useSessionStore } from "@/stores/session-store";
 import type { StreamItem } from "@/types/stream";
-import { applyStreamEvent, hydrateStreamState, reduceStreamUpdate } from "@/types/stream";
+import {
+  applyStreamEvent,
+  coalesceAgentToolCallItems,
+  hydrateStreamState,
+  reduceStreamUpdate,
+} from "@/types/stream";
 
 const AGENT_STREAM_REDUCER_FLUSH_DELAY_MS = 16 * 3;
 
@@ -347,10 +352,10 @@ function mergePrependedCanonicalTail(olderTail: StreamItem[], currentTail: Strea
   const olderLast = olderTail.at(-1);
   const currentFirst = currentTail[0];
   if (olderLast?.kind !== "assistant_message" || currentFirst?.kind !== "assistant_message") {
-    return [...olderTail, ...currentTail];
+    return coalesceAgentToolCallItems([...olderTail, ...currentTail]);
   }
 
-  return [
+  return coalesceAgentToolCallItems([
     ...olderTail.slice(0, -1),
     {
       ...olderLast,
@@ -358,7 +363,7 @@ function mergePrependedCanonicalTail(olderTail: StreamItem[], currentTail: Strea
       timestamp: currentFirst.timestamp,
     },
     ...currentTail.slice(1),
-  ];
+  ]);
 }
 
 function applyTimelineIncrementalPath(args: {

@@ -438,6 +438,36 @@ function mergeAgentToolCallStatus(
   return "running";
 }
 
+function mergeAgentToolCallItem(
+  existing: AgentToolCallItem,
+  data: AgentToolCallData,
+  timestamp: Date,
+): AgentToolCallItem {
+  const mergedStatus = mergeAgentToolCallStatus(existing.payload.data.status, data.status);
+  const mergedError =
+    mergedStatus === "failed"
+      ? (data.error ?? existing.payload.data.error ?? { message: "Tool call failed" })
+      : null;
+  const mergedMetadata = mergeToolCallMetadata(existing.payload.data.metadata, data.metadata);
+  const mergedDetail = mergeToolCallDetail(existing.payload.data.detail, data.detail);
+
+  return {
+    ...existing,
+    timestamp,
+    payload: {
+      source: "agent",
+      data: {
+        ...existing.payload.data,
+        ...data,
+        status: mergedStatus,
+        error: mergedError,
+        detail: mergedDetail,
+        metadata: mergedMetadata,
+      },
+    },
+  };
+}
+
 function appendAgentToolCall(
   state: StreamItem[],
   data: AgentToolCallData,
@@ -450,42 +480,23 @@ function appendAgentToolCall(
     if (!existing || !isAgentToolCallItem(existing)) {
       return state;
     }
-    const mergedStatus = mergeAgentToolCallStatus(existing.payload.data.status, data.status);
-    const mergedError =
-      mergedStatus === "failed"
-        ? (data.error ?? existing.payload.data.error ?? { message: "Tool call failed" })
-        : null;
-    const mergedMetadata = mergeToolCallMetadata(existing.payload.data.metadata, data.metadata);
-    const mergedDetail = mergeToolCallDetail(existing.payload.data.detail, data.detail);
+    const merged = mergeAgentToolCallItem(existing, data, timestamp);
 
     if (
-      data.provider === existing.payload.data.provider &&
-      data.callId === existing.payload.data.callId &&
-      data.name === existing.payload.data.name &&
-      mergedStatus === existing.payload.data.status &&
-      mergedError === existing.payload.data.error &&
-      mergedDetail === existing.payload.data.detail &&
-      mergedMetadata === existing.payload.data.metadata
+      merged.timestamp === existing.timestamp &&
+      merged.payload.data.provider === existing.payload.data.provider &&
+      merged.payload.data.callId === existing.payload.data.callId &&
+      merged.payload.data.name === existing.payload.data.name &&
+      merged.payload.data.status === existing.payload.data.status &&
+      merged.payload.data.error === existing.payload.data.error &&
+      merged.payload.data.detail === existing.payload.data.detail &&
+      merged.payload.data.metadata === existing.payload.data.metadata
     ) {
       return state;
     }
 
     const next = [...state];
-    next[existingIndex] = {
-      ...existing,
-      timestamp,
-      payload: {
-        source: "agent",
-        data: {
-          ...existing.payload.data,
-          ...data,
-          status: mergedStatus,
-          error: mergedError,
-          detail: mergedDetail,
-          metadata: mergedMetadata,
-        },
-      },
-    };
+    next[existingIndex] = merged;
     return next;
   }
 
@@ -503,6 +514,28 @@ function appendAgentToolCall(
   };
 
   return [...state, item];
+}
+
+export function coalesceAgentToolCallItems(items: StreamItem[]): StreamItem[] {
+  const state: StreamItem[] = [];
+  const toolCallIndexByCallId = new Map<string, number>();
+  for (const item of items) {
+    if (!isAgentToolCallItem(item)) {
+      state.push(item);
+      continue;
+    }
+    const existingIndex = toolCallIndexByCallId.get(item.payload.data.callId);
+    if (existingIndex === undefined) {
+      toolCallIndexByCallId.set(item.payload.data.callId, state.length);
+      state.push(item);
+      continue;
+    }
+    const existing = state[existingIndex];
+    if (existing && isAgentToolCallItem(existing)) {
+      state[existingIndex] = mergeAgentToolCallItem(existing, item.payload.data, item.timestamp);
+    }
+  }
+  return state;
 }
 
 function appendActivityLog(state: StreamItem[], entry: ActivityLogItem): StreamItem[] {
