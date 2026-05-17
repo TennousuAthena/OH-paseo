@@ -842,37 +842,46 @@ const DiffFileHeader = memo(function DiffFileHeader({
 
   return (
     <View style={containerStyle} onLayout={handleLayout} testID={testID}>
-      <Pressable
-        testID={testID ? `${testID}-toggle` : undefined}
-        style={fileHeaderPressableStyle}
-        // Android: prevent parent pan/scroll gestures from canceling the tap release.
-        cancelable={false}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        onPress={toggleExpanded}
-      >
-        <View style={styles.fileHeaderLeft}>
-          <Text style={styles.fileName} numberOfLines={1}>
-            {file.path.split("/").pop()}
-          </Text>
-          <Text style={styles.fileDir} numberOfLines={1}>
-            {file.path.includes("/") ? ` ${file.path.slice(0, file.path.lastIndexOf("/"))}` : ""}
-          </Text>
-          {file.isNew && (
-            <View style={styles.newBadge}>
-              <Text style={styles.newBadgeText}>New</Text>
+      <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild>
+          <Pressable
+            testID={testID ? `${testID}-toggle` : undefined}
+            style={fileHeaderPressableStyle}
+            // Android: prevent parent pan/scroll gestures from canceling the tap release.
+            cancelable={false}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            onPress={toggleExpanded}
+          >
+            <View style={styles.fileHeaderLeft}>
+              <Text style={styles.fileName} numberOfLines={1}>
+                {file.path.split("/").pop()}
+              </Text>
+              <Text style={styles.fileDir} numberOfLines={1}>
+                {file.path.includes("/")
+                  ? ` ${file.path.slice(0, file.path.lastIndexOf("/"))}`
+                  : ""}
+              </Text>
+              {file.isNew && (
+                <View style={styles.newBadge}>
+                  <Text style={styles.newBadgeText}>New</Text>
+                </View>
+              )}
+              {file.isDeleted && (
+                <View style={styles.deletedBadge}>
+                  <Text style={styles.deletedBadgeText}>Deleted</Text>
+                </View>
+              )}
             </View>
-          )}
-          {file.isDeleted && (
-            <View style={styles.deletedBadge}>
-              <Text style={styles.deletedBadgeText}>Deleted</Text>
+            <View style={styles.fileHeaderRight}>
+              <DiffStat additions={file.additions} deletions={file.deletions} />
             </View>
-          )}
-        </View>
-        <View style={styles.fileHeaderRight}>
-          <DiffStat additions={file.additions} deletions={file.deletions} />
-        </View>
-      </Pressable>
+          </Pressable>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="start" offset={6} maxWidth={520}>
+          <Text style={styles.tooltipText}>{file.path}</Text>
+        </TooltipContent>
+      </Tooltip>
     </View>
   );
 });
