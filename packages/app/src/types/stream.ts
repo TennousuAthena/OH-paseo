@@ -483,7 +483,6 @@ function appendAgentToolCall(
     const merged = mergeAgentToolCallItem(existing, data, timestamp);
 
     if (
-      merged.timestamp === existing.timestamp &&
       merged.payload.data.provider === existing.payload.data.provider &&
       merged.payload.data.callId === existing.payload.data.callId &&
       merged.payload.data.name === existing.payload.data.name &&
