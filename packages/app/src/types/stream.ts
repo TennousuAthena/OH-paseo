@@ -438,7 +438,7 @@ function mergeAgentToolCallStatus(
   return "running";
 }
 
-function mergeAgentToolCallItem(
+export function mergeAgentToolCallItem(
   existing: AgentToolCallItem,
   data: AgentToolCallData,
   timestamp: Date,
@@ -513,28 +513,6 @@ function appendAgentToolCall(
   };
 
   return [...state, item];
-}
-
-export function coalesceAgentToolCallItems(items: StreamItem[]): StreamItem[] {
-  const state: StreamItem[] = [];
-  const toolCallIndexByCallId = new Map<string, number>();
-  for (const item of items) {
-    if (!isAgentToolCallItem(item)) {
-      state.push(item);
-      continue;
-    }
-    const existingIndex = toolCallIndexByCallId.get(item.payload.data.callId);
-    if (existingIndex === undefined) {
-      toolCallIndexByCallId.set(item.payload.data.callId, state.length);
-      state.push(item);
-      continue;
-    }
-    const existing = state[existingIndex];
-    if (existing && isAgentToolCallItem(existing)) {
-      state[existingIndex] = mergeAgentToolCallItem(existing, item.payload.data, item.timestamp);
-    }
-  }
-  return state;
 }
 
 function appendActivityLog(state: StreamItem[], entry: ActivityLogItem): StreamItem[] {

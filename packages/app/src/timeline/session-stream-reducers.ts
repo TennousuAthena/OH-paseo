@@ -5,8 +5,9 @@ import { useSessionStore } from "@/stores/session-store";
 import type { StreamItem } from "@/types/stream";
 import {
   applyStreamEvent,
-  coalesceAgentToolCallItems,
   hydrateStreamState,
+  isAgentToolCallItem,
+  mergeAgentToolCallItem,
   reduceStreamUpdate,
 } from "@/types/stream";
 
@@ -351,11 +352,26 @@ function mergePrependedCanonicalTail(olderTail: StreamItem[], currentTail: Strea
 
   const olderLast = olderTail.at(-1);
   const currentFirst = currentTail[0];
-  if (olderLast?.kind !== "assistant_message" || currentFirst?.kind !== "assistant_message") {
-    return coalesceAgentToolCallItems([...olderTail, ...currentTail]);
+
+  if (
+    olderLast &&
+    currentFirst &&
+    isAgentToolCallItem(olderLast) &&
+    isAgentToolCallItem(currentFirst) &&
+    olderLast.payload.data.callId === currentFirst.payload.data.callId
+  ) {
+    return [
+      ...olderTail.slice(0, -1),
+      mergeAgentToolCallItem(olderLast, currentFirst.payload.data, currentFirst.timestamp),
+      ...currentTail.slice(1),
+    ];
   }
 
-  return coalesceAgentToolCallItems([
+  if (olderLast?.kind !== "assistant_message" || currentFirst?.kind !== "assistant_message") {
+    return [...olderTail, ...currentTail];
+  }
+
+  return [
     ...olderTail.slice(0, -1),
     {
       ...olderLast,
@@ -363,7 +379,7 @@ function mergePrependedCanonicalTail(olderTail: StreamItem[], currentTail: Strea
       timestamp: currentFirst.timestamp,
     },
     ...currentTail.slice(1),
-  ]);
+  ];
 }
 
 function applyTimelineIncrementalPath(args: {
