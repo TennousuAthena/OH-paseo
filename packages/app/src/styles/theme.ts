@@ -1,5 +1,25 @@
 import { darkHighlightColors, lightHighlightColors } from "@getpaseo/highlight";
 
+function darkenRgba(
+  hex: string,
+  darkenAmount: number,
+  alpha: number,
+  desaturateAmount = 0,
+): string {
+  const value = hex.replace("#", "");
+  let r = parseInt(value.slice(0, 2), 16);
+  let g = parseInt(value.slice(2, 4), 16);
+  let b = parseInt(value.slice(4, 6), 16);
+  if (desaturateAmount > 0) {
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    r = r + (gray - r) * desaturateAmount;
+    g = g + (gray - g) * desaturateAmount;
+    b = b + (gray - b) * desaturateAmount;
+  }
+  const f = 1 - darkenAmount;
+  return `rgba(${Math.round(r * f)}, ${Math.round(g * f)}, ${Math.round(b * f)}, ${alpha})`;
+}
+
 export const baseColors = {
   // Base colors
   white: "#ffffff",
@@ -164,6 +184,7 @@ const lightSemanticColors = {
   accent: "#20744A",
   accentBright: "#239956",
   accentForeground: "#ffffff",
+  accentSubtle: darkenRgba("#20744A", 0.3, 0.15, 0.3),
 
   // Semantic
   destructive: "#b04138", // dark warm red on white — calm but unambiguously red
@@ -278,6 +299,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     accent: tint.accent,
     accentBright: tint.accentBright,
     accentForeground: "#ffffff",
+    accentSubtle: darkenRgba(tint.accent, 0.3, 0.2, 0.3),
 
     destructive: tint.destructive,
     destructiveForeground: "#ffffff",
