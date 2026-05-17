@@ -330,6 +330,7 @@ describe("shared messages stream parsing", () => {
       cwd: "/tmp/project",
       includeFiles: true,
       includeDirectories: true,
+      matchMode: "suffix",
       limit: 20,
       requestId: "req-dir-1",
     });

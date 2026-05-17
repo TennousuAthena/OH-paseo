@@ -1497,6 +1497,7 @@ test("requests directory suggestions via RPC", async () => {
       cwd: "/tmp/project",
       includeFiles: true,
       includeDirectories: true,
+      matchMode: "suffix",
     },
     "req-directories",
   );
@@ -1508,6 +1509,7 @@ test("requests directory suggestions via RPC", async () => {
   expect(request.cwd).toBe("/tmp/project");
   expect(request.includeFiles).toBe(true);
   expect(request.includeDirectories).toBe(true);
+  expect(request.matchMode).toBe("suffix");
   expect(request.limit).toBe(10);
   expect(request.requestId).toBe("req-directories");
 

@@ -266,6 +266,10 @@ export function classifyAssistantFileLink(
     };
   }
 
+  if (/\s/.test(trimmed)) {
+    return null;
+  }
+
   const target = parseAssistantFileLink(trimmed, options);
   if (!target) {
     return null;
@@ -369,7 +373,12 @@ export function parseAssistantFileLink(
 
 export function isFileLookingAssistantToken(value: string): boolean {
   const normalized = normalizePathToken(value);
-  if (!normalized || normalized.includes("?") || normalized.includes("://")) {
+  if (
+    !normalized ||
+    /\s/.test(normalized) ||
+    normalized.includes("?") ||
+    normalized.includes("://")
+  ) {
     return false;
   }
 
@@ -586,19 +595,28 @@ function isPlausibleAssistantLocalPath(pathValue: string): boolean {
   }
 
   if (segments.length > 1) {
-    return !isDomainLikePathSegment(firstSegment);
+    const lastSegment = segments[segments.length - 1];
+    return !isDomainLikePathSegment(firstSegment) && isPlausibleAssistantFileName(lastSegment);
   }
 
-  if (firstSegment.startsWith(".") && firstSegment.length > 1) {
+  return isPlausibleAssistantFileName(firstSegment);
+}
+
+function isPlausibleAssistantFileName(fileName: string | undefined): boolean {
+  if (!fileName) {
+    return false;
+  }
+
+  if (fileName.startsWith(".") && fileName.length > 1) {
     return true;
   }
 
-  const lastDot = firstSegment.lastIndexOf(".");
+  const lastDot = fileName.lastIndexOf(".");
   if (lastDot < 0) {
-    return true;
+    return false;
   }
 
-  const extension = firstSegment.slice(lastDot + 1).toLowerCase();
+  const extension = fileName.slice(lastDot + 1).toLowerCase();
   return ASSISTANT_FILE_EXTENSIONS.has(extension);
 }
 

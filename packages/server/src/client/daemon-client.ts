@@ -3090,6 +3090,7 @@ export class DaemonClient {
       cwd?: string;
       includeFiles?: boolean;
       includeDirectories?: boolean;
+      matchMode?: "fuzzy" | "suffix";
     },
     requestId?: string,
   ): Promise<DirectorySuggestionsPayload> {
@@ -3101,6 +3102,7 @@ export class DaemonClient {
         cwd: options.cwd,
         includeFiles: options.includeFiles,
         includeDirectories: options.includeDirectories,
+        matchMode: options.matchMode,
         limit: options.limit,
       },
       responseType: "directory_suggestions_response",

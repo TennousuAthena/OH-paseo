@@ -3,8 +3,11 @@ import {
   createAssistantFileLinkResolver,
   getAssistantFileLinkToken,
   type AssistantFileLinkContext,
+  type DirectorySuggestionEntry,
   type DirectorySuggestionResult,
 } from "./resolver";
+import type { OpenFileDisposition } from "@/workspace/file-open";
+import type { InlinePathTarget } from "./parse";
 
 const CONTEXT: AssistantFileLinkContext = {
   serverId: "server-1",
@@ -26,6 +29,55 @@ function createDeferred<T>() {
   });
 
   return { promise, resolve, reject };
+}
+
+interface DirectorySearch {
+  query: string;
+  cwd: string;
+  includeFiles: true;
+  includeDirectories: false;
+  matchMode: "suffix";
+  limit: number;
+}
+
+interface OpenedFile {
+  target: InlinePathTarget;
+  disposition: OpenFileDisposition;
+}
+
+class FakeWorkspaceFiles {
+  readonly searches: DirectorySearch[] = [];
+  readonly openedFiles: OpenedFile[] = [];
+  readonly unresolvedTokens: string[] = [];
+
+  constructor(private readonly entriesByQuery: Record<string, DirectorySuggestionEntry[]>) {}
+
+  createResolver() {
+    return createAssistantFileLinkResolver({
+      getDirectorySuggestions: this.getDirectorySuggestions,
+      openWorkspaceFile: this.openWorkspaceFile,
+      openExternalUrl: async () => {},
+      onUnresolvedFileCandidate: this.onUnresolvedFileCandidate,
+    });
+  }
+
+  private getDirectorySuggestions = async (
+    search: DirectorySearch,
+  ): Promise<DirectorySuggestionResult> => {
+    this.searches.push(search);
+    return resolvedSuggestions(this.entriesByQuery[search.query] ?? []);
+  };
+
+  private openWorkspaceFile = (
+    target: InlinePathTarget,
+    disposition: OpenFileDisposition,
+  ): void => {
+    this.openedFiles.push({ target, disposition });
+  };
+
+  private onUnresolvedFileCandidate = (token: string): void => {
+    this.unresolvedTokens.push(token);
+  };
 }
 
 describe("assistant file link resolver", () => {
@@ -54,6 +106,7 @@ describe("assistant file link resolver", () => {
       cwd: "/Users/test/project",
       includeFiles: true,
       includeDirectories: false,
+      matchMode: "suffix",
       limit: 1,
     });
     expect(openWorkspaceFile).toHaveBeenCalledWith(
@@ -284,46 +337,77 @@ describe("assistant file link resolver", () => {
     );
   });
 
-  it("resolves inline-code basename line refs through directory suggestions", async () => {
-    const suggestions = vi.fn(async () =>
-      resolvedSuggestions([
-        { path: "packages/server/src/server/workspace-git-service.ts", kind: "file" },
-      ]),
-    );
-    const openWorkspaceFile = vi.fn();
-    const resolver = createAssistantFileLinkResolver({
-      getDirectorySuggestions: suggestions,
-      openWorkspaceFile,
-      openExternalUrl: vi.fn(),
+  it("opens basename line refs when the daemon returns that exact filename", async () => {
+    const workspaceFiles = new FakeWorkspaceFiles({
+      "file.ts": [{ path: "packages/app/src/file.ts", kind: "file" }],
     });
+    const resolver = workspaceFiles.createResolver();
 
     const result = await resolver.open({
       context: { ...CONTEXT, workspaceRoot: "/Users/test/project" },
       source: {
-        href: "workspace-git-service.ts:1553",
-        text: "workspace-git-service.ts:1553",
+        href: "file.ts:12",
+        text: "file.ts:12",
         sourceType: "inline-code",
       },
       disposition: "main",
     });
 
-    expect(suggestions).toHaveBeenCalledWith({
-      query: "workspace-git-service.ts",
-      cwd: "/Users/test/project",
-      includeFiles: true,
-      includeDirectories: false,
-      limit: 1,
-    });
-    expect(openWorkspaceFile).toHaveBeenCalledWith(
+    expect(workspaceFiles.searches).toEqual([
       {
-        raw: "workspace-git-service.ts:1553",
-        path: "/Users/test/project/packages/server/src/server/workspace-git-service.ts",
-        lineStart: 1553,
-        lineEnd: undefined,
+        query: "file.ts",
+        cwd: "/Users/test/project",
+        includeFiles: true,
+        includeDirectories: false,
+        matchMode: "suffix",
+        limit: 1,
       },
-      "main",
-    );
+    ]);
+    expect(workspaceFiles.openedFiles).toEqual([
+      {
+        target: {
+          raw: "file.ts:12",
+          path: "/Users/test/project/packages/app/src/file.ts",
+          lineStart: 12,
+          lineEnd: undefined,
+        },
+        disposition: "main",
+      },
+    ]);
     expect(result.opened).toBe(true);
+  });
+
+  it("reports inline-code subpaths as unresolved when suffix suggestions find no file", async () => {
+    const workspaceFiles = new FakeWorkspaceFiles({});
+    const resolver = workspaceFiles.createResolver();
+
+    const result = await resolver.open({
+      context: { ...CONTEXT, workspaceRoot: "/Users/test/project" },
+      source: {
+        href: "src/file.ts",
+        text: "src/file.ts",
+        sourceType: "inline-code",
+      },
+      disposition: "main",
+    });
+
+    expect(workspaceFiles.searches).toEqual([
+      {
+        query: "src/file.ts",
+        cwd: "/Users/test/project",
+        includeFiles: true,
+        includeDirectories: false,
+        matchMode: "suffix",
+        limit: 1,
+      },
+    ]);
+    expect(workspaceFiles.openedFiles).toEqual([]);
+    expect(workspaceFiles.unresolvedTokens).toEqual(["src/file.ts"]);
+    expect(result).toEqual({
+      kind: "unresolvedFileCandidate",
+      token: "src/file.ts",
+      opened: false,
+    });
   });
 
   it("passes side open disposition to workspace file links", async () => {

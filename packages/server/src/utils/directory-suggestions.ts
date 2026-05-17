@@ -23,9 +23,12 @@ export interface SearchWorkspaceEntriesOptions {
   limit?: number;
   includeFiles?: boolean;
   includeDirectories?: boolean;
+  matchMode?: WorkspaceMatchMode;
   maxDepth?: number;
   maxEntriesScanned?: number;
 }
+
+export type WorkspaceMatchMode = "fuzzy" | "suffix";
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
@@ -153,7 +156,8 @@ export async function searchWorkspaceEntries(
     return [];
   }
 
-  if (queryParts.isPathQuery) {
+  const matchMode = options.matchMode ?? "fuzzy";
+  if (queryParts.isPathQuery && matchMode !== "suffix") {
     return searchWorkspaceWithinParentDirectory({
       workspaceRoot,
       parentPart: queryParts.parentPart,
@@ -164,12 +168,17 @@ export async function searchWorkspaceEntries(
     });
   }
 
+  const searchTerm =
+    matchMode === "suffix"
+      ? [queryParts.parentPart, queryParts.searchTerm].filter(Boolean).join("/")
+      : queryParts.searchTerm;
   return searchWorkspaceAcrossTree({
     workspaceRoot,
-    searchTerm: queryParts.searchTerm,
+    searchTerm,
     limit,
     includeDirectories,
     includeFiles,
+    matchMode,
     maxDepth: options.maxDepth ?? DEFAULT_MAX_DEPTH,
     maxEntriesScanned: options.maxEntriesScanned ?? DEFAULT_MAX_DIRECTORIES_SCANNED,
   });
@@ -328,6 +337,7 @@ async function searchWorkspaceAcrossTree(input: {
   limit: number;
   includeDirectories: boolean;
   includeFiles: boolean;
+  matchMode: WorkspaceMatchMode;
   maxDepth: number;
   maxEntriesScanned: number;
 }): Promise<WorkspaceSuggestionEntry[]> {
@@ -375,6 +385,16 @@ async function searchWorkspaceAcrossTree(input: {
       if (entry.kind === "file" && !input.includeFiles) {
         continue;
       }
+      if (
+        input.matchMode === "suffix" &&
+        !workspaceEntryMatchesSuffixQuery({
+          absolutePath: entry.absolutePath,
+          workspaceRoot: input.workspaceRoot,
+          query: input.searchTerm,
+        })
+      ) {
+        continue;
+      }
 
       const rankedEntry = rankWorkspaceEntry({
         absolutePath: entry.absolutePath,
@@ -382,7 +402,11 @@ async function searchWorkspaceAcrossTree(input: {
         workspaceRoot: input.workspaceRoot,
         searchLower,
       });
-      if (searchLower && rankedEntry.matchTier === NO_WORKSPACE_MATCH_TIER) {
+      if (
+        input.matchMode !== "suffix" &&
+        searchLower &&
+        rankedEntry.matchTier === NO_WORKSPACE_MATCH_TIER
+      ) {
         continue;
       }
 
@@ -391,6 +415,34 @@ async function searchWorkspaceAcrossTree(input: {
   }
 
   return dedupeAndSortWorkspaceEntries(ranked).slice(0, input.limit);
+}
+
+function workspaceEntryMatchesSuffixQuery(input: {
+  absolutePath: string;
+  workspaceRoot: string;
+  query: string;
+}): boolean {
+  const querySegments = input.query
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\/+/, "")
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => segment.toLowerCase());
+  if (querySegments.length === 0) {
+    return false;
+  }
+
+  const pathSegments = normalizeRelativePath(input.workspaceRoot, input.absolutePath)
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => segment.toLowerCase());
+  if (querySegments.length > pathSegments.length) {
+    return false;
+  }
+
+  const offset = pathSegments.length - querySegments.length;
+  return querySegments.every((segment, index) => pathSegments[offset + index] === segment);
 }
 
 function dedupeAndSortWorkspaceEntries(

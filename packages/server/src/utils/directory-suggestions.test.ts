@@ -268,6 +268,39 @@ describe("searchWorkspaceEntries", () => {
     ]);
   });
 
+  it("suffix mode matches whole path segment suffixes without fuzzy matches", async () => {
+    mkdirSync(path.join(workspaceDir, "packages", "app", "src"), { recursive: true });
+    writeFileSync(path.join(workspaceDir, "src", "file.ts"), "");
+    writeFileSync(path.join(workspaceDir, "packages", "app", "src", "file.ts"), "");
+    writeFileSync(path.join(workspaceDir, "src", "paseo-config-file.ts"), "");
+
+    const basenameResults = await searchWorkspaceEntries({
+      cwd: workspaceDir,
+      query: "file.ts",
+      limit: 20,
+      includeFiles: true,
+      includeDirectories: false,
+      matchMode: "suffix",
+    });
+    const suffixResults = await searchWorkspaceEntries({
+      cwd: workspaceDir,
+      query: "src/file.ts",
+      limit: 20,
+      includeFiles: true,
+      includeDirectories: false,
+      matchMode: "suffix",
+    });
+
+    expect(basenameResults).toEqual([
+      { path: "src/file.ts", kind: "file" },
+      { path: "packages/app/src/file.ts", kind: "file" },
+    ]);
+    expect(suffixResults).toEqual([
+      { path: "src/file.ts", kind: "file" },
+      { path: "packages/app/src/file.ts", kind: "file" },
+    ]);
+  });
+
   // POSIX-only: creates and follows a symlink escape fixture.
   it.skipIf(isWindows)(
     "supports path-style queries and does not escape cwd through symlinks",

@@ -35,6 +35,7 @@ export interface AssistantFileLinkResolverDependencies {
     cwd: string;
     includeFiles: true;
     includeDirectories: false;
+    matchMode: "suffix";
     limit: number;
   }) => Promise<DirectorySuggestionResult>;
   openWorkspaceFile: (target: InlinePathTarget, disposition: OpenFileDisposition) => void;
@@ -103,7 +104,15 @@ export function createAssistantFileLinkResolver(
       return { kind: "external", url: parsed.classification.raw };
     }
 
-    if (parsed.classification.kind === "directFile") {
+    if (
+      parsed.classification.kind === "directFile" &&
+      !shouldResolveDirectFileThroughSuggestions({
+        context: input.context,
+        source: input.source,
+        token: parsed.token,
+        target: parsed.classification.target,
+      })
+    ) {
       return { kind: "file", target: parsed.classification.target };
     }
 
@@ -215,6 +224,7 @@ async function resolveAmbiguousCandidate(input: {
     cwd: workspaceRoot,
     includeFiles: true,
     includeDirectories: false,
+    matchMode: "suffix",
     limit: 1,
   });
   const match = suggestions.entries.find((entry) => entry.kind === "file");
@@ -241,6 +251,38 @@ function getAmbiguousSuggestionQuery(target: InlinePathTarget, workspaceRoot: st
 
   const lastSlash = normalizedPath.lastIndexOf("/");
   return lastSlash >= 0 ? normalizedPath.slice(lastSlash + 1) : normalizedPath;
+}
+
+function shouldResolveDirectFileThroughSuggestions(input: {
+  context: AssistantFileLinkContext;
+  source: AssistantFileLinkSource;
+  token: string;
+  target: InlinePathTarget;
+}): boolean {
+  if (input.source.sourceType !== "inline-code") {
+    return false;
+  }
+
+  if (isAbsoluteInlineCodeToken(input.token)) {
+    return false;
+  }
+
+  const workspaceRoot = input.context.workspaceRoot?.trim();
+  if (!workspaceRoot) {
+    return false;
+  }
+
+  const normalizedRoot = workspaceRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedPath = input.target.path.replace(/\\/g, "/");
+  return normalizedPath.startsWith(`${normalizedRoot}/`);
+}
+
+function isAbsoluteInlineCodeToken(token: string): boolean {
+  return (
+    token.startsWith("/") ||
+    token.toLowerCase().startsWith("file://") ||
+    /^[A-Za-z]:[\\/]/.test(token)
+  );
 }
 
 function getResolutionKey(context: AssistantFileLinkContext, token: string): string {

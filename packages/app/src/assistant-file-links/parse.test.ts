@@ -184,6 +184,33 @@ describe("classifyAssistantFileLink", () => {
       }),
     ).toBeNull();
   });
+
+  it("does not classify plain inline code words or identifiers as file candidates", () => {
+    for (const value of [
+      "main",
+      "origin/main",
+      "1f7fc232b",
+      "25994904967",
+      "babysit main 1f7fc232b",
+    ]) {
+      expect(
+        classifyAssistantFileLink(value, {
+          workspaceRoot: "/Users/test/project",
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it("does not classify shell commands containing path arguments as file candidates", () => {
+    expect(
+      classifyAssistantFileLink(
+        "npm run lint -- packages/app/src/stores/workspace-layout-actions.ts packages/app/src/stores/workspace-layout-store.ts packages/app/src/screens/workspace/workspace-screen.tsx",
+        {
+          workspaceRoot: "/Users/test/project",
+        },
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("parseAssistantFileLink", () => {
