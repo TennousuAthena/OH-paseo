@@ -35,6 +35,7 @@ import {
   shouldShowTerminalLoadingOverlay,
   type TerminalRendererReadyChange,
 } from "@/utils/terminal-renderer-readiness";
+import { useAppSettings } from "@/hooks/use-settings";
 
 interface TerminalPaneProps {
   serverId: string;
@@ -157,6 +158,7 @@ export function TerminalPane({
 }: TerminalPaneProps) {
   const isAppVisible = useAppVisible();
   const { theme } = useUnistyles();
+  const { settings } = useAppSettings();
   const xtermTheme = useMemo(() => toXtermTheme(theme.colors.terminal), [theme]);
   const isMobile = useIsCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
@@ -681,6 +683,7 @@ export function TerminalPane({
               streamKey={terminalStreamKey}
               testId="terminal-surface"
               xtermTheme={xtermTheme}
+              scrollbackLines={settings.terminalScrollbackLines}
               swipeGesturesEnabled={swipeGesturesEnabled}
               initialSnapshot={initialSnapshot}
               onRendererReadyChange={handleRendererReadyChange}

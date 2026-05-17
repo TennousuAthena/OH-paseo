@@ -27,6 +27,7 @@ export interface TerminalEmulatorRuntimeMountInput {
   root: HTMLDivElement;
   host: HTMLDivElement;
   initialSnapshot: TerminalState | null;
+  scrollback: number;
   theme: ITheme;
 }
 
@@ -178,7 +179,7 @@ export class TerminalEmulatorRuntime {
       overviewRuler: {
         width: 8,
       },
-      scrollback: 10_000,
+      scrollback: input.scrollback,
       theme: withOverviewRulerBorderHidden(input.theme),
     });
     const fitAddon = new FitAddon();
@@ -570,6 +571,22 @@ export class TerminalEmulatorRuntime {
 
     try {
       terminal.options.theme = withOverviewRulerBorderHidden(input.theme);
+    } catch {
+      // ignore
+      return;
+    }
+
+    this.refreshVisibleRows();
+  }
+
+  setScrollback(input: { lines: number }): void {
+    const terminal = this.terminal;
+    if (!terminal) {
+      return;
+    }
+
+    try {
+      terminal.options.scrollback = input.lines;
     } catch {
       // ignore
       return;

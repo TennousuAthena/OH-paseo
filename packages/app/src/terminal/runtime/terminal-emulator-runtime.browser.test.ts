@@ -61,7 +61,11 @@ async function waitFor(input: { predicate: () => boolean; timeoutMs?: number }):
   }
 }
 
-function createTerminalHost(input: { width: number; height: number }): MountedTerminal {
+function createTerminalHost(input: {
+  width: number;
+  height: number;
+  scrollback?: number;
+}): MountedTerminal {
   const root = document.createElement("div");
   root.style.width = `${input.width}px`;
   root.style.height = `${input.height}px`;
@@ -101,6 +105,7 @@ function createTerminalHost(input: { width: number; height: number }): MountedTe
     root,
     host,
     initialSnapshot: null,
+    scrollback: input.scrollback ?? 10_000,
     theme: {
       background: "#0b0b0b",
       foreground: "#e6e6e6",
@@ -163,6 +168,32 @@ afterEach(() => {
 });
 
 describe("terminal emulator runtime in a real browser", () => {
+  it("passes configured scrollback to xterm", async () => {
+    await page.viewport(900, 600);
+    createTerminalHost({ width: 720, height: 360, scrollback: 42_000 });
+
+    await waitFor({
+      predicate: () => window.__paseoTerminal !== undefined,
+    });
+
+    expect(window.__paseoTerminal?.options.scrollback).toBe(42_000);
+  });
+
+  it("updates scrollback on the mounted xterm", async () => {
+    await page.viewport(900, 600);
+    const mounted = createTerminalHost({ width: 720, height: 360, scrollback: 10_000 });
+
+    await waitFor({
+      predicate: () => window.__paseoTerminal !== undefined,
+    });
+    const terminal = window.__paseoTerminal;
+
+    mounted.runtime.setScrollback({ lines: 42_000 });
+
+    expect(window.__paseoTerminal).toBe(terminal);
+    expect(window.__paseoTerminal?.options.scrollback).toBe(42_000);
+  });
+
   it("reports a larger PTY size when the terminal container grows", async () => {
     await page.viewport(900, 600);
     const mounted = createTerminalHost({ width: 360, height: 180 });

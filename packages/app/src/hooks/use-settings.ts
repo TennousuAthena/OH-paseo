@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { queryClient as appQueryClient } from "@/query/query-client";
 import {
   DEFAULT_DESKTOP_SETTINGS,
@@ -21,11 +21,15 @@ export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 
 const VALID_THEMES = new Set<string>([...Object.keys(THEME_TO_UNISTYLES), "auto"]);
 const VALID_SERVICE_URL_BEHAVIORS = new Set<ServiceUrlBehavior>(["ask", "in-app", "external"]);
+export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
+export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
+export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
 
 export interface AppSettings {
   theme: ThemeName | "auto";
   sendBehavior: SendBehavior;
   serviceUrlBehavior: ServiceUrlBehavior;
+  terminalScrollbackLines: number;
 }
 
 export interface Settings extends AppSettings {
@@ -37,6 +41,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   theme: "auto",
   sendBehavior: "interrupt",
   serviceUrlBehavior: "ask",
+  terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -73,11 +78,7 @@ export function useAppSettings(): UseAppSettingsReturn {
   const updateSettings = useCallback(
     async (updates: Partial<AppSettings>) => {
       try {
-        const prev =
-          queryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY) ?? DEFAULT_CLIENT_SETTINGS;
-        const next = { ...prev, ...updates };
-        queryClient.setQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY, next);
-        await AsyncStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(next));
+        await saveAppSettings({ queryClient, updates });
       } catch (err) {
         console.error("[AppSettings] Failed to save settings:", err);
         throw err;
@@ -122,7 +123,9 @@ export function useSettings(): UseSettingsReturn {
       if (updates.serviceUrlBehavior !== undefined) {
         appUpdates.serviceUrlBehavior = updates.serviceUrlBehavior;
       }
-
+      if (updates.terminalScrollbackLines !== undefined) {
+        appUpdates.terminalScrollbackLines = updates.terminalScrollbackLines;
+      }
       const promises: Promise<void>[] = [];
       if (Object.keys(appUpdates).length > 0) {
         promises.push(appSettings.updateSettings(appUpdates));
@@ -171,11 +174,18 @@ export function useSettings(): UseSettingsReturn {
 }
 
 export async function persistAppSettings(updates: Partial<AppSettings>): Promise<void> {
+  await saveAppSettings({ queryClient: appQueryClient, updates });
+}
+
+export async function saveAppSettings(input: {
+  queryClient: QueryClient;
+  updates: Partial<AppSettings>;
+}): Promise<void> {
   const current =
-    appQueryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY) ??
+    input.queryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY) ??
     (await loadAppSettingsFromStorage());
-  const next = { ...current, ...updates };
-  appQueryClient.setQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY, next);
+  const next = { ...current, ...input.updates };
+  input.queryClient.setQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY, next);
   await AsyncStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(next));
 }
 
@@ -246,6 +256,10 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   ) {
     result.serviceUrlBehavior = stored.serviceUrlBehavior;
   }
+  const terminalScrollbackLines = parseTerminalScrollbackLines(stored.terminalScrollbackLines);
+  if (terminalScrollbackLines !== null) {
+    result.terminalScrollbackLines = terminalScrollbackLines;
+  }
   return result;
 }
 
@@ -255,6 +269,22 @@ function pickAppSettingsFromLegacy(legacy: Record<string, unknown>): Partial<App
     result.theme = legacy.theme;
   }
   return result;
+}
+
+export function parseTerminalScrollbackLines(value: unknown): number | null {
+  let numericValue = NaN;
+  if (typeof value === "number") {
+    numericValue = value;
+  } else if (typeof value === "string" && value.trim().length > 0) {
+    numericValue = Number(value);
+  }
+  if (!Number.isFinite(numericValue)) {
+    return null;
+  }
+  return Math.min(
+    MAX_TERMINAL_SCROLLBACK_LINES,
+    Math.max(MIN_TERMINAL_SCROLLBACK_LINES, Math.floor(numericValue)),
+  );
 }
 
 async function loadLegacyDesktopSettingsFromStorage(): Promise<{
