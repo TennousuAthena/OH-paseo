@@ -4,13 +4,13 @@
 
 ### Improved
 
-- **Model, mode, and thinking pickers on mobile** Searchable virtualized lists with fuzzy ranking
-- Switching layouts no longer remounts the active agent
+- **Mobile model selector is faster and more straightforward** Picking a model, mode, or thinking option takes fewer taps
 
 ### Fixed
 
-- Text inputs in mobile sheets no longer flicker while typing fast
-- Compact web sheets no longer crash when swiped to dismiss
+- Splitting a pane no longer loses your scroll position
+- Typing in mobile sheets no longer flickers
+- Sheets on mobile web no longer crash when swiped to dismiss
 
 ## 0.1.77 - 2026-05-18
 
