@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.1.77 - 2026-05-18
+
+### Added
+
+- **Slash commands to end and restart an agent.**
+- **Syntax highlighting for code blocks in chat.**
+- **Copy button on code blocks in chat.**
+- **Configurable terminal scrollback.** ([#1021](https://github.com/getpaseo/paseo/pull/1021) by [@32r4](https://github.com/32r4))
+- Assistant file links open at a specific line range when one is included.
+- Mode icons appear in the agent status menu. ([#1059](https://github.com/getpaseo/paseo/pull/1059) by [@32r4](https://github.com/32r4))
+- MCP exposes schedule update, logs, and run-once tools. ([#1032](https://github.com/getpaseo/paseo/pull/1032) by [@skevetter](https://github.com/skevetter))
+- Self-hosted relays support a separate TLS setting for the public endpoint, so the daemon can reach the relay over the LAN while the phone reaches it over the public secure address. ([#1045](https://github.com/getpaseo/paseo/pull/1045) by [@yzx9](https://github.com/yzx9))
+
+### Improved
+
+- User messages now have a distinct bubble fill for clearer chat hierarchy.
+- Closing a tab returns to its parent tab.
+- Diff rows show the full file path on hover. ([#1061](https://github.com/getpaseo/paseo/pull/1061) by [@Myriad-Dreamin](https://github.com/Myriad-Dreamin))
+- The CLI shows the remote daemon host when `ls` cannot connect. ([#1043](https://github.com/getpaseo/paseo/pull/1043) by [@mturac](https://github.com/mturac))
+- Nix install of the daemon is smaller. ([#966](https://github.com/getpaseo/paseo/pull/966) by [@ixxie](https://github.com/ixxie))
+- Nix install honors home-manager profile paths when inheriting the user PATH. ([#1040](https://github.com/getpaseo/paseo/pull/1040) by [@ixxie](https://github.com/ixxie))
+
+### Fixed
+
+- OpenCode probes no longer create empty sessions.
+- OpenCode custom commands no longer hang.
+- OpenCode session imports succeed across more environments.
+- Native diff rows expand correctly. ([#940](https://github.com/getpaseo/paseo/pull/940) by [@bolasblack](https://github.com/bolasblack))
+- Mobile sidebar interactions work correctly on web. ([#900](https://github.com/getpaseo/paseo/pull/900) by [@nikuscs](https://github.com/nikuscs))
+- Mobile web drag gestures fire reliably. ([#1048](https://github.com/getpaseo/paseo/pull/1048) by [@nikuscs](https://github.com/nikuscs))
+- Mobile web drag-and-drop activates correctly. ([#1048](https://github.com/getpaseo/paseo/pull/1048) by [@nikuscs](https://github.com/nikuscs))
+- iOS Safari no longer zooms when focusing the composer. ([#1048](https://github.com/getpaseo/paseo/pull/1048) by [@nikuscs](https://github.com/nikuscs))
+- Enter behavior in the mobile web composer is consistent. ([#1048](https://github.com/getpaseo/paseo/pull/1048) by [@nikuscs](https://github.com/nikuscs))
+- Composer no longer flickers when resizing with long prompts.
+- Inline code links in assistant messages open the correct file.
+- Host switcher popover is wide enough to show host names. ([#981](https://github.com/getpaseo/paseo/pull/981) by [@kongjiadongyuan](https://github.com/kongjiadongyuan))
+- Windows: importing existing sessions matches paths correctly. ([#1012](https://github.com/getpaseo/paseo/pull/1012) by [@kj1534](https://github.com/kj1534))
+
 ## 0.1.76 - 2026-05-15
 
 ### Added
