@@ -92,8 +92,10 @@ function isBinaryInstalled(binary: string): boolean {
 }
 
 const hasOpenCode = isBinaryInstalled("opencode");
+const shouldRunOpenCodeSmokeTests =
+  process.env.PASEO_RUN_OPENCODE_SMOKE_TESTS === "1" && hasOpenCode;
 
-(hasOpenCode ? describe : describe.skip)("OpenCodeAgentClient", () => {
+(shouldRunOpenCodeSmokeTests ? describe : describe.skip)("OpenCodeAgentClient smoke tests", () => {
   const logger = createTestLogger();
   const buildConfig = (cwd: string): AgentSessionConfig => ({
     provider: "opencode",
