@@ -180,7 +180,7 @@ npx eas build:view <build-id> --json | jq '.logFiles[]'
 
 A build's `gitCommitHash` must match the release tag commit. `status` walks through `NEW` → `IN_QUEUE` → `IN_PROGRESS` → `FINISHED` (or `ERRORED`/`CANCELED`).
 
-There is no `eas submit:list` command in `eas-cli` (it errors with "command submit:list not found"). EAS submits to the stores automatically after a FINISHED build — Android via `eas submit`'s submit config and iOS via the Fastlane lane — and the submission state lives on the Expo dashboard, not the CLI. Heartbeat checks should look only at `eas build:list` for build state; if you need to confirm store-side submission, open the Expo dashboard or the Play Console / App Store Connect directly.
+Store submissions happen automatically after a FINISHED build — Android via `eas submit`'s submit config and iOS via the Fastlane lane — and their state lives on the Expo dashboard. Heartbeat checks look at `eas build:list` for build state; for store-side submission status, open the Expo dashboard, Play Console, or App Store Connect directly.
 
 ### Babysitting mobile after a release
 
@@ -198,7 +198,7 @@ Pattern:
   "maxRuns": 8, // covers ~2h of build + store-submission window
   "target": "self", // heartbeat, NOT "new-agent"
   "cwd": "/path/to/paseo",
-  "prompt": "Heartbeat: check vX.Y.Z release builds. Run gh + eas build:list + eas submit:list, report concisely; flag any ERRORED/FAILED/CANCELED.",
+  "prompt": "Heartbeat: check vX.Y.Z release builds. Run gh run list + eas build:list, report concisely; flag any ERRORED/FAILED/CANCELED.",
 }
 ```
 
