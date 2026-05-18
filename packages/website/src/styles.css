@@ -232,6 +232,8 @@
   margin-top: 1rem;
   margin-bottom: 1rem;
   font-size: 0.875rem;
+  display: block;
+  overflow-x: auto;
 }
 
 .docs-prose th,
