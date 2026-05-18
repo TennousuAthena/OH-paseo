@@ -176,12 +176,11 @@ npx eas build:view <build-id>
 
 # Stream logs for a build.
 npx eas build:view <build-id> --json | jq '.logFiles[]'
-
-# Recent submissions (auto-submit / Fastlane lanes).
-npx eas submit:list --limit 8 --non-interactive --json
 ```
 
-A build's `gitCommitHash` must match the release tag commit. `status` walks through `NEW` → `IN_QUEUE` → `IN_PROGRESS` → `FINISHED` (or `ERRORED`/`CANCELED`). When `FINISHED`, the submission step takes over and shows up under `eas submit:list`.
+A build's `gitCommitHash` must match the release tag commit. `status` walks through `NEW` → `IN_QUEUE` → `IN_PROGRESS` → `FINISHED` (or `ERRORED`/`CANCELED`).
+
+There is no `eas submit:list` command in `eas-cli` (it errors with "command submit:list not found"). EAS submits to the stores automatically after a FINISHED build — Android via `eas submit`'s submit config and iOS via the Fastlane lane — and the submission state lives on the Expo dashboard, not the CLI. Heartbeat checks should look only at `eas build:list` for build state; if you need to confirm store-side submission, open the Expo dashboard or the Play Console / App Store Connect directly.
 
 ### Babysitting mobile after a release
 

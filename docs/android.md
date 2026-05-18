@@ -67,9 +67,8 @@ npx eas build:list --limit 10 --non-interactive --json | jq '.[] | {platform, st
 
 # Inspect a build
 npx eas build:view <build-id>
-
-# Recent store submissions
-npx eas submit:list --limit 8 --non-interactive --json
 ```
+
+`eas submit:list` is not a real command — submission state is only on the Expo dashboard.
 
 See [docs/release.md](release.md) for the full mobile-build babysitting flow.
