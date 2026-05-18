@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.78 - 2026-05-18
+
+### Improved
+
+- **Model, mode, and thinking pickers on mobile** Searchable virtualized lists with fuzzy ranking
+- Switching layouts no longer remounts the active agent
+
+### Fixed
+
+- Text inputs in mobile sheets no longer flicker while typing fast
+- Compact web sheets no longer crash when swiped to dismiss
+
 ## 0.1.77 - 2026-05-18
 
 ### Added
