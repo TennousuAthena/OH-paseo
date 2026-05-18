@@ -180,7 +180,7 @@ npx eas build:view <build-id> --json | jq '.logFiles[]'
 
 A build's `gitCommitHash` must match the release tag commit. `status` walks through `NEW` → `IN_QUEUE` → `IN_PROGRESS` → `FINISHED` (or `ERRORED`/`CANCELED`).
 
-Store submissions happen automatically after a FINISHED build — Android via `eas submit`'s submit config and iOS via the Fastlane lane — and their state lives on the Expo dashboard. Heartbeat checks look at `eas build:list` for build state; for store-side submission status, open the Expo dashboard, Play Console, or App Store Connect directly.
+Once a build is `FINISHED`, EAS auto-submits it to the store: Android via the `submit` block in `eas.json` (EAS-managed Play Console credentials), iOS via the Fastlane `submit_review` lane (uploads to TestFlight, then submits for App Store review). To confirm the submission landed, run `npx eas build:view <build-id>` and open the `Logs` URL it prints — the build's Expo dashboard page has a Submissions section listing each attempt with its store response. App Store Connect (TestFlight tab → ready for review) and the Play Console (Internal testing / Production tracks) are the final ground truth.
 
 ### Babysitting mobile after a release
 

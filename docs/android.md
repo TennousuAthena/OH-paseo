@@ -65,10 +65,11 @@ cd packages/app
 # Recent builds
 npx eas build:list --limit 10 --non-interactive --json | jq '.[] | {platform, status, appVersion, gitCommitHash}'
 
-# Inspect a build
+# Inspect a build (the printed `Logs` URL opens the build's Expo dashboard page,
+# which has a Submissions section showing the auto-submit to the Play Store).
 npx eas build:view <build-id>
 ```
 
-Store submission state lives on the Expo dashboard.
+The Play Console (Internal testing → Production tracks) is the final confirmation that the binary reached the store.
 
 See [docs/release.md](release.md) for the full mobile-build babysitting flow.
