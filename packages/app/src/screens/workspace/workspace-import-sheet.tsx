@@ -5,7 +5,7 @@ import type { DaemonClient, FetchRecentProviderSessionEntry } from "@server/clie
 import type { AgentProvider } from "@server/server/agent/agent-sdk-types";
 import { IMPORTABLE_PROVIDERS } from "@server/shared/importable-providers";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -13,6 +13,7 @@ import { formatTimeAgo } from "@/utils/time";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 
 const IMPORTABLE_PROVIDER_IDS: Set<string> = new Set(IMPORTABLE_PROVIDERS);
+const IMPORT_SESSION_HEADER: SheetHeader = { title: "Import session" };
 const PER_PROVIDER_LIMIT = 15;
 const IMPORT_SHEET_SNAP_POINTS = ["70%", "92%"];
 const DISABLED_ACCESSIBILITY_STATE = { disabled: true };
@@ -435,7 +436,7 @@ export function WorkspaceImportSheet({
     <AdaptiveModalSheet
       visible={visible}
       onClose={onClose}
-      title="Import session"
+      header={IMPORT_SESSION_HEADER}
       testID="workspace-import-sheet"
       desktopMaxWidth={560}
       snapPoints={IMPORT_SHEET_SNAP_POINTS}

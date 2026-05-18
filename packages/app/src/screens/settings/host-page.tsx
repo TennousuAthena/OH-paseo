@@ -18,7 +18,7 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { settingsStyles } from "@/styles/settings";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { SettingsSection } from "@/screens/settings/settings-section";
@@ -67,6 +67,10 @@ function formatDaemonVersionBadge(version: string | null): string | null {
   if (!trimmed) return null;
   return trimmed.startsWith("v") ? trimmed : `v${trimmed}`;
 }
+
+const RENAME_HOST_HEADER: SheetHeader = { title: "Rename host" };
+const REMOVE_CONNECTION_HEADER: SheetHeader = { title: "Remove connection" };
+const REMOVE_HOST_HEADER: SheetHeader = { title: "Remove host" };
 
 export interface HostPageProps {
   serverId: string;
@@ -244,7 +248,7 @@ export function HostRenameButton({ host }: { host: HostProfile }) {
       <AdaptiveModalSheet
         visible={isEditing}
         onClose={handleCancel}
-        title="Rename host"
+        header={RENAME_HOST_HEADER}
         testID="host-page-rename-modal"
       >
         <View style={styles.renameBody}>
@@ -347,7 +351,7 @@ function ConnectionsSection({ host }: { host: HostProfile }) {
 
       {pendingRemoveConnection ? (
         <AdaptiveModalSheet
-          title="Remove connection"
+          header={REMOVE_CONNECTION_HEADER}
           visible
           onClose={handleCloseConfirm}
           testID="remove-connection-confirm-modal"
@@ -723,7 +727,7 @@ function RemoveHostSection({ host, onRemoved }: { host: HostProfile; onRemoved?:
 
       {isConfirming ? (
         <AdaptiveModalSheet
-          title="Remove host"
+          header={REMOVE_HOST_HEADER}
           visible
           onClose={handleCloseConfirm}
           testID="remove-host-confirm-modal"

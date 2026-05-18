@@ -74,7 +74,7 @@ function DocsLayout() {
           </button>
         </div>
         {mobileNavOpen && (
-          <nav className="border-t border-border px-4 py-4 space-y-4">
+          <nav className="border-t border-border px-4 py-4 space-y-4 max-h-[calc(100dvh-4rem)] overflow-y-auto">
             {groups.map((group) => (
               <div key={group.name ?? "root"} className="space-y-1">
                 {group.name && (

@@ -22,7 +22,7 @@ import { Alert } from "@/components/ui/alert";
 import { ExternalLink } from "@/components/ui/external-link";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
-import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { SettingsGroup } from "@/screens/settings/settings-group";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
@@ -1150,11 +1150,15 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
   const showNameError = touched.name && validation.nameError;
   const showCommandError = touched.command && validation.commandError;
   const isService = script.type === SCRIPT_SERVICE_TYPE;
+  const sheetHeader = useMemo<SheetHeader>(
+    () => ({ title: script.name ? `Edit ${script.name}` : "New script" }),
+    [script.name],
+  );
 
   return (
     <AdaptiveModalSheet
       visible
-      title={script.name ? `Edit ${script.name}` : "New script"}
+      header={sheetHeader}
       onClose={onCancel}
       testID="script-edit-modal"
       desktopMaxWidth={560}

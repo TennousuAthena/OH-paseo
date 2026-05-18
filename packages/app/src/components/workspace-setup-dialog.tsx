@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { createNameId } from "mnemonic-id";
-import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Composer } from "@/components/composer";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
@@ -374,14 +374,18 @@ export function WorkspaceSetupDialog() {
     [iconSource, placeholderInitial, workspaceTitle],
   );
 
+  const sheetHeader = useMemo<SheetHeader>(
+    () => ({ title: "Create workspace", subtitle: subtitleContent }),
+    [subtitleContent],
+  );
+
   if (!pendingWorkspaceSetup || !sourceDirectory) {
     return null;
   }
 
   return (
     <AdaptiveModalSheet
-      title="Create workspace"
-      subtitle={subtitleContent}
+      header={sheetHeader}
       visible={true}
       onClose={handleClose}
       snapPoints={SNAP_POINTS}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useReducer, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -11,10 +11,11 @@ import {
   serializeConnectionUriForStorage,
 } from "@/utils/daemon-endpoints";
 import { DaemonConnectionTestError } from "@/utils/test-daemon-connection";
-import { AdaptiveModalSheet, AdaptiveTextInput } from "./adaptive-modal-sheet";
+import { AdaptiveModalSheet, AdaptiveTextInput, type SheetHeader } from "./adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 
 const FLEX_ONE_STYLE = { flex: 1 } as const;
+const DIRECT_CONNECTION_HEADER: SheetHeader = { title: "Direct connection" };
 
 interface DirectConnectionDraft {
   host: string;
@@ -279,6 +280,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [advancedUri, setAdvancedUri] = useState("");
+  const [inputResetKey, bumpInputResetKey] = useReducer((key: number) => key + 1, 0);
 
   const clearInput = useCallback(() => {
     setHost("");
@@ -288,6 +290,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
     setIsPasswordVisible(false);
     setIsAdvancedOpen(false);
     setAdvancedUri("");
+    bumpInputResetKey();
   }, []);
 
   const connectIcon = useMemo(
@@ -411,6 +414,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
       setUseTls(next.useTls);
       setPassword(next.password);
       setErrorMessage("");
+      bumpInputResetKey();
     } catch {
       setErrorMessage("");
     }
@@ -422,7 +426,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
 
   return (
     <AdaptiveModalSheet
-      title="Direct connection"
+      header={DIRECT_CONNECTION_HEADER}
       visible={visible}
       onClose={handleClose}
       testID="add-host-modal"
@@ -436,6 +440,8 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
             testID="direct-host-input"
             nativeID="direct-host-input"
             accessibilityLabel="Host"
+            initialValue={host}
+            resetKey={`direct-host-${inputResetKey}`}
             value={host}
             onChangeText={setHost}
             placeholder="localhost"
@@ -454,6 +460,8 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
             testID="direct-port-input"
             nativeID="direct-port-input"
             accessibilityLabel="Port"
+            initialValue={port}
+            resetKey={`direct-port-${inputResetKey}`}
             value={port}
             onChangeText={setPort}
             placeholder="6767"
@@ -495,6 +503,8 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
             testID="direct-password-input"
             nativeID="direct-password-input"
             accessibilityLabel="Password"
+            initialValue={password}
+            resetKey={`direct-password-${inputResetKey}`}
             value={password}
             onChangeText={setPassword}
             placeholder="Optional"
@@ -537,6 +547,8 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
             testID="direct-host-uri-input"
             nativeID="direct-host-uri-input"
             accessibilityLabel="Connection URI"
+            initialValue={advancedUri}
+            resetKey={`direct-host-uri-${inputResetKey}`}
             value={advancedUri}
             onChangeText={setAdvancedUri}
             placeholder="tcp://localhost:6767?ssl=true"

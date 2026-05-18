@@ -1,6 +1,7 @@
 import type { AgentModelDefinition } from "@server/server/agent/agent-sdk-types";
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
 import { buildFavoriteModelKey, type FavoriteModelRow } from "@/hooks/use-form-preferences";
+import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
 
 export type SelectorModelRow = FavoriteModelRow;
 
@@ -44,14 +45,33 @@ export function buildModelRows(
 }
 
 export function matchesSearch(row: SelectorModelRow, normalizedQuery: string): boolean {
-  if (!normalizedQuery) {
-    return true;
-  }
+  return scoreModelRow(row, normalizedQuery) !== null;
+}
 
-  const haystack = [row.modelLabel, row.modelId, row.providerLabel, row.description ?? ""]
-    .join(" ")
-    .toLowerCase();
+function getModelRowSearchFields(row: SelectorModelRow): string[] {
+  return [row.modelLabel, row.modelId, row.providerLabel, row.description ?? ""];
+}
 
-  const tokens = normalizedQuery.split(/\s+/).filter((token) => token.length > 0);
-  return tokens.every((token) => haystack.includes(token));
+export function scoreModelRow(row: SelectorModelRow, normalizedQuery: string) {
+  return scoreTextFields(normalizedQuery, getModelRowSearchFields(row));
+}
+
+export function filterAndRankModelRows(
+  rows: SelectorModelRow[],
+  normalizedQuery: string,
+): SelectorModelRow[] {
+  if (!normalizedQuery) return rows;
+  const scored = rows
+    .map((row) => ({ row, score: scoreModelRow(row, normalizedQuery) }))
+    .filter((entry): entry is { row: SelectorModelRow; score: NonNullable<typeof entry.score> } =>
+      Boolean(entry.score),
+    );
+
+  scored.sort((a, b) => {
+    const cmp = compareMatchScores(a.score, b.score);
+    if (cmp !== 0) return cmp;
+    return a.row.modelLabel.localeCompare(b.row.modelLabel);
+  });
+
+  return scored.map((entry) => entry.row);
 }

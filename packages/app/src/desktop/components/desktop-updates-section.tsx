@@ -5,7 +5,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { ArrowUpRight, Copy, FileText, Activity } from "lucide-react-native";
-import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -127,7 +127,7 @@ function DaemonLogsModal({ visible, onClose, daemonLogs }: DaemonLogsModalProps)
     <AdaptiveModalSheet
       visible={visible}
       onClose={onClose}
-      title="Daemon logs"
+      header={DAEMON_LOGS_HEADER}
       testID="managed-daemon-logs-dialog"
       snapPoints={LOGS_MODAL_SNAP_POINTS}
     >
@@ -158,7 +158,7 @@ function DaemonCliStatusModal({
     <AdaptiveModalSheet
       visible={visible}
       onClose={onClose}
-      title="Daemon status"
+      header={DAEMON_STATUS_HEADER}
       testID="daemon-cli-status-dialog"
       snapPoints={CLI_STATUS_MODAL_SNAP_POINTS}
     >
@@ -512,3 +512,5 @@ const LOADING_CARD_STYLE = [settingsStyles.card, styles.loadingCard];
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 const LOGS_MODAL_SNAP_POINTS = ["70%", "92%"];
 const CLI_STATUS_MODAL_SNAP_POINTS = ["60%", "85%"];
+const DAEMON_LOGS_HEADER: SheetHeader = { title: "Daemon logs" };
+const DAEMON_STATUS_HEADER: SheetHeader = { title: "Daemon status" };

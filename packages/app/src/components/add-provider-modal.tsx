@@ -1,9 +1,13 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useReducer, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
 import { SvgXml } from "react-native-svg";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ExternalLink, PackagePlus, Search } from "lucide-react-native";
-import { AdaptiveModalSheet, AdaptiveTextInput } from "@/components/adaptive-modal-sheet";
+import {
+  AdaptiveModalSheet,
+  AdaptiveTextInput,
+  type SheetHeader,
+} from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import {
   buildAcpProviderConfigPatch,
@@ -26,6 +30,7 @@ type InstallState = "installed" | "available";
 const FLEX_ONE_STYLE = { flex: 1 } as const;
 const ACTION_BUTTON_STYLE = { width: 92 } as const;
 const MODAL_SNAP_POINTS = ["78%", "92%"];
+const ADD_PROVIDER_HEADER: SheetHeader = { title: "Add provider" };
 const SEARCH_ICON_SIZE = 16;
 const PROVIDER_FALLBACK_ICON_SIZE = 20;
 const PROVIDER_REMOTE_ICON_SIZE = 24;
@@ -138,7 +143,14 @@ export function AddProviderModal({ serverId, visible, onClose }: AddProviderModa
   const { entries: providerEntries, refresh } = useProvidersSnapshot(serverId);
   const { patchConfig } = useDaemonConfig(serverId);
   const [search, setSearch] = useState("");
+  const [searchResetKey, bumpSearchResetKey] = useReducer((key: number) => key + 1, 0);
   const [installingProviderId, setInstallingProviderId] = useState<string | null>(null);
+
+  const handleClose = useCallback(() => {
+    setSearch("");
+    bumpSearchResetKey();
+    onClose();
+  }, [onClose]);
 
   const installedProviderIds = useMemo(
     () => new Set(providerEntries?.map((entry) => entry.provider) ?? []),
@@ -157,7 +169,7 @@ export function AddProviderModal({ serverId, visible, onClose }: AddProviderModa
       try {
         await patchConfig(buildAcpProviderConfigPatch(entry));
         await refresh([entry.id]);
-        onClose();
+        handleClose();
       } catch (installError) {
         Alert.alert(
           "Unable to install provider",
@@ -167,14 +179,14 @@ export function AddProviderModal({ serverId, visible, onClose }: AddProviderModa
         setInstallingProviderId((current) => (current === entry.id ? null : current));
       }
     },
-    [installingProviderId, onClose, patchConfig, refresh],
+    [installingProviderId, handleClose, patchConfig, refresh],
   );
 
   return (
     <AdaptiveModalSheet
-      title="Add provider"
+      header={ADD_PROVIDER_HEADER}
       visible={visible}
-      onClose={onClose}
+      onClose={handleClose}
       desktopMaxWidth={680}
       snapPoints={MODAL_SNAP_POINTS}
       testID="add-provider-modal"
@@ -186,6 +198,8 @@ export function AddProviderModal({ serverId, visible, onClose }: AddProviderModa
         <AdaptiveTextInput
           testID="provider-catalog-search"
           accessibilityLabel="Search providers"
+          initialValue={search}
+          resetKey={`provider-catalog-search-${searchResetKey}`}
           value={search}
           onChangeText={setSearch}
           placeholder="Search providers"
@@ -216,7 +230,7 @@ export function AddProviderModal({ serverId, visible, onClose }: AddProviderModa
       ) : null}
 
       <View style={styles.actions}>
-        <Button style={FLEX_ONE_STYLE} variant="secondary" onPress={onClose}>
+        <Button style={FLEX_ONE_STYLE} variant="secondary" onPress={handleClose}>
           Cancel
         </Button>
       </View>

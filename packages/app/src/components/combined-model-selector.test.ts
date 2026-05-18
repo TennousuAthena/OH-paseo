@@ -3,6 +3,7 @@ import type { AgentModelDefinition } from "@server/server/agent/agent-sdk-types"
 import {
   buildModelRows,
   buildSelectedTriggerLabel,
+  filterAndRankModelRows,
   matchesSearch,
   resolveProviderLabel,
 } from "./combined-model-selector.utils";
@@ -81,6 +82,34 @@ describe("combined model selector helpers", () => {
     expect(matchesSearch(row, "zen kimi")).toBe(true);
     expect(matchesSearch(row, "k2.5 zen")).toBe(true);
     expect(matchesSearch(row, "kimi gemini")).toBe(false);
+  });
+
+  it("ranks model search results by fuzzy match quality", () => {
+    const rows = [
+      {
+        favoriteKey: "openai:gpt-4.1",
+        provider: "openai",
+        providerLabel: "OpenAI",
+        modelId: "gpt-4.1",
+        modelLabel: "GPT-4.1",
+      },
+      {
+        favoriteKey: "openai:gpt-5.4",
+        provider: "openai",
+        providerLabel: "OpenAI",
+        modelId: "gpt-5.4",
+        modelLabel: "GPT-5.4",
+      },
+      {
+        favoriteKey: "google:gemini",
+        provider: "google",
+        providerLabel: "Google",
+        modelId: "gemini",
+        modelLabel: "Gemini",
+      },
+    ];
+
+    expect(filterAndRankModelRows(rows, "gpt54").map((row) => row.modelId)).toEqual(["gpt-5.4"]);
   });
 
   it("keeps the selected trigger label model-only", () => {

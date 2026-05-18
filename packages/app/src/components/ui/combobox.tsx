@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ReactElement, ReactNode, Ref } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
+import type { ReactElement, ReactNode } from "react";
 import {
   View,
   Text,
@@ -18,7 +26,6 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import {
   BottomSheetScrollView,
   BottomSheetBackdrop,
-  BottomSheetTextInput,
   BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
@@ -38,11 +45,17 @@ import {
   shouldShowCustomComboboxOption,
 } from "./combobox-options";
 import type { ComboboxOptionModel } from "./combobox-options";
-import { isNative, isWeb } from "@/constants/platform";
+import { isWeb } from "@/constants/platform";
 import {
   IsolatedBottomSheetModal,
   useIsolatedBottomSheetVisibility,
 } from "./isolated-bottom-sheet-modal";
+import {
+  AdaptiveTextInput,
+  InlineHeaderView,
+  SheetHeaderView,
+  type SheetHeader,
+} from "@/components/adaptive-modal-sheet";
 
 const IS_WEB = isWeb;
 
@@ -69,6 +82,15 @@ export interface ComboboxProps {
   customValueKind?: "directory" | "file";
   optionsPosition?: "below-search" | "above-search";
   title?: string;
+  /**
+   * Structured header. When provided, replaces `title` + `stickyHeader` and
+   * is rendered via the shared SheetHeaderView (mobile) / InlineHeaderView
+   * (desktop). Built-in search (when `searchable=true` and no `header.search`)
+   * is folded into the header so its magnifying glass aligns with the title
+   * and any leading icon at the sheet's shared indent.
+   */
+  header?: SheetHeader;
+  mobileChildrenScrollEnabled?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   desktopPlacement?: "top-start" | "bottom-start";
@@ -136,6 +158,7 @@ export interface SearchInputProps {
   onSubmitEditing?: () => void;
   autoFocus?: boolean;
   useBottomSheetInput?: boolean;
+  resetKey?: string | number;
 }
 
 export function SearchInput({
@@ -145,10 +168,10 @@ export function SearchInput({
   onSubmitEditing,
   autoFocus = false,
   useBottomSheetInput = false,
+  resetKey,
 }: SearchInputProps): ReactElement {
   const { theme } = useUnistyles();
   const inputRef = useRef<TextInput>(null);
-  const InputComponent = useBottomSheetInput && isNative ? BottomSheetTextInput : TextInput;
 
   useEffect(() => {
     if (autoFocus && IS_WEB && inputRef.current) {
@@ -162,18 +185,35 @@ export function SearchInput({
   return (
     <View style={styles.searchInputContainer}>
       <Search size={16} color={theme.colors.foregroundMuted} />
-      <InputComponent
-        ref={inputRef as unknown as Ref<never>}
-        // @ts-expect-error - outlineStyle is web-only
-        style={SEARCH_INPUT_STYLE}
-        placeholder={placeholder}
-        placeholderTextColor={theme.colors.foregroundMuted}
-        value={value}
-        onChangeText={onChangeText}
-        autoCapitalize="none"
-        autoCorrect={false}
-        onSubmitEditing={onSubmitEditing}
-      />
+      {useBottomSheetInput ? (
+        <AdaptiveTextInput
+          ref={inputRef}
+          // @ts-expect-error - outlineStyle is web-only
+          style={SEARCH_INPUT_STYLE}
+          placeholder={placeholder}
+          placeholderTextColor={theme.colors.foregroundMuted}
+          initialValue={value}
+          resetKey={resetKey}
+          value={value}
+          onChangeText={onChangeText}
+          autoCapitalize="none"
+          autoCorrect={false}
+          onSubmitEditing={onSubmitEditing}
+        />
+      ) : (
+        <TextInput
+          ref={inputRef}
+          // @ts-expect-error - outlineStyle is web-only
+          style={SEARCH_INPUT_STYLE}
+          placeholder={placeholder}
+          placeholderTextColor={theme.colors.foregroundMuted}
+          value={value}
+          onChangeText={onChangeText}
+          autoCapitalize="none"
+          autoCorrect={false}
+          onSubmitEditing={onSubmitEditing}
+        />
+      )}
     </View>
   );
 }
@@ -593,12 +633,14 @@ function useDesktopFloatingUpdate(
 function useResetSearchOnOpen(
   isOpen: boolean,
   setSearchQueryWithCallback: (query: string) => void,
+  bumpSearchResetKey: () => void,
 ) {
   useEffect(() => {
     if (isOpen) {
       setSearchQueryWithCallback("");
+      bumpSearchResetKey();
     }
-  }, [isOpen, setSearchQueryWithCallback]);
+  }, [isOpen, setSearchQueryWithCallback, bumpSearchResetKey]);
 }
 
 interface DesktopResetSetters {
@@ -919,9 +961,13 @@ interface MobileBodyProps {
   handleIndicatorStyle: { backgroundColor: string };
   titleColor: string;
   title: string;
+  header: SheetHeader | undefined;
+  onClose: () => void;
   stickyHeader: ReactNode;
   searchable: boolean;
   hasChildren: boolean;
+  mobileChildrenScrollEnabled: boolean;
+  searchResetKey: number;
   searchPlaceholder: string;
   searchQuery: string;
   setSearchQueryWithCallback: (query: string) => void;
@@ -981,29 +1027,40 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
     >
-      <View style={styles.bottomSheetHeader}>
-        <Text key={props.titleColor} style={comboboxTitleStyle}>
-          {props.title}
-        </Text>
-      </View>
-      {props.stickyHeader}
-      {!props.hasChildren && props.searchable ? (
-        <SearchInput
-          placeholder={props.searchPlaceholder}
-          value={props.searchQuery}
-          onChangeText={props.setSearchQueryWithCallback}
-          onSubmitEditing={props.handleSubmitSearch}
-          autoFocus={false}
-          useBottomSheetInput
-        />
-      ) : null}
-      <BottomSheetScrollView
-        contentContainerStyle={styles.comboboxScrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {body}
-      </BottomSheetScrollView>
+      {props.header ? (
+        <SheetHeaderView header={props.header} onClose={props.onClose} />
+      ) : (
+        <>
+          <View style={styles.bottomSheetHeader}>
+            <Text key={props.titleColor} style={comboboxTitleStyle}>
+              {props.title}
+            </Text>
+          </View>
+          {props.stickyHeader}
+          {!props.hasChildren && props.searchable ? (
+            <SearchInput
+              placeholder={props.searchPlaceholder}
+              value={props.searchQuery}
+              onChangeText={props.setSearchQueryWithCallback}
+              onSubmitEditing={props.handleSubmitSearch}
+              autoFocus={false}
+              useBottomSheetInput
+              resetKey={props.searchResetKey}
+            />
+          ) : null}
+        </>
+      )}
+      {props.hasChildren && !props.mobileChildrenScrollEnabled ? (
+        body
+      ) : (
+        <BottomSheetScrollView
+          contentContainerStyle={styles.comboboxScrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {body}
+        </BottomSheetScrollView>
+      )}
     </IsolatedBottomSheetModal>
   );
 }
@@ -1015,6 +1072,7 @@ interface DesktopBodyProps {
   shouldUseDesktopFade: boolean;
   desktopContainerStyle: unknown;
   handleDesktopContentLayout: (event: LayoutChangeEvent) => void;
+  header: SheetHeader | undefined;
   stickyHeader: ReactNode;
   searchable: boolean;
   searchPlaceholder: string;
@@ -1036,12 +1094,13 @@ interface DesktopBodyProps {
 }
 
 function DesktopComboboxChildrenBody(props: {
+  header: SheetHeader | undefined;
   stickyHeader: ReactNode;
   children: ReactNode;
 }): ReactElement {
   return (
     <>
-      {props.stickyHeader}
+      {props.header ? <InlineHeaderView header={props.header} /> : props.stickyHeader}
       <ScrollView
         contentContainerStyle={styles.desktopChildrenScrollContent}
         keyboardShouldPersistTaps="handled"
@@ -1055,6 +1114,7 @@ function DesktopComboboxChildrenBody(props: {
 }
 
 function DesktopComboboxOptionsBody(props: {
+  header: SheetHeader | undefined;
   stickyHeader: ReactNode;
   searchable: boolean;
   searchPlaceholder: string;
@@ -1085,8 +1145,8 @@ function DesktopComboboxOptionsBody(props: {
 
   return (
     <>
-      {props.stickyHeader}
-      {props.searchable ? (
+      {props.header ? <InlineHeaderView header={props.header} /> : props.stickyHeader}
+      {props.header || !props.searchable ? null : (
         <SearchInput
           placeholder={props.searchPlaceholder}
           value={props.searchQuery}
@@ -1095,7 +1155,7 @@ function DesktopComboboxOptionsBody(props: {
           autoFocus
           useBottomSheetInput={false}
         />
-      ) : null}
+      )}
       {props.effectiveOptionsPosition === "above-search" ? (
         <ScrollView
           ref={props.desktopOptionsScrollRef}
@@ -1141,11 +1201,12 @@ function DesktopComboboxBody(props: DesktopBodyProps): ReactElement {
           onLayout={props.handleDesktopContentLayout}
         >
           {props.hasChildren ? (
-            <DesktopComboboxChildrenBody stickyHeader={props.stickyHeader}>
+            <DesktopComboboxChildrenBody header={props.header} stickyHeader={props.stickyHeader}>
               {props.children}
             </DesktopComboboxChildrenBody>
           ) : (
             <DesktopComboboxOptionsBody
+              header={props.header}
               stickyHeader={props.stickyHeader}
               searchable={props.searchable}
               searchPlaceholder={props.searchPlaceholder}
@@ -1188,6 +1249,8 @@ export function Combobox({
   customValueKind,
   optionsPosition = "below-search",
   title = "Select",
+  header,
+  mobileChildrenScrollEnabled = true,
   open,
   onOpenChange,
   desktopPlacement = "top-start",
@@ -1214,6 +1277,7 @@ export function Combobox({
   const [referenceTop, setReferenceTop] = useState<number | null>(null);
   const [referenceAtOrigin, setReferenceAtOrigin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResetKey, bumpSearchResetKey] = useReducer((key: number) => key + 1, 0);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const desktopOptionsScrollRef = useRef<ScrollView>(null);
   const [desktopContentWidth, setDesktopContentWidth] = useState<number | null>(null);
@@ -1234,9 +1298,10 @@ export function Combobox({
   const handleClose = useCallback(() => {
     setOpen(false);
     setSearchQueryWithCallback("");
+    bumpSearchResetKey();
   }, [setOpen, setSearchQueryWithCallback]);
 
-  useResetSearchOnOpen(isOpen, setSearchQueryWithCallback);
+  useResetSearchOnOpen(isOpen, setSearchQueryWithCallback, bumpSearchResetKey);
 
   const collisionPadding = useMemo(computeCollisionPadding, []);
 
@@ -1465,9 +1530,13 @@ export function Combobox({
         handleIndicatorStyle={handleIndicatorStyle}
         titleColor={titleColor}
         title={title}
+        header={header}
+        onClose={handleClose}
         stickyHeader={stickyHeader}
         searchable={searchable}
         hasChildren={hasChildren}
+        mobileChildrenScrollEnabled={mobileChildrenScrollEnabled}
+        searchResetKey={searchResetKey}
         searchPlaceholder={effectiveSearchPlaceholder}
         searchQuery={searchQuery}
         setSearchQueryWithCallback={setSearchQueryWithCallback}
@@ -1494,6 +1563,7 @@ export function Combobox({
       shouldUseDesktopFade={shouldUseDesktopFade}
       desktopContainerStyle={desktopContainerStyle}
       handleDesktopContentLayout={handleDesktopContentLayout}
+      header={header}
       stickyHeader={stickyHeader}
       searchable={searchable}
       searchPlaceholder={effectiveSearchPlaceholder}

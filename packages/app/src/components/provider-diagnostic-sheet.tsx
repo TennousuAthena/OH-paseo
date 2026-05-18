@@ -1,5 +1,5 @@
 import { AlertCircle, RotateCw, Search, Trash2 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -9,7 +9,11 @@ import {
   View,
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { AdaptiveModalSheet, AdaptiveTextInput } from "@/components/adaptive-modal-sheet";
+import {
+  AdaptiveModalSheet,
+  AdaptiveTextInput,
+  type SheetHeader,
+} from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { isWeb } from "@/constants/platform";
@@ -96,6 +100,7 @@ function CustomModelsSection(props: {
   const { theme } = useUnistyles();
   const { config, patchConfig } = useDaemonConfig(serverId);
   const [input, setInput] = useState("");
+  const [inputResetKey, bumpInputResetKey] = useReducer((key: number) => key + 1, 0);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingModelId, setDeletingModelId] = useState<string | null>(null);
@@ -136,7 +141,11 @@ function CustomModelsSection(props: {
         label: trimmedInput,
       },
     ])
-      .then(() => setInput(""))
+      .then(() => {
+        setInput("");
+        bumpInputResetKey();
+        return undefined;
+      })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Failed to save model");
       })
@@ -163,6 +172,8 @@ function CustomModelsSection(props: {
       <View style={settingsStyles.card}>
         <View style={INLINE_ROW_STYLE}>
           <AdaptiveTextInput
+            initialValue={input}
+            resetKey={`custom-model-input-${inputResetKey}`}
             value={input}
             onChangeText={setInput}
             onSubmitEditing={handleAdd}
@@ -245,6 +256,7 @@ export function ProviderDiagnosticSheet({
   const [diagnostic, setDiagnostic] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
+  const [queryResetKey, bumpQueryResetKey] = useReducer((key: number) => key + 1, 0);
 
   const providerLabel = resolveProviderLabel(provider, snapshotEntries);
   const providerEntry = useMemo(
@@ -348,6 +360,7 @@ export function ProviderDiagnosticSheet({
     } else {
       setDiagnostic(null);
       setQuery("");
+      bumpQueryResetKey();
     }
   }, [visible, fetchDiagnostic]);
 
@@ -405,13 +418,17 @@ export function ProviderDiagnosticSheet({
     ));
   }
 
+  const sheetHeader = useMemo<SheetHeader>(
+    () => ({ title: providerLabel, actions: headerActions }),
+    [providerLabel, headerActions],
+  );
+
   return (
     <AdaptiveModalSheet
-      title={providerLabel}
+      header={sheetHeader}
       visible={visible}
       onClose={onClose}
       snapPoints={DIAGNOSTIC_SHEET_SNAP_POINTS}
-      headerActions={headerActions}
     >
       <SettingsSection title="Diagnostic">
         <View style={settingsStyles.card}>
@@ -434,6 +451,8 @@ export function ProviderDiagnosticSheet({
           <View style={INLINE_ROW_STYLE}>
             <Search size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
             <AdaptiveTextInput
+              initialValue={query}
+              resetKey={`provider-model-search-${queryResetKey}`}
               value={query}
               onChangeText={setQuery}
               placeholder="Search models"

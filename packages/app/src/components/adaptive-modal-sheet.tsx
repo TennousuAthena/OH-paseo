@@ -12,7 +12,7 @@ import {
   BottomSheetTextInput,
   type BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
-import { X } from "lucide-react-native";
+import { ArrowLeft, Search, X } from "lucide-react-native";
 import { FileDropZone } from "@/components/file-drop-zone";
 import type { ImageAttachment } from "@/components/message-input";
 import {
@@ -20,6 +20,37 @@ import {
   useIsolatedBottomSheetVisibility,
 } from "@/components/ui/isolated-bottom-sheet-modal";
 import { isNative, isWeb } from "@/constants/platform";
+
+// Horizontal indent token shared by the sheet header (title, back arrow,
+// leading icon, search input icon) and any row primitive rendered inside the
+// sheet body. Rows whose leading icon should line up with the header must
+// match this padding.
+export const SHEET_HORIZONTAL_PADDING_SCALE = 6;
+
+export interface SheetHeaderSearch {
+  value: string;
+  onChange: (value: string) => void;
+  initialValue?: string;
+  resetKey?: string | number;
+  placeholder?: string;
+  autoFocus?: boolean;
+  testID?: string;
+}
+
+export interface SheetHeaderBack {
+  onPress: () => void;
+  label?: string;
+  accessibilityLabel?: string;
+}
+
+export interface SheetHeader {
+  title: string;
+  subtitle?: ReactNode;
+  back?: SheetHeaderBack;
+  leading?: ReactNode;
+  actions?: ReactNode;
+  search?: SheetHeaderSearch;
+}
 
 type EscHandler = () => void;
 const escStack: EscHandler[] = [];
@@ -72,23 +103,30 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: 1,
     borderColor: theme.colors.surface2,
   },
-  header: {
-    paddingHorizontal: theme.spacing[6],
-    paddingVertical: theme.spacing[4],
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+  headerContainer: {
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.surface2,
-    gap: theme.spacing[3],
+  },
+  headerRow: {
+    paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
+    paddingVertical: theme.spacing[4],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  headerBackButton: {
+    borderRadius: theme.borderRadius.lg,
+  },
+  headerLeadingSlot: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitleGroup: {
     flex: 1,
-    gap: theme.spacing[2],
+    gap: theme.spacing[1],
     minWidth: 0,
   },
   title: {
-    flex: 1,
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.medium,
   },
@@ -96,51 +134,77 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    marginLeft: theme.spacing[3],
-    marginRight: theme.spacing[2],
   },
   closeButton: {
     padding: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface2,
+  },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
+    paddingBottom: theme.spacing[3],
+  },
+  // Inline variants for InlineHeaderView inside the desktop Combobox popover.
+  // Horizontal padding matches the model picker's row indent: the picker uses
+  // children mode (desktopChildrenScrollContent, no scroll padding), so the
+  // row content starts at item.paddingHorizontal = spacing[3].
+  inlineHeaderRow: {
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  inlineSearchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  inlineTitle: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foreground,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: theme.spacing[2],
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
   },
   desktopScroll: {
     flexShrink: 1,
     minHeight: 0,
   },
   desktopContent: {
-    padding: theme.spacing[6],
+    padding: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     gap: theme.spacing[4],
     flexGrow: 1,
   },
-  bottomSheetHeader: {
-    paddingHorizontal: theme.spacing[6],
-    paddingTop: theme.spacing[4],
-    paddingBottom: theme.spacing[3],
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.surface2,
-    gap: theme.spacing[3],
-  },
   bottomSheetContent: {
-    padding: theme.spacing[6],
+    padding: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     gap: theme.spacing[4],
   },
   bottomSheetStaticContent: {
     flex: 1,
-    padding: theme.spacing[6],
+    padding: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     gap: theme.spacing[4],
     minHeight: 0,
   },
   desktopStaticContent: {
     flexShrink: 1,
     minHeight: 0,
-    padding: theme.spacing[6],
+    padding: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     gap: theme.spacing[4],
   },
 }));
+
+const SEARCH_INPUT_STYLE = [styles.searchInput, isWeb && { outlineStyle: "none" }];
 
 function SheetBackground({ style }: BottomSheetBackgroundProps) {
   const { theme } = useUnistyles();
@@ -158,14 +222,186 @@ function SheetBackground({ style }: BottomSheetBackgroundProps) {
   return <View style={combinedStyle} />;
 }
 
+export type AdaptiveTextInputProps = TextInputProps & {
+  initialValue?: string;
+  resetKey?: string | number;
+};
+
+// React Native controlled TextInput can replay stale JS values during fast input
+// and visibly flicker/cursor-jump. Keep the rendered text native-owned; callers
+// can seed it once with initialValue and remount with resetKey for real resets.
+// See https://github.com/facebook/react-native/issues/44157
+export const AdaptiveTextInput = forwardRef<TextInput, AdaptiveTextInputProps>(
+  function AdaptiveTextInputInner(props, ref) {
+    const isMobile = useIsCompactFormFactor();
+    const { value: _value, initialValue, resetKey, defaultValue, ...inputProps } = props;
+    const textInputProps = {
+      ...inputProps,
+      defaultValue: initialValue ?? defaultValue,
+    };
+
+    if (isMobile && isNative) {
+      return (
+        <BottomSheetTextInput
+          key={resetKey}
+          ref={ref as unknown as Ref<never>}
+          {...textInputProps}
+        />
+      );
+    }
+    return <TextInput key={resetKey} ref={ref} {...textInputProps} />;
+  },
+);
+
+export function SheetHeaderView({
+  header,
+  onClose,
+  showCloseButton = true,
+  testID,
+}: {
+  header: SheetHeader;
+  onClose: () => void;
+  showCloseButton?: boolean;
+  testID?: string;
+}) {
+  const { theme } = useUnistyles();
+  const titleStyle = useMemo(
+    () => [styles.title, { color: theme.colors.foreground }],
+    [theme.colors.foreground],
+  );
+  const back = header.back;
+  const handleBackPress = back?.onPress;
+  const search = header.search;
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      search?.onChange(value);
+    },
+    [search],
+  );
+
+  return (
+    <View style={styles.headerContainer} testID={testID}>
+      <View style={styles.headerRow}>
+        {handleBackPress ? (
+          <Pressable
+            onPress={handleBackPress}
+            hitSlop={8}
+            style={styles.headerBackButton}
+            accessibilityRole="button"
+            accessibilityLabel={back?.accessibilityLabel ?? back?.label ?? "Back"}
+            testID="sheet-header-back"
+          >
+            {({ pressed }) => (
+              <ArrowLeft
+                size={18}
+                color={pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
+              />
+            )}
+          </Pressable>
+        ) : null}
+        {header.leading ? <View style={styles.headerLeadingSlot}>{header.leading}</View> : null}
+        <View style={styles.headerTitleGroup}>
+          <Text style={titleStyle} numberOfLines={1}>
+            {header.title}
+          </Text>
+          {header.subtitle}
+        </View>
+        {header.actions ? <View style={styles.headerActions}>{header.actions}</View> : null}
+        {showCloseButton ? (
+          <Pressable accessibilityLabel="Close" style={styles.closeButton} onPress={onClose}>
+            {({ pressed }) => (
+              <X
+                size={16}
+                color={pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
+              />
+            )}
+          </Pressable>
+        ) : null}
+      </View>
+      {search ? (
+        <View style={styles.searchRow}>
+          <Search size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+          <AdaptiveTextInput
+            // @ts-expect-error - outlineStyle is web-only
+            style={SEARCH_INPUT_STYLE}
+            placeholder={search.placeholder ?? "Search"}
+            placeholderTextColor={theme.colors.foregroundMuted}
+            initialValue={search.initialValue}
+            resetKey={search.resetKey}
+            value={search.value}
+            onChangeText={handleSearchChange}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoFocus={search.autoFocus}
+            testID={search.testID}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+export function InlineHeaderView({ header }: { header: SheetHeader }) {
+  const { theme } = useUnistyles();
+  const back = header.back;
+  const handleBackPress = back?.onPress;
+  const hasInlineRow = Boolean(handleBackPress || header.leading);
+  if (!hasInlineRow && !header.search) return null;
+  return (
+    <View>
+      {hasInlineRow ? (
+        <View style={styles.inlineHeaderRow}>
+          {handleBackPress ? (
+            <Pressable
+              onPress={handleBackPress}
+              hitSlop={8}
+              style={styles.headerBackButton}
+              accessibilityRole="button"
+              accessibilityLabel={back?.accessibilityLabel ?? back?.label ?? "Back"}
+              testID="sheet-header-back"
+            >
+              {({ pressed }) => (
+                <ArrowLeft
+                  size={16}
+                  color={pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
+                />
+              )}
+            </Pressable>
+          ) : null}
+          {header.leading ? <View style={styles.headerLeadingSlot}>{header.leading}</View> : null}
+          <Text style={styles.inlineTitle} numberOfLines={1}>
+            {header.title}
+          </Text>
+        </View>
+      ) : null}
+      {header.search ? (
+        <View style={styles.inlineSearchRow}>
+          <Search size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+          <AdaptiveTextInput
+            // @ts-expect-error - outlineStyle is web-only
+            style={SEARCH_INPUT_STYLE}
+            placeholder={header.search.placeholder ?? "Search"}
+            placeholderTextColor={theme.colors.foregroundMuted}
+            initialValue={header.search.initialValue}
+            resetKey={header.search.resetKey}
+            value={header.search.value}
+            onChangeText={header.search.onChange}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoFocus={header.search.autoFocus}
+            testID={header.search.testID}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export interface AdaptiveModalSheetProps {
-  title: string;
-  /** Optional content rendered below the title in the header area. */
-  subtitle?: ReactNode;
+  header: SheetHeader;
   visible: boolean;
   onClose: () => void;
   children: ReactNode;
-  headerActions?: ReactNode;
   snapPoints?: string[];
   testID?: string;
   /** Override the max width of the desktop card. */
@@ -176,12 +412,10 @@ export interface AdaptiveModalSheetProps {
 }
 
 export function AdaptiveModalSheet({
-  title,
-  subtitle,
+  header,
   visible,
   onClose,
   children,
-  headerActions,
   snapPoints,
   testID,
   desktopMaxWidth,
@@ -190,7 +424,6 @@ export function AdaptiveModalSheet({
 }: AdaptiveModalSheetProps) {
   const { theme } = useUnistyles();
   const isMobile = useIsCompactFormFactor();
-  const titleColor = theme.colors.foreground;
   const resolvedSnapPoints = useMemo(() => snapPoints ?? ["65%", "90%"], [snapPoints]);
   const handleIndicatorStyle = useMemo(
     () => ({ backgroundColor: theme.colors.surface2 }),
@@ -209,7 +442,6 @@ export function AdaptiveModalSheet({
     [],
   );
 
-  const titleStyle = useMemo(() => [styles.title, { color: titleColor }], [titleColor]);
   const desktopCardStyle = useMemo(
     () => [styles.desktopCard, desktopMaxWidth != null && { maxWidth: desktopMaxWidth }],
     [desktopMaxWidth],
@@ -237,18 +469,7 @@ export function AdaptiveModalSheet({
         keyboardBlurBehavior="restore"
         accessible={false}
       >
-        <View style={styles.bottomSheetHeader} testID={testID}>
-          <View style={styles.headerTitleGroup}>
-            <Text key={titleColor} style={titleStyle} numberOfLines={1}>
-              {title}
-            </Text>
-            {subtitle}
-          </View>
-          {headerActions ? <View style={styles.headerActions}>{headerActions}</View> : null}
-          <Pressable accessibilityLabel="Close" style={styles.closeButton} onPress={onClose}>
-            <X size={16} color={theme.colors.foregroundMuted} />
-          </Pressable>
-        </View>
+        <SheetHeaderView header={header} onClose={onClose} testID={testID} />
         {scrollable ? (
           <BottomSheetScrollView
             contentContainerStyle={styles.bottomSheetContent}
@@ -266,18 +487,7 @@ export function AdaptiveModalSheet({
 
   const cardInner = (
     <>
-      <View style={styles.header}>
-        <View style={styles.headerTitleGroup}>
-          <Text key={titleColor} style={titleStyle} numberOfLines={1}>
-            {title}
-          </Text>
-          {subtitle}
-        </View>
-        {headerActions ? <View style={styles.headerActions}>{headerActions}</View> : null}
-        <Pressable accessibilityLabel="Close" style={styles.closeButton} onPress={onClose}>
-          <X size={16} color={theme.colors.foregroundMuted} />
-        </Pressable>
-      </View>
+      <SheetHeaderView header={header} onClose={onClose} />
       {scrollable ? (
         <ScrollView
           style={styles.desktopScroll}
@@ -324,19 +534,3 @@ export function AdaptiveModalSheet({
     </Modal>
   );
 }
-
-/**
- * TextInput that automatically uses BottomSheetTextInput on mobile
- * for proper keyboard dodging in AdaptiveModalSheet.
- */
-export const AdaptiveTextInput = forwardRef<TextInput, TextInputProps>(
-  function AdaptiveTextInput(props, ref) {
-    const isMobile = useIsCompactFormFactor();
-
-    if (isMobile && isNative) {
-      return <BottomSheetTextInput ref={ref as unknown as Ref<never>} {...props} />;
-    }
-
-    return <TextInput ref={ref} {...props} />;
-  },
-);
