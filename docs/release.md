@@ -185,9 +185,25 @@ A build's `gitCommitHash` must match the release tag commit. `status` walks thro
 
 ### Babysitting mobile after a release
 
-The user rarely opens the Expo dashboard. A failed EAS build can sit silently until users complain about a stale version. After every stable release, kick off a long-delay babysit (~45–60 min after the release push) that re-checks both EAS builds and GitHub Actions for the release tag. If anything is `ERRORED` or `FAILED`, surface it immediately. If everything is `FINISHED`/`SUCCESS`, confirm and stop.
+The user rarely opens the Expo dashboard. A failed EAS build can sit silently until users complain about a stale version. After every stable release, set up a long-delay babysit that re-checks both EAS builds and GitHub Actions for the release tag. If anything is `ERRORED` or `FAILED`, surface it immediately. If everything is `FINISHED`/`SUCCESS`, confirm and stop.
 
-A second wake at ~90 min covers the cases where store submission takes longer than the build itself.
+**Use a heartbeat schedule, never a new-agent schedule.** Babysitting fires back into the current conversation as a wake-up prompt — `target: "self"` in `mcp__paseo__create_schedule`. Never use `target: "new-agent"`. A new agent spawns a fresh conversation the user has to find and read; a heartbeat surfaces the build status inline in the conversation that owns the release, where it is impossible to miss. If you find yourself reaching for `new-agent` for a release babysit, you are about to ship a status report into a void.
+
+Pattern:
+
+```jsonc
+// mcp__paseo__create_schedule arguments
+{
+  "name": "vX.Y.Z release babysit heartbeat",
+  "every": "15m",
+  "maxRuns": 8, // covers ~2h of build + store-submission window
+  "target": "self", // heartbeat, NOT "new-agent"
+  "cwd": "/path/to/paseo",
+  "prompt": "Heartbeat: check vX.Y.Z release builds. Run gh + eas build:list + eas submit:list, report concisely; flag any ERRORED/FAILED/CANCELED.",
+}
+```
+
+Tight cadence on purpose. The first run fires immediately, giving a near-real-time status check before the conversation closes. Subsequent runs at 15-minute intervals catch transitions quickly: a failed EAS build that errors at +20m should not wait until +50m to surface. Keep the prompt short — the heartbeat is a status probe, not a research task — and have it bail out as soon as everything is green so the remaining runs do not generate noise.
 
 ## Release notes on GitHub
 
