@@ -33,7 +33,7 @@
     "@floating-ui/react-native": "^0.10.7",
     "@getpaseo/expo-two-way-audio": "*",
     "@getpaseo/highlight": "*",
-    "@gorhom/bottom-sheet": "^5.2.6",
+    "@gorhom/bottom-sheet": "^5.2.14",
     "@gorhom/portal": "^1.0.14",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-masked-view/masked-view": "^0.3.2",
