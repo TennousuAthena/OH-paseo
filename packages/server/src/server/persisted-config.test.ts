@@ -34,6 +34,18 @@ describe("PersistedConfigSchema daemon auth config", () => {
   });
 });
 
+describe("PersistedConfigSchema daemon append system prompt config", () => {
+  test("accepts optional append system prompt", () => {
+    const parsed = PersistedConfigSchema.parse({
+      daemon: {
+        appendSystemPrompt: "Prefer terse replies.",
+      },
+    });
+
+    expect(parsed.daemon?.appendSystemPrompt).toBe("Prefer terse replies.");
+  });
+});
+
 describe("PersistedConfigSchema daemon relay config", () => {
   test("accepts optional relay TLS setting", () => {
     const parsed = PersistedConfigSchema.parse({
@@ -48,6 +60,18 @@ describe("PersistedConfigSchema daemon relay config", () => {
     });
 
     expect(parsed.daemon?.relay?.useTls).toBe(true);
+  });
+});
+
+describe("PersistedConfigSchema daemon append system prompt", () => {
+  test("accepts optional append system prompt", () => {
+    const parsed = PersistedConfigSchema.parse({
+      daemon: {
+        appendSystemPrompt: "Prefer terse replies.",
+      },
+    });
+
+    expect(parsed.daemon?.appendSystemPrompt).toBe("Prefer terse replies.");
   });
 });
 
