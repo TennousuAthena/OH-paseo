@@ -1,71 +1,136 @@
 import { describe, expect, it } from "vitest";
-import type { AgentModelDefinition } from "@server/server/agent/agent-sdk-types";
+import type {
+  AgentModelDefinition,
+  ProviderSnapshotEntry,
+} from "@server/server/agent/agent-sdk-types";
+import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
 import {
-  buildModelRows,
+  buildModelSelectorProviders,
+  buildSelectableModelSelectorProviders,
   buildSelectedTriggerLabel,
   filterAndRankModelRows,
   matchesSearch,
-  resolveProviderLabel,
 } from "./combined-model-selector.utils";
 
-describe("combined model selector helpers", () => {
-  const providerDefinitions = [
-    {
-      id: "claude",
-      label: "Claude",
-      description: "Claude provider",
-      defaultModeId: "default",
-      modes: [],
-    },
-    {
-      id: "codex",
-      label: "Codex",
-      description: "Codex provider",
-      defaultModeId: "auto",
-      modes: [],
-    },
-  ];
+describe("combined model selector data", () => {
+  const codexModel: AgentModelDefinition = {
+    provider: "codex",
+    id: "gpt-5.4",
+    label: "GPT-5.4",
+  };
 
-  const claudeModels: AgentModelDefinition[] = [
-    {
-      provider: "claude",
-      id: "sonnet-4.6",
-      label: "Sonnet 4.6",
-    },
-  ];
+  function snapshotEntry(
+    overrides: Partial<ProviderSnapshotEntry> & Pick<ProviderSnapshotEntry, "provider">,
+  ): ProviderSnapshotEntry {
+    return {
+      ...overrides,
+      provider: overrides.provider,
+      status: overrides.status ?? "ready",
+      enabled: overrides.enabled ?? true,
+      label: overrides.label ?? overrides.provider,
+      description: overrides.description ?? `${overrides.provider} provider`,
+      defaultModeId: overrides.defaultModeId ?? "default",
+      modes: overrides.modes ?? [],
+      models: overrides.models ?? [codexModel],
+    };
+  }
 
-  const codexModels: AgentModelDefinition[] = [
-    {
-      provider: "codex",
-      id: "gpt-5.4",
-      label: "GPT-5.4",
-    },
-  ];
-
-  it("keeps enough data to search by model and provider name", async () => {
-    const rows = buildModelRows(
-      providerDefinitions,
-      new Map([
-        ["claude", claudeModels],
-        ["codex", codexModels],
+  it("builds selector providers from ready enabled snapshot entries", () => {
+    expect(
+      buildSelectableModelSelectorProviders([
+        snapshotEntry({
+          provider: "codex",
+          label: "Codex",
+          models: [codexModel],
+        }),
       ]),
-    );
-
-    expect(rows).toEqual([
-      expect.objectContaining({
-        providerLabel: "Claude",
-        modelLabel: "Sonnet 4.6",
-        modelId: "sonnet-4.6",
-      }),
-      expect.objectContaining({
-        providerLabel: "Codex",
-        modelLabel: "GPT-5.4",
-        modelId: "gpt-5.4",
-      }),
+    ).toEqual([
+      {
+        id: "codex",
+        label: "Codex",
+        rows: [
+          {
+            favoriteKey: "codex:gpt-5.4",
+            provider: "codex",
+            providerLabel: "Codex",
+            modelId: "gpt-5.4",
+            modelLabel: "GPT-5.4",
+            description: undefined,
+            isDefault: undefined,
+          },
+        ],
+      },
     ]);
+  });
 
-    expect(matchesSearch(rows[0], "claude")).toBe(true);
-    expect(matchesSearch(rows[1], "gpt-5.4")).toBe(true);
+  it("keeps ready enabled providers with no models as model-less providers", () => {
+    expect(
+      buildSelectableModelSelectorProviders([
+        snapshotEntry({
+          provider: "deepseek-tui",
+          label: "DeepSeek TUI",
+          models: [],
+        }),
+      ]),
+    ).toEqual([
+      {
+        id: "deepseek-tui",
+        label: "DeepSeek TUI",
+        rows: [],
+      },
+    ]);
+  });
+
+  it("excludes disabled providers from selector data", () => {
+    expect(
+      buildSelectableModelSelectorProviders([
+        snapshotEntry({
+          provider: "deepseek-tui",
+          label: "DeepSeek TUI",
+          enabled: false,
+          models: [],
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("excludes providers that are not ready", () => {
+    expect(
+      buildSelectableModelSelectorProviders([
+        snapshotEntry({ provider: "loading-provider", status: "loading", models: [] }),
+        snapshotEntry({ provider: "error-provider", status: "error", models: [] }),
+        snapshotEntry({ provider: "unavailable-provider", status: "unavailable", models: [] }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("builds selector providers from an already-curated provider list", () => {
+    const providerDefinitions: AgentProviderDefinition[] = [
+      {
+        id: "codex",
+        label: "Codex",
+        description: "Codex provider",
+        defaultModeId: "auto",
+        modes: [],
+      },
+    ];
+
+    expect(
+      buildModelSelectorProviders(providerDefinitions, new Map([["codex", [codexModel]]])),
+    ).toEqual([
+      {
+        id: "codex",
+        label: "Codex",
+        rows: [
+          expect.objectContaining({
+            provider: "codex",
+            providerLabel: "Codex",
+            modelId: "gpt-5.4",
+            modelLabel: "GPT-5.4",
+          }),
+        ],
+      },
+    ]);
   });
 
   it("matches across label, provider, and description with multi-token fuzzy search", () => {
@@ -113,7 +178,6 @@ describe("combined model selector helpers", () => {
   });
 
   it("keeps the selected trigger label model-only", () => {
-    expect(resolveProviderLabel(providerDefinitions, "codex")).toBe("Codex");
     expect(buildSelectedTriggerLabel("GPT-5.4")).toBe("GPT-5.4");
   });
 });

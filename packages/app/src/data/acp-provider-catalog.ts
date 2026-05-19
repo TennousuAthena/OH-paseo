@@ -136,6 +136,15 @@ const CATALOG_DATA = [
     command: ["npx", "-y", "deepagents-acp@0.1.7"],
   },
   {
+    id: "deepseek-tui",
+    title: "DeepSeek TUI",
+    description: "Terminal coding agent for DeepSeek V4",
+    version: "0.8.39",
+    iconId: "deepseek-tui",
+    installLink: "https://github.com/Hmbown/DeepSeek-TUI",
+    command: ["deepseek", "serve", "--acp"],
+  },
+  {
     id: "dimcode",
     title: "DimCode",
     description: "A coding agent that puts leading models at your command.",

@@ -37,6 +37,7 @@ describe("ACP provider catalog", () => {
   it("uses PATH commands for entries that were binary distributions upstream", () => {
     expect(findProvider("amp-acp").command).toEqual(["amp-acp"]);
     expect(findProvider("cursor").command).toEqual(["cursor-agent", "acp"]);
+    expect(findProvider("deepseek-tui").command).toEqual(["deepseek", "serve", "--acp"]);
     expect(findProvider("goose").command).toEqual(["goose", "acp"]);
     expect(findProvider("junie").command).toEqual(["junie", "--acp", "true"]);
     expect(findProvider("kiro").command).toEqual(["kiro-cli", "acp"]);

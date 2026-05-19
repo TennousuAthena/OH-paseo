@@ -362,6 +362,33 @@ describe("createLoggedNdJsonStream", () => {
     consoleError.mockRestore();
   });
 
+  test("normalizes stringified numeric ACP response ids", async () => {
+    const input = new TransformStream<Uint8Array, Uint8Array>();
+    const output = new TransformStream<Uint8Array, Uint8Array>();
+    const logger = {
+      warn: vi.fn(),
+    };
+
+    const stream = createLoggedNdJsonStream(output.writable, input.readable, {
+      logger: asInternals<ReturnType<typeof createTestLogger>>(logger),
+      provider: "deepseek-tui",
+    });
+    const reader = stream.readable.getReader();
+    const writer = input.writable.getWriter();
+
+    await writer.write(
+      new TextEncoder().encode('{"jsonrpc":"2.0","id":"0","result":{"ok":true}}\n'),
+    );
+
+    const parsed = await reader.read();
+
+    expect(parsed.value).toEqual({ jsonrpc: "2.0", id: 0, result: { ok: true } });
+    expect(logger.warn).not.toHaveBeenCalled();
+
+    await writer.close();
+    reader.releaseLock();
+  });
+
   test("does not log terminal control sequences from malformed ACP stdout", async () => {
     const input = new TransformStream<Uint8Array, Uint8Array>();
     const output = new TransformStream<Uint8Array, Uint8Array>();
@@ -702,6 +729,31 @@ describe("ACPAgentSession Zed parity", () => {
 
     await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
     expect(setSessionConfigOption).not.toHaveBeenCalled();
+  });
+
+  test("does not fail session start when configured model cannot be applied by ACP", async () => {
+    const logger = createTestLogger();
+    const childLogger = { trace: vi.fn(), warn: vi.fn() };
+    vi.spyOn(logger, "child").mockReturnValue(asInternals<typeof logger>(childLogger));
+    const session = createSessionWithConfig(
+      { provider: "deepseek-tui", model: "deepseek/v4" },
+      logger,
+    );
+    const { internals, setSessionConfigOption, unstableSetSessionModel } =
+      prepareConfiguredOverrideSession(session, {
+        currentModel: null,
+        availableModels: null,
+        configOptions: [],
+        connection: { unstable_setSessionModel: undefined },
+      });
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(unstableSetSessionModel).not.toHaveBeenCalled();
+    expect(setSessionConfigOption).not.toHaveBeenCalled();
+    expect(childLogger.warn).toHaveBeenCalledWith(
+      { value: "deepseek/v4" },
+      "deepseek-tui does not expose ACP model selection; using provider default model",
+    );
   });
 
   test("routes config_option_update and refreshes derived mode, model, and thinking state", async () => {

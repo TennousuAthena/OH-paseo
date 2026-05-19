@@ -19,7 +19,7 @@ describe("resolveStatusControlMode", () => {
         selectedModel: "",
         onSelectModel: () => undefined,
         isModelLoading: false,
-        allProviderModels: new Map(),
+        modelSelectorProviders: [],
         isAllModelsLoading: false,
         onSelectProviderAndModel: () => undefined,
         thinkingOptions: [],
