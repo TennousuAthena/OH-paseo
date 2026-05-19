@@ -4,6 +4,7 @@ import { Alert, Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
+import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section";
@@ -379,9 +380,9 @@ function ConnectionRow({
 function DaemonSection({ host, isLocalDaemon }: { host: HostProfile; isLocalDaemon: boolean }) {
   return (
     <>
-      <SettingsSection title="Operations">
-        <RestartDaemonCard host={host} />
+      <SettingsSection title="Daemon settings">
         <InjectPaseoToolsCard serverId={host.serverId} />
+        <AppendSystemPromptCard serverId={host.serverId} />
       </SettingsSection>
       {isLocalDaemon ? (
         <SettingsSection title="Pair devices">
@@ -544,9 +545,9 @@ function InjectPaseoToolsCard({ serverId }: { serverId: string }) {
     <View style={settingsStyles.card} testID="host-page-inject-mcp-card">
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Inject Paseo tools</Text>
+          <Text style={settingsStyles.rowTitle}>Enable Paseo tools</Text>
           <Text style={settingsStyles.rowHint}>
-            Automatically inject Paseo MCP tools into new agents
+            Agents will be able to manage worktrees, agents and schedules
           </Text>
         </View>
         <Switch
@@ -556,6 +557,111 @@ function InjectPaseoToolsCard({ serverId }: { serverId: string }) {
         />
       </View>
     </View>
+  );
+}
+
+function AppendSystemPromptCard({ serverId }: { serverId: string }) {
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  const persistedPrompt = config?.appendSystemPrompt ?? "";
+  const [draft, setDraft] = useState(persistedPrompt);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const header = useMemo<SheetHeader>(() => ({ title: "Append system prompt" }), []);
+
+  useEffect(() => {
+    setDraft(persistedPrompt);
+  }, [persistedPrompt]);
+
+  const hasChanges = draft !== persistedPrompt;
+
+  const handleOpen = useCallback(() => {
+    setDraft(persistedPrompt);
+    setIsEditing(true);
+  }, [persistedPrompt]);
+
+  const handleClose = useCallback(() => {
+    if (isSaving) return;
+    setDraft(persistedPrompt);
+    setIsEditing(false);
+  }, [isSaving, persistedPrompt]);
+
+  const handleSave = useCallback(() => {
+    setIsSaving(true);
+    void patchConfig({ appendSystemPrompt: draft })
+      .then(() => {
+        setIsEditing(false);
+        return;
+      })
+      .catch((error) => {
+        console.error("[HostPage] Failed to save append system prompt", error);
+      })
+      .finally(() => setIsSaving(false));
+  }, [draft, patchConfig]);
+
+  const handleReset = useCallback(() => {
+    setDraft(persistedPrompt);
+  }, [persistedPrompt]);
+
+  if (!isConnected) return null;
+
+  return (
+    <>
+      <View style={settingsStyles.card} testID="host-page-append-system-prompt-card">
+        <View style={settingsStyles.row}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>System prompt</Text>
+            <Text style={settingsStyles.rowHint}>Added a system prompt to all agents</Text>
+          </View>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={handleOpen}
+            testID="host-page-append-system-prompt-edit"
+          >
+            Edit
+          </Button>
+        </View>
+      </View>
+
+      {isEditing ? (
+        <AdaptiveModalSheet
+          header={header}
+          visible
+          onClose={handleClose}
+          testID="host-page-append-system-prompt-sheet"
+          desktopMaxWidth={560}
+        >
+          <SettingsTextAreaCard
+            testID="host-page-append-system-prompt-input"
+            accessibilityLabel="Append system prompt"
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Always keep replies concise."
+          />
+          <View style={styles.appendPromptActions}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={handleReset}
+              disabled={!hasChanges || isSaving}
+              testID="host-page-append-system-prompt-reset"
+            >
+              Reset
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onPress={handleSave}
+              disabled={!hasChanges || isSaving}
+              testID="host-page-append-system-prompt-save"
+            >
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
+          </View>
+        </AdaptiveModalSheet>
+      ) : null}
+    </>
   );
 }
 
@@ -631,6 +737,8 @@ function RemoveHostSection({ host, onRemoved }: { host: HostProfile; onRemoved?:
 
   return (
     <SettingsSection title="Danger zone" testID="host-page-remove-host-card">
+      <RestartDaemonCard host={host} />
+
       <View style={settingsStyles.card}>
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
@@ -754,6 +862,11 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     marginTop: theme.spacing[4],
+  },
+  appendPromptActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: theme.spacing[2],
   },
   emptyCard: {
     padding: theme.spacing[4],

@@ -23,6 +23,7 @@ import { ExternalLink } from "@/components/ui/external-link";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { SettingsGroup } from "@/screens/settings/settings-group";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
@@ -621,18 +622,13 @@ function ProjectConfigForm({
         testID="worktree-group"
       >
         <SettingsSection title="Setup" testID="worktree-setup-section" trailing={setupDocsLink}>
-          <View style={settingsStyles.card}>
-            <TextInput
-              testID="worktree-setup-input"
-              accessibilityLabel="Worktree setup commands"
-              multiline
-              value={draft.setupText}
-              onChangeText={handleSetupChange}
-              placeholder="npm install"
-              placeholderTextColor={styles.placeholderColor.color}
-              style={styles.lifecycleInput}
-            />
-          </View>
+          <SettingsTextAreaCard
+            testID="worktree-setup-input"
+            accessibilityLabel="Worktree setup commands"
+            value={draft.setupText}
+            onChangeText={handleSetupChange}
+            placeholder="npm install"
+          />
         </SettingsSection>
 
         <SettingsSection
@@ -641,18 +637,13 @@ function ProjectConfigForm({
           trailing={teardownDocsLink}
           flush
         >
-          <View style={settingsStyles.card}>
-            <TextInput
-              testID="worktree-teardown-input"
-              accessibilityLabel="Worktree teardown commands"
-              multiline
-              value={draft.teardownText}
-              onChangeText={handleTeardownChange}
-              placeholder="docker compose down"
-              placeholderTextColor={styles.placeholderColor.color}
-              style={styles.lifecycleInput}
-            />
-          </View>
+          <SettingsTextAreaCard
+            testID="worktree-teardown-input"
+            accessibilityLabel="Worktree teardown commands"
+            value={draft.teardownText}
+            onChangeText={handleTeardownChange}
+            placeholder="docker compose down"
+          />
         </SettingsSection>
       </SettingsGroup>
 
@@ -1008,18 +999,13 @@ function MetadataPromptSection({ promptKey, value, onChange, flush }: MetadataPr
   );
   return (
     <SettingsSection title={meta.title} testID={meta.sectionTestID} flush={flush}>
-      <View style={settingsStyles.card}>
-        <TextInput
-          testID={meta.inputTestID}
-          accessibilityLabel={meta.title}
-          multiline
-          value={value}
-          onChangeText={handleChange}
-          placeholder={meta.placeholder}
-          placeholderTextColor={styles.placeholderColor.color}
-          style={styles.lifecycleInput}
-        />
-      </View>
+      <SettingsTextAreaCard
+        testID={meta.inputTestID}
+        accessibilityLabel={meta.title}
+        value={value}
+        onChangeText={handleChange}
+        placeholder={meta.placeholder}
+      />
     </SettingsSection>
   );
 }
@@ -1343,14 +1329,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   errorBlock: {
     marginTop: theme.spacing[2],
-  },
-  lifecycleInput: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    paddingVertical: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
-    minHeight: 96,
-    textAlignVertical: "top",
   },
   emptyScripts: {
     color: theme.colors.foregroundMuted,
