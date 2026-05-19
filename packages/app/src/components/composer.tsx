@@ -463,7 +463,7 @@ function QueuedMessageRow({ item, onEdit, onSendNow }: QueuedMessageRowProps) {
           accessibilityLabel="Send queued message now"
           accessibilityRole="button"
         >
-          <ArrowUp size={ICON_SIZE.sm} color="white" />
+          <ThemedArrowUp size={ICON_SIZE.sm} uniProps={iconAccentForegroundMapping} />
         </Pressable>
       </View>
     </View>
@@ -1847,6 +1847,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
 const QUEUE_SEND_BUTTON_STYLE = [styles.queueActionButton, styles.queueSendButton];
 
 const ThemedPencil = withUnistyles(Pencil);
+const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedAudioLines = withUnistyles(AudioLines);
@@ -1855,3 +1856,4 @@ const ThemedGithub = withUnistyles(Github);
 
 const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const iconAccentForegroundMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });

@@ -315,12 +315,12 @@ function SendButtonContent({
   buttonIconSize: number;
 }) {
   if (isSubmitLoading) {
-    return <ActivityIndicator size="small" color="white" />;
+    return <ThemedActivityIndicator size="small" uniProps={iconAccentForegroundMapping} />;
   }
   if (submitIcon === "return") {
-    return <CornerDownLeft size={buttonIconSize} color="white" />;
+    return <ThemedCornerDownLeft size={buttonIconSize} uniProps={iconAccentForegroundMapping} />;
   }
-  return <ArrowUp size={buttonIconSize} color="white" />;
+  return <ThemedArrowUp size={buttonIconSize} uniProps={iconAccentForegroundMapping} />;
 }
 
 function resolveSubmitAccessibilityLabel(input: {
@@ -1977,10 +1977,14 @@ const styles = StyleSheet.create((theme: Theme) => ({
 const ThemedPlus = withUnistyles(Plus);
 const ThemedMic = withUnistyles(Mic);
 const ThemedMicOff = withUnistyles(MicOff);
+const ThemedArrowUp = withUnistyles(ArrowUp);
+const ThemedCornerDownLeft = withUnistyles(CornerDownLeft);
+const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedTextInput = withUnistyles(TextInput);
 
 const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const iconAccentForegroundMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
 const textInputPlaceholderColorMapping = (theme: Theme) => ({
   placeholderTextColor: theme.colors.surface4,
 });

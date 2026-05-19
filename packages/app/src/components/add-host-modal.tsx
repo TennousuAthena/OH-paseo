@@ -489,7 +489,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
         <View style={checkboxStyle}>
           {useTls ? (
             <View testID="direct-ssl-toggle-checked">
-              <Check size={14} color={theme.colors.palette.white} />
+              <Check size={14} color={theme.colors.accentForeground} />
             </View>
           ) : null}
         </View>
