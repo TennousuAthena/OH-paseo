@@ -188,7 +188,7 @@ async function isOpenAiApiKeyUsable(apiKey: string | undefined): Promise<boolean
 let daemonProcess: ChildProcess | null = null;
 let metroProcess: ChildProcess | null = null;
 let paseoHome: string | null = null;
-let fakeGhBinDir: string | null = null;
+let fakeToolBinDir: string | null = null;
 let relayProcess: ChildProcess | null = null;
 
 function resolveOptionalPaseoHomeEnv(value: string | undefined): string | null {
@@ -209,8 +209,8 @@ interface OfferPayload {
   relay: { endpoint: string };
 }
 
-async function createFakeGhBin(): Promise<string> {
-  const binDir = await mkdtemp(path.join(tmpdir(), "paseo-e2e-gh-bin-"));
+async function createFakeToolBin(): Promise<string> {
+  const binDir = await mkdtemp(path.join(tmpdir(), "paseo-e2e-tool-bin-"));
   const ghPath = path.join(binDir, "gh");
   await writeFile(
     ghPath,
@@ -284,6 +284,27 @@ forwardToRealGh();
 `,
   );
   await chmod(ghPath, 0o755);
+
+  const fakeEditorSource = `#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+const recordPath = process.env.PASEO_E2E_EDITOR_RECORD_PATH;
+
+if (recordPath) {
+  fs.appendFileSync(recordPath, JSON.stringify({
+    command: path.basename(process.argv[1]),
+    args: process.argv.slice(2),
+    cwd: process.cwd(),
+    at: Date.now()
+  }) + "\\n");
+}
+`;
+  for (const editorCommand of ["cursor", "code"]) {
+    const editorPath = path.join(binDir, editorCommand);
+    await writeFile(editorPath, fakeEditorSource);
+    await chmod(editorPath, 0o755);
+  }
+
   return binDir;
 }
 
@@ -599,7 +620,8 @@ interface DaemonSpawnArgs {
   relayPort: number;
   metroPort: number;
   paseoHome: string;
-  fakeGhBinDir: string;
+  fakeToolBinDir: string;
+  editorRecordPath: string;
   dictation: DictationConfig;
   buffer: ReturnType<typeof createLineBuffer>;
 }
@@ -613,8 +635,9 @@ function startDaemon(args: DaemonSpawnArgs): ChildProcess {
     cwd: serverDir,
     env: {
       ...process.env,
-      PATH: `${args.fakeGhBinDir}${path.delimiter}${process.env.PATH ?? ""}`,
+      PATH: `${args.fakeToolBinDir}${path.delimiter}${process.env.PATH ?? ""}`,
       PASEO_HOME: args.paseoHome,
+      PASEO_E2E_EDITOR_RECORD_PATH: args.editorRecordPath,
       PASEO_SERVER_ID: "srv_e2e_test_daemon",
       PASEO_LISTEN: `0.0.0.0:${args.port}`,
       PASEO_RELAY_ENDPOINT: `127.0.0.1:${args.relayPort}`,
@@ -678,9 +701,9 @@ async function performCleanup(shouldRemovePaseoHome: boolean): Promise<void> {
   } else if (paseoHome) {
     console.log(`[e2e] Preserving PASEO_HOME: ${paseoHome}`);
   }
-  if (fakeGhBinDir) {
-    await rm(fakeGhBinDir, { recursive: true, force: true });
-    fakeGhBinDir = null;
+  if (fakeToolBinDir) {
+    await rm(fakeToolBinDir, { recursive: true, force: true });
+    fakeToolBinDir = null;
   }
 }
 
@@ -694,7 +717,8 @@ export default async function globalSetup() {
   const requestedPaseoHome = resolveOptionalPaseoHomeEnv(process.env.E2E_PASEO_HOME);
   const shouldRemovePaseoHome = !requestedPaseoHome && process.env.E2E_KEEP_PASEO_HOME !== "1";
   paseoHome = requestedPaseoHome ?? (await mkdtemp(path.join(tmpdir(), "paseo-e2e-home-")));
-  fakeGhBinDir = await createFakeGhBin();
+  const editorRecordPath = path.join(paseoHome, "editor-open-records.jsonl");
+  fakeToolBinDir = await createFakeToolBin();
   const metroLineBuffer = createLineBuffer();
   const daemonLineBuffer = createLineBuffer();
 
@@ -712,7 +736,8 @@ export default async function globalSetup() {
       relayPort,
       metroPort,
       paseoHome,
-      fakeGhBinDir,
+      fakeToolBinDir,
+      editorRecordPath,
       dictation,
       buffer: daemonLineBuffer,
     });
@@ -742,6 +767,7 @@ export default async function globalSetup() {
     process.env.E2E_RELAY_DAEMON_PUBLIC_KEY = offer.daemonPublicKeyB64;
     process.env.E2E_METRO_PORT = String(metroPort);
     process.env.E2E_PASEO_HOME = paseoHome;
+    process.env.E2E_EDITOR_RECORD_PATH = editorRecordPath;
     console.log(
       `[e2e] Test daemon started on port ${port}, Metro on port ${metroPort}, home: ${paseoHome}`,
     );

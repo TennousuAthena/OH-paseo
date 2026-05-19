@@ -19,6 +19,9 @@ export function resolvePreferredEditorId(
   availableEditorIds: readonly EditorTargetId[],
   storedEditorId: EditorTargetId | null | undefined,
 ): EditorTargetId | null {
+  if (storedEditorId === undefined) {
+    return null;
+  }
   if (
     storedEditorId &&
     availableEditorIds.some((availableEditorId) => availableEditorId === storedEditorId)
@@ -50,7 +53,7 @@ export function usePreferredEditor() {
   );
 
   return {
-    preferredEditorId: data ?? null,
+    preferredEditorId: isPending ? undefined : (data ?? null),
     isLoading: isPending,
     updatePreferredEditor,
   };

@@ -1,4 +1,4 @@
-import { type ReactElement, useCallback, useEffect, useMemo } from "react";
+import { type ReactElement, useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -177,13 +177,6 @@ export function WorkspaceOpenInEditorButton({
     [targetIds, preferredEditorId],
   );
   const primaryOption = targets.find((target) => target.id === effectivePreferredEditorId) ?? null;
-
-  useEffect(() => {
-    if (!effectivePreferredEditorId || effectivePreferredEditorId === preferredEditorId) {
-      return;
-    }
-    void updatePreferredEditor(effectivePreferredEditorId).catch(() => undefined);
-  }, [effectivePreferredEditorId, preferredEditorId, updatePreferredEditor]);
 
   const openMutation = useMutation({
     mutationFn: (target: OpenTarget) => Promise.resolve(target.onOpen()),
