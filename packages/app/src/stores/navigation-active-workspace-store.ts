@@ -1,4 +1,11 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useLocalSearchParams, usePathname, type Href } from "expo-router";
+import { useEffect, useSyncExternalStore } from "react";
+import {
+  createLastWorkspaceSelectionStore,
+  type ActiveWorkspaceSelection,
+  type LastWorkspaceSelectionStorage,
+} from "@/stores/last-workspace-selection";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { pickAttentionAgent } from "@/utils/agent-attention";
@@ -12,16 +19,34 @@ import {
   resolveWorkspaceMapKeyByIdentity,
 } from "@/utils/workspace-execution";
 
-export interface ActiveWorkspaceSelection {
-  serverId: string;
-  workspaceId: string;
-}
+export type { ActiveWorkspaceSelection } from "@/stores/last-workspace-selection";
 
 interface NavigateToWorkspaceOptions {
   currentPathname?: string | null;
 }
 
-let lastWorkspaceSelection: ActiveWorkspaceSelection | null = null;
+const LAST_WORKSPACE_SELECTION_STORAGE_KEY = "paseo:last-workspace-route-selection";
+
+const lastWorkspaceSelectionStorage: LastWorkspaceSelectionStorage = {
+  read: () => AsyncStorage.getItem(LAST_WORKSPACE_SELECTION_STORAGE_KEY),
+  write: (value) => AsyncStorage.setItem(LAST_WORKSPACE_SELECTION_STORAGE_KEY, value),
+};
+
+const lastWorkspaceSelectionStore = createLastWorkspaceSelectionStore(
+  lastWorkspaceSelectionStorage,
+);
+
+export function hydrateLastWorkspaceSelection(): Promise<void> {
+  return lastWorkspaceSelectionStore.hydrate();
+}
+
+export function getLastWorkspaceSelection(): ActiveWorkspaceSelection | null {
+  return lastWorkspaceSelectionStore.getSelection();
+}
+
+export function getIsLastWorkspaceSelectionHydrated(): boolean {
+  return lastWorkspaceSelectionStore.isHydrated();
+}
 
 function getParamValue(value: string | string[] | undefined): string {
   if (typeof value === "string") {
@@ -74,16 +99,17 @@ export function navigateToWorkspace(
     });
   }
 
-  lastWorkspaceSelection = { serverId, workspaceId };
+  lastWorkspaceSelectionStore.remember({ serverId, workspaceId });
   const route = buildHostWorkspaceRoute(serverId, workspaceId) as Href;
   router.dismissTo(route);
 }
 
 export function navigateToLastWorkspace(): boolean {
-  if (!lastWorkspaceSelection) {
+  const selection = lastWorkspaceSelectionStore.getSelection();
+  if (!selection) {
     return false;
   }
-  navigateToWorkspace(lastWorkspaceSelection.serverId, lastWorkspaceSelection.workspaceId);
+  navigateToWorkspace(selection.serverId, selection.workspaceId);
   return true;
 }
 
@@ -95,8 +121,31 @@ export function useActiveWorkspaceSelection(): ActiveWorkspaceSelection | null {
   const selection =
     parseHostWorkspaceRouteFromPathname(usePathname()) ??
     parseWorkspaceSelectionFromRouteParams(params);
-  if (selection) {
-    lastWorkspaceSelection = selection;
-  }
+  const serverId = selection?.serverId ?? null;
+  const workspaceId = selection?.workspaceId ?? null;
+  useEffect(() => {
+    if (!serverId || !workspaceId) {
+      return;
+    }
+    lastWorkspaceSelectionStore.remember({ serverId, workspaceId });
+  }, [serverId, workspaceId]);
   return selection;
 }
+
+export function useLastWorkspaceSelection(): ActiveWorkspaceSelection | null {
+  return useSyncExternalStore(
+    lastWorkspaceSelectionStore.subscribe,
+    getLastWorkspaceSelection,
+    getLastWorkspaceSelection,
+  );
+}
+
+export function useIsLastWorkspaceSelectionHydrated(): boolean {
+  return useSyncExternalStore(
+    lastWorkspaceSelectionStore.subscribe,
+    getIsLastWorkspaceSelectionHydrated,
+    getIsLastWorkspaceSelectionHydrated,
+  );
+}
+
+void hydrateLastWorkspaceSelection();
