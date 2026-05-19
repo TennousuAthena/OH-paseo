@@ -138,7 +138,7 @@ const CATALOG_DATA = [
   {
     id: "deepseek-tui",
     title: "DeepSeek TUI",
-    description: "Terminal coding agent for DeepSeek V4 with ACP support through its stdio server.",
+    description: "Terminal coding agent for DeepSeek V4",
     version: "0.8.39",
     iconId: "deepseek-tui",
     installLink: "https://github.com/Hmbown/DeepSeek-TUI",
