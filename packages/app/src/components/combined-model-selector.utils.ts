@@ -1,54 +1,60 @@
-import type { AgentModelDefinition } from "@server/server/agent/agent-sdk-types";
+import type {
+  AgentModelDefinition,
+  ProviderSnapshotEntry,
+} from "@server/server/agent/agent-sdk-types";
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
 import { buildFavoriteModelKey, type FavoriteModelRow } from "@/hooks/use-form-preferences";
 import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
 
-export type SelectorModelRow = FavoriteModelRow;
+export type SelectorModelRow = FavoriteModelRow & { isDefault?: boolean };
 
-export interface SelectorProviderGroup {
-  providerId: string;
-  providerLabel: string;
+export interface ModelSelectorProvider {
+  id: string;
+  label: string;
   rows: SelectorModelRow[];
-  hasNoModels: boolean;
-}
-
-export function resolveProviderLabel(
-  providerDefinitions: AgentProviderDefinition[],
-  providerId: string,
-): string {
-  return (
-    providerDefinitions.find((definition) => definition.id === providerId)?.label ?? providerId
-  );
 }
 
 export function buildSelectedTriggerLabel(modelLabel: string): string {
   return modelLabel;
 }
 
-export function buildModelRows(
+export function buildModelSelectorProviders(
   providerDefinitions: AgentProviderDefinition[],
   allProviderModels: Map<string, AgentModelDefinition[]>,
-): SelectorModelRow[] {
-  const providerLabelMap = new Map(
-    providerDefinitions.map((definition) => [definition.id, definition.label]),
-  );
-  const rows: SelectorModelRow[] = [];
+): ModelSelectorProvider[] {
+  return providerDefinitions.map((definition) => ({
+    id: definition.id,
+    label: definition.label,
+    rows: (allProviderModels.get(definition.id) ?? []).map((model) => ({
+      favoriteKey: buildFavoriteModelKey({ provider: definition.id, modelId: model.id }),
+      provider: definition.id,
+      providerLabel: definition.label,
+      modelId: model.id,
+      modelLabel: model.label,
+      description: model.description,
+      isDefault: model.isDefault,
+    })),
+  }));
+}
 
-  for (const definition of providerDefinitions) {
-    const providerLabel = providerLabelMap.get(definition.id) ?? definition.label;
-    for (const model of allProviderModels.get(definition.id) ?? []) {
-      rows.push({
-        favoriteKey: buildFavoriteModelKey({ provider: definition.id, modelId: model.id }),
-        provider: definition.id,
-        providerLabel,
+export function buildSelectableModelSelectorProviders(
+  entries: ProviderSnapshotEntry[] | undefined,
+): ModelSelectorProvider[] {
+  return (entries ?? [])
+    .filter((entry) => entry.enabled && entry.status === "ready")
+    .map((entry) => ({
+      id: entry.provider,
+      label: entry.label ?? entry.provider,
+      rows: (entry.models ?? []).map((model) => ({
+        favoriteKey: buildFavoriteModelKey({ provider: entry.provider, modelId: model.id }),
+        provider: entry.provider,
+        providerLabel: entry.label ?? entry.provider,
         modelId: model.id,
         modelLabel: model.label,
         description: model.description,
-      });
-    }
-  }
-
-  return rows;
+        isDefault: model.isDefault,
+      })),
+    }));
 }
 
 export function matchesSearch(row: SelectorModelRow, normalizedQuery: string): boolean {
@@ -81,56 +87,4 @@ export function filterAndRankModelRows(
   });
 
   return scored.map((entry) => entry.row);
-}
-
-export function buildProviderGroups(
-  providerDefinitions: AgentProviderDefinition[],
-  allProviderModels: Map<string, AgentModelDefinition[]>,
-  rows: SelectorModelRow[],
-  normalizedQuery: string,
-): SelectorProviderGroup[] {
-  const rowsByProvider = new Map<string, SelectorModelRow[]>();
-  for (const row of rows) {
-    const providerRows = rowsByProvider.get(row.provider);
-    if (providerRows) {
-      providerRows.push(row);
-    } else {
-      rowsByProvider.set(row.provider, [row]);
-    }
-  }
-
-  const groups: SelectorProviderGroup[] = [];
-  for (const definition of providerDefinitions) {
-    const providerRows = rowsByProvider.get(definition.id) ?? [];
-    if (providerRows.length > 0) {
-      groups.push({
-        providerId: definition.id,
-        providerLabel: definition.label,
-        rows: providerRows,
-        hasNoModels: false,
-      });
-      continue;
-    }
-
-    const models = allProviderModels.get(definition.id);
-    if (!models || models.length > 0) {
-      continue;
-    }
-
-    const providerMatches =
-      !normalizedQuery ||
-      scoreTextFields(normalizedQuery, [definition.label, definition.id]) !== null;
-    if (!providerMatches) {
-      continue;
-    }
-
-    groups.push({
-      providerId: definition.id,
-      providerLabel: definition.label,
-      rows: [],
-      hasNoModels: true,
-    });
-  }
-
-  return groups;
 }

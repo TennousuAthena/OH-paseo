@@ -32,6 +32,10 @@ import {
 } from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
+import {
+  buildModelSelectorProviders,
+  type ModelSelectorProvider,
+} from "@/components/combined-model-selector.utils";
 import { useSessionStore } from "@/stores/session-store";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { resolveProviderDefinition } from "@/utils/provider-definitions";
@@ -93,8 +97,7 @@ interface ControlledAgentStatusBarProps {
   disabled?: boolean;
   isModelLoading?: boolean;
   providerDefinitions: AgentProviderDefinition[];
-  allProviderModels?: Map<string, AgentModelDefinition[]>;
-  canSelectModelProvider?: (providerId: string) => boolean;
+  modelSelectorProviders?: ModelSelectorProvider[];
   favoriteKeys?: Set<string>;
   onToggleFavoriteModel?: (provider: string, modelId: string) => void;
   features?: AgentFeature[];
@@ -114,7 +117,7 @@ export interface DraftAgentStatusBarProps {
   selectedModel: string;
   onSelectModel: (modelId: string) => void;
   isModelLoading: boolean;
-  allProviderModels: Map<string, AgentModelDefinition[]>;
+  modelSelectorProviders: ModelSelectorProvider[];
   isAllModelsLoading: boolean;
   onSelectProviderAndModel: (provider: AgentProvider, modelId: string) => void;
   thinkingOptions: NonNullable<AgentModelDefinition["thinkingOptions"]>;
@@ -184,10 +187,6 @@ const MODE_ICONS = {
   ShieldQuestionMark,
 } as const;
 
-function alwaysTrue() {
-  return true;
-}
-
 function resolveDisplayModel(
   isModelLoading: boolean,
   modelOptions: StatusOption[] | undefined,
@@ -235,23 +234,26 @@ function toComboboxOptions(options: StatusOption[] | undefined): ComboboxOption[
   return (options ?? []).map((o) => ({ id: o.id, label: o.label }));
 }
 
-function buildFallbackAllProviderModels(
+function buildFallbackModelSelectorProviders(
   provider: string,
   modelOptions: StatusOption[] | undefined,
-): Map<string, AgentModelDefinition[]> {
-  const map = new Map<string, AgentModelDefinition[]>();
+): ModelSelectorProvider[] {
   if (!modelOptions || modelOptions.length === 0) {
-    return map;
+    return [];
   }
-  map.set(
-    provider,
-    modelOptions.map((option) => ({
-      provider: provider,
-      id: option.id,
-      label: option.label,
-    })),
-  );
-  return map;
+  return [
+    {
+      id: provider,
+      label: provider,
+      rows: modelOptions.map((option) => ({
+        favoriteKey: buildFavoriteModelKey({ provider, modelId: option.id }),
+        provider,
+        providerLabel: provider,
+        modelId: option.id,
+        modelLabel: option.label,
+      })),
+    },
+  ];
 }
 
 function makeBadgePressableStyle(
@@ -459,8 +461,7 @@ function ControlledStatusBar({
   disabled = false,
   isModelLoading = false,
   providerDefinitions,
-  allProviderModels,
-  canSelectModelProvider,
+  modelSelectorProviders,
   favoriteKeys = new Set<string>(),
   onToggleFavoriteModel,
   features,
@@ -521,13 +522,11 @@ function ControlledStatusBar({
     () => toComboboxOptions(modeOptions),
     [modeOptions],
   );
-  const fallbackAllProviderModels = useMemo(
-    () => buildFallbackAllProviderModels(provider, modelOptions),
+  const fallbackModelSelectorProviders = useMemo(
+    () => buildFallbackModelSelectorProviders(provider, modelOptions),
     [modelOptions, provider],
   );
-  const effectiveProviderDefinitions = providerDefinitions;
-  const effectiveAllProviderModels = allProviderModels ?? fallbackAllProviderModels;
-  const canSelectProviderInModelMenu = canSelectModelProvider ?? alwaysTrue;
+  const effectiveModelSelectorProviders = modelSelectorProviders ?? fallbackModelSelectorProviders;
   const comboboxThinkingOptions = useMemo<ComboboxOption[]>(
     () => toComboboxOptions(thinkingOptions),
     [thinkingOptions],
@@ -701,10 +700,8 @@ function ControlledStatusBar({
           canSelectMode={canSelectMode}
           canSelectModel={canSelectModel}
           canSelectThinking={canSelectThinking}
-          canSelectProviderInModelMenu={canSelectProviderInModelMenu}
+          modelSelectorProviders={effectiveModelSelectorProviders}
           modelDisabled={modelDisabled}
-          effectiveProviderDefinitions={effectiveProviderDefinitions}
-          effectiveAllProviderModels={effectiveAllProviderModels}
           comboboxProviderOptions={comboboxProviderOptions}
           comboboxModeOptions={comboboxModeOptions}
           comboboxThinkingOptions={comboboxThinkingOptions}
@@ -751,10 +748,8 @@ function ControlledStatusBar({
           canSelectMode={canSelectMode}
           canSelectModel={canSelectModel}
           canSelectThinking={canSelectThinking}
-          canSelectProviderInModelMenu={canSelectProviderInModelMenu}
+          modelSelectorProviders={effectiveModelSelectorProviders}
           modelDisabled={modelDisabled}
-          effectiveProviderDefinitions={effectiveProviderDefinitions}
-          effectiveAllProviderModels={effectiveAllProviderModels}
           comboboxModeOptions={comboboxModeOptions}
           comboboxThinkingOptions={comboboxThinkingOptions}
           ModeIconComponent={ModeIconComponent}
@@ -799,10 +794,8 @@ interface DesktopStatusBarContentProps {
   canSelectMode: boolean;
   canSelectModel: boolean;
   canSelectThinking: boolean;
-  canSelectProviderInModelMenu: (providerId: string) => boolean;
+  modelSelectorProviders: ModelSelectorProvider[];
   modelDisabled: boolean;
-  effectiveProviderDefinitions: AgentProviderDefinition[];
-  effectiveAllProviderModels: Map<string, AgentModelDefinition[]>;
   comboboxProviderOptions: ComboboxOption[];
   comboboxModeOptions: ComboboxOption[];
   comboboxThinkingOptions: ComboboxOption[];
@@ -868,10 +861,8 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
     canSelectMode,
     canSelectModel,
     canSelectThinking,
-    canSelectProviderInModelMenu,
+    modelSelectorProviders,
     modelDisabled,
-    effectiveProviderDefinitions,
-    effectiveAllProviderModels,
     comboboxProviderOptions,
     comboboxModeOptions,
     comboboxThinkingOptions,
@@ -942,11 +933,9 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
           <TooltipTrigger asChild triggerRefProp="ref">
             <View>
               <CombinedModelSelector
-                providerDefinitions={effectiveProviderDefinitions}
-                allProviderModels={effectiveAllProviderModels}
+                providers={modelSelectorProviders}
                 selectedProvider={provider}
                 selectedModel={selectedModelId ?? ""}
-                canSelectProvider={canSelectProviderInModelMenu}
                 onSelect={handleDesktopModelSelect}
                 favoriteKeys={favoriteKeys}
                 onToggleFavorite={onToggleFavoriteModel}
@@ -1069,10 +1058,8 @@ interface SheetStatusBarContentProps {
   canSelectMode: boolean;
   canSelectModel: boolean;
   canSelectThinking: boolean;
-  canSelectProviderInModelMenu: (providerId: string) => boolean;
+  modelSelectorProviders: ModelSelectorProvider[];
   modelDisabled: boolean;
-  effectiveProviderDefinitions: AgentProviderDefinition[];
-  effectiveAllProviderModels: Map<string, AgentModelDefinition[]>;
   comboboxModeOptions: ComboboxOption[];
   comboboxThinkingOptions: ComboboxOption[];
   ModeIconComponent: (typeof MODE_ICONS)[keyof typeof MODE_ICONS] | null;
@@ -1118,10 +1105,8 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
     canSelectMode,
     canSelectModel,
     canSelectThinking,
-    canSelectProviderInModelMenu,
+    modelSelectorProviders,
     modelDisabled,
-    effectiveProviderDefinitions,
-    effectiveAllProviderModels,
     comboboxModeOptions,
     comboboxThinkingOptions,
     ModeIconComponent,
@@ -1214,11 +1199,9 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
     <>
       {canSelectModel ? (
         <CombinedModelSelector
-          providerDefinitions={effectiveProviderDefinitions}
-          allProviderModels={effectiveAllProviderModels}
+          providers={modelSelectorProviders}
           selectedProvider={provider}
           selectedModel={selectedModelId ?? ""}
-          canSelectProvider={canSelectProviderInModelMenu}
           onSelect={handleSheetModelSelect}
           favoriteKeys={favoriteKeys}
           onToggleFavorite={onToggleFavoriteModel}
@@ -1678,6 +1661,10 @@ export const AgentStatusBar = memo(function AgentStatusBar({
     () => buildAgentProviderModels(agent?.provider, models),
     [agent?.provider, models],
   );
+  const agentModelSelectorProviders = useMemo(
+    () => buildModelSelectorProviders(agentProviderDefinitions, agentProviderModels),
+    [agentProviderDefinitions, agentProviderModels],
+  );
 
   const displayMode = resolveAgentDisplayMode(availableModes, agent?.currentModeId);
 
@@ -1841,7 +1828,7 @@ export const AgentStatusBar = memo(function AgentStatusBar({
       modeOptions={fallbackModeOptions}
       selectedModeId={agent.currentModeId ?? undefined}
       providerDefinitions={agentProviderDefinitions}
-      allProviderModels={agentProviderModels}
+      modelSelectorProviders={agentModelSelectorProviders}
       onSelectMode={handleSelectMode}
       modelOptions={modelOptions}
       selectedModelId={modelSelection.activeModelId ?? undefined}
@@ -1872,7 +1859,7 @@ export function DraftAgentStatusBar({
   selectedModel,
   onSelectModel,
   isModelLoading: _isModelLoading,
-  allProviderModels,
+  modelSelectorProviders,
   isAllModelsLoading,
   onSelectProviderAndModel,
   thinkingOptions,
@@ -1937,8 +1924,7 @@ export function DraftAgentStatusBar({
     return (
       <View style={styles.container}>
         <CombinedModelSelector
-          providerDefinitions={providerDefinitions}
-          allProviderModels={allProviderModels}
+          providers={modelSelectorProviders}
           selectedProvider={selectedProvider ?? ""}
           selectedModel={selectedModel}
           onSelect={onSelectProviderAndModel}
@@ -1973,7 +1959,7 @@ export function DraftAgentStatusBar({
     <ControlledStatusBar
       provider={selectedProvider ?? ""}
       providerDefinitions={providerDefinitions}
-      allProviderModels={allProviderModels}
+      modelSelectorProviders={modelSelectorProviders}
       modeOptions={hasSelectedProvider ? mappedModeOptions : undefined}
       selectedModeId={effectiveSelectedMode}
       onSelectMode={onSelectMode}

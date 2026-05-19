@@ -88,7 +88,7 @@ export function buildDraftStatusControls(input: {
     selectedModel: formState.selectedModel,
     onSelectModel: formState.setModelFromUser,
     isModelLoading: formState.isModelLoading,
-    allProviderModels: formState.allProviderModels,
+    modelSelectorProviders: formState.modelSelectorProviders,
     isAllModelsLoading: formState.isAllModelsLoading,
     onSelectProviderAndModel: formState.setProviderAndModelFromUser,
     thinkingOptions: formState.availableThinkingOptions,
