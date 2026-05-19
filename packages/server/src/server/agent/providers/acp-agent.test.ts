@@ -362,6 +362,33 @@ describe("createLoggedNdJsonStream", () => {
     consoleError.mockRestore();
   });
 
+  test("normalizes stringified numeric ACP response ids", async () => {
+    const input = new TransformStream<Uint8Array, Uint8Array>();
+    const output = new TransformStream<Uint8Array, Uint8Array>();
+    const logger = {
+      warn: vi.fn(),
+    };
+
+    const stream = createLoggedNdJsonStream(output.writable, input.readable, {
+      logger: asInternals<ReturnType<typeof createTestLogger>>(logger),
+      provider: "deepseek-tui",
+    });
+    const reader = stream.readable.getReader();
+    const writer = input.writable.getWriter();
+
+    await writer.write(
+      new TextEncoder().encode('{"jsonrpc":"2.0","id":"0","result":{"ok":true}}\n'),
+    );
+
+    const parsed = await reader.read();
+
+    expect(parsed.value).toEqual({ jsonrpc: "2.0", id: 0, result: { ok: true } });
+    expect(logger.warn).not.toHaveBeenCalled();
+
+    await writer.close();
+    reader.releaseLock();
+  });
+
   test("does not log terminal control sequences from malformed ACP stdout", async () => {
     const input = new TransformStream<Uint8Array, Uint8Array>();
     const output = new TransformStream<Uint8Array, Uint8Array>();

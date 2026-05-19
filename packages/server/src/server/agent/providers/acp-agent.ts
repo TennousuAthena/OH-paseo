@@ -180,6 +180,26 @@ function summarizeMalformedACPStdoutError(error: unknown): { type: string; messa
   };
 }
 
+function normalizeACPIncomingMessage(message: AnyMessage): AnyMessage {
+  if (
+    "id" in message &&
+    !("method" in message) &&
+    typeof message.id === "string" &&
+    /^\d+$/.test(message.id)
+  ) {
+    const numericId = Number(message.id);
+    if (Number.isSafeInteger(numericId)) {
+      return {
+        ...message,
+        // COMPAT(deepseek-tui-acp-id): added v0.1.78, remove after 2026-11-19
+        // once the ACP SDK accepts stringified numeric response IDs.
+        id: numericId,
+      } as AnyMessage;
+    }
+  }
+  return message;
+}
+
 export function createLoggedNdJsonStream(
   output: NodeWritableStream,
   input: NodeReadableStream,
@@ -214,7 +234,7 @@ export function createLoggedNdJsonStream(
 
             try {
               const message: AnyMessage = JSON.parse(trimmedLine);
-              controller.enqueue(message);
+              controller.enqueue(normalizeACPIncomingMessage(message));
             } catch (error) {
               options.logger.warn(
                 {
