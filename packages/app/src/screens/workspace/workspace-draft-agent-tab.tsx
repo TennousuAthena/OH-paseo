@@ -323,6 +323,16 @@ interface WorkspaceDraftAgentTabProps {
   onOpenImportSheet?: () => void;
 }
 
+function resolveImportPillPress(
+  onOpenImportSheet: (() => void) | undefined,
+  isSubmitting: boolean,
+): (() => void) | null {
+  if (isSubmitting) {
+    return null;
+  }
+  return onOpenImportSheet ?? null;
+}
+
 export function WorkspaceDraftAgentTab({
   serverId,
   workspaceId,
@@ -588,6 +598,7 @@ export function WorkspaceDraftAgentTab({
   const handleDropdownCloseFocus = useCallback(() => {
     focusInputRef.current?.();
   }, []);
+  const importPillPress = resolveImportPillPress(onOpenImportSheet, isSubmitting);
   const composerStatusControls = useMemo(
     () => ({
       ...composerState.statusControls,
@@ -645,10 +656,10 @@ export function WorkspaceDraftAgentTab({
         </View>
 
         <View style={inputAreaWrapperStyle}>
-          {onOpenImportSheet ? (
+          {importPillPress ? (
             <View style={styles.importPillRow}>
               <View style={styles.importPillContent}>
-                <ComposerImportPill onPress={onOpenImportSheet} disabled={isSubmitting} />
+                <ComposerImportPill onPress={importPillPress} />
               </View>
             </View>
           ) : null}
