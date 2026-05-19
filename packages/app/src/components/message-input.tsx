@@ -799,6 +799,7 @@ interface ToggleRealtimeVoiceContext {
   voiceAgentId: string | undefined;
   isConnected: boolean;
   disabled: boolean;
+  isAgentRunning: boolean;
   handleStopRealtimeVoice: () => Promise<unknown> | void;
   toast: { error: (msg: string) => void };
 }
@@ -810,6 +811,10 @@ function toggleRealtimeVoiceImpl(ctx: ToggleRealtimeVoiceContext): void {
   if (ctx.voice.isVoiceSwitching) return;
   if (ctx.voice.isVoiceModeForAgent(ctx.voiceServerId, ctx.voiceAgentId)) {
     void ctx.handleStopRealtimeVoice();
+    return;
+  }
+  if (ctx.isAgentRunning) {
+    ctx.toast.error("Interrupt the agent before starting voice mode");
     return;
   }
   void ctx.voice.startVoice(ctx.voiceServerId, ctx.voiceAgentId).catch((error) => {
@@ -1450,10 +1455,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         voiceAgentId,
         isConnected,
         disabled,
+        isAgentRunning,
         handleStopRealtimeVoice,
         toast,
       });
-    }, [disabled, handleStopRealtimeVoice, isConnected, toast, voice, voiceAgentId, voiceServerId]);
+    }, [
+      disabled,
+      handleStopRealtimeVoice,
+      isAgentRunning,
+      isConnected,
+      toast,
+      voice,
+      voiceAgentId,
+      voiceServerId,
+    ]);
 
     const minimizeInputHeight = useCallback(() => {
       inputHeightRef.current = MIN_INPUT_HEIGHT;

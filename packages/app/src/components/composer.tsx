@@ -756,7 +756,8 @@ function ComposerRightControlsSlot({
   ...voiceProps
 }: ComposerRightControlsSlotProps) {
   const hideVoiceForCompactInput = isCompact && hasSendableContent;
-  const showVoiceModeButton = !isVoiceModeForAgent && hasAgent && !hideVoiceForCompactInput;
+  const showVoiceModeButton =
+    !isVoiceModeForAgent && hasAgent && !isAgentRunning && !hideVoiceForCompactInput;
   const shouldShowCancelButton = isAgentRunning && !hasSendableContent && !isProcessing;
   if (!showVoiceModeButton && !shouldShowCancelButton) return null;
   return (
