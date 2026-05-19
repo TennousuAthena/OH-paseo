@@ -22,6 +22,7 @@ import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submi
 import { encodeImages } from "@/utils/encode-images";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
+import { validateDraftSubmission } from "@/screens/workspace/workspace-draft-agent-tab-core";
 import type { AgentCapabilityFlags } from "@server/server/agent/agent-sdk-types";
 import type { AgentSnapshotPayload } from "@server/shared/messages";
 import type { DaemonClient } from "@server/client/daemon-client";
@@ -71,51 +72,6 @@ function resolveAutoSubmitConfig(
     thinkingOptionId: pending.thinkingOptionId ?? null,
     featureValues: pending.featureValues ?? {},
   };
-}
-
-function validateDraftSubmission(input: {
-  text: string;
-  allowsEmptyAutoSubmit: boolean;
-  composerState: {
-    providerDefinitions: unknown[];
-    selectedProvider: string | null;
-    isModelLoading: boolean;
-    effectiveModelId: string | null;
-  };
-  autoSubmitConfig: AutoSubmitConfig | null;
-  workspaceDirectory: string | null;
-  hasClient: boolean;
-}): string | null {
-  const {
-    text,
-    allowsEmptyAutoSubmit,
-    composerState,
-    autoSubmitConfig,
-    workspaceDirectory,
-    hasClient,
-  } = input;
-  if (!allowsEmptyAutoSubmit && !text.trim()) {
-    return "Initial prompt is required";
-  }
-  if (composerState.providerDefinitions.length === 0) {
-    return "No available providers on the selected host";
-  }
-  if (!(autoSubmitConfig?.provider ?? composerState.selectedProvider)) {
-    return "Select a model";
-  }
-  if (composerState.isModelLoading) {
-    return "Model defaults are still loading";
-  }
-  if (!(autoSubmitConfig?.model ?? composerState.effectiveModelId)) {
-    return "No model is available for the selected provider";
-  }
-  if (!workspaceDirectory) {
-    return "Workspace directory not found";
-  }
-  if (!hasClient) {
-    return "Host is not connected";
-  }
-  return null;
 }
 
 function resolveDraftModeIdOverride(input: {

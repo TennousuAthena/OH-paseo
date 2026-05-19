@@ -731,6 +731,31 @@ describe("ACPAgentSession Zed parity", () => {
     expect(setSessionConfigOption).not.toHaveBeenCalled();
   });
 
+  test("does not fail session start when configured model cannot be applied by ACP", async () => {
+    const logger = createTestLogger();
+    const childLogger = { trace: vi.fn(), warn: vi.fn() };
+    vi.spyOn(logger, "child").mockReturnValue(asInternals<typeof logger>(childLogger));
+    const session = createSessionWithConfig(
+      { provider: "deepseek-tui", model: "deepseek/v4" },
+      logger,
+    );
+    const { internals, setSessionConfigOption, unstableSetSessionModel } =
+      prepareConfiguredOverrideSession(session, {
+        currentModel: null,
+        availableModels: null,
+        configOptions: [],
+        connection: { unstable_setSessionModel: undefined },
+      });
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(unstableSetSessionModel).not.toHaveBeenCalled();
+    expect(setSessionConfigOption).not.toHaveBeenCalled();
+    expect(childLogger.warn).toHaveBeenCalledWith(
+      { value: "deepseek/v4" },
+      "deepseek-tui does not expose ACP model selection; using provider default model",
+    );
+  });
+
   test("routes config_option_update and refreshes derived mode, model, and thinking state", async () => {
     const session = createSession();
     const internals = asInternals<ACPSessionInternals>(session);

@@ -1376,7 +1376,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       }
 
       if (typeof this.connection.unstable_setSessionModel !== "function") {
-        throw new Error(`${this.provider} does not expose ACP model selection`);
+        throw new Error(this.modelSelectionUnavailableMessage());
       }
 
       try {
@@ -1398,7 +1398,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
     const modelOption = selection.configOption;
     if (!modelOption) {
-      throw new Error(`${this.provider} does not expose ACP model selection`);
+      throw new Error(this.modelSelectionUnavailableMessage());
     }
     if (!selection.configChoice) {
       this.warnInvalidSelection(
@@ -1904,7 +1904,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         availableModels: this.availableModels,
         configOptions: this.configOptions,
       });
-      await this.setModelWithSelection({ modelId: configuredModelId, selection });
+      try {
+        await this.setModelWithSelection({ modelId: configuredModelId, selection });
+      } catch (error) {
+        if (!this.isModelSelectionUnavailableError(error)) {
+          throw error;
+        }
+        this.logger.warn(
+          { value: configuredModelId },
+          `${this.provider} does not expose ACP model selection; using provider default model`,
+        );
+      }
     }
     if (this.config.thinkingOptionId && this.config.thinkingOptionId !== this.thinkingOptionId) {
       await this.setThinkingOption(this.config.thinkingOptionId);
@@ -1913,6 +1923,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
   private warnInvalidSelection(value: string, message: string): void {
     this.logger.warn({ value }, message);
+  }
+
+  private modelSelectionUnavailableMessage(): string {
+    return `${this.provider} does not expose ACP model selection`;
+  }
+
+  private isModelSelectionUnavailableError(error: unknown): boolean {
+    return error instanceof Error && error.message === this.modelSelectionUnavailableMessage();
   }
 
   private translateSessionUpdate(update: SessionUpdate): AgentStreamEvent[] {

@@ -47,9 +47,11 @@ function drillDownRowStyle({
 import { getProviderIcon } from "@/components/provider-icons";
 import {
   buildModelRows,
+  buildProviderGroups,
   buildSelectedTriggerLabel,
   filterAndRankModelRows,
   resolveProviderLabel,
+  type SelectorProviderGroup,
   type SelectorModelRow,
 } from "./combined-model-selector.utils";
 
@@ -120,31 +122,6 @@ function sortFavoritesFirst(
     }
   }
   return [...favorites, ...rest];
-}
-
-function groupRowsByProvider(
-  rows: SelectorModelRow[],
-): Array<{ providerId: string; providerLabel: string; rows: SelectorModelRow[] }> {
-  const grouped = new Map<
-    string,
-    { providerId: string; providerLabel: string; rows: SelectorModelRow[] }
-  >();
-
-  for (const row of rows) {
-    const existing = grouped.get(row.provider);
-    if (existing) {
-      existing.rows.push(row);
-      continue;
-    }
-
-    grouped.set(row.provider, {
-      providerId: row.provider,
-      providerLabel: row.providerLabel,
-      rows: [row],
-    });
-  }
-
-  return Array.from(grouped.values());
 }
 
 function ModelRow({
@@ -317,29 +294,41 @@ interface GroupProviderButtonProps {
   providerId: string;
   providerLabel: string;
   rowCount: number;
+  hasNoModels: boolean;
+  disabled?: boolean;
   onDrillDown: (providerId: string, providerLabel: string) => void;
+  onSelectDefault: (providerId: string) => void;
 }
 
 function GroupProviderButton({
   providerId,
   providerLabel,
   rowCount,
+  hasNoModels,
+  disabled,
   onDrillDown,
+  onSelectDefault,
 }: GroupProviderButtonProps) {
   const { theme } = useUnistyles();
   const ProvIcon = getProviderIcon(providerId);
   const handlePress = useCallback(() => {
+    if (hasNoModels) {
+      onSelectDefault(providerId);
+      return;
+    }
     onDrillDown(providerId, providerLabel);
-  }, [onDrillDown, providerId, providerLabel]);
+  }, [hasNoModels, onDrillDown, onSelectDefault, providerId, providerLabel]);
   return (
-    <Pressable onPress={handlePress} style={drillDownRowStyle}>
+    <Pressable disabled={disabled} onPress={handlePress} style={drillDownRowStyle}>
       <ProvIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
       <Text style={styles.drillDownText}>{providerLabel}</Text>
       <View style={styles.drillDownTrailing}>
         <Text style={styles.drillDownCount}>
-          {rowCount} {rowCount === 1 ? "model" : "models"}
+          {hasNoModels ? "Default" : `${rowCount} ${rowCount === 1 ? "model" : "models"}`}
         </Text>
-        <ChevronRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        {hasNoModels ? null : (
+          <ChevronRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        )}
       </View>
     </Pressable>
   );
@@ -348,9 +337,13 @@ function GroupProviderButton({
 function GroupedProviderRows({
   groupedRows,
   onDrillDown,
+  onSelectDefault,
+  canSelectProvider,
 }: {
-  groupedRows: Array<{ providerId: string; providerLabel: string; rows: SelectorModelRow[] }>;
+  groupedRows: SelectorProviderGroup[];
   onDrillDown: (providerId: string, providerLabel: string) => void;
+  onSelectDefault: (providerId: string) => void;
+  canSelectProvider: (provider: string) => boolean;
 }) {
   return (
     <View>
@@ -362,12 +355,47 @@ function GroupedProviderRows({
               providerId={group.providerId}
               providerLabel={group.providerLabel}
               rowCount={group.rows.length}
+              hasNoModels={group.hasNoModels}
+              disabled={group.hasNoModels && !canSelectProvider(group.providerId)}
               onDrillDown={onDrillDown}
+              onSelectDefault={onSelectDefault}
             />
           </View>
         );
       })}
     </View>
+  );
+}
+
+function DefaultProviderRow({
+  providerId,
+  isSelected,
+  disabled,
+  onSelect,
+}: {
+  providerId: string;
+  isSelected: boolean;
+  disabled?: boolean;
+  onSelect: (provider: string, modelId: string) => void;
+}) {
+  const { theme } = useUnistyles();
+  const ProviderIcon = getProviderIcon(providerId);
+  const handlePress = useCallback(() => {
+    onSelect(providerId, "");
+  }, [onSelect, providerId]);
+  const leadingSlot = useMemo(
+    () => <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [ProviderIcon, theme.iconSize.sm, theme.colors.foregroundMuted],
+  );
+
+  return (
+    <ComboboxItem
+      label="Default"
+      selected={isSelected}
+      disabled={disabled}
+      onPress={handlePress}
+      leadingSlot={leadingSlot}
+    />
   );
 }
 
@@ -472,7 +500,16 @@ function SelectorContent({
     [favoriteKeys, visibleRows],
   );
 
-  const allGroupedRows = useMemo(() => groupRowsByProvider(visibleRows), [visibleRows]);
+  const allGroupedRows = useMemo(
+    () => buildProviderGroups(providerDefinitions, allProviderModels, visibleRows, normalizedQuery),
+    [allProviderModels, normalizedQuery, providerDefinitions, visibleRows],
+  );
+  const handleSelectDefaultProvider = useCallback(
+    (providerId: string) => {
+      onSelect(providerId, "");
+    },
+    [onSelect],
+  );
   const hasResults = favoriteRows.length > 0 || allGroupedRows.length > 0;
   const emptyState = (
     <View style={styles.emptyState}>
@@ -482,6 +519,18 @@ function SelectorContent({
   );
 
   if (view.kind === "provider") {
+    const providerModels = allProviderModels.get(view.providerId);
+    if (providerModels && providerModels.length === 0 && !normalizedQuery) {
+      return (
+        <DefaultProviderRow
+          providerId={view.providerId}
+          isSelected={view.providerId === selectedProvider && !selectedModel}
+          disabled={!canSelectProvider(view.providerId)}
+          onSelect={onSelect}
+        />
+      );
+    }
+
     if (visibleRows.length === 0) {
       return emptyState;
     }
@@ -513,7 +562,12 @@ function SelectorContent({
       />
 
       {allGroupedRows.length > 0 ? (
-        <GroupedProviderRows groupedRows={allGroupedRows} onDrillDown={onDrillDown} />
+        <GroupedProviderRows
+          groupedRows={allGroupedRows}
+          onDrillDown={onDrillDown}
+          onSelectDefault={handleSelectDefaultProvider}
+          canSelectProvider={canSelectProvider}
+        />
       ) : null}
 
       {!hasResults ? emptyState : null}
@@ -597,6 +651,10 @@ export function CombinedModelSelector({
     if (!selectedModel) {
       if (!hasSelectedProvider) {
         return "Select model";
+      }
+      const models = allProviderModels.get(selectedProvider);
+      if (models && models.length === 0) {
+        return "Default";
       }
       return isLoading ? "Loading..." : "Select model";
     }

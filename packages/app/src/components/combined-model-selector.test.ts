@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentModelDefinition } from "@server/server/agent/agent-sdk-types";
 import {
   buildModelRows,
+  buildProviderGroups,
   buildSelectedTriggerLabel,
   filterAndRankModelRows,
   matchesSearch,
@@ -22,6 +23,13 @@ describe("combined model selector helpers", () => {
       label: "Codex",
       description: "Codex provider",
       defaultModeId: "auto",
+      modes: [],
+    },
+    {
+      id: "deepseek-tui",
+      label: "DeepSeek TUI",
+      description: "DeepSeek TUI provider",
+      defaultModeId: "default",
       modes: [],
     },
   ];
@@ -110,6 +118,53 @@ describe("combined model selector helpers", () => {
     ];
 
     expect(filterAndRankModelRows(rows, "gpt54").map((row) => row.modelId)).toEqual(["gpt-5.4"]);
+  });
+
+  it("includes providers that expose no models", () => {
+    const rows = buildModelRows(
+      providerDefinitions,
+      new Map([
+        ["claude", claudeModels],
+        ["deepseek-tui", []],
+      ]),
+    );
+
+    const groups = buildProviderGroups(
+      providerDefinitions,
+      new Map([
+        ["claude", claudeModels],
+        ["deepseek-tui", []],
+      ]),
+      rows,
+      "",
+    );
+
+    expect(groups).toEqual([
+      expect.objectContaining({
+        providerId: "claude",
+        hasNoModels: false,
+      }),
+      expect.objectContaining({
+        providerId: "deepseek-tui",
+        providerLabel: "DeepSeek TUI",
+        rows: [],
+        hasNoModels: true,
+      }),
+    ]);
+  });
+
+  it("matches model-less providers by provider name", () => {
+    const groups = buildProviderGroups(
+      providerDefinitions,
+      new Map([
+        ["claude", claudeModels],
+        ["deepseek-tui", []],
+      ]),
+      [],
+      "deepseek",
+    );
+
+    expect(groups.map((group) => group.providerId)).toEqual(["deepseek-tui"]);
   });
 
   it("keeps the selected trigger label model-only", () => {
