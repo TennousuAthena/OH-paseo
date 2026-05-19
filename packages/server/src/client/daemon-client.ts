@@ -60,6 +60,8 @@ import type {
   GetProvidersSnapshotResponseMessage,
   RefreshProvidersSnapshotResponseMessage,
   ProviderDiagnosticResponseMessage,
+  DaemonGetStatusResponse,
+  DaemonGetPairingOfferResponse,
   ListTerminalsResponse,
   CreateTerminalResponse,
   SubscribeTerminalResponse,
@@ -317,6 +319,8 @@ type ListAvailableProvidersPayload = ListAvailableProvidersResponse["payload"];
 type GetProvidersSnapshotPayload = GetProvidersSnapshotResponseMessage["payload"];
 type RefreshProvidersSnapshotPayload = RefreshProvidersSnapshotResponseMessage["payload"];
 type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
+type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
+type DaemonPairingOfferPayload = DaemonGetPairingOfferResponse["payload"];
 type ReadProjectConfigPayload = Extract<
   SessionOutboundMessage,
   { type: "read_project_config_response" }
@@ -3294,6 +3298,28 @@ export class DaemonClient {
         type: "get_daemon_config_request",
       },
       responseType: "get_daemon_config_response",
+      timeout: 10000,
+    });
+  }
+
+  async getDaemonStatus(requestId?: string): Promise<DaemonStatusPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "daemon.get_status.request",
+      },
+      responseType: "daemon.get_status.response",
+      timeout: 10000,
+    });
+  }
+
+  async getDaemonPairingOffer(requestId?: string): Promise<DaemonPairingOfferPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "daemon.get_pairing_offer.request",
+      },
+      responseType: "daemon.get_pairing_offer.response",
       timeout: 10000,
     });
   }
