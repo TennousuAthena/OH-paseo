@@ -1,4 +1,5 @@
 import { defineConfig, configDefaults } from "vitest/config";
+import { playwright } from "@vitest/browser-playwright";
 import path from "path";
 import fs from "fs";
 
@@ -33,7 +34,7 @@ export default defineConfig({
           include: ["src/**/*.browser.{test,spec}.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: "playwright",
+            provider: playwright(),
             headless: true,
             connectTimeout: 180_000,
             instances: [{ browser: "chromium" }],
@@ -49,11 +50,7 @@ export default defineConfig({
      * keeps `process.send` intact so the app tests can boot before hitting the intentional failures.
      */
     pool: "forks",
-    poolOptions: {
-      forks: {
-        maxForks: 2,
-      },
-    },
+    maxWorkers: 2,
     server: {
       deps: {
         fallbackCJS: true,

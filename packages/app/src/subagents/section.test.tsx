@@ -135,6 +135,8 @@ function queryRowIds(): string[] {
   ).map((node) => node.getAttribute("data-testid")?.replace("subagents-section-row-", "") ?? "");
 }
 
+type SubagentAction = (id: string) => void;
+
 describe("SubagentsSection", () => {
   let container: HTMLElement | null = null;
   let root: Root | null = null;
@@ -169,9 +171,9 @@ describe("SubagentsSection", () => {
 
   function render(
     rows: SubagentRow[],
-    onOpenSubagent: ReturnType<typeof vi.fn> = vi.fn(),
-    onArchiveSubagent: ReturnType<typeof vi.fn> = vi.fn(),
-  ): ReturnType<typeof vi.fn> {
+    onOpenSubagent: SubagentAction = vi.fn<SubagentAction>(),
+    onArchiveSubagent: SubagentAction = vi.fn<SubagentAction>(),
+  ): SubagentAction {
     act(() => {
       root?.render(
         <SubagentsSection

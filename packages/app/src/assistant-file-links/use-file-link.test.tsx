@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import React, { useCallback, useMemo, useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
+import type { ToastApi } from "@/components/toast-host";
 import type { InlinePathTarget } from "./parse";
 import { AssistantFileLinkResolverProvider } from "./provider";
 import type { DirectorySuggestionResult } from "./resolver";
@@ -63,15 +64,15 @@ function createQueryClient(): QueryClient {
   });
 }
 
-function createWrapper(input: {
-  client: TestClient;
-  openedFiles: OpenedFile[];
-  toast?: {
-    show: ReturnType<typeof vi.fn>;
-    copied: ReturnType<typeof vi.fn>;
-    error: ReturnType<typeof vi.fn>;
+function createToast(): ToastApi {
+  return {
+    show: vi.fn<ToastApi["show"]>(),
+    copied: vi.fn<ToastApi["copied"]>(),
+    error: vi.fn<ToastApi["error"]>(),
   };
-}) {
+}
+
+function createWrapper(input: { client: TestClient; openedFiles: OpenedFile[]; toast?: ToastApi }) {
   const queryClient = createQueryClient();
   return function Wrapper({ children }: { children: ReactNode }) {
     const openWorkspaceFile = useCallback(
@@ -118,7 +119,7 @@ describe("useFileLink", () => {
             serverId: "server-1",
             workspaceRoot: "/Users/test/project",
             onOpenWorkspaceFile: () => {},
-            toast: { show: vi.fn(), copied: vi.fn(), error: vi.fn() },
+            toast: createToast(),
           },
           children,
         ),
@@ -145,7 +146,7 @@ describe("useFileLink", () => {
       .mockResolvedValueOnce(resolvedSuggestions([]))
       .mockResolvedValueOnce(resolvedSuggestions([{ path: "docs/dumm.md", kind: "file" }]));
     const openedFiles: OpenedFile[] = [];
-    const toast = { show: vi.fn(), copied: vi.fn(), error: vi.fn() };
+    const toast = createToast();
     const { result } = renderHook(() => useFileLink(SOURCE), {
       wrapper: createWrapper({
         client: { getDirectorySuggestions },

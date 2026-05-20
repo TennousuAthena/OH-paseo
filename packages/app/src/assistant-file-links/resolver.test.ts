@@ -7,6 +7,7 @@ import {
   type AssistantFileLinkContext,
   type DirectorySuggestionEntry,
   type DirectorySuggestionResult,
+  type GetDirectorySuggestions,
 } from "./resolver";
 
 const CONTEXT: AssistantFileLinkContext = {
@@ -20,7 +21,7 @@ function resolvedSuggestions(
 }
 
 function suggestionsFromMap(entriesByQuery: Record<string, DirectorySuggestionEntry[]>): {
-  getDirectorySuggestions: ReturnType<typeof vi.fn>;
+  getDirectorySuggestions: GetDirectorySuggestions;
   searches: Array<{
     query: string;
     cwd: string;
@@ -34,7 +35,7 @@ function suggestionsFromMap(entriesByQuery: Record<string, DirectorySuggestionEn
     matchMode: "suffix";
     limit: number;
   }> = [];
-  const getDirectorySuggestions = vi.fn(
+  const getDirectorySuggestions = vi.fn<GetDirectorySuggestions>(
     async (input: {
       query: string;
       cwd: string;
@@ -192,7 +193,7 @@ describe("fetchDaemonResolution", () => {
   });
 
   it("throws a typed unresolved error when the daemon throws", async () => {
-    const getDirectorySuggestions = vi.fn(async () => {
+    const getDirectorySuggestions = vi.fn<GetDirectorySuggestions>(async () => {
       throw new Error("daemon unavailable");
     });
 

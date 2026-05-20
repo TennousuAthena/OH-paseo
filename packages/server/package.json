@@ -48,14 +48,14 @@
     "speech:transcribe:local": "tsx scripts/transcribe-local-wav.ts",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "vitest run --exclude \"**/*.e2e.test.ts\"",
-    "test:integration": "vitest run --maxWorkers=1 --minWorkers=1 src/server/daemon-e2e/models.e2e.test.ts src/server/daemon-e2e/live-preferences.e2e.test.ts src/server/agent/model-catalog.e2e.test.ts",
+    "test:integration": "vitest run --maxWorkers=1 src/server/daemon-e2e/models.e2e.test.ts src/server/daemon-e2e/live-preferences.e2e.test.ts src/server/agent/model-catalog.e2e.test.ts",
     "test:integration:all": "npm run test:e2e",
     "test:integration:real": "vitest run real.e2e.test.ts",
     "test:integration:local": "vitest run local.e2e.test.ts",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "test:e2e": "vitest run e2e.test.ts --maxWorkers=1 --minWorkers=1 --exclude \"**/*.real.e2e.test.ts\" --exclude \"**/*.local.e2e.test.ts\"",
-    "test:e2e:all": "vitest run e2e.test.ts --maxWorkers=1 --minWorkers=1",
+    "test:e2e": "vitest run e2e.test.ts --maxWorkers=1 --exclude \"**/*.real.e2e.test.ts\" --exclude \"**/*.local.e2e.test.ts\"",
+    "test:e2e:all": "vitest run e2e.test.ts --maxWorkers=1",
     "test:e2e:real": "npm run test:integration:real",
     "test:e2e:local": "npm run test:integration:local",
     "test:e2e:ui": "vitest --ui e2e.test.ts"
@@ -103,11 +103,11 @@
     "@types/qrcode": "^1.5.6",
     "@types/uuid": "^9.0.7",
     "@types/ws": "^8.5.8",
-    "@vitest/ui": "^3.2.4",
+    "@vitest/ui": "^4.1.6",
     "cross-env": "^10.1.0",
     "tsx": "^4.6.0",
     "typescript": "^5.2.2",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.6"
   },
   "overrides": {
     "lightningcss": "1.30.1"

@@ -2,6 +2,7 @@
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ToastApi } from "@/components/toast-host";
 import { useSessionStore } from "@/stores/session-store";
 import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
 import { useLoadOlderAgentHistory } from "./use-load-older-agent-history";
@@ -9,7 +10,19 @@ import { useLoadOlderAgentHistory } from "./use-load-older-agent-history";
 const serverId = "server-1";
 const agentId = "agent-1";
 
-function makeClient(fetchAgentTimeline = vi.fn().mockResolvedValue(undefined)) {
+type FetchAgentTimeline = (agentId: string, request: unknown) => Promise<void>;
+
+function createToast(): ToastApi {
+  return {
+    show: vi.fn<ToastApi["show"]>(),
+    copied: vi.fn<ToastApi["copied"]>(),
+    error: vi.fn<ToastApi["error"]>(),
+  };
+}
+
+function makeClient(
+  fetchAgentTimeline: FetchAgentTimeline = vi.fn<FetchAgentTimeline>().mockResolvedValue(undefined),
+) {
   return { fetchAgentTimeline };
 }
 
@@ -17,7 +30,7 @@ function initialize(input?: {
   cursor?: { epoch: string; startSeq: number; endSeq: number };
   hasOlder?: boolean;
   inFlight?: boolean;
-  fetchAgentTimeline?: ReturnType<typeof vi.fn>;
+  fetchAgentTimeline?: FetchAgentTimeline;
 }) {
   const client = makeClient(input?.fetchAgentTimeline);
   useSessionStore.getState().initializeSession(serverId, client as never);
@@ -69,7 +82,7 @@ describe("useLoadOlderAgentHistory", () => {
   });
 
   it("dedupes concurrent older-page requests", () => {
-    const fetchAgentTimeline = vi.fn(
+    const fetchAgentTimeline = vi.fn<FetchAgentTimeline>(
       () =>
         new Promise<void>((resolve) => {
           setTimeout(resolve, 20);
@@ -120,9 +133,9 @@ describe("useLoadOlderAgentHistory", () => {
     const client = initialize({
       cursor: { epoch: "epoch-1", startSeq: 10, endSeq: 20 },
       hasOlder: true,
-      fetchAgentTimeline: vi.fn().mockRejectedValue(error),
+      fetchAgentTimeline: vi.fn<FetchAgentTimeline>().mockRejectedValue(error),
     });
-    const toast = { show: vi.fn(), copied: vi.fn(), error: vi.fn() };
+    const toast = createToast();
     const { result } = renderHook(() => useLoadOlderAgentHistory({ serverId, agentId, toast }));
 
     act(() => {

@@ -16,7 +16,7 @@ Replace the OpenCode provider's per-directory `/event` stream with OpenCode's `/
 Each OpenCode test file was run independently with:
 
 ```bash
-/opt/homebrew/bin/timeout 420s npx vitest run <file> --maxWorkers=1 --minWorkers=1
+/opt/homebrew/bin/timeout 420s npx vitest run <file> --maxWorkers=1
 ```
 
 ## Baseline
@@ -44,6 +44,6 @@ One live reasoning-dedup matrix run returned no reasoning content; an immediate 
 - `npm run typecheck`
 - `npm run lint`
 - `git diff --check`
-- `npx vitest run packages/server/src/server/agent/providers/opencode-agent.test.ts --maxWorkers=1 --minWorkers=1`
-- `npx vitest run packages/server/src/server/agent/providers/opencode-agent.error-handling.real.e2e.test.ts --maxWorkers=1 --minWorkers=1`
-- `npx vitest run packages/server/src/server/daemon-e2e/opencode-initial-prompt-wait.real.e2e.test.ts --maxWorkers=1 --minWorkers=1`
+- `npx vitest run packages/server/src/server/agent/providers/opencode-agent.test.ts --maxWorkers=1`
+- `npx vitest run packages/server/src/server/agent/providers/opencode-agent.error-handling.real.e2e.test.ts --maxWorkers=1`
+- `npx vitest run packages/server/src/server/daemon-e2e/opencode-initial-prompt-wait.real.e2e.test.ts --maxWorkers=1`
