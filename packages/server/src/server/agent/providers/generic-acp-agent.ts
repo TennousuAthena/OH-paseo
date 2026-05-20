@@ -27,6 +27,8 @@ interface GenericACPAgentClientOptions {
   env?: Record<string, string>;
   providerId?: string;
   label?: string;
+  waitForInitialCommands?: boolean;
+  initialCommandsWaitTimeoutMs?: number;
 }
 
 export class GenericACPAgentClient extends ACPAgentClient {
@@ -42,6 +44,8 @@ export class GenericACPAgentClient extends ACPAgentClient {
         env: options.env,
       },
       defaultCommand: options.command,
+      waitForInitialCommands: options.waitForInitialCommands,
+      initialCommandsWaitTimeoutMs: options.initialCommandsWaitTimeoutMs,
     });
 
     this.command = options.command;

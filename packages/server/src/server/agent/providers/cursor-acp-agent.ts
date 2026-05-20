@@ -14,6 +14,7 @@ interface CursorACPAgentClientOptions {
 }
 
 const CURSOR_MODELS_TIMEOUT_MS = 10_000;
+const CURSOR_INITIAL_COMMANDS_WAIT_TIMEOUT_MS = 10_000;
 const CURSOR_MODEL_MARKER_PATTERN = /\s+\((?:default|current)\)$/;
 
 export class CursorACPAgentClient extends GenericACPAgentClient {
@@ -21,7 +22,16 @@ export class CursorACPAgentClient extends GenericACPAgentClient {
   private readonly env?: Record<string, string>;
 
   constructor(options: CursorACPAgentClientOptions) {
-    super(options);
+    super({
+      logger: options.logger,
+      command: options.command,
+      env: options.env,
+      providerId: options.providerId,
+      label: options.label,
+      // cursor-agent publishes slash commands asynchronously via available_commands_update.
+      waitForInitialCommands: true,
+      initialCommandsWaitTimeoutMs: CURSOR_INITIAL_COMMANDS_WAIT_TIMEOUT_MS,
+    });
     this.cursorCommand = options.command;
     this.env = options.env;
   }
