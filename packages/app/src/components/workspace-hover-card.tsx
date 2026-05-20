@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { Dimensions, Text, View } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { CircleCheck, CircleDot, CircleX, ExternalLink } from "lucide-react-native";
 import { GitHubIcon } from "@/components/icons/github-icon";
@@ -24,6 +24,7 @@ import { openExternalUrl } from "@/utils/open-external-url";
 import { PrBadge } from "@/components/sidebar-workspace-list";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { FloatingSurface } from "@/components/ui/floating";
 import { isWeb } from "@/constants/platform";
 
 interface Rect {
@@ -254,23 +255,19 @@ function WorkspaceHoverCardContent({
     [],
   );
 
-  const cardStyle = useMemo(
-    () => [
-      styles.card,
-      {
-        width: HOVER_CARD_WIDTH,
-        position: "absolute" as const,
-        top: position?.y ?? -9999,
-        left: position?.x ?? -9999,
-      },
-    ],
+  const frameStyle = useMemo(
+    () => ({
+      position: "absolute" as const,
+      top: position?.y ?? -9999,
+      left: position?.x ?? -9999,
+    }),
     [position?.x, position?.y],
   );
 
   return (
     <Portal hostName={bottomSheetInternal?.hostName}>
       <View pointerEvents="box-none" style={styles.portalOverlay}>
-        <Animated.View
+        <FloatingSurface
           ref={contentRef}
           entering={FadeIn.duration(80)}
           exiting={FadeOut.duration(80)}
@@ -279,7 +276,8 @@ function WorkspaceHoverCardContent({
           accessibilityRole="menu"
           accessibilityLabel="Workspace scripts"
           testID="workspace-hover-card"
-          style={cardStyle}
+          style={styles.card}
+          frameStyle={frameStyle}
         >
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle} numberOfLines={1} testID="hover-card-workspace-name">
@@ -303,7 +301,7 @@ function WorkspaceHoverCardContent({
               <ChecksSummaryPressable checks={prHint.checks} url={prHint.url} />
             </>
           ) : null}
-        </Animated.View>
+        </FloatingSurface>
       </View>
     </Portal>
   );
@@ -441,6 +439,7 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     paddingTop: theme.spacing[2],
+    width: HOVER_CARD_WIDTH,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
