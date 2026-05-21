@@ -3389,6 +3389,7 @@ export class Session {
         paseoHome: this.paseoHome,
         logger: this.sessionLogger,
       });
+      await this.registerWorkspaceForImportedAgent(snapshot.cwd);
       await this.forwardAgentUpdate(snapshot);
       const agentPayload = await this.buildAgentPayload(snapshot);
       this.emit({
@@ -7140,6 +7141,20 @@ export class Session {
           code,
         },
       });
+    }
+  }
+
+  private async registerWorkspaceForImportedAgent(cwd: string): Promise<void> {
+    try {
+      const workspace = await this.findOrCreateWorkspaceForDirectory(cwd);
+      await this.syncWorkspaceGitObserverForWorkspace(workspace);
+      await this.describeWorkspaceRecord(workspace);
+      await this.emitWorkspaceUpdateForCwd(workspace.cwd);
+    } catch (error) {
+      this.sessionLogger.warn(
+        { err: error, cwd },
+        "Failed to register workspace for imported agent",
+      );
     }
   }
 

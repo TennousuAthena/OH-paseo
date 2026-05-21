@@ -66,6 +66,20 @@ interface SessionTestAccess {
   agentManager: {
     listAgents(): unknown[];
     listImportablePersistedAgents(options?: unknown): Promise<PersistedAgentDescriptor[]>;
+    findPersistedAgent(
+      provider: string,
+      providerHandleId: string,
+      options?: unknown,
+    ): Promise<PersistedAgentDescriptor | null>;
+    resumeAgentFromPersistence(
+      handle: unknown,
+      overrides?: unknown,
+      preferredId?: string,
+      extras?: unknown,
+    ): Promise<unknown>;
+    hydrateTimelineFromProvider(agentId: string): Promise<unknown>;
+    getTimeline(agentId: string): readonly unknown[];
+    setTitle(agentId: string, title: string): Promise<unknown>;
   };
   workspaceRegistry: {
     list(...args: unknown[]): Promise<unknown[]>;
@@ -2658,6 +2672,105 @@ test("open_project_request registers a workspace before any agent exists", async
   const response = findByType(emitted, "open_project_response");
   expect(response?.payload.error).toBeNull();
   expect(response?.payload.workspace?.id).toBe(REPO_CWD);
+});
+
+test("import_agent_request registers a workspace for a never-seen cwd", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => {
+      if (isSessionOutboundMessage(message)) emitted.push(message);
+    },
+  });
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const importedCwd = path.resolve("/tmp/imported-project");
+
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    workspaces.get(workspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.buildProjectPlacement = async (cwd: string) => ({
+    projectKey: cwd,
+    projectName: "imported",
+    checkout: {
+      cwd,
+      isGit: false,
+      currentBranch: null,
+      remoteUrl: null,
+      worktreeRoot: null,
+      isPaseoOwnedWorktree: false,
+      mainRepoRoot: null,
+    },
+  });
+
+  const managed = makeManagedAgent({
+    id: "imported-agent",
+    cwd: importedCwd,
+    lifecycle: "idle",
+    updatedAt: "2026-05-21T00:00:00.000Z",
+  });
+  session.agentManager.listAgents = () => [managed];
+  session.agentManager.findPersistedAgent = async () => null;
+  session.agentManager.resumeAgentFromPersistence = async () => managed;
+  session.agentManager.hydrateTimelineFromProvider = async () => undefined;
+  session.agentManager.getTimeline = () => [];
+  session.agentManager.setTitle = async () => undefined;
+  session.agentStorage.list = async () => [];
+  session.agentStorage.get = async () => null;
+  session.forwardAgentUpdate = async () => undefined;
+
+  session.workspaceUpdatesSubscription = {
+    subscriptionId: "sub-import",
+    filter: undefined,
+    isBootstrapping: false,
+    pendingUpdatesByWorkspaceId: new Map(),
+    lastEmittedByWorkspaceId: new Map(),
+  };
+  session.buildWorkspaceDescriptorMap = async () =>
+    new Map([
+      [
+        importedCwd,
+        {
+          id: importedCwd,
+          projectId: importedCwd,
+          projectDisplayName: "imported-project",
+          projectRootPath: importedCwd,
+          projectKind: "non_git",
+          workspaceKind: "directory",
+          name: "imported-project",
+          status: "done",
+          activityAt: null,
+        },
+      ],
+    ]);
+
+  await session.handleMessage({
+    type: "import_agent_request",
+    requestId: "req-import",
+    providerId: "codex",
+    providerHandleId: "session-xyz",
+    cwd: importedCwd,
+  });
+
+  expect(workspaces.get(importedCwd)).toBeTruthy();
+  const workspaceUpdates = filterByType(emitted, "workspace_update");
+  expect(workspaceUpdates.length).toBeGreaterThan(0);
+  expect(
+    workspaceUpdates.some(
+      (update) => update.payload.kind === "upsert" && update.payload.workspace.id === importedCwd,
+    ),
+  ).toBe(true);
 });
 
 test("open_project_response returns immediately even when the GitHub fetch is slow", async () => {

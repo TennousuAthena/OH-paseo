@@ -59,7 +59,7 @@ import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-
 import { WorkspaceGitActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
-import { WorkspaceImportSheet } from "@/screens/workspace/workspace-import-sheet";
+import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
 import { useToast } from "@/contexts/toast-context";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
@@ -3358,11 +3358,11 @@ function WorkspaceScreenContent({
               />
             ) : null}
           </View>
-          <WorkspaceImportSheet
+          <ImportSessionSheet
             visible={isImportSheetVisible}
             client={client}
             serverId={normalizedServerId}
-            workspaceDirectory={workspaceDirectory}
+            cwd={workspaceDirectory}
             onClose={closeImportSheet}
             onImportedAgent={handleImportedAgent}
           />

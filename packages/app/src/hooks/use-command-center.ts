@@ -10,7 +10,7 @@ import {
   clearCommandCenterFocusRestoreElement,
   takeCommandCenterFocusRestoreElement,
 } from "@/utils/command-center-focus-restore";
-import { buildSettingsRoute } from "@/utils/host-routes";
+import { buildHostOpenProjectRoute, buildSettingsRoute } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { chordStringToShortcutKeys } from "@/keyboard/shortcut-string";
 import { getBindingIdForAction, getDefaultKeysForAction } from "@/keyboard/keyboard-shortcuts";
@@ -52,10 +52,10 @@ function sortAgents(left: AggregatedAgent, right: AggregatedAgent): number {
 interface CommandCenterActionDefinition {
   id: string;
   title: string;
-  icon?: "plus" | "settings";
+  icon?: "plus" | "settings" | "home";
   actionId?: string;
   keywords: string[];
-  routeKind: "settings" | "none";
+  routeKind: "settings" | "home" | "none";
 }
 
 const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
@@ -66,6 +66,13 @@ const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
     actionId: "new-agent",
     keywords: ["open", "project", "folder", "workspace", "repo"],
     routeKind: "none",
+  },
+  {
+    id: "home",
+    title: "Home",
+    icon: "home",
+    keywords: ["home", "start", "import", "session", "pair", "device", "providers"],
+    routeKind: "home",
   },
   {
     id: "settings",
@@ -89,7 +96,7 @@ export interface CommandCenterActionItem {
   kind: "action";
   id: string;
   title: string;
-  icon?: "plus" | "settings";
+  icon?: "plus" | "settings" | "home";
   route?: Href;
   shortcutKeys?: ShortcutKey[][];
 }
@@ -155,21 +162,32 @@ export function useCommandCenter() {
     return buildSettingsRoute();
   }, []);
 
+  const homeRoute = useMemo<Href | undefined>(() => {
+    if (!routeActiveServerId) return undefined;
+    return buildHostOpenProjectRoute(routeActiveServerId) as Href;
+  }, [routeActiveServerId]);
+
   const actionItems = useMemo(() => {
     if (!open) {
       return EMPTY_ACTION_ITEMS;
     }
-    return COMMAND_CENTER_ACTIONS.filter((action) =>
-      matchesActionQuery(query, action),
-    ).map<CommandCenterActionItem>((action) => ({
-      kind: "action",
-      id: action.id,
-      title: action.title,
-      icon: action.icon,
-      route: action.routeKind === "settings" ? settingsRoute : undefined,
-      shortcutKeys: resolveActionShortcutKeys(action.actionId, overrides),
-    }));
-  }, [open, query, settingsRoute, overrides]);
+    return COMMAND_CENTER_ACTIONS.filter((action) => {
+      if (action.routeKind === "home" && !homeRoute) return false;
+      return matchesActionQuery(query, action);
+    }).map<CommandCenterActionItem>((action) => {
+      let route: Href | undefined;
+      if (action.routeKind === "settings") route = settingsRoute;
+      else if (action.routeKind === "home") route = homeRoute;
+      return {
+        kind: "action",
+        id: action.id,
+        title: action.title,
+        icon: action.icon,
+        route,
+        shortcutKeys: resolveActionShortcutKeys(action.actionId, overrides),
+      };
+    });
+  }, [open, query, settingsRoute, homeRoute, overrides]);
 
   const items = useMemo(() => {
     if (!open) {
