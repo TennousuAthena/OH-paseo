@@ -4,6 +4,7 @@ import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import type { DaemonClient, FetchRecentProviderSessionEntry } from "@server/client/daemon-client";
 import type { AgentProvider } from "@server/server/agent/agent-sdk-types";
 import { IMPORTABLE_PROVIDERS } from "@server/shared/importable-providers";
+import { Inbox } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -172,8 +173,6 @@ interface SheetStatusMessagesProps {
   allQueriesErrored: boolean;
   erroredProviderLabels: ReadonlyArray<string>;
   importErrored: boolean;
-  showEmptyState: boolean;
-  allAlreadyImported: boolean;
 }
 
 function SheetStatusMessages({
@@ -184,8 +183,6 @@ function SheetStatusMessages({
   allQueriesErrored,
   erroredProviderLabels,
   importErrored,
-  showEmptyState,
-  allAlreadyImported,
 }: SheetStatusMessagesProps) {
   const { theme } = useUnistyles();
   if (!isClientReady) {
@@ -216,14 +213,55 @@ function SheetStatusMessages({
       {importErrored ? (
         <Text style={styles.statusText}>Could not import selected session.</Text>
       ) : null}
-      {showEmptyState ? (
-        <Text style={styles.statusText}>
-          {allAlreadyImported
-            ? "All recent sessions are already imported."
-            : "No recent sessions to import."}
-        </Text>
-      ) : null}
     </>
+  );
+}
+
+interface EmptyStateInputs {
+  isLoadingSessions: boolean;
+  allQueriesErrored: boolean;
+  isQueryingProviders: boolean;
+  allQueriesSettled: boolean;
+  selectedProvider: string;
+  aggregatedCount: number;
+  visibleCount: number;
+  totalAlreadyImportedCount: number;
+  providerLabelById: ReadonlyMap<string, string>;
+}
+
+function computeEmptyState(input: EmptyStateInputs): {
+  showEmptyState: boolean;
+  emptyStateTitle: string;
+} {
+  const showEmptyState =
+    !input.isLoadingSessions &&
+    !input.allQueriesErrored &&
+    input.isQueryingProviders &&
+    input.allQueriesSettled &&
+    input.visibleCount === 0;
+  if (!showEmptyState) {
+    return { showEmptyState, emptyStateTitle: "" };
+  }
+  const isFilteredEmpty = input.selectedProvider !== ALL_FILTER_VALUE && input.aggregatedCount > 0;
+  if (isFilteredEmpty) {
+    const label = input.providerLabelById.get(input.selectedProvider) ?? input.selectedProvider;
+    return { showEmptyState, emptyStateTitle: `No ${label} sessions found.` };
+  }
+  if (input.totalAlreadyImportedCount > 0) {
+    return { showEmptyState, emptyStateTitle: "All recent sessions are already imported." };
+  }
+  return { showEmptyState, emptyStateTitle: "No recent sessions to import." };
+}
+
+function SheetEmptyState({ title }: { title: string }) {
+  const { theme } = useUnistyles();
+  return (
+    <View style={styles.emptyState} testID="workspace-import-empty-state">
+      <View style={styles.emptyStateIcon}>
+        <Inbox size={theme.iconSize.lg} color={theme.colors.foregroundMuted} strokeWidth={1.5} />
+      </View>
+      <Text style={styles.emptyStateTitle}>{title}</Text>
+    </View>
   );
 }
 
@@ -423,13 +461,17 @@ export function WorkspaceImportSheet({
   const allQueriesErrored = isQueryingProviders && queries.every((query) => query.isError);
   const allQueriesSettled =
     isQueryingProviders && queries.every((query) => !query.isLoading && !query.isPending);
-  const showEmptyState =
-    !isLoadingSessions &&
-    !allQueriesErrored &&
-    isQueryingProviders &&
-    allQueriesSettled &&
-    aggregatedEntries.length === 0;
-  const allAlreadyImported = showEmptyState && totalAlreadyImportedCount > 0;
+  const { showEmptyState, emptyStateTitle } = computeEmptyState({
+    isLoadingSessions,
+    allQueriesErrored,
+    isQueryingProviders,
+    allQueriesSettled,
+    selectedProvider,
+    aggregatedCount: aggregatedEntries.length,
+    visibleCount: visibleEntries.length,
+    totalAlreadyImportedCount,
+    providerLabelById,
+  });
   const showFilter = filterProviders.length > 1;
 
   return (
@@ -464,8 +506,6 @@ export function WorkspaceImportSheet({
         allQueriesErrored={allQueriesErrored}
         erroredProviderLabels={erroredProviderLabels}
         importErrored={importMutation.isError}
-        showEmptyState={showEmptyState}
-        allAlreadyImported={allAlreadyImported}
       />
       {visibleEntries.length > 0 ? (
         <View style={styles.list}>
@@ -480,6 +520,7 @@ export function WorkspaceImportSheet({
           ))}
         </View>
       ) : null}
+      {showEmptyState ? <SheetEmptyState title={emptyStateTitle} /> : null}
     </AdaptiveModalSheet>
   );
 }
@@ -548,5 +589,21 @@ const styles = StyleSheet.create((theme) => ({
   statusText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
+  },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[8],
+    paddingHorizontal: theme.spacing[4],
+  },
+  emptyStateIcon: {
+    opacity: 0.6,
+    marginBottom: theme.spacing[1],
+  },
+  emptyStateTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    textAlign: "center",
   },
 }));

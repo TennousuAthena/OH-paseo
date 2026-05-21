@@ -61,6 +61,17 @@ vi.mock("@/components/provider-icons", () => ({
   getProviderIcon: () => () => null,
 }));
 
+vi.mock("lucide-react-native", () => {
+  const icon = (name: string) => {
+    const Icon = () => React.createElement("span", { "data-icon": name });
+    Icon.displayName = name;
+    return Icon;
+  };
+  return {
+    Inbox: icon("Inbox"),
+  };
+});
+
 vi.mock("@/components/ui/loading-spinner", () => ({
   LoadingSpinner: () =>
     React.createElement("span", { "data-testid": "workspace-import-loading-spinner" }),
