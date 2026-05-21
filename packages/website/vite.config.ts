@@ -53,6 +53,17 @@ function discoverAgentRoutes(): string[] {
     .map((slug) => `/${slug}`);
 }
 
+function discoverBlogRoutes(): string[] {
+  const postsDir = path.join(__dirname, "posts");
+  if (!fs.existsSync(postsDir)) return ["/blog"];
+  const slugs = fs
+    .readdirSync(postsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => entry.name.replace(/\.md$/, ""))
+    .sort();
+  return ["/blog", ...slugs.map((slug) => `/blog/${slug}`)];
+}
+
 const sitemapPages = [
   "/",
   "/agents",
@@ -62,6 +73,7 @@ const sitemapPages = [
   "/privacy",
   ...discoverAgentRoutes(),
   ...discoverDocsRoutes(),
+  ...discoverBlogRoutes(),
 ].map((routePath) => ({
   path: routePath,
 }));

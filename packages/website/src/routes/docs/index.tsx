@@ -7,10 +7,13 @@ import { pageMeta } from "~/meta";
 export const Route = createFileRoute("/docs/")({
   head: () => {
     const doc = getDoc("");
-    if (!doc) return { meta: pageMeta("Docs - Paseo", "Paseo documentation.") };
-    return {
-      meta: pageMeta(`${doc.frontmatter.title} - Paseo Docs`, doc.frontmatter.description),
-    };
+    if (!doc)
+      return pageMeta(
+        "Docs - Paseo",
+        "Install Paseo and start running coding agents from your phone, desktop, and terminal.",
+        "/docs",
+      );
+    return pageMeta(`${doc.frontmatter.title} - Paseo Docs`, doc.frontmatter.description, "/docs");
   },
   component: DocsIndex,
 });

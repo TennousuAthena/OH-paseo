@@ -3,12 +3,12 @@ import { SiteShell } from "~/components/site-shell";
 import { pageMeta } from "~/meta";
 
 export const Route = createFileRoute("/privacy")({
-  head: () => ({
-    meta: pageMeta(
+  head: () =>
+    pageMeta(
       "Privacy Policy - Paseo",
-      "Privacy policy for Paseo - a self-hosted agent manager with no tracking or analytics.",
+      "Privacy policy for Paseo, the self-hosted coding agent manager. No tracking, no analytics, no data collection. Your code stays on your machine.",
+      "/privacy",
     ),
-  }),
   component: Privacy,
 });
 

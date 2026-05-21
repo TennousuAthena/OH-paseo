@@ -6,11 +6,10 @@ import { pageMeta } from "~/meta";
 export const Route = createFileRoute("/blog/$")({
   head: ({ params }) => {
     const slug = params._splat ?? "";
+    const path = `/blog/${slug}`;
     const post = getPost(slug);
-    if (!post) return { meta: pageMeta("Not Found - Paseo", "Post not found.") };
-    return {
-      meta: pageMeta(`${post.frontmatter.title} - Paseo`, post.frontmatter.description),
-    };
+    if (!post) return pageMeta("Not Found - Paseo", "Post not found.", path);
+    return pageMeta(`${post.frontmatter.title} - Paseo`, post.frontmatter.description, path);
   },
   component: BlogPost,
 });

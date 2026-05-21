@@ -7,11 +7,10 @@ import { pageMeta } from "~/meta";
 export const Route = createFileRoute("/docs/$")({
   head: ({ params }) => {
     const slug = params._splat ?? "";
+    const path = `/docs/${slug}`;
     const doc = getDoc(slug);
-    if (!doc) return { meta: pageMeta("Not Found - Paseo Docs", "Doc not found.") };
-    return {
-      meta: pageMeta(`${doc.frontmatter.title} - Paseo Docs`, doc.frontmatter.description),
-    };
+    if (!doc) return pageMeta("Not Found - Paseo Docs", "Doc not found.", path);
+    return pageMeta(`${doc.frontmatter.title} - Paseo Docs`, doc.frontmatter.description, path);
   },
   component: DocsPage,
 });
