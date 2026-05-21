@@ -1,16 +1,18 @@
 # Changelog
 
-## 0.1.79-beta.1 - 2026-05-20
+## 0.1.79 - 2026-05-21
 
 ### Added
 
 - **Pi has been revamped with first-class support**
-  - Pi now runs in a separate process, isolated from the rest of the daemon
-  - Pi runs through your installed Pi CLI, so your Pi extensions and configuration work exactly the same as launching Pi from your terminal
-  - Pi agents can call Paseo tools — create Paseo agents, work on worktrees, run anything in the Paseo MCP — when you have the Pi MCP extension installed
-  - Past Pi sessions can be imported into Paseo from Pi's saved history
+  - Runs through your installed Pi CLI, so your Pi extensions and configuration carry over
+  - Pi agents can call Paseo tools when you have the Pi MCP extension installed
+  - Import a Pi session you started in the terminal
+  - Copy Pi's resume command from any agent to continue the session in your terminal
   - Windows: Pi sessions match correctly across symlinked and junctioned workspace paths
-- **Set a custom system prompt for every agent you start** A daemon-wide system prompt gets appended to every supported agent provider
+- **New home screen with quick tiles for adding a project, importing a session, setting up providers, and pairing a device**
+- **Create an agent directly into a fresh worktree that auto-archives when the run finishes**
+- **Set a custom system prompt that applies to every agent you start**
 - **Rename workspaces, terminals, and agent tabs** ([#531](https://github.com/getpaseo/paseo/pull/531))
 - **DeepSeek TUI in the ACP provider catalog** ([#1096](https://github.com/getpaseo/paseo/pull/1096))
 - **Kiro CLI in the ACP provider catalog** (by [@huhusmang](https://github.com/huhusmang))
@@ -20,6 +22,7 @@
 
 ### Improved
 
+- **Stale host connections recover automatically without a manual refresh**
 - Paseo opens to the workspace you were on last time you used it ([#1101](https://github.com/getpaseo/paseo/pull/1101))
 - Workspaces remember which editor you opened them in
 - Outdated daemons now suggest an upgrade when they receive a command they don't understand
@@ -40,7 +43,6 @@
 - Claude file links resolve correctly for projects whose paths need SDK encoding
 - Duplicate Claude result text no longer appears in chat ([#1095](https://github.com/getpaseo/paseo/pull/1095))
 - Dynamic UI styles no longer leak CSS rules across the page ([#1103](https://github.com/getpaseo/paseo/pull/1103))
-- CLI queries daemon status and pairing offers through the proper RPC path (by [@yzx9](https://github.com/yzx9))
 - Relay handshakes reject sessions that try to change encryption keys mid-flight ([#1037](https://github.com/getpaseo/paseo/pull/1037) by [@joaosa](https://github.com/joaosa))
 
 ## 0.1.78 - 2026-05-18
