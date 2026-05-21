@@ -84,7 +84,7 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
           <HomeTile
             icon={Inbox}
             title="Import session"
-            description="Bring in recent CLI sessions"
+            description="Bring in recent external CLI sessions"
             onPress={handleOpenImportSession}
             testID="open-project-import-session"
           />
