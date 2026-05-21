@@ -11,6 +11,8 @@ OpenChamber is a macOS desktop app for OpenCode. Also available as a PWA. Open s
 
 Paseo is an app for orchestrating coding agents, with native clients on desktop, mobile, web, and the CLI. Open source (AGPL-3.0).
 
+![Paseo desktop and mobile app](/hero-mockup.png)
+
 ## Why pick Paseo
 
 OpenChamber runs on macOS, around OpenCode, with a phone PWA. Paseo runs OpenCode too, on macOS, and adds:

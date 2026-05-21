@@ -11,6 +11,8 @@ Happy Coder is a mobile and web client for Claude Code and Codex. It wraps the a
 
 Paseo is an app for orchestrating coding agents, with native clients on desktop, mobile, web, and the CLI. Open source (AGPL-3.0).
 
+![Paseo desktop and mobile app](/hero-mockup.png)
+
 ## When to pick what
 
 Pick Happy Coder if you want the most minimal setup. Wrap an existing Claude Code or Codex session on your laptop and check in on it from your phone.

@@ -11,6 +11,8 @@ Superset is a macOS desktop app for running CLI coding agents in parallel git wo
 
 Paseo is an app for orchestrating coding agents, with native clients on desktop, mobile, web, and the CLI. Open source (AGPL-3.0).
 
+![Paseo desktop and mobile app](/hero-mockup.png)
+
 ## When to pick what
 
 Pick Superset if you prefer a terminal-first interface where agents live inside terminal panes.

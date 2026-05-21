@@ -11,6 +11,8 @@ Conductor is a macOS app for running Claude Code and Codex in parallel git workt
 
 Paseo is an app for orchestrating coding agents, with native clients on desktop, mobile, web, and the CLI. Open source (AGPL-3.0).
 
+![Paseo desktop and mobile app](/hero-mockup.png)
+
 ## Why pick Paseo
 
 Conductor runs on macOS, with Claude Code and Codex, in parallel git worktrees. Paseo does all of that. Pick Paseo if you want:
