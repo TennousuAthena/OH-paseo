@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.80 - 2026-05-21
+
+### Fixed
+
+- Opening dropdown menus no longer crashes on mobile
+
 ## 0.1.79 - 2026-05-21
 
 ### Added
