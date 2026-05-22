@@ -4,6 +4,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useRouter } from "expo-router";
 import { FolderOpen, Inbox, Plug, Smartphone } from "lucide-react-native";
 import { PaseoLogo } from "@/components/icons/paseo-logo";
+import { CommunityLinks } from "@/components/community-links";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { usePanelStore } from "@/stores/panel-store";
@@ -105,6 +106,9 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
             />
           ) : null}
         </View>
+      </View>
+      <View style={styles.communityRow}>
+        <CommunityLinks />
       </View>
       <PairDeviceModal
         visible={isPairDeviceOpen}
@@ -226,5 +230,18 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     lineHeight: 18,
+  },
+  communityRow: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: {
+      xs: HEADER_INNER_HEIGHT_MOBILE + HEADER_TOP_PADDING_MOBILE + theme.spacing[2],
+      md: HEADER_INNER_HEIGHT + theme.spacing[2],
+    },
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 0,
   },
 }));

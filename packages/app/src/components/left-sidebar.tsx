@@ -1,5 +1,5 @@
 import { router, usePathname } from "expo-router";
-import { FolderPlus, MessagesSquare, Settings, X } from "lucide-react-native";
+import { FolderPlus, Home, MessagesSquare, Settings, X } from "lucide-react-native";
 import {
   type Dispatch,
   memo,
@@ -58,6 +58,7 @@ import { resolveActiveHost } from "@/utils/active-host";
 import { formatConnectionStatus } from "@/utils/daemons";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import {
+  buildHostOpenProjectRoute,
   buildHostSessionsRoute,
   buildSettingsRoute,
   mapPathnameToServer,
@@ -94,6 +95,7 @@ interface SidebarSharedProps {
   handleRefresh: () => void;
   handleHostSelect: (nextServerId: string) => void;
   handleOpenProject: () => void;
+  handleHome: () => void;
   handleSettings: () => void;
   renderHostOption: (input: {
     option: ComboboxOption;
@@ -223,6 +225,17 @@ export const LeftSidebar = memo(function LeftSidebar({
     router.push(buildSettingsRoute());
   }, []);
 
+  const handleHomeMobile = useCallback(() => {
+    if (!activeServerId) return;
+    showMobileAgent();
+    router.push(buildHostOpenProjectRoute(activeServerId));
+  }, [activeServerId, showMobileAgent]);
+
+  const handleHomeDesktop = useCallback(() => {
+    if (!activeServerId) return;
+    router.push(buildHostOpenProjectRoute(activeServerId));
+  }, [activeServerId]);
+
   const handleViewMoreNavigate = useCallback(() => {
     if (!activeServerId) {
       return;
@@ -272,6 +285,7 @@ export const LeftSidebar = memo(function LeftSidebar({
         isOpen={isOpen}
         closeToAgent={showMobileAgent}
         handleOpenProject={handleOpenProjectMobile}
+        handleHome={handleHomeMobile}
         handleSettings={handleSettingsMobile}
         handleViewMoreNavigate={handleViewMoreNavigate}
       />
@@ -284,6 +298,7 @@ export const LeftSidebar = memo(function LeftSidebar({
       insetsTop={insets.top}
       isOpen={isOpen}
       handleOpenProject={handleOpenProjectDesktop}
+      handleHome={handleHomeDesktop}
       handleSettings={handleSettingsDesktop}
       handleViewMore={handleViewMoreNavigate}
     />
@@ -414,6 +429,7 @@ function SidebarFooter({
   handleHostSelect,
   renderHostOption,
   handleOpenProject,
+  handleHome,
   handleSettings,
 }: {
   theme: SidebarTheme;
@@ -427,6 +443,7 @@ function SidebarFooter({
   handleHostSelect: (nextServerId: string) => void;
   renderHostOption: SidebarSharedProps["renderHostOption"];
   handleOpenProject: () => void;
+  handleHome: () => void;
   handleSettings: () => void;
 }) {
   const newAgentKeys = useShortcutKeys("new-agent");
@@ -456,6 +473,13 @@ function SidebarFooter({
             <AddProjectTooltipContent newAgentKeys={newAgentKeys} />
           </TooltipContent>
         </Tooltip>
+        <FooterIconButton
+          onPress={handleHome}
+          testID="sidebar-home"
+          accessibilityLabel="Home"
+          icon={Home}
+          theme={theme}
+        />
         <FooterIconButton
           onPress={handleSettings}
           testID="sidebar-settings"
@@ -501,6 +525,7 @@ function MobileSidebar({
   handleHostSelect,
   renderHostOption,
   handleOpenProject,
+  handleHome,
   handleSettings,
   insetsTop,
   insetsBottom,
@@ -729,6 +754,7 @@ function MobileSidebar({
               handleHostSelect={handleHostSelect}
               renderHostOption={renderHostOption}
               handleOpenProject={handleOpenProject}
+              handleHome={handleHome}
               handleSettings={handleSettings}
             />
           </View>
@@ -758,6 +784,7 @@ function DesktopSidebar({
   handleHostSelect,
   renderHostOption,
   handleOpenProject,
+  handleHome,
   handleSettings,
   insetsTop,
   isOpen,
@@ -871,6 +898,7 @@ function DesktopSidebar({
           handleHostSelect={handleHostSelect}
           renderHostOption={renderHostOption}
           handleOpenProject={handleOpenProject}
+          handleHome={handleHome}
           handleSettings={handleSettings}
         />
 

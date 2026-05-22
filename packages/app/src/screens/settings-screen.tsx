@@ -56,6 +56,7 @@ import { AddHostModal } from "@/components/add-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
 import { KeyboardShortcutsSection } from "@/screens/settings/keyboard-shortcuts-section";
 import { Button } from "@/components/ui/button";
+import { CommunityLinks } from "@/components/community-links";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
   DropdownMenu,
@@ -456,6 +457,9 @@ function AboutSection({ appVersionText, isDesktopApp }: AboutSectionProps) {
           <Text style={styles.aboutValue}>{appVersionText}</Text>
         </View>
         {isDesktopApp ? <DesktopAppUpdateRow /> : null}
+      </View>
+      <View style={styles.aboutCommunity}>
+        <CommunityLinks />
       </View>
     </SettingsSection>
   );
@@ -1266,6 +1270,9 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.palette.red[300],
     fontSize: theme.fontSize.xs,
     marginTop: theme.spacing[1],
+  },
+  aboutCommunity: {
+    marginTop: theme.spacing[4],
   },
   aboutUpdateActions: {
     flexDirection: "row",
