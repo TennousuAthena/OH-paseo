@@ -194,7 +194,6 @@ export function SearchInput({
           // @ts-expect-error - outlineStyle is web-only
           style={SEARCH_INPUT_STYLE}
           placeholder={placeholder}
-          placeholderTextColor={theme.colors.foregroundMuted}
           initialValue={value}
           resetKey={resetKey}
           value={value}

@@ -3,7 +3,7 @@ import type { ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { TextInputProps } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { getOverlayRoot, OVERLAY_Z } from "../lib/overlay-root";
 import {
@@ -205,6 +205,9 @@ const styles = StyleSheet.create((theme) => ({
   adaptiveInputOutline: {
     outlineColor: theme.colors.accent,
   },
+  adaptiveInputText: {
+    color: theme.colors.foreground,
+  },
   adaptiveInputPlaceholder: {
     color: theme.colors.foregroundMuted,
   },
@@ -237,38 +240,43 @@ export type AdaptiveTextInputProps = TextInputProps & {
 // and visibly flicker/cursor-jump. Keep the rendered text native-owned; callers
 // can seed it once with initialValue and remount with resetKey for real resets.
 // See https://github.com/facebook/react-native/issues/44157
+//
+// Text color and placeholder color are owned by this leaf — not the caller.
+// `@gorhom/bottom-sheet` mounts header subtrees before the sheet is visible
+// under whatever theme is active at mount time, then keeps them mounted across
+// theme changes; any caller that paints color via `StyleSheet.create((theme) =>
+// ...)` from outside this leaf ends up with stale colors in dark mode (see
+// docs/unistyles.md "Hidden Sheet Content"). withUnistyles wraps the actual
+// TextInput so theme-driven re-renders land on the wrapper.
+const ThemedTextInput = withUnistyles(TextInput, (theme) => ({
+  placeholderTextColor: theme.colors.foregroundMuted,
+}));
+const ThemedBottomSheetTextInput = withUnistyles(BottomSheetTextInput, (theme) => ({
+  placeholderTextColor: theme.colors.foregroundMuted,
+}));
+
 export const AdaptiveTextInput = forwardRef<TextInput, AdaptiveTextInputProps>(
   function AdaptiveTextInputInner(props, ref) {
     const isMobile = useIsCompactFormFactor();
-    const {
-      value: _value,
-      initialValue,
-      resetKey,
-      defaultValue,
-      style,
-      placeholderTextColor,
-      ...inputProps
-    } = props;
-    // Recolor the browser's :focus-visible outline (defined in public/index.html)
-    // so it matches the active theme's accent instead of its hard-coded fallback.
-    // Consumer style wins if it sets outlineColor explicitly.
+    const { value: _value, initialValue, resetKey, defaultValue, style, ...inputProps } = props;
+    // Leaf-owned color goes LAST so callers cannot override it with a stale
+    // theme read. Outline color is theme-aware on web :focus-visible.
     const textInputProps = {
       ...inputProps,
       defaultValue: initialValue ?? defaultValue,
-      placeholderTextColor: placeholderTextColor ?? styles.adaptiveInputPlaceholder.color,
-      style: [styles.adaptiveInputOutline, style],
+      style: [styles.adaptiveInputOutline, style, styles.adaptiveInputText],
     };
 
     if (isMobile && isNative) {
       return (
-        <BottomSheetTextInput
+        <ThemedBottomSheetTextInput
           key={resetKey}
           ref={ref as unknown as Ref<never>}
           {...textInputProps}
         />
       );
     }
-    return <TextInput key={resetKey} ref={ref} {...textInputProps} />;
+    return <ThemedTextInput key={resetKey} ref={ref} {...textInputProps} />;
   },
 );
 
@@ -344,7 +352,6 @@ export function SheetHeaderView({
             // @ts-expect-error - outlineStyle is web-only
             style={SEARCH_INPUT_STYLE}
             placeholder={search.placeholder ?? "Search"}
-            placeholderTextColor={theme.colors.foregroundMuted}
             initialValue={search.initialValue}
             resetKey={search.resetKey}
             value={search.value}
@@ -400,7 +407,6 @@ export function InlineHeaderView({ header }: { header: SheetHeader }) {
             // @ts-expect-error - outlineStyle is web-only
             style={SEARCH_INPUT_STYLE}
             placeholder={header.search.placeholder ?? "Search"}
-            placeholderTextColor={theme.colors.foregroundMuted}
             initialValue={header.search.initialValue}
             resetKey={header.search.resetKey}
             value={header.search.value}
