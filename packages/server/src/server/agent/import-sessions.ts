@@ -123,6 +123,9 @@ export async function listImportableProviderSessions(
     if (isMetadataGenerationDescriptor(descriptor)) {
       continue;
     }
+    if (!hasUserPrompt(descriptor)) {
+      continue;
+    }
     const providerHandleId =
       descriptor.persistence.nativeHandle ?? descriptor.persistence.sessionId;
     if (importedHandles.has(toProviderSessionHandleKey(descriptor.provider, providerHandleId))) {
@@ -325,6 +328,12 @@ function isMetadataGenerationDescriptor(descriptor: PersistedAgentDescriptor): b
     return item.text.trimStart().startsWith(METADATA_GENERATION_PROMPT_PREFIX);
   }
   return false;
+}
+
+function hasUserPrompt(descriptor: PersistedAgentDescriptor): boolean {
+  return descriptor.timeline.some(
+    (item) => item.type === "user_message" && item.text.trim() !== "",
+  );
 }
 
 function collectProviderSessionHandleKeys(
