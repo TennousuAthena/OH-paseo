@@ -57,33 +57,41 @@ function createAgent(overrides: Partial<Agent> = {}): Agent {
 }
 
 describe("resolveClientSlashCommand", () => {
-  it("declares the exact client commands that execute immediately", () => {
-    expect(CLIENT_SLASH_COMMANDS.map((command) => [command.name, command.execution])).toEqual([
-      ["quit", "immediate"],
-      ["exit", "immediate"],
-      ["q", "immediate"],
-      ["clear", "immediate"],
-      ["new", "immediate"],
+  it("declares the exact canonical client commands with their aliases", () => {
+    expect(
+      CLIENT_SLASH_COMMANDS.map((command) => [
+        command.name,
+        [...command.aliases],
+        command.execution,
+      ]),
+    ).toEqual([
+      ["exit", ["quit", "q"], "immediate"],
+      ["clear", ["new"], "immediate"],
     ]);
   });
 
-  it("resolves exact client commands after trimming", () => {
+  it("resolves canonical names and aliases after trimming", () => {
     expect(resolveClientSlashCommand({ text: " /quit ", hasAttachments: false })).toMatchObject({
+      name: "exit",
       kind: "archive-agent",
       execution: "immediate",
     });
-    expect(resolveClientSlashCommand({ text: "/exit", hasAttachments: false })?.kind).toBe(
-      "archive-agent",
-    );
-    expect(resolveClientSlashCommand({ text: "/q", hasAttachments: false })?.kind).toBe(
-      "archive-agent",
-    );
-    expect(resolveClientSlashCommand({ text: "/clear", hasAttachments: false })?.kind).toBe(
-      "replace-agent-with-draft",
-    );
-    expect(resolveClientSlashCommand({ text: "/new", hasAttachments: false })?.kind).toBe(
-      "replace-agent-with-draft",
-    );
+    expect(resolveClientSlashCommand({ text: "/exit", hasAttachments: false })).toMatchObject({
+      name: "exit",
+      kind: "archive-agent",
+    });
+    expect(resolveClientSlashCommand({ text: "/q", hasAttachments: false })).toMatchObject({
+      name: "exit",
+      kind: "archive-agent",
+    });
+    expect(resolveClientSlashCommand({ text: "/clear", hasAttachments: false })).toMatchObject({
+      name: "clear",
+      kind: "replace-agent-with-draft",
+    });
+    expect(resolveClientSlashCommand({ text: "/new", hasAttachments: false })).toMatchObject({
+      name: "clear",
+      kind: "replace-agent-with-draft",
+    });
   });
 
   it("leaves provider commands, arguments, ordinary messages, and attachment submits alone", () => {

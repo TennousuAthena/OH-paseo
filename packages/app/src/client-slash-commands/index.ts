@@ -6,6 +6,7 @@ export type ClientSlashCommandExecution = "immediate" | "insert";
 
 export interface ClientSlashCommand {
   name: string;
+  aliases: readonly string[];
   description: string;
   argumentHint: string;
   kind: ClientSlashCommandKind;
@@ -14,21 +15,8 @@ export interface ClientSlashCommand {
 
 export const CLIENT_SLASH_COMMANDS: readonly ClientSlashCommand[] = [
   {
-    name: "quit",
-    description: "Archive the current agent",
-    argumentHint: "",
-    kind: "archive-agent",
-    execution: "immediate",
-  },
-  {
     name: "exit",
-    description: "Archive the current agent",
-    argumentHint: "",
-    kind: "archive-agent",
-    execution: "immediate",
-  },
-  {
-    name: "q",
+    aliases: ["quit", "q"],
     description: "Archive the current agent",
     argumentHint: "",
     kind: "archive-agent",
@@ -36,13 +24,7 @@ export const CLIENT_SLASH_COMMANDS: readonly ClientSlashCommand[] = [
   },
   {
     name: "clear",
-    description: "Archive this agent and start a fresh draft",
-    argumentHint: "",
-    kind: "replace-agent-with-draft",
-    execution: "immediate",
-  },
-  {
-    name: "new",
+    aliases: ["new"],
     description: "Archive this agent and start a fresh draft",
     argumentHint: "",
     kind: "replace-agent-with-draft",
@@ -50,7 +32,13 @@ export const CLIENT_SLASH_COMMANDS: readonly ClientSlashCommand[] = [
   },
 ];
 
-const COMMAND_BY_NAME = new Map(CLIENT_SLASH_COMMANDS.map((command) => [command.name, command]));
+const COMMAND_BY_NAME = new Map<string, ClientSlashCommand>();
+for (const command of CLIENT_SLASH_COMMANDS) {
+  COMMAND_BY_NAME.set(command.name, command);
+  for (const alias of command.aliases) {
+    COMMAND_BY_NAME.set(alias, command);
+  }
+}
 
 export function resolveClientSlashCommand(input: {
   text: string;
