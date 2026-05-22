@@ -5,9 +5,10 @@
   "main": "index.ts",
   "scripts": {
     "start": "cross-env APP_VARIANT=development expo start",
+    "build:terminal-webview": "node ./scripts/build-terminal-webview-html.mjs",
     "reset-project": "node ./scripts/reset-project.js",
     "build:workspace-deps": "npm run build --workspace=@getpaseo/highlight && npm run build --workspace=@getpaseo/expo-two-way-audio",
-    "eas-build-post-install": "npm run build:workspace-deps",
+    "eas-build-post-install": "npm run build:workspace-deps && npm run build:terminal-webview",
     "android": "npm run android:development",
     "android:development": "cross-env APP_VARIANT=development expo prebuild --platform android --non-interactive && cross-env APP_VARIANT=development expo run:android --variant=debug",
     "android:production": "cross-env APP_VARIANT=production expo prebuild --platform android --non-interactive && cross-env APP_VARIANT=production expo run:android --variant=release",

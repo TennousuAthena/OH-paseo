@@ -714,13 +714,12 @@ const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
     [buildPaneContentModel, paneId, tabDescriptor],
   );
 
-  const slotStyle = useMemo(
-    () => ({ display: isVisible ? ("flex" as const) : ("none" as const), flex: 1 }),
-    [isVisible],
-  );
+  const slotStyle = isVisible
+    ? styles.mobileMountedTabSlotVisible
+    : styles.mobileMountedTabSlotHidden;
 
   return (
-    <View style={slotStyle}>
+    <View style={slotStyle} pointerEvents={isVisible ? "auto" : "none"}>
       <WorkspacePaneContent
         content={content}
         isWorkspaceFocused={isWorkspaceFocused}
@@ -2854,7 +2853,7 @@ function WorkspaceScreenContent({
   const focusedPaneTabIds = useMemo(() => tabs.map((tab) => tab.tabId), [tabs]);
   const focusedPaneTabDescriptorMap = useStableTabDescriptorMap(tabs);
   const { mountedTabIds: mountedFocusedPaneTabIdsSet } = useMountedTabSet({
-    activeTabId: activeTabDescriptor?.tabId ?? null,
+    activeTabId,
     allTabIds: focusedPaneTabIds,
     cap: 3,
   });
@@ -3654,6 +3653,15 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minHeight: 0,
     backgroundColor: theme.colors.surface0,
+    position: "relative",
+  },
+  mobileMountedTabSlotVisible: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 1,
+  },
+  mobileMountedTabSlotHidden: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0,
   },
   contentPlaceholder: {
     flex: 1,
