@@ -178,14 +178,13 @@ export class TerminalEmulatorRuntime {
       convertEol: false,
       cursorBlink: true,
       cursorStyle: "bar",
-      customGlyphs: true,
       fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
       fontSize: 13,
       lineHeight: 1.0,
       macOptionIsMeta: true,
       minimumContrastRatio: 1,
       rescaleOverlappingGlyphs: true,
-      overviewRuler: {
+      scrollbar: {
         width: 8,
       },
       scrollback: input.scrollback,
