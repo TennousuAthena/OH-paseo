@@ -132,25 +132,19 @@ export async function generateAndApplyAgentMetadata(
       maxRetries: 2,
       providers: DEFAULT_STRUCTURED_GENERATION_PROVIDERS,
       persistSession: false,
+      logger: options.logger,
       agentConfigOverrides: {
         title: "Agent metadata generator",
         internal: true,
       },
     });
   } catch (error) {
-    if (
-      error instanceof StructuredAgentResponseError ||
-      error instanceof StructuredAgentFallbackError
-    ) {
-      options.logger.warn(
-        { err: error, agentId: options.agentId },
-        "Structured metadata generation failed",
-      );
-      return;
-    }
+    const attempts = error instanceof StructuredAgentFallbackError ? error.attempts : undefined;
     options.logger.error(
-      { err: error, agentId: options.agentId },
-      "Agent metadata generation failed",
+      { err: error, agentId: options.agentId, attempts },
+      error instanceof StructuredAgentResponseError || error instanceof StructuredAgentFallbackError
+        ? "Structured metadata generation failed"
+        : "Agent metadata generation failed",
     );
     return;
   }

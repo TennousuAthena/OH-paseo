@@ -5,6 +5,11 @@ import type { AgentProvider, AgentSessionConfig } from "./agent-sdk-types.js";
 import type { AgentManager } from "./agent-manager.js";
 import { getAgentProviderDefinition } from "./provider-manifest.js";
 
+export interface StructuredGenerationLogger {
+  info: (obj: object, msg?: string) => void;
+  warn: (obj: object, msg?: string) => void;
+}
+
 export type JsonSchema = Record<string, unknown>;
 
 export type AgentCaller = (prompt: string) => Promise<string>;
@@ -90,6 +95,7 @@ export interface StructuredAgentGenerationWithFallbackOptions<T> {
   persistSession?: boolean;
   maxRetries?: number;
   schemaName?: string;
+  logger?: StructuredGenerationLogger;
   runner?: <TResult>(options: StructuredAgentGenerationOptions<TResult>) => Promise<TResult>;
 }
 
@@ -397,6 +403,7 @@ export async function generateStructuredAgentResponseWithFallback<T>(
     persistSession,
     maxRetries,
     schemaName,
+    logger,
     runner,
   } = options;
 
@@ -414,12 +421,17 @@ export async function generateStructuredAgentResponseWithFallback<T>(
   for (const candidate of providers) {
     const availabilityEntry = availabilityByProvider.get(candidate.provider);
     if (availabilityEntry && !availabilityEntry.available) {
+      const reason = availabilityEntry.error ?? "unavailable";
       attempts.push({
         provider: candidate.provider,
         model: candidate.model ?? null,
         available: false,
         error: availabilityEntry.error ?? null,
       });
+      logger?.warn(
+        { provider: candidate.provider, model: candidate.model, schemaName, reason },
+        "Structured generation: skipping unavailable provider",
+      );
       continue;
     }
 
@@ -439,6 +451,17 @@ export async function generateStructuredAgentResponseWithFallback<T>(
           ...(candidate.thinkingOptionId ? { thinkingOptionId: candidate.thinkingOptionId } : {}),
         },
       });
+      if (attempts.length > 0) {
+        logger?.info(
+          {
+            provider: candidate.provider,
+            model: candidate.model,
+            schemaName,
+            priorAttempts: attempts,
+          },
+          "Structured generation: succeeded after fallback",
+        );
+      }
       return result;
     } catch (error) {
       attempts.push({
@@ -447,6 +470,10 @@ export async function generateStructuredAgentResponseWithFallback<T>(
         available: true,
         error: errorMessage(error),
       });
+      logger?.warn(
+        { err: error, provider: candidate.provider, model: candidate.model, schemaName },
+        "Structured generation: provider failed, trying next",
+      );
     }
   }
 

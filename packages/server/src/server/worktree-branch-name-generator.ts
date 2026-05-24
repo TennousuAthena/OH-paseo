@@ -12,6 +12,7 @@ import { buildMetadataPrompt } from "../utils/build-metadata-prompt.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 
 interface BranchNameGeneratorLogger {
+  info: (obj: object, msg?: string) => void;
   warn: (obj: object, msg?: string) => void;
   error: (obj: object, msg?: string) => void;
 }
@@ -77,6 +78,7 @@ export async function generateBranchNameFromFirstAgentContext(
       maxRetries: 2,
       providers: DEFAULT_STRUCTURED_GENERATION_PROVIDERS,
       persistSession: false,
+      logger: options.logger,
       agentConfigOverrides: {
         title: "Branch name generator",
         internal: true,
@@ -84,14 +86,13 @@ export async function generateBranchNameFromFirstAgentContext(
     });
     return result.branch.trim() || null;
   } catch (error) {
-    if (
-      error instanceof StructuredAgentResponseError ||
-      error instanceof StructuredAgentFallbackError
-    ) {
-      options.logger.warn({ err: error }, "Structured branch name generation failed");
-      return null;
-    }
-    options.logger.error({ err: error }, "Branch name generation failed");
+    const attempts = error instanceof StructuredAgentFallbackError ? error.attempts : undefined;
+    options.logger.error(
+      { err: error, attempts },
+      error instanceof StructuredAgentResponseError || error instanceof StructuredAgentFallbackError
+        ? "Structured branch name generation failed"
+        : "Branch name generation failed",
+    );
     return null;
   }
 }
