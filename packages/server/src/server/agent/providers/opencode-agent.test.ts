@@ -585,6 +585,46 @@ describe("OpenCode adapter context-window normalization", () => {
 });
 
 describe("OpenCode adapter startTurn error handling", () => {
+  test("dynamically adds injected MCP servers without config-backed connect", async () => {
+    const runtime = new TestOpenCodeRuntime();
+    const openCodeClient = new TestOpenCodeClient();
+    runtime.enqueueClient(openCodeClient);
+    const cwd = tmpCwd();
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, { runtime });
+
+    try {
+      const session = await client.createSession({
+        provider: "opencode",
+        cwd,
+        mcpServers: {
+          paseo: {
+            type: "http",
+            url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=test-agent",
+          },
+        },
+      });
+
+      await collectTurnEvents(streamSession(session, "hello"));
+
+      expect(openCodeClient.calls.mcpAdd).toEqual([
+        {
+          directory: cwd,
+          name: "paseo",
+          config: {
+            type: "remote",
+            url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=test-agent",
+            enabled: true,
+          },
+        },
+      ]);
+      expect(openCodeClient.calls.mcpConnect).toEqual([]);
+
+      await session.close();
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   test("emits turn_started before live OpenCode timeline items", async () => {
     const eventsGate = createTestDeferred<void>();
     const globalEvents = [

@@ -56,6 +56,8 @@ export class TestOpenCodeClient {
     eventSubscribe: [] as unknown[],
     experimentalSessionList: [] as unknown[],
     globalEvent: [] as unknown[],
+    mcpAdd: [] as unknown[],
+    mcpConnect: [] as unknown[],
     permissionReply: [] as unknown[],
     providerList: [] as unknown[],
     questionReject: [] as unknown[],
@@ -74,6 +76,8 @@ export class TestOpenCodeClient {
   commandListResponse: OpenCodeResponse = { data: [] };
   eventStream: AsyncIterable<unknown>;
   experimentalSessionListResponse: OpenCodeResponse = { data: [] };
+  mcpAddResponse: OpenCodeResponse = {};
+  mcpConnectResponse: OpenCodeResponse = {};
   permissionReplyResponse: OpenCodeResponse = {};
   providerListResponse: OpenCodeResponse = { data: { connected: [], all: [] } };
   providerListImplementation: (() => Promise<OpenCodeResponse>) | null = null;
@@ -135,8 +139,14 @@ export class TestOpenCodeClient {
         },
       },
       mcp: {
-        add: async () => ({}),
-        connect: async () => ({}),
+        add: async (parameters: unknown) => {
+          this.calls.mcpAdd.push(parameters);
+          return this.mcpAddResponse;
+        },
+        connect: async (parameters: unknown) => {
+          this.calls.mcpConnect.push(parameters);
+          return this.mcpConnectResponse;
+        },
       },
       permission: {
         reply: async (parameters: unknown) => {

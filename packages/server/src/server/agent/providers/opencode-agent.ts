@@ -3170,16 +3170,10 @@ class OpenCodeAgentSession implements AgentSession {
         config,
       }),
     );
-    await this.runMcpOperation("connect", name, () =>
-      this.client.mcp.connect({
-        directory: this.config.cwd,
-        name,
-      }),
-    );
   }
 
   private async runMcpOperation(
-    operation: "add" | "connect",
+    operation: "add",
     name: string,
     run: () => Promise<{ error?: unknown }>,
   ): Promise<void> {
