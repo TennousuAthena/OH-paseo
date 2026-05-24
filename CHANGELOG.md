@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.81 - 2026-05-24
+
+### Added
+
+- **Paseo can now be installed as a web app from supported browsers** ([#1144](https://github.com/getpaseo/paseo/pull/1144))
+- **Pi extension dialogs now appear as Paseo permission prompts** ([#1134](https://github.com/getpaseo/paseo/pull/1134) by [@yuruiz](https://github.com/yuruiz))
+- Added community links and a home button to the sidebar
+
+### Improved
+
+- **Mobile terminals load faster and restore existing output more smoothly** ([#1147](https://github.com/getpaseo/paseo/pull/1147))
+- Copying assistant messages preserves formatting
+- Agent metadata fallback failures now log each provider attempt for easier debugging
+
+### Fixed
+
+- Android: slash command suggestions stay interactive when opened from the composer
+- macOS: Alt+letter shortcuts work again
+- Terminal panes no longer flicker during resize
+- OpenCode MCP servers are injected once instead of being connected twice
+- Import session no longer shows empty sessions
+- Worktree archive status no longer reports false unpushed commits ([#1158](https://github.com/getpaseo/paseo/pull/1158))
+- The `/exit`, `/quit`, and `/q` slash command aliases now show as one row
+- Shortcut chord badges are readable in light mode
+- Segmented controls show their track under every segment
+- Sheet header search text is readable in dark mode
+
 ## 0.1.80 - 2026-05-21
 
 ### Fixed
