@@ -1268,6 +1268,7 @@ async function getAheadBehind(
 async function getAheadOfOrigin(
   cwd: string,
   currentBranch: string,
+  baseRef: string | null,
   context?: CheckoutContext,
 ): Promise<number | null> {
   if (!currentBranch) {
@@ -1286,12 +1287,15 @@ async function getAheadOfOrigin(
     if (trackedOriginBranch) {
       return null;
     }
+    if (!baseRef || normalizeLocalBranchRefName(baseRef) === currentBranch) {
+      return null;
+    }
     try {
-      const { stdout } = await runGitCommand(["rev-list", "--count", currentBranch], {
-        cwd,
-        envOverlay: READ_ONLY_GIT_ENV,
-        logger: context?.logger,
-      });
+      const comparisonBaseRef = await resolveBestComparisonBaseRef(cwd, baseRef, context);
+      const { stdout } = await runGitCommand(
+        ["rev-list", "--count", `${comparisonBaseRef}..${currentBranch}`],
+        { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
+      );
       const count = Number.parseInt(stdout.trim(), 10);
       return Number.isNaN(count) ? null : count;
     } catch {
@@ -1503,7 +1507,7 @@ export async function getCheckoutStatus(
       ? getAheadBehind(cwd, baseRef, currentBranch, context)
       : Promise.resolve(null),
     hasRemote && currentBranch
-      ? getAheadOfOrigin(cwd, currentBranch, context)
+      ? getAheadOfOrigin(cwd, currentBranch, baseRef, context)
       : Promise.resolve(null),
     hasRemote && currentBranch
       ? getBehindOfOrigin(cwd, currentBranch, context)
