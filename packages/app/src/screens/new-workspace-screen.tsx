@@ -23,9 +23,11 @@ import { useGithubSearchQuery } from "@/git/use-github-search-query";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
-import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
+import { generateDraftId } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
+import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
+import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
@@ -458,27 +460,29 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
     composerState,
   } = input;
   const draftId = generateDraftId();
-  useDraftStore.getState().saveDraftInput({
-    draftKey: buildDraftStoreKey({
-      serverId,
-      agentId: draftId,
-      draftId,
-    }),
-    draft: {
-      text,
-      attachments: attachments.filter(
-        (attachment): attachment is UserComposerAttachment => attachment.kind !== "review",
-      ),
-    },
+  const clientMessageId = generateMessageId();
+  const timestamp = Date.now();
+  const wirePayload = splitComposerAttachmentsForSubmit(attachments);
+  useCreateFlowStore.getState().setPending({
+    serverId,
+    draftId,
+    agentId: null,
+    clientMessageId,
+    text: text.trim(),
+    timestamp,
+    ...(wirePayload.images.length > 0 ? { images: wirePayload.images } : {}),
+    ...(wirePayload.attachments.length > 0 ? { attachments: wirePayload.attachments } : {}),
   });
   useWorkspaceDraftSubmissionStore.getState().setPending({
     serverId,
     workspaceId,
     draftId,
-    text,
+    text: text.trim(),
     attachments,
     cwd: workspaceDirectory,
     provider,
+    clientMessageId,
+    timestamp,
     ...(composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
       ? { modeId: composerState.selectedMode }
       : {}),

@@ -1772,13 +1772,13 @@ export function reconcileWorkspaceTabs(
       continue;
     }
     if (group.tabs.some((tab) => tab.tabId === originalFocusedTabId)) {
-      reconciledFocusedTabId = canonicalTabId;
+      reconciledFocusedTabId = keeper.tabId;
     }
-    if (keeper.tabId !== canonicalTabId || !workspaceTabTargetsEqual(keeper.target, group.target)) {
+    if (!workspaceTabTargetsEqual(keeper.target, group.target)) {
       nextLayout = withNormalizedParentTabMap({
         root: replaceTabInTree(asInternalLayout(nextLayout).root, {
           tabId: keeper.tabId,
-          nextTabId: canonicalTabId,
+          nextTabId: keeper.tabId,
           target: group.target,
         }),
         focusedPaneId: nextLayout.focusedPaneId,

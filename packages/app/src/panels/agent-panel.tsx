@@ -1,4 +1,5 @@
 import type { DaemonClient } from "@server/client/daemon-client";
+import { SquarePen } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
@@ -36,6 +37,7 @@ import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { buildDraftPanelDescriptor } from "@/panels/draft-panel-descriptor";
 import {
   type HostRuntimeConnectionStatus,
   useHostRuntimeClient,
@@ -48,6 +50,7 @@ import {
   deriveRouteBottomAnchorIntent,
   deriveRouteBottomAnchorRequest,
 } from "@/screens/agent/agent-ready-screen-bottom-anchor";
+import { WorkspaceDraftAgentTab } from "@/screens/workspace/workspace-draft-agent-tab";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
@@ -302,11 +305,81 @@ function AgentPanel() {
   );
 }
 
+function DraftPanel() {
+  const {
+    serverId,
+    workspaceId,
+    tabId,
+    target,
+    openFileInWorkspace,
+    openImportSheet,
+    retargetCurrentTab,
+  } = usePaneContext();
+  const { isInteractive } = usePaneFocus();
+  invariant(target.kind === "draft", "DraftPanel requires draft target");
+
+  const handleCreated = useCallback(
+    (agentSnapshot: Parameters<typeof normalizeAgentSnapshot>[0]) => {
+      const normalized = normalizeAgentSnapshot(agentSnapshot, serverId);
+      useSessionStore.getState().setAgents(serverId, (prev) => {
+        const next = new Map(prev);
+        next.set(agentSnapshot.id, normalized);
+        return next;
+      });
+      retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
+    },
+    [retargetCurrentTab, serverId],
+  );
+
+  return (
+    <WorkspaceDraftAgentTab
+      serverId={serverId}
+      workspaceId={workspaceId}
+      tabId={tabId}
+      draftId={target.draftId}
+      initialSetup={target.setup}
+      isPaneFocused={isInteractive}
+      onOpenWorkspaceFile={openFileInWorkspace}
+      onCreated={handleCreated}
+      onOpenImportSheet={openImportSheet}
+    />
+  );
+}
+
+export function AgentConversationPanel() {
+  const { target } = usePaneContext();
+  if (target.kind === "draft") {
+    return <DraftPanel />;
+  }
+  if (target.kind === "agent") {
+    return <AgentPanel />;
+  }
+  invariant(false, "AgentConversationPanel requires an agent or draft target");
+}
+
 export const agentPanelRegistration: PanelRegistration<"agent"> = {
   kind: "agent",
-  component: AgentPanel,
+  component: AgentConversationPanel,
   useDescriptor: useAgentPanelDescriptor,
 };
+
+export function useDraftPanelDescriptor(
+  target: { kind: "draft"; draftId: string },
+  context: { serverId: string },
+) {
+  const pendingCreate = useCreateFlowStore((state) => {
+    const pending = state.pendingByDraftId[target.draftId];
+    return pending?.serverId === context.serverId && pending.lifecycle === "active"
+      ? pending
+      : null;
+  });
+
+  return buildDraftPanelDescriptor({
+    isCreating: Boolean(pendingCreate),
+    pendingPrompt: pendingCreate?.text,
+    icon: SquarePen,
+  });
+}
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 const EMPTY_PENDING_PERMISSIONS = new Map<string, PendingPermission>();

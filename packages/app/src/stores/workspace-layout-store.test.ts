@@ -1354,6 +1354,56 @@ describe("workspace-layout-store actions", () => {
     expect(findPaneById(layout.root, "main")?.focusedTabId).toBe("agent_agent-1");
   });
 
+  it("reconcileTabs preserves a draft-origin agent tab id when there is no duplicate", () => {
+    const workspaceKey = createWorkspaceKey();
+
+    workspaceLayoutStore.setState((state) => ({
+      ...state,
+      layoutByWorkspace: {
+        ...state.layoutByWorkspace,
+        [workspaceKey]: {
+          root: {
+            kind: "pane",
+            pane: {
+              id: "main",
+              tabIds: ["draft-agent"],
+              focusedTabId: "draft-agent",
+              tabs: [
+                {
+                  tabId: "draft-agent",
+                  target: { kind: "agent", agentId: "agent-1" },
+                  createdAt: 1,
+                },
+              ],
+            } as SplitPane,
+          },
+          focusedPaneId: "main",
+        },
+      },
+    }));
+
+    workspaceLayoutStore.getState().reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: ["agent-1"],
+      autoOpenAgentIds: ["agent-1"],
+      knownAgentIds: ["agent-1"],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+    });
+
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+
+    expect(collectAllTabs(layout.root)).toEqual([
+      {
+        tabId: "draft-agent",
+        target: { kind: "agent", agentId: "agent-1" },
+        createdAt: 1,
+      },
+    ]);
+    expect(findPaneById(layout.root, "main")?.focusedTabId).toBe("draft-agent");
+  });
+
   it("reconcileTabs does not re-add locally hidden agent tabs", () => {
     const workspaceKey = createWorkspaceKey();
 

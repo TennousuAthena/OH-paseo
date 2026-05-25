@@ -11,11 +11,15 @@ import { composerWorkspaceAttachment } from "@/attachments/composer-workspace-at
 import type { ImageAttachment } from "@/components/message-input";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
-import { useDraftAgentCreateFlow } from "@/hooks/use-draft-agent-create-flow";
+import {
+  useDraftAgentCreateFlow,
+  type DraftCreateAttempt,
+} from "@/hooks/use-draft-agent-create-flow";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
+import { useCreateFlowStore } from "@/stores/create-flow-store";
 import type { Agent } from "@/stores/session-store";
 import { useWorkspaceExecutionAuthority } from "@/stores/session-store-hooks";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
@@ -348,10 +352,33 @@ export function WorkspaceDraftAgentTab({
     const pending = state.pendingByDraftId[draftId] ?? null;
     return pending?.serverId === serverId && pending.workspaceId === workspaceId ? pending : null;
   });
+  const pendingCreateAttempt = useCreateFlowStore((state) => {
+    const pending = state.pendingByDraftId[draftId] ?? null;
+    return pending?.serverId === serverId && pending.lifecycle === "active" ? pending : null;
+  });
   const consumePendingAutoSubmit = useWorkspaceDraftSubmissionStore(
     (state) => state.consumePending,
   );
   const autoSubmitConfig = resolveAutoSubmitConfig(pendingAutoSubmit);
+  const initialCreateAttempt = useMemo<DraftCreateAttempt | null>(() => {
+    if (!pendingAutoSubmit || !pendingCreateAttempt) {
+      return null;
+    }
+    if (pendingAutoSubmit.clientMessageId !== pendingCreateAttempt.clientMessageId) {
+      return null;
+    }
+    return {
+      clientMessageId: pendingCreateAttempt.clientMessageId,
+      text: pendingCreateAttempt.text,
+      timestamp: new Date(pendingCreateAttempt.timestamp),
+      ...(pendingCreateAttempt.images && pendingCreateAttempt.images.length > 0
+        ? { images: pendingCreateAttempt.images }
+        : {}),
+      ...(pendingCreateAttempt.attachments && pendingCreateAttempt.attachments.length > 0
+        ? { attachments: pendingCreateAttempt.attachments }
+        : {}),
+    };
+  }, [pendingAutoSubmit, pendingCreateAttempt]);
   const allowsEmptyAutoSubmit = pendingAutoSubmit?.allowEmptyText === true;
   const isCompact = useIsCompactFormFactor();
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
@@ -390,9 +417,11 @@ export function WorkspaceDraftAgentTab({
     optimisticStreamItems,
     draftAgent,
     handleCreateFromInput,
+    continueCreateFromAttempt,
   } = useDraftAgentCreateFlow<Agent, AgentSnapshotPayload>({
     draftId,
     getPendingServerId: () => serverId,
+    initialAttempt: initialCreateAttempt,
     allowEmptyText: allowsEmptyAutoSubmit,
     validateBeforeSubmit: ({ text }) =>
       validateDraftSubmission({
@@ -442,7 +471,6 @@ export function WorkspaceDraftAgentTab({
     draftInput.isHydrated &&
     draftWorkingDirectory &&
     client &&
-    !isSubmitting &&
     !composerState.isModelLoading,
   );
   const autoSubmitKeyRef = useRef<string | null>(null);
@@ -461,19 +489,31 @@ export function WorkspaceDraftAgentTab({
     autoSubmitKeyRef.current = submitKey;
     setDraftText("");
     setDraftAttachments([]);
-    void handleCreateFromInput({
-      text: submission.text,
-      attachments: submission.attachments,
-      cwd: submission.cwd,
-    }).catch(() => {
+    const preparedAttempt =
+      initialCreateAttempt?.clientMessageId === submission.clientMessageId
+        ? initialCreateAttempt
+        : null;
+    const createPromise = preparedAttempt
+      ? continueCreateFromAttempt({
+          attempt: preparedAttempt,
+          cwd: submission.cwd,
+        })
+      : handleCreateFromInput({
+          text: submission.text,
+          attachments: submission.attachments,
+          cwd: submission.cwd,
+        });
+    void createPromise.catch(() => {
       setDraftText(submission.text);
       setDraftAttachments(composerWorkspaceAttachment.userAttachmentsOnly(submission.attachments));
       autoSubmitKeyRef.current = null;
     });
   }, [
+    continueCreateFromAttempt,
     consumePendingAutoSubmit,
     draftId,
     handleCreateFromInput,
+    initialCreateAttempt,
     isReadyForPendingAutoSubmit,
     serverId,
     setDraftAttachments,
