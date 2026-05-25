@@ -245,6 +245,27 @@ describe("opencode tool-call mapper", () => {
     });
   });
 
+  it("maps completed write calls with OpenCode success text into canonical detail", () => {
+    const item = expectMapped(
+      mapOpencodeToolCall({
+        toolName: "write",
+        callId: "opencode-write-success-text",
+        status: "completed",
+        input: {
+          filePath: "/Users/moboudra/.paseo/worktrees/1luy0po7/cold-ladybug/dummy.txt",
+          content: "hello world\n",
+        },
+        output: "Wrote file successfully.",
+      }),
+    );
+
+    expect(item.detail).toEqual({
+      type: "write",
+      filePath: "/Users/moboudra/.paseo/worktrees/1luy0po7/cold-ladybug/dummy.txt",
+      content: "hello world\n",
+    });
+  });
+
   it("maps skill calls to plain text detail with the loaded skill name", () => {
     const item = expectMapped(
       mapOpencodeToolCall({

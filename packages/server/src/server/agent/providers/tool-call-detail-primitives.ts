@@ -387,6 +387,10 @@ export const ToolWriteInputSchema = z
   }));
 
 export const ToolWriteOutputSchema = z.union([
+  z.string().transform(() => ({
+    filePath: undefined,
+    content: undefined,
+  })),
   z.intersection(ToolPathInputSchema, ToolWriteContentSchema).transform((value) => ({
     filePath: value.filePath,
     content:
