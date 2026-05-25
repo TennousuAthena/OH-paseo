@@ -367,16 +367,24 @@ export function useDraftPanelDescriptor(
   target: { kind: "draft"; draftId: string },
   context: { serverId: string },
 ) {
-  const pendingCreate = useCreateFlowStore((state) => {
-    const pending = state.pendingByDraftId[target.draftId];
-    return pending?.serverId === context.serverId && pending.lifecycle === "active"
-      ? pending
-      : null;
-  });
+  const createDescriptorState = useCreateFlowStore(
+    useShallow((state) => {
+      const pending = state.pendingByDraftId[target.draftId];
+      if (pending?.serverId !== context.serverId || pending.lifecycle !== "active") {
+        return {
+          isCreating: false,
+          pendingPrompt: null,
+        };
+      }
+      return {
+        isCreating: true,
+        pendingPrompt: pending.text,
+      };
+    }),
+  );
 
   return buildDraftPanelDescriptor({
-    isCreating: Boolean(pendingCreate),
-    pendingPrompt: pendingCreate?.text,
+    ...createDescriptorState,
     icon: SquarePen,
   });
 }
