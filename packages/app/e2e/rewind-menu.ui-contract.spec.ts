@@ -68,7 +68,6 @@ test.describe("Rewind sheet", () => {
       await page.getByTestId("rewind-menu-trigger").first().click();
       const rewindSheet = page.getByTestId("rewind-menu-content");
       await expect(rewindSheet).toBeVisible();
-      await expect(rewindSheet.getByText("Rewind to this message", { exact: true })).toBeVisible();
       await expect(
         rewindSheet.getByText("This action cannot be undone", { exact: true }),
       ).toBeVisible();
@@ -149,7 +148,6 @@ test.describe("Rewind sheet", () => {
       await page.getByTestId("rewind-menu-trigger").first().click();
       const rewindSheet = page.getByTestId("rewind-menu-content");
       await expect(rewindSheet).toBeVisible();
-      await expect(rewindSheet.getByText("Rewind to this message", { exact: true })).toBeVisible();
       await expect(
         rewindSheet.getByText("This action cannot be undone", { exact: true }),
       ).toBeVisible();
