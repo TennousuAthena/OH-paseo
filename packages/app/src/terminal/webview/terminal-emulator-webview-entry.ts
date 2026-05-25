@@ -29,7 +29,7 @@ type InboundMessage =
   | { type: "restoreOutput"; streamKey: string; text: string }
   | { type: "renderSnapshot"; streamKey: string; state: TerminalState | null }
   | { type: "clear"; streamKey: string }
-  | { type: "focus"; streamKey: string }
+  | { type: "focus"; streamKey: string; forceRefocus?: boolean }
   | { type: "resize"; streamKey: string }
   | { type: "setTheme"; streamKey: string; theme: ITheme }
   | { type: "setScrollback"; streamKey: string; lines: number }
@@ -88,10 +88,20 @@ const sendToNative = (message: OutboundMessage): void => {
   window.ReactNativeWebView?.postMessage?.(JSON.stringify(message));
 };
 
+const TERMINAL_BACKGROUND_CSS_VAR = "--paseo-terminal-background";
+const DEFAULT_TERMINAL_BACKGROUND = "#0b0b0b";
+
+function getTerminalBackground(theme: ITheme): string {
+  return theme.background ?? DEFAULT_TERMINAL_BACKGROUND;
+}
+
 const installStyles = (): void => {
   const style = document.createElement("style");
   style.textContent = `
 ${xtermCss}
+:root {
+  ${TERMINAL_BACKGROUND_CSS_VAR}: transparent;
+}
 html,
 body,
 #terminal-root {
@@ -101,7 +111,7 @@ body,
   padding: 0;
   overflow: hidden;
   overscroll-behavior: none;
-  background: #0b0b0b;
+  background: var(${TERMINAL_BACKGROUND_CSS_VAR});
 }
 #terminal-root {
   display: flex;
@@ -115,6 +125,12 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
+  background: var(${TERMINAL_BACKGROUND_CSS_VAR});
+}
+#terminal-root .xterm,
+#terminal-root .xterm-screen,
+#terminal-root .xterm-viewport {
+  background-color: var(${TERMINAL_BACKGROUND_CSS_VAR}) !important;
 }
 [data-terminal-scrollbar-root="true"] .xterm-viewport {
   scrollbar-width: none;
@@ -123,6 +139,17 @@ body,
 [data-terminal-scrollbar-root="true"] .xterm-viewport::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+#terminal-root .xterm .xterm-helper-textarea {
+  opacity: 0.01;
+  width: 1px;
+  height: 1px;
+  min-width: 1px;
+  min-height: 1px;
+  color: transparent;
+  background: transparent;
+  caret-color: transparent;
+  z-index: 5 !important;
 }
 `;
   document.head.appendChild(style);
@@ -148,6 +175,7 @@ class TerminalWebViewBridge {
     private readonly host: HTMLDivElement,
   ) {
     this.root.addEventListener("pointerdown", this.handlePointerDown, { passive: true });
+    this.root.addEventListener("touchstart", this.handleTouchStart, { passive: true });
     this.root.addEventListener("pointermove", this.handlePointerMove, { passive: false });
     this.root.addEventListener("pointerup", this.handlePointerUp, { passive: true });
     this.root.addEventListener("pointercancel", this.handlePointerUp, { passive: true });
@@ -204,12 +232,13 @@ class TerminalWebViewBridge {
         this.runtime?.clear();
         break;
       case "focus":
-        this.runtime?.focus();
+        this.runtime?.focus({ forceRefocus: message.forceRefocus });
         break;
       case "resize":
         this.runtime?.resize({ force: true });
         break;
       case "setTheme":
+        this.applyThemeBackground(message.theme);
         this.runtime?.setTheme({ theme: message.theme });
         break;
       case "setScrollback":
@@ -228,7 +257,7 @@ class TerminalWebViewBridge {
     this.unmount(this.streamKey);
     this.streamKey = message.streamKey;
     this.swipeGesturesEnabled = message.swipeGesturesEnabled;
-    document.body.style.backgroundColor = message.theme.background ?? "#0b0b0b";
+    this.applyThemeBackground(message.theme);
 
     const runtime = new TerminalEmulatorRuntime();
     this.runtime = runtime;
@@ -264,6 +293,14 @@ class TerminalWebViewBridge {
       theme: message.theme,
     });
     sendToNative({ type: "rendererReady", streamKey: message.streamKey, isReady: true });
+  }
+
+  private applyThemeBackground(theme: ITheme): void {
+    const background = getTerminalBackground(theme);
+    document.documentElement.style.setProperty(TERMINAL_BACKGROUND_CSS_VAR, background);
+    document.body.style.backgroundColor = background;
+    this.root.style.backgroundColor = background;
+    this.host.style.backgroundColor = background;
   }
 
   private unmount(streamKey: string | null): void {
@@ -325,7 +362,11 @@ class TerminalWebViewBridge {
   }
 
   private handlePointerDown = (event: PointerEvent): void => {
-    if (!this.swipeGesturesEnabled || !event.isPrimary) {
+    if (!event.isPrimary) {
+      return;
+    }
+    this.runtime?.focus({ forceRefocus: true });
+    if (!this.swipeGesturesEnabled) {
       return;
     }
     this.trackingSwipe = true;
@@ -333,6 +374,12 @@ class TerminalWebViewBridge {
     this.activePointerId = event.pointerId;
     this.startX = event.clientX;
     this.startY = event.clientY;
+  };
+
+  private handleTouchStart = (event: TouchEvent): void => {
+    if (event.touches.length === 1) {
+      this.runtime?.focus({ forceRefocus: true });
+    }
   };
 
   private handlePointerMove = (event: PointerEvent): void => {

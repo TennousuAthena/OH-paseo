@@ -174,6 +174,7 @@ export class TerminalEmulatorRuntime {
   private suppressInput = false;
   private readonly inputModeTracker = new TerminalInputModeTracker();
   private lastInputModeState: TerminalInputModeState = this.inputModeTracker.getState();
+  private themeBackgroundElements: HTMLElement[] = [];
 
   private handleVisibilityRestore = (): void => {
     if (typeof document !== "undefined" && document.visibilityState !== "visible") {
@@ -252,6 +253,8 @@ export class TerminalEmulatorRuntime {
       // Ligatures require Font Access API or compatible environment
     }
     terminal.open(input.host);
+    this.themeBackgroundElements = this.collectThemeBackgroundElements(input);
+    this.applyThemeBackground(input.theme);
     try {
       terminal.unicode.activeVersion = "11";
     } catch {
@@ -646,6 +649,7 @@ export class TerminalEmulatorRuntime {
       return;
     }
 
+    this.applyThemeBackground(input.theme);
     this.refreshVisibleRows();
   }
 
@@ -665,8 +669,15 @@ export class TerminalEmulatorRuntime {
     this.refreshVisibleRows();
   }
 
-  focus(): void {
-    this.terminal?.focus();
+  focus(input?: { forceRefocus?: boolean }): void {
+    const terminal = this.terminal;
+    if (!terminal) {
+      return;
+    }
+    if (input?.forceRefocus) {
+      terminal.blur();
+    }
+    terminal.focus();
   }
 
   private refreshVisibleRows(): void {
@@ -679,6 +690,26 @@ export class TerminalEmulatorRuntime {
       terminal.refresh(0, terminal.rows - 1);
     } catch {
       // ignore
+    }
+  }
+
+  private collectThemeBackgroundElements(input: {
+    root: HTMLDivElement;
+    host: HTMLDivElement;
+  }): HTMLElement[] {
+    return [
+      input.root,
+      input.host,
+      ...Array.from(
+        input.host.querySelectorAll<HTMLElement>(".xterm, .xterm-screen, .xterm-viewport"),
+      ),
+    ];
+  }
+
+  private applyThemeBackground(theme: ITheme): void {
+    const background = theme.background ?? "#0b0b0b";
+    for (const element of this.themeBackgroundElements) {
+      element.style.backgroundColor = background;
     }
   }
 
@@ -703,6 +734,7 @@ export class TerminalEmulatorRuntime {
     this.fitAddon = null;
     this.fitAndEmitResize = null;
     this.lastSize = null;
+    this.themeBackgroundElements = [];
     this.suppressInput = false;
     this.inputModeDecoder.decode();
     this.inputModeTracker.reset();

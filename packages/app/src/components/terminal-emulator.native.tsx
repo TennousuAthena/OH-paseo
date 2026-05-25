@@ -80,7 +80,7 @@ type BridgeInboundMessage =
   | { type: "restoreOutput"; streamKey: string; text: string }
   | { type: "renderSnapshot"; streamKey: string; state: TerminalState | null }
   | { type: "clear"; streamKey: string }
-  | { type: "focus"; streamKey: string }
+  | { type: "focus"; streamKey: string; forceRefocus?: boolean }
   | { type: "resize"; streamKey: string }
   | { type: "setTheme"; streamKey: string; theme: ITheme }
   | { type: "setScrollback"; streamKey: string; lines: number }
@@ -543,19 +543,33 @@ export default function TerminalEmulator({
     resetWebViewDocument();
   }, [resetWebViewDocument]);
 
+  const handleWebViewTouchStart = useCallback(() => {
+    webViewRef.current?.requestFocus();
+    sendToWebView({ type: "focus", streamKey, forceRefocus: true });
+  }, [sendToWebView, streamKey]);
+
+  const backgroundColor = xtermTheme.background ?? "#0b0b0b";
+  const rootStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [styles.root, { backgroundColor }],
+    [backgroundColor],
+  );
   const webViewStyle = useMemo<StyleProp<ViewStyle>>(
-    () => [styles.webView, { backgroundColor: xtermTheme.background ?? "#0b0b0b" }],
-    [xtermTheme.background],
+    () => [styles.webView, { backgroundColor }],
+    [backgroundColor],
+  );
+  const webViewContainerStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [styles.webViewContainer, { backgroundColor }],
+    [backgroundColor],
   );
 
   return (
-    <View style={styles.root} testID={testId}>
+    <View style={rootStyle} testID={testId}>
       <WebView
         key={webViewEpoch}
         ref={webViewRef}
         source={TERMINAL_WEBVIEW_SOURCE}
         style={webViewStyle}
-        containerStyle={styles.webViewContainer}
+        containerStyle={webViewContainerStyle}
         originWhitelist={TERMINAL_WEBVIEW_ORIGIN_WHITELIST}
         scrollEnabled
         nestedScrollEnabled
@@ -564,12 +578,13 @@ export default function TerminalEmulator({
         keyboardDisplayRequiresUserAction={false}
         automaticallyAdjustContentInsets={false}
         contentInsetAdjustmentBehavior="never"
-        textInteractionEnabled={false}
+        textInteractionEnabled
         allowsLinkPreview={false}
         setSupportMultipleWindows={false}
         setBuiltInZoomControls={false}
         setDisplayZoomControls={false}
         textZoom={100}
+        onTouchStart={handleWebViewTouchStart}
         onMessage={handleMessage}
         onLoadStart={handleLoadStart}
         onContentProcessDidTerminate={handleContentProcessDidTerminate}
@@ -585,14 +600,11 @@ const styles = StyleSheet.create({
     minHeight: 0,
     minWidth: 0,
     overflow: "hidden",
-    backgroundColor: "#0b0b0b",
   },
   webView: {
     flex: 1,
-    backgroundColor: "#0b0b0b",
   },
   webViewContainer: {
     flex: 1,
-    backgroundColor: "#0b0b0b",
   },
 });
