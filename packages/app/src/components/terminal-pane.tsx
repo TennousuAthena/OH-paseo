@@ -231,6 +231,12 @@ export function TerminalPane({
   const requestTerminalReflow = useCallback(() => {
     setResizeRequestToken((current) => current + 1);
   }, []);
+  useEffect(() => {
+    if (!isMobile || !isWorkspaceFocused || mobileView === "agent") {
+      return;
+    }
+    emulatorRef.current?.blur();
+  }, [isMobile, isWorkspaceFocused, mobileView]);
   const handleRendererReadyChange = useCallback(
     (change: TerminalRendererReadyChange) => {
       setRendererReadyStreamKey((current) => applyTerminalRendererReadyChange(current, change));
@@ -716,11 +722,13 @@ export function TerminalPane({
 
   const handleSwipeRight = useCallback(() => {
     if (!swipeGesturesEnabled) return;
+    emulatorRef.current?.blur();
     showMobileAgentList();
   }, [swipeGesturesEnabled, showMobileAgentList]);
 
   const handleSwipeLeft = useCallback(() => {
     if (!swipeGesturesEnabled) return;
+    emulatorRef.current?.blur();
     onOpenFileExplorer();
   }, [swipeGesturesEnabled, onOpenFileExplorer]);
   const showLoadingOverlay = shouldShowTerminalLoadingOverlay({

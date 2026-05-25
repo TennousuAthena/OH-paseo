@@ -8,7 +8,7 @@ import {
   type ComponentProps,
   type Ref,
 } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { Keyboard, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import type { ITheme } from "@xterm/xterm";
 import type { TerminalState } from "@server/shared/messages";
@@ -28,6 +28,7 @@ export interface TerminalEmulatorHandle {
   restoreOutput: (data: TerminalOutputData) => void;
   renderSnapshot: (state: TerminalState | null) => void;
   clear: () => void;
+  blur: () => void;
 }
 
 interface TerminalEmulatorProps {
@@ -333,6 +334,12 @@ export default function TerminalEmulator({
       clear: () => {
         outputDecoderRef.current.decode();
         sendToWebView({ type: "clear", streamKey });
+      },
+      blur: () => {
+        webViewRef.current?.injectJavaScript(
+          "window.__PASEO_TERMINAL_WEBVIEW_BLUR__ && window.__PASEO_TERMINAL_WEBVIEW_BLUR__(); true;",
+        );
+        Keyboard.dismiss();
       },
     }),
     [sendToWebView, streamKey],

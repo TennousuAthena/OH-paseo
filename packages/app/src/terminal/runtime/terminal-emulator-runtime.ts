@@ -680,6 +680,10 @@ export class TerminalEmulatorRuntime {
     terminal.focus();
   }
 
+  blur(): void {
+    this.terminal?.blur();
+  }
+
   private refreshVisibleRows(): void {
     const terminal = this.terminal;
     if (!terminal || terminal.rows <= 0) {

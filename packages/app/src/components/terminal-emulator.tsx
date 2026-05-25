@@ -47,6 +47,7 @@ export interface TerminalEmulatorHandle {
   restoreOutput: (data: TerminalOutputData) => void;
   renderSnapshot: (state: TerminalState | null) => void;
   clear: () => void;
+  blur: () => void;
 }
 
 const SCROLLBAR_HANDLE_WIDTH_IDLE = 6;
@@ -302,6 +303,9 @@ export default function TerminalEmulator({
       clear: () => {
         runtimeRef.current?.clear();
       },
+      blur: () => {
+        runtimeRef.current?.blur();
+      },
     }),
     [],
   );
@@ -319,6 +323,9 @@ export default function TerminalEmulator({
       },
       clear: () => {
         runtimeRef.current?.clear();
+      },
+      blur: () => {
+        runtimeRef.current?.blur();
       },
     }),
     [],

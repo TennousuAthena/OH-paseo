@@ -81,6 +81,7 @@ declare global {
       postMessage?: (data: string) => void;
     };
     __PASEO_TERMINAL_WEBVIEW_RECEIVE__?: (message: InboundMessage) => void;
+    __PASEO_TERMINAL_WEBVIEW_BLUR__?: () => void;
   }
 }
 
@@ -303,6 +304,10 @@ class TerminalWebViewBridge {
     this.host.style.backgroundColor = background;
   }
 
+  blur = (): void => {
+    this.runtime?.blur();
+  };
+
   private unmount(streamKey: string | null): void {
     if (!this.runtime) {
       return;
@@ -435,4 +440,5 @@ document.body.appendChild(root);
 
 const bridge = new TerminalWebViewBridge(root, host);
 window.__PASEO_TERMINAL_WEBVIEW_RECEIVE__ = bridge.receive;
+window.__PASEO_TERMINAL_WEBVIEW_BLUR__ = bridge.blur;
 sendToNative({ type: "bridgeReady" });
