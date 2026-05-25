@@ -6,8 +6,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StreamItem } from "@/types/stream";
-import type { StreamSegmentRenderers, StreamViewportHandle } from "./stream-strategy";
-import { createWebStreamStrategy } from "./stream-strategy-web";
+import type { StreamSegmentRenderers, StreamViewportHandle } from "./strategy";
+import { createWebStreamStrategy } from "./strategy-web";
 
 vi.hoisted(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -25,7 +25,7 @@ vi.hoisted(() => {
   });
 });
 
-vi.mock("./use-web-scrollbar", () => ({ useWebElementScrollbar: () => null }));
+vi.mock("@/components/use-web-scrollbar", () => ({ useWebElementScrollbar: () => null }));
 
 function userMessage(index: number): StreamItem {
   return {

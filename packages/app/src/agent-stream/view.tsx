@@ -36,8 +36,8 @@ import {
   CompactionMarker,
   MessageOuterSpacingProvider,
   type InlinePathTarget,
-} from "./message";
-import { PlanCard } from "./plan-card";
+} from "@/components/message";
+import { PlanCard } from "@/components/plan-card";
 import type { StreamItem } from "@/types/stream";
 import type { PendingPermission } from "@/types/shared";
 import type {
@@ -50,30 +50,18 @@ import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
 import type { ToastApi } from "@/components/toast-host";
 import type { DaemonClient } from "@server/client/daemon-client";
-import { ToolCallDetailsContent } from "./tool-call-details";
-import { QuestionFormCard } from "./question-form-card";
-import { ToolCallSheetProvider } from "./tool-call-sheet";
-import {
-  buildAgentStreamRenderModel,
-  getStreamNeighborItem,
-  resolveStreamRenderStrategy,
-  type AgentStreamRenderModel,
-  type StreamSegmentRenderers,
-  type StreamViewportHandle,
-} from "./agent-stream-render-strategy";
-import { getAssistantBlockSpacing, getGapBetweenStreamItems } from "./agent-stream-view-data";
-import {
-  CompletedTurnFooterRow,
-  resolveBottomTurnFooterHost,
-  shouldRenderCompletedTurnFooter,
-  TurnFooter,
-  type TurnContentStrategy,
-  type TurnFooterHost,
-} from "./agent-stream-turn-footer";
+import { ToolCallDetailsContent } from "@/components/tool-call-details";
+import { QuestionFormCard } from "@/components/question-form-card";
+import { ToolCallSheetProvider } from "@/components/tool-call-sheet";
+import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
+import { resolveStreamRenderStrategy } from "./strategy-resolver";
+import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
+import { CompletedTurnFooterRow, TurnFooter, type TurnContentStrategy } from "./turn-footer";
+import { layoutStream, type StreamLayoutItem } from "./layout";
 import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
-} from "./use-bottom-anchor-controller";
+} from "./bottom-anchor-controller";
 import {
   AssistantFileLinkResolverProvider,
   normalizeInlinePathTarget,
@@ -89,12 +77,6 @@ import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
-
-interface StreamItemBoundarySeams {
-  aboveItem?: StreamItem | null;
-  belowItem?: StreamItem | null;
-  suppressTurnFooter?: boolean;
-}
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -133,40 +115,39 @@ function renderPendingPermissionsNode(input: {
 
 function renderStreamItemWithTurnFooter(input: {
   content: ReactNode;
-  item: StreamItem;
-  nextItem: StreamItem | undefined;
-  items: StreamItem[];
-  timing: AgentStreamRenderModel["turnTiming"]["byAssistantId"];
-  index: number;
-  agentStatus: string;
-  suppressTurnFooter: boolean | undefined;
+  layoutItem: StreamLayoutItem;
   strategy: TurnContentStrategy;
 }): ReactNode {
   if (!input.content) {
     return null;
   }
 
-  const showCompletedFooter = shouldRenderCompletedTurnFooter({
-    item: input.item,
-    belowItem: input.nextItem,
-    agentStatus: input.agentStatus,
-    suppressTurnFooter: input.suppressTurnFooter,
-  });
-  const gapBelow = showCompletedFooter
-    ? 0
-    : getGapBetweenStreamItems(input.item, input.nextItem ?? null);
+  const footerHost = input.layoutItem.completedFooter;
+  const footer = footerHost ? (
+    <CompletedTurnFooterRow
+      strategy={input.strategy}
+      items={footerHost.items}
+      timing={footerHost.timing}
+      startIndex={footerHost.startIndex}
+    />
+  ) : null;
+  const content = (
+    <StreamItemWrapper gapBelow={input.layoutItem.gapBelow}>{input.content}</StreamItemWrapper>
+  );
+
+  if (input.layoutItem.frameOrder === "footer-then-content") {
+    return (
+      <>
+        {footer}
+        {content}
+      </>
+    );
+  }
 
   return (
     <>
-      <StreamItemWrapper gapBelow={gapBelow}>{input.content}</StreamItemWrapper>
-      {showCompletedFooter ? (
-        <CompletedTurnFooterRow
-          strategy={input.strategy}
-          items={input.items}
-          timing={input.timing.get(input.item.id)}
-          startIndex={input.index}
-        />
-      ) : null}
+      {content}
+      {footer}
     </>
   );
 }
@@ -194,47 +175,26 @@ function renderListEmptyComponent(input: {
 
 function renderHistoryStreamItem(input: {
   item: StreamItem;
-  historyIndexById: Map<string, number>;
-  historyItems: StreamItem[];
-  lastHistoryItem: StreamItem | null;
-  firstLiveHeadItem: StreamItem | null;
-  bottomTurnFooterHost: TurnFooterHost | null;
-  renderStreamItem: (
-    item: StreamItem,
-    index: number,
-    items: StreamItem[],
-    seams?: StreamItemBoundarySeams,
-  ) => ReactNode;
+  layoutItemById: Map<string, StreamLayoutItem>;
+  renderStreamItem: (layoutItem: StreamLayoutItem) => ReactNode;
 }): ReactNode {
-  const historyIndex = input.historyIndexById.get(input.item.id);
-  if (historyIndex === undefined) {
+  const layoutItem = input.layoutItemById.get(input.item.id);
+  if (!layoutItem) {
     return null;
   }
-  const seamBelowItem =
-    input.item.id === input.lastHistoryItem?.id ? input.firstLiveHeadItem : null;
-  return input.renderStreamItem(input.item, historyIndex, input.historyItems, {
-    belowItem: seamBelowItem,
-    suppressTurnFooter: input.item.id === input.bottomTurnFooterHost?.itemId,
-  });
+  return input.renderStreamItem(layoutItem);
 }
 
 function renderLiveHeadStreamItem(input: {
   item: StreamItem;
-  index: number;
-  items: StreamItem[];
-  lastHistoryItem: StreamItem | null;
-  bottomTurnFooterHost: TurnFooterHost | null;
-  renderStreamItem: (
-    item: StreamItem,
-    index: number,
-    items: StreamItem[],
-    seams?: StreamItemBoundarySeams,
-  ) => ReactNode;
+  layoutItemById: Map<string, StreamLayoutItem>;
+  renderStreamItem: (layoutItem: StreamLayoutItem) => ReactNode;
 }): ReactNode {
-  return input.renderStreamItem(input.item, input.index, input.items, {
-    aboveItem: input.index === 0 ? input.lastHistoryItem : null,
-    suppressTurnFooter: input.item.id === input.bottomTurnFooterHost?.itemId,
-  });
+  const layoutItem = input.layoutItemById.get(input.item.id);
+  if (!layoutItem) {
+    return null;
+  }
+  return input.renderStreamItem(layoutItem);
 }
 
 export interface AgentStreamViewHandle {
@@ -396,6 +356,23 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         isMobileBreakpoint: isMobile,
       });
     }, [agent.status, isMobile, streamHead, streamItems]);
+    const streamLayout = useMemo(
+      () =>
+        layoutStream({
+          strategy: streamRenderStrategy,
+          agentStatus: agent.status,
+          history: baseRenderModel.history,
+          liveHead: baseRenderModel.segments.liveHead,
+          timingByAssistantId: baseRenderModel.turnTiming.byAssistantId,
+        }),
+      [
+        agent.status,
+        baseRenderModel.history,
+        baseRenderModel.segments.liveHead,
+        baseRenderModel.turnTiming.byAssistantId,
+        streamRenderStrategy,
+      ],
+    );
     useImperativeHandle(
       ref,
       () => ({
@@ -432,73 +409,23 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const renderUserMessageItem = useCallback(
-      (
-        item: Extract<StreamItem, { kind: "user_message" }>,
-        index: number,
-        items: StreamItem[],
-        seamAboveItem: StreamItem | null,
-      ) => {
-        const aboveItem =
-          getStreamNeighborItem({
-            strategy: streamRenderStrategy,
-            items,
-            index,
-            relation: "above",
-          }) ??
-          seamAboveItem ??
-          undefined;
-        const belowItem = getStreamNeighborItem({
-          strategy: streamRenderStrategy,
-          items,
-          index,
-          relation: "below",
-        });
-        const isFirstInGroup = aboveItem?.kind !== "user_message";
-        const isLastInGroup = belowItem?.kind !== "user_message";
+      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "user_message" }>) => {
         return (
           <UserMessage
             message={item.text}
             images={item.images}
             attachments={item.attachments}
             timestamp={item.timestamp.getTime()}
-            isFirstInGroup={isFirstInGroup}
-            isLastInGroup={isLastInGroup}
+            isFirstInGroup={layoutItem.isFirstInUserGroup}
+            isLastInGroup={layoutItem.isLastInUserGroup}
           />
         );
       },
-      [streamRenderStrategy],
+      [],
     );
 
     const renderAssistantMessageItem = useCallback(
-      (
-        item: Extract<StreamItem, { kind: "assistant_message" }>,
-        index: number,
-        items: StreamItem[],
-        seams: StreamItemBoundarySeams,
-      ) => {
-        const aboveItem =
-          getStreamNeighborItem({
-            strategy: streamRenderStrategy,
-            items,
-            index,
-            relation: "above",
-          }) ??
-          seams.aboveItem ??
-          undefined;
-        const belowItem =
-          getStreamNeighborItem({
-            strategy: streamRenderStrategy,
-            items,
-            index,
-            relation: "below",
-          }) ??
-          seams.belowItem ??
-          undefined;
-        const spacing = getAssistantBlockSpacing({
-          item,
-          aboveItem,
-          belowItem,
-        });
+      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "assistant_message" }>) => {
         return (
           <AssistantFileLinkResolverProvider
             client={client}
@@ -513,23 +440,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               workspaceRoot={workspaceRoot}
               serverId={resolvedServerId}
               client={client}
-              spacing={spacing}
+              spacing={layoutItem.assistantSpacing}
             />
           </AssistantFileLinkResolverProvider>
         );
       },
-      [client, handleInlinePathPress, resolvedServerId, streamRenderStrategy, toast, workspaceRoot],
+      [client, handleInlinePathPress, resolvedServerId, toast, workspaceRoot],
     );
 
     const renderThoughtItem = useCallback(
-      (item: Extract<StreamItem, { kind: "thought" }>, index: number, items: StreamItem[]) => {
-        const nextItem = getStreamNeighborItem({
-          strategy: streamRenderStrategy,
-          items,
-          index,
-          relation: "below",
-        });
-        const isLastInSequence = nextItem?.kind !== "tool_call" && nextItem?.kind !== "thought";
+      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
         return (
           <ToolCallSlot
             itemId={item.id}
@@ -537,23 +457,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             toolName="thinking"
             args={item.text}
             status={item.status === "ready" ? "completed" : "executing"}
-            isLastInSequence={isLastInSequence}
+            isLastInSequence={layoutItem.isLastInToolSequence}
           />
         );
       },
-      [streamRenderStrategy, setInlineDetailsExpanded],
+      [setInlineDetailsExpanded],
     );
 
     const renderToolCallItem = useCallback(
-      (item: Extract<StreamItem, { kind: "tool_call" }>, index: number, items: StreamItem[]) => {
+      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "tool_call" }>) => {
         const { payload } = item;
-        const nextItem = getStreamNeighborItem({
-          strategy: streamRenderStrategy,
-          items,
-          index,
-          relation: "below",
-        });
-        const isLastInSequence = nextItem?.kind !== "tool_call" && nextItem?.kind !== "thought";
 
         if (payload.source === "agent") {
           const data = payload.data;
@@ -579,7 +492,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               detail={data.detail}
               cwd={agent.cwd}
               metadata={data.metadata}
-              isLastInSequence={isLastInSequence}
+              isLastInSequence={layoutItem.isLastInToolSequence}
               onOpenFilePath={handleToolCallOpenFile}
             />
           );
@@ -594,33 +507,29 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             args={data.arguments}
             result={data.result}
             status={data.status}
-            isLastInSequence={isLastInSequence}
+            isLastInSequence={layoutItem.isLastInToolSequence}
             onOpenFilePath={handleToolCallOpenFile}
           />
         );
       },
-      [agent.cwd, streamRenderStrategy, setInlineDetailsExpanded, handleToolCallOpenFile],
+      [agent.cwd, setInlineDetailsExpanded, handleToolCallOpenFile],
     );
 
     const renderStreamItemContent = useCallback(
-      (
-        item: StreamItem,
-        index: number,
-        items: StreamItem[],
-        seams: StreamItemBoundarySeams = {},
-      ) => {
+      (layoutItem: StreamLayoutItem) => {
+        const item = layoutItem.item;
         switch (item.kind) {
           case "user_message":
-            return renderUserMessageItem(item, index, items, seams.aboveItem ?? null);
+            return renderUserMessageItem(layoutItem, item);
 
           case "assistant_message":
-            return renderAssistantMessageItem(item, index, items, seams);
+            return renderAssistantMessageItem(layoutItem, item);
 
           case "thought":
-            return renderThoughtItem(item, index, items);
+            return renderThoughtItem(layoutItem, item);
 
           case "tool_call":
-            return renderToolCallItem(item, index, items);
+            return renderToolCallItem(layoutItem, item);
 
           case "activity_log":
             return (
@@ -651,54 +560,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [renderUserMessageItem, renderAssistantMessageItem, renderThoughtItem, renderToolCallItem],
     );
 
-    const bottomTurnFooterHost = useMemo(() => {
-      return resolveBottomTurnFooterHost({
-        agentStatus: agent.status,
-        history: baseRenderModel.history,
-        liveHead: baseRenderModel.segments.liveHead,
-        isInverted: streamRenderStrategy.getFlatListInverted(),
-        timingByAssistantId: baseRenderModel.turnTiming.byAssistantId,
-      });
-    }, [
-      agent.status,
-      baseRenderModel.history,
-      baseRenderModel.segments.liveHead,
-      baseRenderModel.turnTiming.byAssistantId,
-      streamRenderStrategy,
-    ]);
+    const bottomTurnFooterHost = streamLayout.auxiliaryTurnFooter;
 
     const renderStreamItem = useCallback(
-      (
-        item: StreamItem,
-        index: number,
-        items: StreamItem[],
-        seams: StreamItemBoundarySeams = {},
-      ) => {
-        const content = renderStreamItemContent(item, index, items, seams);
-        const nextItem = getStreamNeighborItem({
-          strategy: streamRenderStrategy,
-          items,
-          index,
-          relation: "below",
-        });
+      (layoutItem: StreamLayoutItem) => {
+        const content = renderStreamItemContent(layoutItem);
         return renderStreamItemWithTurnFooter({
           content,
-          item,
-          nextItem,
-          items,
-          timing: baseRenderModel.turnTiming.byAssistantId,
-          index,
-          agentStatus: agent.status,
-          suppressTurnFooter: seams.suppressTurnFooter,
+          layoutItem,
           strategy: streamRenderStrategy,
         });
       },
-      [
-        agent.status,
-        baseRenderModel.turnTiming.byAssistantId,
-        renderStreamItemContent,
-        streamRenderStrategy,
-      ],
+      [renderStreamItemContent, streamRenderStrategy],
     );
 
     const pendingPermissionItems = useMemo(
@@ -737,17 +610,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         ...baseRenderModel,
         boundary: {
           ...baseRenderModel.boundary,
-          historyToHeadGap: getGapBetweenStreamItems(
-            baseRenderModel.history.at(-1) ?? null,
-            baseRenderModel.segments.liveHead[0] ?? null,
-          ),
+          historyToHeadGap: streamLayout.historyToHeadGap,
         },
         auxiliary: {
           pendingPermissions: pendingPermissionsNode,
           turnFooter: turnFooterNode,
         },
       };
-    }, [baseRenderModel, pendingPermissionsNode, turnFooterNode]);
+    }, [baseRenderModel, pendingPermissionsNode, streamLayout.historyToHeadGap, turnFooterNode]);
 
     const emptyStateStyle = useMemo(() => [stylesheet.emptyState, stylesheet.contentWrapper], []);
     const listEmptyComponent = useMemo(
@@ -755,38 +625,32 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [renderModel, emptyStateStyle],
     );
 
-    const historyItems = renderModel.history;
     const { boundary, auxiliary } = renderModel;
-    const lastHistoryItem = historyItems.at(-1) ?? null;
-    const firstLiveHeadItem = renderModel.segments.liveHead[0] ?? null;
 
-    const historyIndexById = useMemo(() => {
-      const indexById = new Map<string, number>();
-      historyItems.forEach((item, index) => {
-        indexById.set(item.id, index);
-      });
-      return indexById;
-    }, [historyItems]);
+    const layoutHistoryItemById = useMemo(() => {
+      const itemById = new Map<string, StreamLayoutItem>();
+      for (const item of streamLayout.history) {
+        itemById.set(item.item.id, item);
+      }
+      return itemById;
+    }, [streamLayout.history]);
+
+    const layoutLiveHeadItemById = useMemo(() => {
+      const itemById = new Map<string, StreamLayoutItem>();
+      for (const item of streamLayout.liveHead) {
+        itemById.set(item.item.id, item);
+      }
+      return itemById;
+    }, [streamLayout.liveHead]);
 
     const renderHistoryRow = useCallback(
       (item: StreamItem) =>
         renderHistoryStreamItem({
           item,
-          historyIndexById,
-          historyItems,
-          lastHistoryItem,
-          firstLiveHeadItem,
-          bottomTurnFooterHost,
+          layoutItemById: layoutHistoryItemById,
           renderStreamItem,
         }),
-      [
-        bottomTurnFooterHost,
-        firstLiveHeadItem,
-        historyIndexById,
-        historyItems,
-        lastHistoryItem,
-        renderStreamItem,
-      ],
+      [layoutHistoryItemById, renderStreamItem],
     );
 
     const renderHistoryVirtualizedRow = useCallback<
@@ -797,16 +661,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [renderHistoryRow],
     );
     const renderLiveHeadRow = useCallback<StreamSegmentRenderers["renderLiveHeadRow"]>(
-      (item, index, items) =>
+      (item) =>
         renderLiveHeadStreamItem({
           item,
-          index,
-          items,
-          lastHistoryItem,
-          bottomTurnFooterHost,
+          layoutItemById: layoutLiveHeadItemById,
           renderStreamItem,
         }),
-      [bottomTurnFooterHost, lastHistoryItem, renderStreamItem],
+      [layoutLiveHeadItemById, renderStreamItem],
     );
     const renderLiveAuxiliary = useCallback<StreamSegmentRenderers["renderLiveAuxiliary"]>(() => {
       return renderLiveAuxiliaryNode({

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BottomAnchorTransportBehavior } from "./agent-stream-render-strategy";
+import type { BottomAnchorTransportBehavior } from "./strategy";
 
 export type BottomAnchorMode = "sticky-bottom" | "detached";
 

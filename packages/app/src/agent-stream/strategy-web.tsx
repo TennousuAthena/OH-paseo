@@ -10,9 +10,9 @@ import React, {
 } from "react";
 import { ActivityIndicator } from "react-native";
 import { measureElement as measureVirtualElement, useVirtualizer } from "@tanstack/react-virtual";
-import { estimateStreamItemHeight } from "./agent-stream-web-virtualization";
-import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./stream-strategy";
-import { createStreamStrategy } from "./stream-strategy";
+import { estimateStreamItemHeight } from "./web-virtualization";
+import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./strategy";
+import { createStreamStrategy } from "./strategy";
 
 interface CreateWebStreamStrategyInput {
   isMobileBreakpoint: boolean;
@@ -25,7 +25,7 @@ const USER_SCROLL_DELTA_EPSILON = 1;
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 64;
 const AUTO_SCROLL_RESUME_THRESHOLD_PX = 1;
 const HISTORY_START_THRESHOLD_PX = 96;
-import { useWebElementScrollbar } from "./use-web-scrollbar";
+import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 
 const historyStartSlotStyle: CSSProperties = {
   display: "flex",
@@ -610,6 +610,9 @@ export function createWebStreamStrategy(input: CreateWebStreamStrategyInput): St
     orderHeadReverse: false,
     assistantTurnTraversalStep: -1,
     edgeSlot: "footer",
+    historyLiveBoundaryEdge: "last",
+    liveHeadHistoryBoundaryEdge: "first",
+    frameChildOrder: "content-then-footer",
     flatListInverted: false,
     overlayScrollbarInverted: false,
     maintainVisibleContentPosition: undefined,

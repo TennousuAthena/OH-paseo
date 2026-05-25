@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StreamItem } from "@/types/stream";
-import { getAssistantBlockSpacing, isSameAssistantBlockGroup } from "./agent-stream-view-data";
+import { getAssistantBlockSpacing, isSameAssistantBlockGroup } from "./spacing";
 
 function assistantBlock(params: {
   id: string;

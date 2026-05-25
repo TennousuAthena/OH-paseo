@@ -1,15 +1,16 @@
 import type { ComponentType, ReactElement, ReactNode, RefObject } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import type { StreamItem } from "@/types/stream";
-import type { StreamHistoryBoundary, StreamRenderSegments } from "./agent-stream-render-model";
+import type { StreamHistoryBoundary, StreamRenderSegments } from "./model";
 import type {
   BottomAnchorLocalRequest,
   BottomAnchorRouteRequest,
-} from "./use-bottom-anchor-controller";
+} from "./bottom-anchor-controller";
 
 type EdgeSlot = "header" | "footer";
 type NeighborRelation = "above" | "below";
 type AssistantTurnTraversalStep = -1 | 1;
+export type StreamFrameChildOrder = "content-then-footer" | "footer-then-content";
 
 export type MaintainVisibleContentPositionConfig = Readonly<{
   minIndexForVisible: number;
@@ -93,6 +94,10 @@ export interface StreamStrategy {
   ) => StreamEdgeSlotProps;
   getMaintainVisibleContentPosition: () => MaintainVisibleContentPositionConfig | undefined;
   getBottomAnchorTransportBehavior: () => BottomAnchorTransportBehavior;
+  getHistoryLiveBoundaryIndex: (history: StreamItem[]) => number | null;
+  getLiveHeadHistoryBoundaryIndex: (liveHead: StreamItem[]) => number | null;
+  getLatestItemIndex: (items: StreamItem[]) => number | null;
+  getFrameChildOrder: () => StreamFrameChildOrder;
   getFlatListInverted: () => boolean;
   getOverlayScrollbarInverted: () => boolean;
   shouldDisableParentScrollOnInlineDetailsExpansion: () => boolean;
@@ -107,6 +112,9 @@ interface StreamStrategyConfig {
   orderHeadReverse: boolean;
   assistantTurnTraversalStep: AssistantTurnTraversalStep;
   edgeSlot: EdgeSlot;
+  historyLiveBoundaryEdge: "first" | "last";
+  liveHeadHistoryBoundaryEdge: "first" | "last";
+  frameChildOrder: StreamFrameChildOrder;
   flatListInverted: boolean;
   overlayScrollbarInverted: boolean;
   maintainVisibleContentPosition?: MaintainVisibleContentPositionConfig;
@@ -175,6 +183,25 @@ export function createStreamStrategy(config: StreamStrategyConfig): StreamStrate
     },
     getMaintainVisibleContentPosition: () => config.maintainVisibleContentPosition,
     getBottomAnchorTransportBehavior: () => config.bottomAnchorTransportBehavior,
+    getHistoryLiveBoundaryIndex: (history) => {
+      if (history.length === 0) {
+        return null;
+      }
+      return config.historyLiveBoundaryEdge === "first" ? 0 : history.length - 1;
+    },
+    getLiveHeadHistoryBoundaryIndex: (liveHead) => {
+      if (liveHead.length === 0) {
+        return null;
+      }
+      return config.liveHeadHistoryBoundaryEdge === "first" ? 0 : liveHead.length - 1;
+    },
+    getLatestItemIndex: (items) => {
+      if (items.length === 0) {
+        return null;
+      }
+      return config.historyLiveBoundaryEdge === "first" ? 0 : items.length - 1;
+    },
+    getFrameChildOrder: () => config.frameChildOrder,
     getFlatListInverted: () => config.flatListInverted,
     getOverlayScrollbarInverted: () => config.overlayScrollbarInverted,
     shouldDisableParentScrollOnInlineDetailsExpansion: () =>
@@ -269,4 +296,24 @@ export function getStreamEdgeSlotProps(params: {
   gapSize: number;
 }): StreamEdgeSlotProps {
   return params.strategy.getEdgeSlotProps(params.component, params.gapSize);
+}
+
+export function getHistoryLiveBoundaryIndexForStreamRenderStrategy(params: {
+  strategy: StreamStrategy;
+  history: StreamItem[];
+}): number | null {
+  return params.strategy.getHistoryLiveBoundaryIndex(params.history);
+}
+
+export function getLiveHeadHistoryBoundaryIndexForStreamRenderStrategy(params: {
+  strategy: StreamStrategy;
+  liveHead: StreamItem[];
+}): number | null {
+  return params.strategy.getLiveHeadHistoryBoundaryIndex(params.liveHead);
+}
+
+export function getFrameChildOrderForStreamRenderStrategy(params: {
+  strategy: StreamStrategy;
+}): StreamFrameChildOrder {
+  return params.strategy.getFrameChildOrder();
 }

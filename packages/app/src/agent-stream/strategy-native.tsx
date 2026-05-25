@@ -19,13 +19,13 @@ import {
 } from "react-native";
 import type { StreamItem } from "@/types/stream";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { useBottomAnchorController } from "./use-bottom-anchor-controller";
-import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./stream-strategy";
+import { useBottomAnchorController } from "./bottom-anchor-controller";
+import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./strategy";
 import {
   createStreamStrategy,
   isNearBottomForStreamRenderStrategy,
   resolveBottomAnchorTransportBehavior,
-} from "./stream-strategy";
+} from "./strategy";
 
 const DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION = Object.freeze({
   minIndexForVisible: 0,
@@ -380,6 +380,9 @@ export function createNativeStreamStrategy(): StreamStrategy {
     orderHeadReverse: true,
     assistantTurnTraversalStep: 1,
     edgeSlot: "header",
+    historyLiveBoundaryEdge: "first",
+    liveHeadHistoryBoundaryEdge: "last",
+    frameChildOrder: "footer-then-content",
     flatListInverted: true,
     overlayScrollbarInverted: true,
     maintainVisibleContentPosition: DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION,

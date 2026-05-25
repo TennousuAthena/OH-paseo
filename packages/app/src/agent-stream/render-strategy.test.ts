@@ -3,6 +3,9 @@ import type { StreamItem } from "@/types/stream";
 import {
   collectAssistantTurnContentForStreamRenderStrategy,
   getBottomOffsetForStreamRenderStrategy,
+  getFrameChildOrderForStreamRenderStrategy,
+  getHistoryLiveBoundaryIndexForStreamRenderStrategy,
+  getLiveHeadHistoryBoundaryIndexForStreamRenderStrategy,
   getStreamEdgeSlotProps,
   getStreamNeighborIndex,
   getStreamNeighborItem,
@@ -10,8 +13,8 @@ import {
   orderHeadForStreamRenderStrategy,
   orderTailForStreamRenderStrategy,
   resolveBottomAnchorTransportBehavior,
-  resolveStreamRenderStrategy,
-} from "./agent-stream-render-strategy";
+} from "./strategy";
+import { resolveStreamRenderStrategy } from "./strategy-resolver";
 
 function createTimestamp(seed: number): Date {
   return new Date(`2026-01-01T00:00:0${seed}.000Z`);
@@ -326,5 +329,90 @@ describe("edge slot semantics", () => {
       ListHeaderComponent: EdgeSlot,
       ListHeaderComponentStyle: { marginBottom: 4 },
     });
+  });
+});
+
+describe("layout strategy edges", () => {
+  const streamItems: StreamItem[] = [
+    userMessage("u1", "user-1", 1),
+    assistantMessage("a1", "assistant-1", 2),
+  ];
+
+  it("uses the newest history edge as the history/live boundary", () => {
+    const forward = resolveStreamRenderStrategy({
+      platform: "web",
+      isMobileBreakpoint: false,
+    });
+    const inverted = resolveStreamRenderStrategy({
+      platform: "android",
+      isMobileBreakpoint: false,
+    });
+
+    const forwardHistory = orderTailForStreamRenderStrategy({ strategy: forward, streamItems });
+    const invertedHistory = orderTailForStreamRenderStrategy({ strategy: inverted, streamItems });
+
+    expect(
+      getHistoryLiveBoundaryIndexForStreamRenderStrategy({
+        strategy: forward,
+        history: forwardHistory,
+      }),
+    ).toBe(1);
+    expect(
+      getHistoryLiveBoundaryIndexForStreamRenderStrategy({
+        strategy: inverted,
+        history: invertedHistory,
+      }),
+    ).toBe(0);
+  });
+
+  it("uses the oldest live-head edge as the live-head/history boundary", () => {
+    const forward = resolveStreamRenderStrategy({
+      platform: "web",
+      isMobileBreakpoint: false,
+    });
+    const inverted = resolveStreamRenderStrategy({
+      platform: "ios",
+      isMobileBreakpoint: false,
+    });
+
+    const forwardHead = orderHeadForStreamRenderStrategy({
+      strategy: forward,
+      streamHead: streamItems,
+    });
+    const invertedHead = orderHeadForStreamRenderStrategy({
+      strategy: inverted,
+      streamHead: streamItems,
+    });
+
+    expect(
+      getLiveHeadHistoryBoundaryIndexForStreamRenderStrategy({
+        strategy: forward,
+        liveHead: forwardHead,
+      }),
+    ).toBe(0);
+    expect(
+      getLiveHeadHistoryBoundaryIndexForStreamRenderStrategy({
+        strategy: inverted,
+        liveHead: invertedHead,
+      }),
+    ).toBe(1);
+  });
+
+  it("names the frame child order needed by native inverted cells", () => {
+    const forward = resolveStreamRenderStrategy({
+      platform: "web",
+      isMobileBreakpoint: false,
+    });
+    const inverted = resolveStreamRenderStrategy({
+      platform: "android",
+      isMobileBreakpoint: false,
+    });
+
+    expect(getFrameChildOrderForStreamRenderStrategy({ strategy: forward })).toBe(
+      "content-then-footer",
+    );
+    expect(getFrameChildOrderForStreamRenderStrategy({ strategy: inverted })).toBe(
+      "footer-then-content",
+    );
   });
 });

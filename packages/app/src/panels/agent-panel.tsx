@@ -7,7 +7,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import { AgentStreamView, type AgentStreamViewHandle } from "@/components/agent-stream-view";
+import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { Composer } from "@/components/composer";
 import { FileDropZone } from "@/components/file-drop-zone";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StreamItem } from "@/types/stream";
-import { buildAgentStreamRenderModel } from "./agent-stream-render-model";
+import { buildAgentStreamRenderModel } from "./model";
 
 function createTimestamp(seed: number): Date {
   return new Date(`2026-01-01T00:00:${seed.toString().padStart(2, "0")}.000Z`);

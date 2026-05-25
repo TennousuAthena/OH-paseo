@@ -8,9 +8,10 @@ import type { StreamItem } from "@/types/stream";
 import {
   collectAssistantTurnContentForStreamRenderStrategy,
   type StreamStrategy,
-} from "./agent-stream-render-strategy";
-import { AssistantTurnFooter, LiveElapsed, STREAM_METADATA_FONT_SIZE } from "./message";
-import { SyncedLoader } from "./synced-loader";
+} from "./strategy";
+import { AssistantTurnFooter, LiveElapsed, STREAM_METADATA_FONT_SIZE } from "@/components/message";
+import type { TurnFooterHost } from "./layout";
+import { SyncedLoader } from "@/components/synced-loader";
 
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const workingIndicatorColorMapping = (theme: Theme) => ({
@@ -21,52 +22,6 @@ const workingIndicatorColorMapping = (theme: Theme) => ({
 });
 
 export type TurnContentStrategy = StreamStrategy;
-
-export interface TurnFooterHost {
-  itemId: string;
-  items: StreamItem[];
-  timing?: TurnTiming;
-  startIndex: number;
-}
-
-export function resolveBottomTurnFooterHost(input: {
-  agentStatus: string;
-  history: StreamItem[];
-  liveHead: StreamItem[];
-  isInverted: boolean;
-  timingByAssistantId: Map<string, TurnTiming>;
-}): TurnFooterHost | null {
-  if (input.agentStatus === "running") {
-    return null;
-  }
-  const usesLiveHead = input.liveHead.length > 0;
-  const footerItems = usesLiveHead ? input.liveHead : input.history;
-  const startIndex = input.isInverted ? 0 : footerItems.length - 1;
-  const item = footerItems[startIndex];
-  if (!item || item.kind !== "assistant_message") {
-    return null;
-  }
-  return {
-    itemId: item.id,
-    items: footerItems,
-    timing: input.timingByAssistantId.get(item.id),
-    startIndex,
-  };
-}
-
-export function shouldRenderCompletedTurnFooter(input: {
-  item: StreamItem;
-  belowItem: StreamItem | undefined;
-  agentStatus: string;
-  suppressTurnFooter: boolean | undefined;
-}): boolean {
-  return (
-    input.item.kind === "assistant_message" &&
-    !input.suppressTurnFooter &&
-    (input.belowItem?.kind === "user_message" ||
-      (input.belowItem === undefined && input.agentStatus !== "running"))
-  );
-}
 
 export const TurnFooter = memo(function TurnFooter({
   isRunning,

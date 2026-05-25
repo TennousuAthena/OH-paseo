@@ -1,6 +1,6 @@
-import type { ResolveStreamRenderStrategyInput, StreamStrategy } from "./stream-strategy";
-import { createNativeStreamStrategy } from "./stream-strategy-native";
-import { createWebStreamStrategy } from "./stream-strategy-web";
+import type { ResolveStreamRenderStrategyInput, StreamStrategy } from "./strategy";
+import { createNativeStreamStrategy } from "./strategy-native";
+import { createWebStreamStrategy } from "./strategy-web";
 
 export function resolveStreamRenderStrategy(
   input: ResolveStreamRenderStrategyInput,

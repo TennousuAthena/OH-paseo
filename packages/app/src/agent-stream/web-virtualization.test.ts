@@ -13,7 +13,7 @@ import {
   getWebPartialVirtualizationThreshold,
   splitWebVirtualizedHistory,
   type IndexedStreamItem,
-} from "./agent-stream-web-virtualization";
+} from "./web-virtualization";
 
 function createTimestamp(seed: number): Date {
   return new Date(`2026-01-01T00:00:${seed.toString().padStart(2, "0")}.000Z`);

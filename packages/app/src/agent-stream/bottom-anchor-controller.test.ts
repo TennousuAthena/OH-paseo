@@ -3,8 +3,8 @@ import {
   __private__,
   deriveBottomAnchorBlockedReason,
   type BottomAnchorMode,
-} from "./use-bottom-anchor-controller";
-import type { BottomAnchorTransportBehavior } from "./agent-stream-render-strategy";
+} from "./bottom-anchor-controller";
+import type { BottomAnchorTransportBehavior } from "./strategy";
 
 type MeasurementState = ReturnType<typeof createMeasurementState>;
 

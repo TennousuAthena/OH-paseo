@@ -5,12 +5,9 @@ import {
   findMountedWindowStart,
   getWebMountedRecentStreamItems,
   getWebPartialVirtualizationThreshold,
-} from "./agent-stream-web-virtualization";
-import {
-  orderHeadForStreamRenderStrategy,
-  orderTailForStreamRenderStrategy,
-} from "./stream-strategy";
-import { resolveStreamRenderStrategy } from "./stream-strategy-resolver";
+} from "./web-virtualization";
+import { orderHeadForStreamRenderStrategy, orderTailForStreamRenderStrategy } from "./strategy";
+import { resolveStreamRenderStrategy } from "./strategy-resolver";
 
 export interface StreamRenderSegments {
   historyVirtualized: StreamItem[];
