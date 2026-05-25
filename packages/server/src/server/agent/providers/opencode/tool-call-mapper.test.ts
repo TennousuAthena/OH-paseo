@@ -182,6 +182,36 @@ describe("opencode tool-call mapper", () => {
     }
   });
 
+  it("unwraps OpenCode XML read output into file content", () => {
+    const item = expectMapped(
+      mapOpencodeToolCall({
+        toolName: "read",
+        callId: "opencode-read-xml",
+        status: "completed",
+        input: { filePath: "/Users/moboudra/dev/paseo/docs/release.md" },
+        output: [
+          "<path>/Users/moboudra/dev/paseo/docs/release.md</path>",
+          "<type>file</type>",
+          "<content>",
+          "1: # Release",
+          "2:",
+          "3: All workspaces share one version and release together.",
+          "</content>",
+        ].join("\n"),
+      }),
+    );
+
+    expect(item.detail).toEqual({
+      type: "read",
+      filePath: "/Users/moboudra/dev/paseo/docs/release.md",
+      content: [
+        "1: # Release",
+        "2:",
+        "3: All workspaces share one version and release together.",
+      ].join("\n"),
+    });
+  });
+
   it("maps failed calls with required error", () => {
     const item = expectMapped(
       mapOpencodeToolCall({
