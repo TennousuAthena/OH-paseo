@@ -42,7 +42,7 @@ export function buildWorkspacePaneContentModel({
   const registration = getPanelRegistration(tab.kind);
   invariant(registration, `No panel registration for kind: ${tab.kind}`);
   return {
-    key: `${normalizedServerId}:${normalizedWorkspaceId}:${tab.tabId}:${tab.kind}`,
+    key: `${normalizedServerId}:${normalizedWorkspaceId}:${tab.tabId}`,
     Component: registration.component,
     paneContextValue: {
       serverId: normalizedServerId,

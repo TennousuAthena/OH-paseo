@@ -1029,6 +1029,7 @@ export function Composer({
         throw new Error("Host is not connected");
       }
       const stream: AgentStreamWriter = {
+        getTail: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamTail?.get(id),
         getHead: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamHead?.get(id),
         setHead: (updater) => setAgentStreamHead(serverId, updater),
         setTail: (updater) => setAgentStreamTail(serverId, updater),

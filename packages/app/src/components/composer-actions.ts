@@ -9,7 +9,13 @@ import {
   userAttachmentsOnly,
 } from "@/attachments/workspace-attachment-utils";
 import { splitComposerAttachmentsForSubmit } from "@/components/composer-attachments";
-import { generateMessageId, type StreamItem } from "@/types/stream";
+import {
+  appendOptimisticUserMessageToStream,
+  buildOptimisticUserMessage,
+  generateMessageId,
+  type StreamItem,
+  type UserMessageItem,
+} from "@/types/stream";
 import type { PickedImageAttachmentInput } from "@/hooks/image-attachment-picker";
 
 export interface QueuedComposerMessage {
@@ -49,6 +55,7 @@ export interface ComposerCancelClient {
 }
 
 export interface AgentStreamWriter {
+  getTail: (agentId: string) => StreamItem[] | undefined;
   getHead: (agentId: string) => StreamItem[] | undefined;
   setHead: (updater: (prev: Map<string, StreamItem[]>) => Map<string, StreamItem[]>) => void;
   setTail: (updater: (prev: Map<string, StreamItem[]>) => Map<string, StreamItem[]>) => void;
@@ -130,15 +137,13 @@ export async function dispatchComposerAgentMessage(
 ): Promise<void> {
   const wirePayload = splitComposerAttachmentsForSubmit(input.attachments);
   const messageId = generateMessageId();
-  const userMessage: StreamItem = {
-    kind: "user_message",
+  const userMessage = buildOptimisticUserMessage({
     id: messageId,
     text: input.text,
     timestamp: new Date(),
-    optimistic: true,
-    ...(wirePayload.images.length > 0 ? { images: wirePayload.images } : {}),
-    ...(wirePayload.attachments.length > 0 ? { attachments: wirePayload.attachments } : {}),
-  };
+    images: wirePayload.images,
+    attachments: wirePayload.attachments,
+  });
   appendUserMessageToStream(input.agentId, userMessage, input.stream);
   const imagesData = await input.encodeImages(wirePayload.images);
   await input.client.sendAgentMessage(input.agentId, input.text, {
@@ -150,23 +155,29 @@ export async function dispatchComposerAgentMessage(
 
 function appendUserMessageToStream(
   agentId: string,
-  userMessage: StreamItem,
+  userMessage: UserMessageItem,
   stream: AgentStreamWriter,
 ): void {
-  const head = stream.getHead(agentId);
-  if (head && head.length > 0) {
+  const result = appendOptimisticUserMessageToStream({
+    tail: stream.getTail(agentId) ?? [],
+    head: stream.getHead(agentId) ?? [],
+    message: userMessage,
+    placement: "active-head",
+  });
+  if (result.changedHead) {
     stream.setHead((prev) => {
       const next = new Map(prev);
-      next.set(agentId, [...(prev.get(agentId) ?? []), userMessage]);
+      next.set(agentId, result.head);
       return next;
     });
-    return;
   }
-  stream.setTail((prev) => {
-    const next = new Map(prev);
-    next.set(agentId, [...(prev.get(agentId) ?? []), userMessage]);
-    return next;
-  });
+  if (result.changedTail) {
+    stream.setTail((prev) => {
+      const next = new Map(prev);
+      next.set(agentId, result.tail);
+      return next;
+    });
+  }
 }
 
 export interface QueueComposerMessageInput {

@@ -13,6 +13,7 @@ import {
   type ProcessTimelineResponseOutput,
   type TimelineReducerSideEffect,
 } from "@/timeline/session-stream-reducers";
+import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
 import type { AgentAttachment, SessionOutboundMessage } from "@server/shared/messages";
 import { parseServerInfoStatusPayload } from "@server/shared/messages";
@@ -375,6 +376,7 @@ function finalizeTimelineApplication(input: {
   }
   if (shouldMarkAuthoritativeHistoryApplied) {
     setAgentAuthoritativeHistoryApplied(serverId, agentId, true);
+    useCreateFlowStore.getState().clearByAgent({ serverId, agentId });
   }
   if (result.initResolution === "resolve") {
     resolveInitDeferred(initKey);

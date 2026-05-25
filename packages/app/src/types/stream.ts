@@ -64,6 +64,16 @@ export interface UserMessageItem {
   attachments?: AgentAttachment[];
 }
 
+export interface OptimisticUserMessageInput {
+  id: string;
+  text: string;
+  timestamp: Date;
+  images?: UserMessageImageAttachment[];
+  attachments?: AgentAttachment[];
+}
+
+export type OptimisticUserMessagePlacement = "tail" | "active-head";
+
 export interface AssistantMessageItem {
   kind: "assistant_message";
   id: string;
@@ -206,11 +216,61 @@ function buildUserMessageItem(input: {
   };
 }
 
+export function buildOptimisticUserMessage(input: OptimisticUserMessageInput): UserMessageItem {
+  return {
+    kind: "user_message",
+    id: input.id,
+    text: input.text,
+    timestamp: input.timestamp,
+    optimistic: true,
+    ...(input.images && input.images.length > 0 ? { images: input.images } : {}),
+    ...(input.attachments && input.attachments.length > 0
+      ? { attachments: input.attachments }
+      : {}),
+  };
+}
+
+function hasUserMessage(state: StreamItem[]): boolean {
+  return state.some((item) => item.kind === "user_message");
+}
+
+export function appendOptimisticUserMessageToStream(params: {
+  tail: StreamItem[];
+  head: StreamItem[];
+  message: UserMessageItem;
+  placement: OptimisticUserMessagePlacement;
+  skipIfUserMessageExists?: boolean;
+}): ApplyStreamEventResult {
+  const { tail, head, message, placement } = params;
+  if (
+    tail.some((item) => item.id === message.id) ||
+    head.some((item) => item.id === message.id) ||
+    (params.skipIfUserMessageExists && (hasUserMessage(tail) || hasUserMessage(head)))
+  ) {
+    return { tail, head, changedTail: false, changedHead: false };
+  }
+
+  if (placement === "active-head" && head.length > 0) {
+    return {
+      tail,
+      head: [...head, message],
+      changedTail: false,
+      changedHead: true,
+    };
+  }
+
+  return {
+    tail: [...tail, message],
+    head,
+    changedTail: true,
+    changedHead: false,
+  };
+}
+
 function appendUserMessage(
   state: StreamItem[],
   text: string,
   timestamp: Date,
-  source: StreamUpdateSource,
   messageId?: string,
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
@@ -220,10 +280,9 @@ function appendUserMessage(
 
   const chunkSeed = chunk.trim() || chunk;
   const entryId = messageId ?? createUniqueTimelineId(state, "user", chunkSeed, timestamp);
-  const optimisticIndex =
-    source === "live"
-      ? state.findIndex((entry) => entry.kind === "user_message" && entry.optimistic)
-      : -1;
+  const optimisticIndex = state.findIndex(
+    (entry) => entry.kind === "user_message" && entry.optimistic,
+  );
   const optimistic = optimisticIndex >= 0 ? (state[optimisticIndex] as UserMessageItem) : null;
 
   const nextItem = buildUserMessageItem({
@@ -688,9 +747,7 @@ function reduceTimelineEvent(
   const item = event.item;
   switch (item.type) {
     case "user_message":
-      return finalizeActiveThoughts(
-        appendUserMessage(state, item.text, timestamp, source, item.messageId),
-      );
+      return finalizeActiveThoughts(appendUserMessage(state, item.text, timestamp, item.messageId));
     case "assistant_message":
       return finalizeActiveThoughts(
         appendAssistantMessage(state, item.text, timestamp, source, item.messageId),

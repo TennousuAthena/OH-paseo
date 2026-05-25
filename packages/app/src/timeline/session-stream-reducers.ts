@@ -2,7 +2,7 @@ import type { AgentStreamEventPayload } from "@server/shared/messages";
 import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 import type { Agent } from "@/stores/session-store";
 import { useSessionStore } from "@/stores/session-store";
-import type { StreamItem } from "@/types/stream";
+import type { StreamItem, UserMessageItem } from "@/types/stream";
 import {
   applyStreamEvent,
   hydrateStreamState,
@@ -240,15 +240,22 @@ function applyTimelineReplacePath(args: {
   timelineUnits: TimelineUnit[];
   payload: ProcessTimelineResponseInput["payload"];
   bootstrapPolicy: ReturnType<typeof deriveBootstrapTailTimelinePolicy>;
+  currentTail: StreamItem[];
   currentHead: StreamItem[];
   toHydratedEvents: (
     units: TimelineUnit[],
   ) => Array<{ event: AgentStreamEventPayload; timestamp: Date }>;
 }): TimelinePathResult {
-  const { timelineUnits, payload, bootstrapPolicy, currentHead, toHydratedEvents } = args;
+  const { timelineUnits, payload, bootstrapPolicy, currentTail, currentHead, toHydratedEvents } =
+    args;
   const hydratedTail = hydrateStreamState(toHydratedEvents(timelineUnits), { source: "canonical" });
+  const reconciledTail = reconcileOptimisticUsersAfterReplace({
+    canonicalTail: hydratedTail,
+    previousTail: currentTail,
+    previousHead: currentHead,
+  });
   const { tail, head } = preserveReplacePathAssistantHead({
-    tail: hydratedTail,
+    tail: reconciledTail,
     currentHead,
   });
   const cursor: TimelineCursor | null =
@@ -264,6 +271,93 @@ function applyTimelineReplacePath(args: {
     sideEffects.push({ type: "catch_up", cursor: bootstrapPolicy.catchUpCursor });
   }
   return { tail, head, cursor, cursorChanged: true, sideEffects };
+}
+
+function collectOptimisticUserMessages(items: StreamItem[]): Array<{
+  ordinal: number;
+  item: UserMessageItem;
+}> {
+  const optimistic: Array<{ ordinal: number; item: UserMessageItem }> = [];
+  let ordinal = 0;
+  for (const item of items) {
+    if (item.kind !== "user_message") {
+      continue;
+    }
+    if (item.optimistic) {
+      optimistic.push({ ordinal, item });
+    }
+    ordinal += 1;
+  }
+  return optimistic;
+}
+
+function mergeCanonicalUserWithOptimistic(
+  canonical: UserMessageItem,
+  optimistic: UserMessageItem,
+): UserMessageItem {
+  const shouldPreserveImages =
+    (!canonical.images || canonical.images.length === 0) &&
+    Boolean(optimistic.images && optimistic.images.length > 0);
+  const shouldPreserveAttachments =
+    (!canonical.attachments || canonical.attachments.length === 0) &&
+    Boolean(optimistic.attachments && optimistic.attachments.length > 0);
+  return {
+    ...canonical,
+    ...(shouldPreserveImages ? { images: optimistic.images } : {}),
+    ...(shouldPreserveAttachments ? { attachments: optimistic.attachments } : {}),
+  };
+}
+
+function reconcileOptimisticUsersAfterReplace(params: {
+  canonicalTail: StreamItem[];
+  previousTail: StreamItem[];
+  previousHead: StreamItem[];
+}): StreamItem[] {
+  const optimisticUsers = collectOptimisticUserMessages([
+    ...params.previousTail,
+    ...params.previousHead,
+  ]);
+  if (optimisticUsers.length === 0) {
+    return params.canonicalTail;
+  }
+
+  const canonicalUserIndexes: number[] = [];
+  params.canonicalTail.forEach((item, index) => {
+    if (item.kind === "user_message") {
+      canonicalUserIndexes.push(index);
+    }
+  });
+
+  let changed = false;
+  const nextTail = [...params.canonicalTail];
+  let searchFromOrdinal = 0;
+  const unmatched: UserMessageItem[] = [];
+
+  for (const optimistic of optimisticUsers) {
+    const canonicalOrdinal = canonicalUserIndexes.findIndex(
+      (_index, ordinal) => ordinal >= Math.max(optimistic.ordinal, searchFromOrdinal),
+    );
+    if (canonicalOrdinal < 0) {
+      unmatched.push(optimistic.item);
+      continue;
+    }
+
+    const canonicalIndex = canonicalUserIndexes[canonicalOrdinal];
+    const canonicalItem = canonicalIndex !== undefined ? nextTail[canonicalIndex] : undefined;
+    if (!canonicalItem || canonicalItem.kind !== "user_message") {
+      unmatched.push(optimistic.item);
+      continue;
+    }
+    nextTail[canonicalIndex] = mergeCanonicalUserWithOptimistic(canonicalItem, optimistic.item);
+    searchFromOrdinal = canonicalOrdinal + 1;
+    changed = true;
+  }
+
+  if (unmatched.length === 0) {
+    return changed ? nextTail : params.canonicalTail;
+  }
+
+  return [...nextTail, ...unmatched];
 }
 
 interface IncrementalAcceptResult {
@@ -531,6 +625,7 @@ export function processTimelineResponse(
         timelineUnits,
         payload,
         bootstrapPolicy,
+        currentTail,
         currentHead,
         toHydratedEvents,
       })

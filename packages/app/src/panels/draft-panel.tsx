@@ -33,12 +33,12 @@ function DraftPanel() {
   const handleCreated = useCallback(
     (agentSnapshot: Parameters<typeof normalizeAgentSnapshot>[0]) => {
       const normalized = normalizeAgentSnapshot(agentSnapshot, serverId);
-      retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
       useSessionStore.getState().setAgents(serverId, (prev) => {
         const next = new Map(prev);
         next.set(agentSnapshot.id, normalized);
         return next;
       });
+      retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
     },
     [retargetCurrentTab, serverId],
   );

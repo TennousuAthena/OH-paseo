@@ -1746,9 +1746,6 @@ function WorkspaceScreenContent({
   const unpinWorkspaceAgent = useWorkspaceLayoutStore((state) => state.unpinAgent);
   const hideWorkspaceAgent = useWorkspaceLayoutStore((state) => state.hideAgent);
   const retargetWorkspaceTab = useWorkspaceLayoutStore((state) => state.retargetTab);
-  const convertWorkspaceDraftToAgent = useWorkspaceLayoutStore(
-    (state) => state.convertDraftToAgent,
-  );
   const reconcileWorkspaceTabs = useWorkspaceLayoutStore((state) => state.reconcileTabs);
   const splitWorkspacePane = useWorkspaceLayoutStore((state) => state.splitPane);
   const splitWorkspacePaneEmpty = useWorkspaceLayoutStore((state) => state.splitPaneEmpty);
@@ -2842,10 +2839,6 @@ function WorkspaceScreenContent({
           if (!persistenceKey) {
             return;
           }
-          if (input.tab.kind === "draft" && target.kind === "agent") {
-            convertWorkspaceDraftToAgent(persistenceKey, input.tab.tabId, target.agentId);
-            return;
-          }
           retargetWorkspaceTab(persistenceKey, input.tab.tabId, target);
         },
         onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => {
@@ -2875,7 +2868,6 @@ function WorkspaceScreenContent({
       openImportSheet,
       openWorkspaceChildTabFocused,
       persistenceKey,
-      convertWorkspaceDraftToAgent,
       retargetWorkspaceTab,
     ],
   );

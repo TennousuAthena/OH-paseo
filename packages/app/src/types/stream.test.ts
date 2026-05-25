@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyStreamEvent,
+  appendOptimisticUserMessageToStream,
+  buildOptimisticUserMessage,
   clearOptimisticUserMessages,
   hydrateStreamState,
   mergeToolCallDetail,
@@ -1028,6 +1030,102 @@ describe("turn lifecycle events", () => {
     assert.strictEqual(userMessage.id, "msg_opencode_provider_owned");
     assert.strictEqual(userMessage.text, "typed plain text");
     assert.strictEqual(userMessage.optimistic, undefined);
+  });
+
+  it("replaces an optimistic image user message with the next canonical server user message", () => {
+    const optimisticTimestamp = new Date("2025-01-01T15:03:10Z");
+    const image = {
+      id: "image-canonical",
+      mimeType: "image/png",
+      storageType: "web-indexeddb" as const,
+      storageKey: "image-canonical",
+      createdAt: optimisticTimestamp.getTime(),
+    };
+    const attachment = {
+      type: "text" as const,
+      mimeType: "text/plain" as const,
+      text: "context",
+      title: "context.txt",
+    };
+    const optimistic = buildOptimisticUserMessage({
+      id: "msg_optimistic_canonical",
+      text: "Analyze this",
+      timestamp: optimisticTimestamp,
+      images: [image],
+      attachments: [attachment],
+    });
+
+    const state = reduceStreamUpdate(
+      [optimistic],
+      {
+        type: "timeline",
+        provider: "claude",
+        item: {
+          type: "user_message",
+          text: "Analyze this",
+          messageId: "provider-owned-canonical",
+        },
+      },
+      new Date("2025-01-01T15:03:11Z"),
+      { source: "canonical" },
+    );
+
+    const userMessages = state.filter((item) => item.kind === "user_message");
+    assert.strictEqual(userMessages.length, 1);
+    const userMessage = userMessages[0];
+    invariant(userMessage?.kind === "user_message");
+    assert.strictEqual(userMessage.id, "provider-owned-canonical");
+    assert.strictEqual(userMessage.optimistic, undefined);
+    assert.deepStrictEqual(userMessage.images, [image]);
+    assert.deepStrictEqual(userMessage.attachments, [attachment]);
+  });
+
+  it("places optimistic user messages through one append helper", () => {
+    const optimistic = buildOptimisticUserMessage({
+      id: "msg_append_once",
+      text: "append once",
+      timestamp: new Date("2025-01-01T15:03:20Z"),
+    });
+    const headItem: StreamItem = {
+      kind: "assistant_message",
+      id: "assistant-head",
+      text: "streaming",
+      timestamp: new Date("2025-01-01T15:03:19Z"),
+    };
+
+    const first = appendOptimisticUserMessageToStream({
+      tail: [],
+      head: [headItem],
+      message: optimistic,
+      placement: "active-head",
+    });
+    const second = appendOptimisticUserMessageToStream({
+      tail: first.tail,
+      head: first.head,
+      message: optimistic,
+      placement: "active-head",
+    });
+    const skipped = appendOptimisticUserMessageToStream({
+      tail: [
+        {
+          kind: "user_message",
+          id: "canonical-user",
+          text: "already canonical",
+          timestamp: new Date("2025-01-01T15:03:21Z"),
+        },
+      ],
+      head: [],
+      message: optimistic,
+      placement: "tail",
+      skipIfUserMessageExists: true,
+    });
+
+    assert.deepStrictEqual(first.tail, []);
+    assert.deepStrictEqual(first.head, [headItem, optimistic]);
+    assert.strictEqual(second.changedHead, false);
+    assert.strictEqual(second.head, first.head);
+    assert.strictEqual(skipped.changedTail, false);
+    assert.strictEqual(skipped.tail.length, 1);
   });
 
   it("reconciles an optimistic user message that was pending in the streaming head", () => {

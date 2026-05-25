@@ -2,7 +2,9 @@ import { useCallback, useMemo, useReducer } from "react";
 import type { ComposerAttachment } from "@/attachments/types";
 import { splitComposerAttachmentsForSubmit } from "@/components/composer-attachments";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
+import { useSessionStore } from "@/stores/session-store";
 import {
+  buildOptimisticUserMessage,
   generateMessageId,
   type StreamItem,
   type UserMessageImageAttachment,
@@ -110,6 +112,9 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
   const updatePendingAgentId = useCreateFlowStore((state) => state.updateAgentId);
   const markPendingCreateLifecycle = useCreateFlowStore((state) => state.markLifecycle);
   const clearPendingCreateAttempt = useCreateFlowStore((state) => state.clear);
+  const appendOptimisticUserMessageToAgentStream = useSessionStore(
+    (state) => state.appendOptimisticUserMessageToAgentStream,
+  );
 
   const formErrorMessage = machine.tag === "draft" ? machine.errorMessage : "";
   const isSubmitting = machine.tag === "creating";
@@ -128,19 +133,13 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
     }
 
     return [
-      {
-        kind: "user_message",
+      buildOptimisticUserMessage({
         id: machine.attempt.clientMessageId,
         text: machine.attempt.text,
         timestamp: machine.attempt.timestamp,
-        optimistic: true,
-        ...(machine.attempt.images && machine.attempt.images.length > 0
-          ? { images: machine.attempt.images }
-          : {}),
-        ...(machine.attempt.attachments && machine.attempt.attachments.length > 0
-          ? { attachments: machine.attempt.attachments }
-          : {}),
-      },
+        images: machine.attempt.images,
+        attachments: machine.attempt.attachments,
+      }),
     ];
   }, [machine]);
 
@@ -228,6 +227,19 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
 
         if (createResult.agentId) {
           updatePendingAgentId({ draftId, agentId: createResult.agentId });
+          appendOptimisticUserMessageToAgentStream(
+            pendingServerId,
+            createResult.agentId,
+            buildOptimisticUserMessage({
+              id: attempt.clientMessageId,
+              text: attempt.text,
+              timestamp: attempt.timestamp,
+              images: attempt.images,
+              attachments: attempt.attachments,
+            }),
+            { placement: "tail", skipIfUserMessageExists: true },
+          );
+          markPendingCreateLifecycle({ draftId, lifecycle: "sent" });
         }
 
         await onCreateSuccess({ result: createResult.result, attempt });
@@ -241,6 +253,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
       }
     },
     [
+      appendOptimisticUserMessageToAgentStream,
       clearPendingCreateAttempt,
       createRequest,
       draftId,

@@ -57,13 +57,12 @@ function createAgentWithStatus({ id, status }: { id: string; status: Agent["stat
 function createBaseInput(): AgentScreenMachineInput {
   return {
     agent: null,
-    placeholderAgent: null,
+    continuity: { kind: "none" },
     missingAgentState: { kind: "idle" },
     isConnected: true,
     isArchivingCurrentAgent: false,
     isHistorySyncing: false,
     needsAuthoritativeSync: false,
-    shouldUseOptimisticStream: false,
     hasHydratedHistoryBefore: false,
   };
 }
@@ -298,8 +297,7 @@ describe("deriveAgentScreenViewState", () => {
     const memory = createBaseMemory();
     const input: AgentScreenMachineInput = {
       ...createBaseInput(),
-      placeholderAgent: createAgent("draft-agent"),
-      shouldUseOptimisticStream: true,
+      continuity: { kind: "optimistic-create", agent: createAgent("draft-agent") },
     };
 
     const result = deriveAgentScreenViewState({ input, memory });
@@ -335,8 +333,7 @@ describe("deriveAgentScreenViewState", () => {
     const input: AgentScreenMachineInput = {
       ...createBaseInput(),
       agent: createAgentWithStatus({ id: "agent-1", status: "idle" }),
-      placeholderAgent: createAgent("agent-1"),
-      shouldUseOptimisticStream: true,
+      continuity: { kind: "optimistic-create", agent: createAgent("agent-1") },
       needsAuthoritativeSync: true,
       isHistorySyncing: true,
       hasHydratedHistoryBefore: false,
@@ -347,14 +344,14 @@ describe("deriveAgentScreenViewState", () => {
 
     expect(ready.source).toBe("optimistic");
     expect(ready.agent.status).toBe("running");
+    expect(ready.sync).toEqual({ status: "catching_up", ui: "silent" });
   });
 
   it("keeps optimistic flow non-blocking while transitioning to authoritative stream", () => {
     const initialMemory = createBaseMemory();
     const optimisticInput: AgentScreenMachineInput = {
       ...createBaseInput(),
-      placeholderAgent: createAgent("draft-agent"),
-      shouldUseOptimisticStream: true,
+      continuity: { kind: "optimistic-create", agent: createAgent("draft-agent") },
     };
 
     const optimistic = deriveAgentScreenViewState({
@@ -382,8 +379,7 @@ describe("deriveAgentScreenViewState", () => {
     const input: AgentScreenMachineInput = {
       ...createBaseInput(),
       agent: createAgentWithStatus({ id: "agent-1", status: "idle" }),
-      placeholderAgent: createAgent("agent-1"),
-      shouldUseOptimisticStream: true,
+      continuity: { kind: "optimistic-create", agent: createAgent("agent-1") },
     };
 
     const result = deriveAgentScreenViewState({ input, memory });
@@ -402,14 +398,12 @@ describe("deriveAgentScreenViewState", () => {
       {
         ...createBaseInput(),
         agent: createAgentWithStatus({ id: "agent-1", status: "idle" }),
-        placeholderAgent: createAgent("agent-1"),
-        shouldUseOptimisticStream: true,
+        continuity: { kind: "optimistic-create", agent: createAgent("agent-1") },
       },
       {
         ...createBaseInput(),
         agent: createAgentWithStatus({ id: "agent-1", status: "running" }),
-        placeholderAgent: createAgent("agent-1"),
-        shouldUseOptimisticStream: true,
+        continuity: { kind: "optimistic-create", agent: createAgent("agent-1") },
       },
       {
         ...createBaseInput(),
@@ -431,8 +425,7 @@ describe("deriveAgentScreenViewState", () => {
     const input: AgentScreenMachineInput = {
       ...createBaseInput(),
       agent: createAgentWithStatus({ id: "agent-1", status: "initializing" }),
-      placeholderAgent: createAgent("agent-1"),
-      shouldUseOptimisticStream: true,
+      continuity: { kind: "optimistic-create", agent: createAgent("agent-1") },
     };
 
     const result = deriveAgentScreenViewState({ input, memory });
@@ -447,8 +440,7 @@ describe("deriveAgentScreenViewState", () => {
     const input: AgentScreenMachineInput = {
       ...createBaseInput(),
       agent: createAgentWithStatus({ id: "agent-1", status: "running" }),
-      placeholderAgent: createAgent("agent-1"),
-      shouldUseOptimisticStream: true,
+      continuity: { kind: "optimistic-create", agent: createAgent("agent-1") },
     };
 
     const result = deriveAgentScreenViewState({ input, memory });
@@ -463,8 +455,7 @@ describe("deriveAgentScreenViewState", () => {
     const input: AgentScreenMachineInput = {
       ...createBaseInput(),
       agent: createAgentWithStatus({ id: "agent-1", status: "error" }),
-      placeholderAgent: createAgent("agent-1"),
-      shouldUseOptimisticStream: true,
+      continuity: { kind: "optimistic-create", agent: createAgent("agent-1") },
     };
 
     const result = deriveAgentScreenViewState({ input, memory });
@@ -479,8 +470,7 @@ describe("deriveAgentScreenViewState", () => {
     const input: AgentScreenMachineInput = {
       ...createBaseInput(),
       agent: createAgentWithStatus({ id: "agent-1", status: "closed" }),
-      placeholderAgent: createAgent("agent-1"),
-      shouldUseOptimisticStream: true,
+      continuity: { kind: "optimistic-create", agent: createAgent("agent-1") },
     };
 
     const result = deriveAgentScreenViewState({ input, memory });

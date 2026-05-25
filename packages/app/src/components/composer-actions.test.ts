@@ -189,6 +189,7 @@ function createFakeStream(initialHead: Map<string, StreamItem[]> = new Map()): F
   const fake: FakeStream = {
     head: new Map(initialHead),
     tail: new Map(),
+    getTail: (agentId) => fake.tail.get(agentId),
     getHead: (agentId) => fake.head.get(agentId),
     setHead: (updater) => {
       fake.head = updater(fake.head);

@@ -3,7 +3,12 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@server/client/daemon-client";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
-import type { StreamItem } from "@/types/stream";
+import {
+  appendOptimisticUserMessageToStream,
+  type OptimisticUserMessagePlacement,
+  type StreamItem,
+  type UserMessageItem,
+} from "@/types/stream";
 import type { PendingPermission } from "@/types/shared";
 import type { ComposerAttachment } from "@/attachments/types";
 import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
@@ -351,6 +356,15 @@ interface SessionStoreActions {
     agentId: string,
     state: { tail?: StreamItem[]; head?: StreamItem[] },
   ) => void;
+  appendOptimisticUserMessageToAgentStream: (
+    serverId: string,
+    agentId: string,
+    message: UserMessageItem,
+    options: {
+      placement: OptimisticUserMessagePlacement;
+      skipIfUserMessageExists?: boolean;
+    },
+  ) => boolean;
   clearAgentStreamHead: (serverId: string, agentId: string) => void;
   setAgentTimelineCursor: (
     serverId: string,
@@ -834,6 +848,50 @@ export const useSessionStore = create<SessionStore>()(
             },
           };
         });
+      },
+
+      appendOptimisticUserMessageToAgentStream: (serverId, agentId, message, options) => {
+        let didAppend = false;
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+
+          const currentTail = session.agentStreamTail.get(agentId) ?? [];
+          const currentHead = session.agentStreamHead.get(agentId) ?? [];
+          const result = appendOptimisticUserMessageToStream({
+            tail: currentTail,
+            head: currentHead,
+            message,
+            placement: options.placement,
+            skipIfUserMessageExists: options.skipIfUserMessageExists,
+          });
+          if (!result.changedTail && !result.changedHead) {
+            return prev;
+          }
+
+          const nextTail = result.changedTail
+            ? new Map(session.agentStreamTail).set(agentId, result.tail)
+            : session.agentStreamTail;
+          const nextHead = result.changedHead
+            ? new Map(session.agentStreamHead).set(agentId, result.head)
+            : session.agentStreamHead;
+          didAppend = true;
+
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: {
+                ...session,
+                agentStreamTail: nextTail,
+                agentStreamHead: nextHead,
+              },
+            },
+          };
+        });
+        return didAppend;
       },
 
       clearAgentStreamHead: (serverId, agentId) => {
