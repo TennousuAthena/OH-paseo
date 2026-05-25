@@ -2,7 +2,7 @@ import { execSync } from "child_process";
 import { EventEmitter } from "events";
 import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { homedir, tmpdir } from "os";
-import { join } from "path";
+import { join, resolve as resolvePath } from "path";
 import pino from "pino";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -984,6 +984,42 @@ describe("session provider refresh cwd routing", () => {
       providers: ["codex"],
     });
     expect(refreshSettingsSnapshot).not.toHaveBeenCalled();
+  });
+
+  test("provider snapshot requests pass cwd through to provider discovery", async () => {
+    const messages: unknown[] = [];
+    const workspaceCwd = resolvePath("/tmp/session-provider-snapshot");
+    const fetchModels = vi.fn(async (options: ListModelsOptions) => [
+      {
+        provider: "codex" as const,
+        id: `model:${options.cwd}`,
+        label: `model:${options.cwd}`,
+      },
+    ]);
+    const providerDefinition = createTestProviderDefinition({
+      fetchModels,
+      fetchModes: vi.fn(async () => []),
+    });
+    const providerSnapshotManager = new ProviderSnapshotManager(
+      { codex: providerDefinition },
+      pino({ level: "silent" }),
+    );
+    const session = createSessionForTest({ messages, providerSnapshotManager });
+
+    await session.handleMessage({
+      type: "get_providers_snapshot_request",
+      cwd: workspaceCwd,
+      requestId: "snapshot-workspace",
+    });
+
+    await vi.waitFor(() => {
+      expect(fetchModels).toHaveBeenCalledWith({
+        cwd: workspaceCwd,
+        force: false,
+      });
+    });
+
+    providerSnapshotManager.destroy();
   });
 
   test("normalizes legacy model and mode list requests without cwd to home", async () => {
