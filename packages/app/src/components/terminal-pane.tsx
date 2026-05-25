@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   Text,
   View,
   type PressableStateCallbackType,
@@ -67,17 +66,17 @@ const MODIFIER_LABELS = {
   alt: "Alt",
 } as const;
 
-const KEY_BUTTONS: Array<{ id: string; label: string; key: string }> = [
-  { id: "esc", label: "Esc", key: "Escape" },
-  { id: "tab", label: "Tab", key: "Tab" },
-  { id: "up", label: "↑", key: "ArrowUp" },
-  { id: "down", label: "↓", key: "ArrowDown" },
-  { id: "left", label: "←", key: "ArrowLeft" },
-  { id: "right", label: "→", key: "ArrowRight" },
-  { id: "enter", label: "Enter", key: "Enter" },
-  { id: "backspace", label: "⌫", key: "Backspace" },
-  { id: "c", label: "C", key: "c" },
-];
+const KEY_BUTTONS = {
+  esc: { id: "esc", label: "Esc", key: "Escape" },
+  tab: { id: "tab", label: "Tab", key: "Tab" },
+  up: { id: "up", label: "↑", key: "ArrowUp" },
+  down: { id: "down", label: "↓", key: "ArrowDown" },
+  left: { id: "left", label: "←", key: "ArrowLeft" },
+  right: { id: "right", label: "→", key: "ArrowRight" },
+  enter: { id: "enter", label: "Enter", key: "Enter" },
+  backspace: { id: "backspace", label: "⌫", key: "Backspace" },
+  space: { id: "space", label: "Space", key: " " },
+} as const;
 
 interface ModifierState {
   ctrl: boolean;
@@ -797,18 +796,47 @@ export function TerminalPane({
 
       {isMobile ? (
         <View style={styles.keyboardContainer} testID="terminal-virtual-keyboard">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.keyboardRows}>
             <View style={styles.keyboardRow}>
-              {(Object.keys(MODIFIER_LABELS) as Array<keyof ModifierState>).map((modifier) => (
-                <ModifierButton
-                  key={modifier}
-                  modifier={modifier}
-                  active={modifiers[modifier]}
-                  onToggle={toggleModifier}
+              {[KEY_BUTTONS.esc, KEY_BUTTONS.tab].map((button) => (
+                <VirtualKeyButton
+                  key={button.id}
+                  id={button.id}
+                  label={button.label}
+                  keyValue={button.key}
+                  onSend={sendVirtualKey}
                 />
               ))}
 
-              {KEY_BUTTONS.map((button) => (
+              <ModifierButton modifier="ctrl" active={modifiers.ctrl} onToggle={toggleModifier} />
+
+              <VirtualKeyButton
+                id={KEY_BUTTONS.up.id}
+                label={KEY_BUTTONS.up.label}
+                keyValue={KEY_BUTTONS.up.key}
+                onSend={sendVirtualKey}
+              />
+
+              <ModifierButton modifier="shift" active={modifiers.shift} onToggle={toggleModifier} />
+
+              <VirtualKeyButton
+                id={KEY_BUTTONS.backspace.id}
+                label={KEY_BUTTONS.backspace.label}
+                keyValue={KEY_BUTTONS.backspace.key}
+                onSend={sendVirtualKey}
+              />
+            </View>
+
+            <View style={styles.keyboardRow}>
+              <ModifierButton modifier="alt" active={modifiers.alt} onToggle={toggleModifier} />
+
+              {[
+                KEY_BUTTONS.space,
+                KEY_BUTTONS.left,
+                KEY_BUTTONS.down,
+                KEY_BUTTONS.right,
+                KEY_BUTTONS.enter,
+              ].map((button) => (
                 <VirtualKeyButton
                   key={button.id}
                   id={button.id}
@@ -818,7 +846,7 @@ export function TerminalPane({
                 />
               ))}
             </View>
-          </ScrollView>
+          </View>
         </View>
       ) : null}
     </Animated.View>
@@ -865,21 +893,24 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[2],
   },
+  keyboardRows: {
+    gap: theme.spacing[1],
+  },
   keyboardRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
-    paddingRight: theme.spacing[3],
   },
   keyButton: {
-    minWidth: 44,
+    flex: 1,
+    minWidth: 0,
     height: 34,
     borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: theme.spacing[2],
+    paddingHorizontal: theme.spacing[1],
     backgroundColor: theme.colors.surface1,
   },
   keyButtonHovered: {
@@ -893,6 +924,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
+    textAlign: "center",
   },
   keyButtonTextActive: {
     color: theme.colors.foreground,
