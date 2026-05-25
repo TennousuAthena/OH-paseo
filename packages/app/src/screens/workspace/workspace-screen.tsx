@@ -873,7 +873,7 @@ function WorkspaceHeaderMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         testID="workspace-header-menu-trigger"
-        style={styles.headerActionButton}
+        style={isMobile ? styles.compactHeaderActionButton : styles.headerActionButton}
         accessibilityRole="button"
         accessibilityLabel="Workspace actions"
       >
@@ -1039,40 +1039,43 @@ function WorkspaceHeaderTitleBar({
           ) : null}
         </View>
       )}
-      <WorkspaceHeaderMenu
-        normalizedWorkspaceId={normalizedWorkspaceId}
-        currentBranchName={currentBranchName}
-        showWorkspaceSetup={showWorkspaceSetup}
-        showCreateBrowserTab={showCreateBrowserTab}
-        isMobile={isMobile}
-        createTerminalDisabled={createTerminalDisabled}
-        importAgentDisabled={importAgentDisabled}
-        menuNewAgentIcon={menuNewAgentIcon}
-        menuNewTerminalIcon={menuNewTerminalIcon}
-        menuNewBrowserIcon={menuNewBrowserIcon}
-        menuImportIcon={menuImportIcon}
-        menuCopyIcon={menuCopyIcon}
-        menuSettingsIcon={menuSettingsIcon}
-        onCreateDraftTab={onCreateDraftTab}
-        onCreateTerminal={onCreateTerminal}
-        onCreateBrowser={onCreateBrowser}
-        onOpenImportSheet={onOpenImportSheet}
-        onCopyWorkspacePath={onCopyWorkspacePath}
-        onCopyBranchName={onCopyBranchName}
-        onOpenSetupTab={onOpenSetupTab}
-      />
-      {isMobile && workspaceScripts.length > 0 ? (
-        <WorkspaceScriptsButton
-          serverId={normalizedServerId}
-          workspaceId={normalizedWorkspaceId}
-          scripts={workspaceScripts}
-          liveTerminalIds={liveTerminalIds}
-          onScriptTerminalStarted={onScriptTerminalStarted}
-          onViewTerminal={onViewScriptTerminal}
-          onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
-          hideLabels
+      <View style={styles.compactHeaderMenuCluster}>
+        <WorkspaceHeaderMenu
+          normalizedWorkspaceId={normalizedWorkspaceId}
+          currentBranchName={currentBranchName}
+          showWorkspaceSetup={showWorkspaceSetup}
+          showCreateBrowserTab={showCreateBrowserTab}
+          isMobile={isMobile}
+          createTerminalDisabled={createTerminalDisabled}
+          importAgentDisabled={importAgentDisabled}
+          menuNewAgentIcon={menuNewAgentIcon}
+          menuNewTerminalIcon={menuNewTerminalIcon}
+          menuNewBrowserIcon={menuNewBrowserIcon}
+          menuImportIcon={menuImportIcon}
+          menuCopyIcon={menuCopyIcon}
+          menuSettingsIcon={menuSettingsIcon}
+          onCreateDraftTab={onCreateDraftTab}
+          onCreateTerminal={onCreateTerminal}
+          onCreateBrowser={onCreateBrowser}
+          onOpenImportSheet={onOpenImportSheet}
+          onCopyWorkspacePath={onCopyWorkspacePath}
+          onCopyBranchName={onCopyBranchName}
+          onOpenSetupTab={onOpenSetupTab}
         />
-      ) : null}
+        {isMobile && workspaceScripts.length > 0 ? (
+          <WorkspaceScriptsButton
+            serverId={normalizedServerId}
+            workspaceId={normalizedWorkspaceId}
+            scripts={workspaceScripts}
+            liveTerminalIds={liveTerminalIds}
+            onScriptTerminalStarted={onScriptTerminalStarted}
+            onViewTerminal={onViewScriptTerminal}
+            onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
+            hideLabels
+            presentation="ghost"
+          />
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -3105,7 +3108,7 @@ function WorkspaceScreenContent({
             tooltipLabel="Toggle explorer"
             tooltipKeys={EXPLORER_TOGGLE_KEYS}
             tooltipSide="left"
-            style={styles.headerActionButton}
+            style={styles.compactHeaderActionButton}
             accessible
             accessibilityRole="button"
             accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
@@ -3444,7 +3447,10 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
+    gap: {
+      xs: theme.spacing[1],
+      md: theme.spacing[2],
+    },
     overflow: "hidden",
   },
   headerTitleTextGroup: {
@@ -3499,6 +3505,22 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
+  },
+  compactHeaderActionButton: {
+    width: theme.spacing[8],
+    height: theme.spacing[8],
+    padding: 0,
+    borderRadius: theme.borderRadius.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  compactHeaderMenuCluster: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: {
+      xs: 0,
+      md: theme.spacing[2],
+    },
   },
   sourceControlButton: {
     flexDirection: "row",
