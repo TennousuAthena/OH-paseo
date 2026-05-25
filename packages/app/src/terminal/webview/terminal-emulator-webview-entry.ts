@@ -91,6 +91,7 @@ const sendToNative = (message: OutboundMessage): void => {
 
 const TERMINAL_BACKGROUND_CSS_VAR = "--paseo-terminal-background";
 const DEFAULT_TERMINAL_BACKGROUND = "#0b0b0b";
+const TERMINAL_TAP_MOVE_TOLERANCE_PX = 8;
 
 function getTerminalBackground(theme: ITheme): string {
   return theme.background ?? DEFAULT_TERMINAL_BACKGROUND;
@@ -170,6 +171,10 @@ class TerminalWebViewBridge {
   private startX = 0;
   private startY = 0;
   private firedSwipe = false;
+  private tapTouchIdentifier: number | null = null;
+  private tapStartX = 0;
+  private tapStartY = 0;
+  private tapMoved = false;
 
   constructor(
     private readonly root: HTMLDivElement,
@@ -177,6 +182,9 @@ class TerminalWebViewBridge {
   ) {
     this.root.addEventListener("pointerdown", this.handlePointerDown, { passive: true });
     this.root.addEventListener("touchstart", this.handleTouchStart, { passive: true });
+    this.root.addEventListener("touchmove", this.handleTouchMove, { passive: true });
+    this.root.addEventListener("touchend", this.handleTouchEnd, { passive: true });
+    this.root.addEventListener("touchcancel", this.handleTouchCancel, { passive: true });
     this.root.addEventListener("pointermove", this.handlePointerMove, { passive: false });
     this.root.addEventListener("pointerup", this.handlePointerUp, { passive: true });
     this.root.addEventListener("pointercancel", this.handlePointerUp, { passive: true });
@@ -370,7 +378,6 @@ class TerminalWebViewBridge {
     if (!event.isPrimary) {
       return;
     }
-    this.runtime?.focus({ forceRefocus: true });
     if (!this.swipeGesturesEnabled) {
       return;
     }
@@ -382,9 +389,42 @@ class TerminalWebViewBridge {
   };
 
   private handleTouchStart = (event: TouchEvent): void => {
-    if (event.touches.length === 1) {
+    if (event.touches.length !== 1) {
+      this.resetTap();
+      return;
+    }
+    const touch = event.touches[0];
+    this.tapTouchIdentifier = touch.identifier;
+    this.tapStartX = touch.clientX;
+    this.tapStartY = touch.clientY;
+    this.tapMoved = false;
+  };
+
+  private handleTouchMove = (event: TouchEvent): void => {
+    const touch = this.findTrackedTouch(event.touches);
+    if (!touch) {
+      return;
+    }
+    const dx = touch.clientX - this.tapStartX;
+    const dy = touch.clientY - this.tapStartY;
+    if (
+      Math.abs(dx) > TERMINAL_TAP_MOVE_TOLERANCE_PX ||
+      Math.abs(dy) > TERMINAL_TAP_MOVE_TOLERANCE_PX
+    ) {
+      this.tapMoved = true;
+    }
+  };
+
+  private handleTouchEnd = (event: TouchEvent): void => {
+    const completedTap = Boolean(this.findTrackedTouch(event.changedTouches) && !this.tapMoved);
+    this.resetTap();
+    if (completedTap) {
       this.runtime?.focus({ forceRefocus: true });
     }
+  };
+
+  private handleTouchCancel = (): void => {
+    this.resetTap();
   };
 
   private handlePointerMove = (event: PointerEvent): void => {
@@ -425,6 +465,26 @@ class TerminalWebViewBridge {
     this.startX = 0;
     this.startY = 0;
     this.firedSwipe = false;
+  }
+
+  private findTrackedTouch(touches: TouchList): Touch | null {
+    if (this.tapTouchIdentifier === null) {
+      return null;
+    }
+    for (let index = 0; index < touches.length; index += 1) {
+      const touch = touches.item(index);
+      if (touch?.identifier === this.tapTouchIdentifier) {
+        return touch;
+      }
+    }
+    return null;
+  }
+
+  private resetTap(): void {
+    this.tapTouchIdentifier = null;
+    this.tapStartX = 0;
+    this.tapStartY = 0;
+    this.tapMoved = false;
   }
 }
 
