@@ -64,6 +64,8 @@ export function AutocompletePopover({
   loadingText,
   emptyText,
 }: AutocompletePopoverProps): ReactElement | null {
+  "use no memo";
+  // React Compiler memoizes effect captures by reading SharedValue.value during render.
   const [relativeAnchorRect, setRelativeAnchorRect] = useState<RelativeAnchorRect | null>(null);
   const windowDimensions = useWindowDimensions();
   const insets = useSafeAreaInsets();
