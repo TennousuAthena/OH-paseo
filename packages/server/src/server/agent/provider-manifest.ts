@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AgentMode } from "./agent-sdk-types.js";
 
-export type AgentModeColorTier = "safe" | "moderate" | "dangerous" | "planning";
+export type AgentModeColorTier = "safe" | "moderate" | "dangerous" | "planning" | `#${string}`;
 export type AgentModeIcon = "ShieldCheck" | "ShieldAlert" | "ShieldOff" | "ShieldQuestionMark";
 
 export interface AgentModeVisuals {

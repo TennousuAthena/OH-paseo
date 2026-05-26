@@ -445,6 +445,31 @@ function isSelectableOpenCodeAgent(agent: { mode?: string; hidden?: boolean }): 
   return (agent.mode === "primary" || agent.mode === "all") && agent.hidden !== true;
 }
 
+const OPENCODE_AGENT_HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+function readOpenCodeAgentHexColor(agent: { color?: unknown }): string | undefined {
+  return typeof agent.color === "string" && OPENCODE_AGENT_HEX_COLOR_PATTERN.test(agent.color)
+    ? agent.color
+    : undefined;
+}
+
+function mapOpenCodeAgentToMode(agent: {
+  name: string;
+  description?: unknown;
+  color?: unknown;
+}): AgentMode {
+  const colorTier = readOpenCodeAgentHexColor(agent);
+  return {
+    id: agent.name,
+    label: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
+    description:
+      typeof agent.description === "string" && agent.description.trim().length > 0
+        ? agent.description.trim()
+        : DEFAULT_MODES.find((mode) => mode.id === agent.name)?.description,
+    ...(colorTier ? { colorTier } : {}),
+  };
+}
+
 function mergeOpenCodeModes(discoveredModes: AgentMode[]): AgentMode[] {
   const modesById = new Map(DEFAULT_MODES.map((mode) => [mode.id, mode]));
   for (const mode of discoveredModes) {
@@ -1042,6 +1067,7 @@ export const __openCodeInternals = {
   resolveOpenCodeModelLookupKeyFromAssistantMessage,
   resolveOpenCodeSelectedModelContextWindow,
   isSelectableOpenCodeAgent,
+  mapOpenCodeAgentToMode,
   get OpenCodeAgentSession() {
     return OpenCodeAgentSession;
   },
@@ -1277,14 +1303,9 @@ export class OpenCodeAgentClient implements AgentClient {
         return DEFAULT_MODES;
       }
 
-      const discovered = response.data.filter(isSelectableOpenCodeAgent).map((agent) => ({
-        id: agent.name,
-        label: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
-        description:
-          typeof agent.description === "string" && agent.description.trim().length > 0
-            ? agent.description.trim()
-            : DEFAULT_MODES.find((mode) => mode.id === agent.name)?.description,
-      }));
+      const discovered = response.data
+        .filter(isSelectableOpenCodeAgent)
+        .map(mapOpenCodeAgentToMode);
 
       return mergeOpenCodeModes(discovered);
     } finally {
@@ -3202,14 +3223,7 @@ class OpenCodeAgentSession implements AgentSession {
     });
     const agents = response.error || !response.data ? [] : response.data;
 
-    const discoveredModes = agents.filter(isSelectableOpenCodeAgent).map((agent) => ({
-      id: agent.name,
-      label: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
-      description:
-        typeof agent.description === "string" && agent.description.trim().length > 0
-          ? agent.description.trim()
-          : DEFAULT_MODES.find((mode) => mode.id === agent.name)?.description,
-    }));
+    const discoveredModes = agents.filter(isSelectableOpenCodeAgent).map(mapOpenCodeAgentToMode);
 
     this.availableModesCache = mergeOpenCodeModes(discoveredModes);
     return this.availableModesCache;

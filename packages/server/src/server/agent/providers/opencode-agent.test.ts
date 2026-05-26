@@ -582,6 +582,35 @@ describe("OpenCode adapter context-window normalization", () => {
       false,
     );
   });
+
+  test("carries only hex OpenCode agent colors as mode color tiers", () => {
+    expect(
+      __openCodeInternals.mapOpenCodeAgentToMode({
+        name: "review",
+        description: "Review code",
+        color: "#ff6b6b",
+      }),
+    ).toMatchObject({
+      id: "review",
+      label: "Review",
+      description: "Review code",
+      colorTier: "#ff6b6b",
+    });
+
+    expect(
+      __openCodeInternals.mapOpenCodeAgentToMode({
+        name: "creative",
+        color: "accent",
+      }),
+    ).not.toHaveProperty("colorTier");
+
+    expect(
+      __openCodeInternals.mapOpenCodeAgentToMode({
+        name: "debug",
+        color: "#fff",
+      }),
+    ).not.toHaveProperty("colorTier");
+  });
 });
 
 describe("OpenCode adapter startTurn error handling", () => {
