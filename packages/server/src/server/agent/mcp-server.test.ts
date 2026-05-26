@@ -1728,7 +1728,7 @@ describe("create_schedule MCP tool", () => {
     );
   });
 
-  it("accepts blank cron placeholder when every is provided", async () => {
+  it("accepts a blank cron field when every is provided", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const create = vi.fn(async (scheduleInput: CreateScheduleInput) =>
       createStoredSchedule(scheduleInput),
@@ -1757,17 +1757,12 @@ describe("create_schedule MCP tool", () => {
 
   it.each([
     {
-      label: "omit cron placeholder",
-      input: { prompt: "say hello", every: "10m", cron: "/__omit__", provider: "codex" },
-      cadence: { type: "every", everyMs: 600000 },
-    },
-    {
-      label: "whitespace cron placeholder",
+      label: "whitespace cron field",
       input: { prompt: "say hello", every: "10m", cron: "   ", provider: "codex" },
       cadence: { type: "every", everyMs: 600000 },
     },
     {
-      label: "blank every placeholder for cron cadence",
+      label: "blank every field for cron cadence",
       input: {
         prompt: "say hello",
         every: "",
@@ -1777,17 +1772,7 @@ describe("create_schedule MCP tool", () => {
       cadence: { type: "cron", expression: "*/10 * * * *" },
     },
     {
-      label: "omit every placeholder for cron cadence",
-      input: {
-        prompt: "say hello",
-        every: "/__omit__",
-        cron: "*/10 * * * *",
-        provider: "codex",
-      },
-      cadence: { type: "cron", expression: "*/10 * * * *" },
-    },
-    {
-      label: "whitespace every placeholder for cron cadence",
+      label: "whitespace every field for cron cadence",
       input: {
         prompt: "say hello",
         every: "   ",
@@ -1796,7 +1781,7 @@ describe("create_schedule MCP tool", () => {
       },
       cadence: { type: "cron", expression: "*/10 * * * *" },
     },
-  ])("normalizes create_schedule cadence placeholder for $label", async ({ input, cadence }) => {
+  ])("normalizes create_schedule blank cadence input for $label", async ({ input, cadence }) => {
     const { agentManager, agentStorage } = createTestDeps();
     const create = vi.fn(async (scheduleInput: CreateScheduleInput) =>
       createStoredSchedule(scheduleInput),
@@ -1847,8 +1832,8 @@ describe("create_schedule MCP tool", () => {
       input: { prompt: "say hello", provider: "codex" },
     },
     {
-      label: "placeholder-only cadence fields",
-      input: { prompt: "say hello", every: "   ", cron: "/__omit__", provider: "codex" },
+      label: "blank cadence fields",
+      input: { prompt: "say hello", every: "   ", cron: "", provider: "codex" },
     },
   ])("still rejects create_schedule when $label", async ({ input }) => {
     const { agentManager, agentStorage } = createTestDeps();
@@ -1944,7 +1929,7 @@ describe("update_schedule MCP tool", () => {
     });
   });
 
-  it("accepts blank cron placeholder when updating every cadence", async () => {
+  it("accepts a blank cron field when updating every cadence", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const stored = makeStoredSchedule();
     const update = vi.fn(async (_input: UpdateScheduleInput) => stored);
@@ -1970,31 +1955,21 @@ describe("update_schedule MCP tool", () => {
 
   it.each([
     {
-      label: "omit cron placeholder",
-      input: { id: "schedule-1", every: "10m", cron: "/__omit__" },
-      cadence: { type: "every", everyMs: 600000 },
-    },
-    {
-      label: "whitespace cron placeholder",
+      label: "whitespace cron field",
       input: { id: "schedule-1", every: "10m", cron: "   " },
       cadence: { type: "every", everyMs: 600000 },
     },
     {
-      label: "blank every placeholder for cron cadence",
+      label: "blank every field for cron cadence",
       input: { id: "schedule-1", every: "", cron: "*/10 * * * *" },
       cadence: { type: "cron", expression: "*/10 * * * *" },
     },
     {
-      label: "omit every placeholder for cron cadence",
-      input: { id: "schedule-1", every: "/__omit__", cron: "*/10 * * * *" },
-      cadence: { type: "cron", expression: "*/10 * * * *" },
-    },
-    {
-      label: "whitespace every placeholder for cron cadence",
+      label: "whitespace every field for cron cadence",
       input: { id: "schedule-1", every: "   ", cron: "*/10 * * * *" },
       cadence: { type: "cron", expression: "*/10 * * * *" },
     },
-  ])("normalizes update_schedule cadence placeholder for $label", async ({ input, cadence }) => {
+  ])("normalizes update_schedule blank cadence input for $label", async ({ input, cadence }) => {
     const { agentManager, agentStorage } = createTestDeps();
     const stored = makeStoredSchedule();
     const update = vi.fn(async (_input: UpdateScheduleInput) => stored);

@@ -376,7 +376,7 @@ function normalizeScheduleCadenceArg(value: string | undefined): string | undefi
   }
 
   const trimmed = value.trim();
-  if (!trimmed || trimmed === "/__omit__") {
+  if (!trimmed) {
     return undefined;
   }
 
