@@ -195,17 +195,20 @@ function resolveHasAnyControl({
   canSelectModel,
   thinkingOptions,
   features,
+  hasDesktopExtras,
 }: {
   providerOptions: AgentControlOption[] | undefined;
   canSelectModel: boolean;
   thinkingOptions: AgentControlOption[] | undefined;
   features: AgentFeature[] | undefined;
+  hasDesktopExtras: boolean;
 }) {
   return (
     Boolean(providerOptions?.length) ||
     canSelectModel ||
     Boolean(thinkingOptions?.length) ||
-    Boolean(features?.length)
+    Boolean(features?.length) ||
+    hasDesktopExtras
   );
 }
 
@@ -440,6 +443,7 @@ function ControlledAgentControls({
     canSelectModel,
     thinkingOptions,
     features,
+    hasDesktopExtras: desktopExtras !== null && desktopExtras !== undefined,
   });
 
   const modelDisabled = disabled;
