@@ -1594,6 +1594,7 @@ export function Composer({
   const githubEmptyText = githubSearchResultsQuery.isFetching
     ? "Searching..."
     : "No results found.";
+  const autocompleteVisible = autocomplete.isVisible && isPaneFocused;
 
   return (
     <Animated.View style={composerContainerStyle}>
@@ -1606,7 +1607,7 @@ export function Composer({
 
           <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
             <AutocompletePopover
-              visible={autocomplete.isVisible && isPaneFocused}
+              visible={autocompleteVisible}
               anchorRef={messageInputContainerRef}
               options={autocomplete.options}
               selectedIndex={autocomplete.selectedIndex}

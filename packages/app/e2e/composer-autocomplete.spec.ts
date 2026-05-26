@@ -471,6 +471,33 @@ test.describe("Composer autocomplete", () => {
     }
   });
 
+  test("stays anchored to the composer when the desktop sidebar is open", async ({ page }) => {
+    await installListCommandsStub(page);
+    const agent = await openReadyMockAgent(page);
+
+    try {
+      await expect(page.getByTestId("sidebar-sessions")).toBeVisible({ timeout: 30_000 });
+      const input = composerLocator(page);
+      await expect(input).toBeEditable({ timeout: 30_000 });
+
+      await input.fill("/");
+      const popover = page.getByTestId("composer-autocomplete-popover");
+      await expect(popover.getByText("/help", { exact: true }).first()).toBeVisible({
+        timeout: 30_000,
+      });
+
+      const composerBox = await page.getByTestId("message-input-root").boundingBox();
+      const popoverBox = await popover.boundingBox();
+      expect(composerBox).not.toBeNull();
+      expect(popoverBox).not.toBeNull();
+
+      expect(Math.abs(popoverBox!.x - composerBox!.x)).toBeLessThanOrEqual(4);
+      expect(Math.abs(popoverBox!.width - composerBox!.width)).toBeLessThanOrEqual(4);
+    } finally {
+      await agent.cleanup();
+    }
+  });
+
   test.describe("compact sidebar layering", () => {
     test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 

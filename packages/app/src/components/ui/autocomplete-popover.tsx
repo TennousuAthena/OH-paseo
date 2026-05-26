@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { Keyboard, Platform, StatusBar, View, useWindowDimensions } from "react-native";
+import { useEffect, useMemo, useState, type ReactElement, type RefObject } from "react";
+import { Keyboard, View, useWindowDimensions } from "react-native";
 import { Portal } from "@gorhom/portal";
 import Animated, {
   useAnimatedStyle,
@@ -10,7 +10,10 @@ import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native-unistyles";
 import { Autocomplete, type AutocompleteOption } from "@/components/ui/autocomplete";
-import { useFloatingPanelPortalHostName } from "@/components/ui/floating-panel-portal";
+import {
+  measureFloatingPanelPortalHost,
+  useFloatingPanelPortalHostName,
+} from "@/components/ui/floating-panel-portal";
 import { SPACING } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
@@ -23,6 +26,13 @@ interface Rect {
   height: number;
 }
 
+interface RelativeAnchorRect {
+  x: number;
+  y: number;
+  width: number;
+  hostHeight: number;
+}
+
 function measureElement(element: View): Promise<Rect> {
   return new Promise((resolve) => {
     element.measureInWindow((x, y, width, height) => {
@@ -33,7 +43,7 @@ function measureElement(element: View): Promise<Rect> {
 
 interface AutocompletePopoverProps {
   visible: boolean;
-  anchorRef: React.RefObject<View | null>;
+  anchorRef: RefObject<View | null>;
   options: readonly AutocompleteOption[];
   selectedIndex: number;
   onSelect: (option: AutocompleteOption) => void;
@@ -54,8 +64,8 @@ export function AutocompletePopover({
   loadingText,
   emptyText,
 }: AutocompletePopoverProps): ReactElement | null {
-  const [anchorRect, setAnchorRect] = useState<Rect | null>(null);
-  const { height: windowHeight } = useWindowDimensions();
+  const [relativeAnchorRect, setRelativeAnchorRect] = useState<RelativeAnchorRect | null>(null);
+  const windowDimensions = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const portalHostName = useFloatingPanelPortalHostName();
 
@@ -65,57 +75,69 @@ export function AutocompletePopover({
     bottomInsetSV.value = insets.bottom;
   }, [bottomInsetSV, insets.bottom]);
 
-  // Same shift formula as useKeyboardShiftStyle({mode: "translate"}), so the popover
-  // tracks the composer's keyboard translate in lockstep.
   const shift = useDerivedValue(() =>
     Math.max(0, Math.abs(rawKeyboardHeight.value) - bottomInsetSV.value),
   );
-  // Snapshot of `shift` at the moment we measured the anchor. Translate applied to the
-  // popover is `openShift - shift`, so when shift == openShift the popover sits at the
-  // measured position; when keyboard moves the popover translates with the composer.
   const openShift = useSharedValue(0);
 
   useEffect(() => {
-    if (!visible) {
-      setAnchorRect(null);
+    if (!visible || (options.length > 0 && selectedIndex < 0)) {
+      setRelativeAnchorRect(null);
       return;
     }
+
     let cancelled = false;
-    // measureInWindow on Android returns coords below the status bar, while the Portal
-    // overlay starts at the top of the window. Mirror tooltip.tsx and shift the rect
-    // down by the status bar height to keep both in the same coord system.
-    const statusBarOffset = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
     const remeasure = () => {
-      const element = anchorRef.current;
-      if (!element) return;
-      void measureElement(element).then((rect) => {
-        if (cancelled) return undefined;
-        setAnchorRect({ ...rect, y: rect.y + statusBarOffset });
+      const anchorElement = anchorRef.current;
+      if (!anchorElement) return;
+      void Promise.all([
+        measureElement(anchorElement),
+        measureFloatingPanelPortalHost(portalHostName),
+      ]).then(([anchorRect, hostRect]) => {
+        if (cancelled || !hostRect) return undefined;
+        setRelativeAnchorRect({
+          x: anchorRect.x - hostRect.x,
+          y: anchorRect.y - hostRect.y,
+          width: anchorRect.width,
+          hostHeight: hostRect.height,
+        });
         openShift.value = shift.value;
         return undefined;
       });
     };
 
     remeasure();
+    const raf = requestAnimationFrame(remeasure);
     const subscriptions = (["keyboardDidShow", "keyboardDidHide"] as const).map((event) =>
       Keyboard.addListener(event, () => requestAnimationFrame(remeasure)),
     );
 
     return () => {
       cancelled = true;
+      cancelAnimationFrame(raf);
       for (const sub of subscriptions) sub.remove();
     };
-  }, [visible, anchorRef, openShift, shift]);
+  }, [
+    visible,
+    options.length,
+    selectedIndex,
+    anchorRef,
+    portalHostName,
+    openShift,
+    shift,
+    windowDimensions.width,
+    windowDimensions.height,
+  ]);
 
   const baseStyle = useMemo(() => {
-    if (!anchorRect) return null;
+    if (!relativeAnchorRect) return null;
     return inlineUnistylesStyle({
       position: "absolute" as const,
-      bottom: windowHeight - anchorRect.y + OFFSET_FROM_ANCHOR,
-      left: anchorRect.x,
-      width: anchorRect.width,
+      bottom: relativeAnchorRect.hostHeight - relativeAnchorRect.y + OFFSET_FROM_ANCHOR,
+      left: relativeAnchorRect.x,
+      width: relativeAnchorRect.width,
     });
-  }, [anchorRect, windowHeight]);
+  }, [relativeAnchorRect]);
 
   const animatedTransformStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: openShift.value - shift.value }],
@@ -126,7 +148,8 @@ export function AutocompletePopover({
     [baseStyle, animatedTransformStyle],
   );
 
-  if (!visible || !anchorRect || !baseStyle) return null;
+  if (!visible || !relativeAnchorRect || !baseStyle) return null;
+  if (options.length > 0 && selectedIndex < 0) return null;
 
   return (
     <Portal hostName={portalHostName}>

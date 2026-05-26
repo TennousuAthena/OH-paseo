@@ -7,18 +7,18 @@ canonical files and are trying to add or change one.
 
 ## Canonical files
 
-| File                                     | Use case                                                       |
-| ---------------------------------------- | -------------------------------------------------------------- |
-| `components/ui/combobox.tsx`             | Anchored picker with search; mobile falls back to bottom sheet |
-| `components/ui/tooltip.tsx`              | Non-interactive hover/long-press tooltip                       |
-| `components/workspace-hover-card.tsx`    | Desktop-web hover card with measure + computePosition + Portal |
-| `components/ui/autocomplete-popover.tsx` | Inline slash-command autocomplete above a focused TextInput    |
+| File                                     | Use case                                                          |
+| ---------------------------------------- | ----------------------------------------------------------------- |
+| `components/ui/combobox.tsx`             | Anchored picker with search; mobile falls back to bottom sheet    |
+| `components/ui/tooltip.tsx`              | Non-interactive hover/long-press tooltip                          |
+| `components/workspace-hover-card.tsx`    | Desktop-web hover card with measure + computePosition + Portal    |
+| `components/ui/autocomplete-popover.tsx` | Slash-command autocomplete anchored to the focused composer input |
 
 Each handles a different mix of concerns: combobox owns input focus, tooltip is
-non-interactive, hover-card is web-only desktop, autocomplete coexists with a
-focused TextInput. There is no shared "floating panel" primitive yet — when a
-fifth use case shows up we can revisit; until then prefer copying the closest
-file and trimming. The four gotchas below are what each of them re-learned.
+non-interactive, hover-card is web-only desktop, autocomplete keeps the composer
+input focused while its scrollable list lives in a Portal. There is no shared
+"floating panel" primitive yet — when a fifth use case shows up we can revisit;
+until then prefer copying the closest file and trimming.
 
 ## Gotcha 1 — Android touch hit-test by parent bounds
 
@@ -43,12 +43,11 @@ Two escape hatches in the codebase:
   hoists the React subtree to a fixed mount point whose bounds cover the
   screen. Same window, same IME, hit-test works because the new parent is
   full-screen. This is the right default when you must keep IME attachment.
-  Choose the host by layer: app-global overlays use the root host; composer
-  autocomplete uses the content floating-panel host so sliding sidebars cover
-  it.
+  Choose the host by layer: app-global overlays use the root host; content
+  overlays can use the current `FloatingPanelPortalHost` so sliding sidebars
+  cover them.
 
-Choose Modal vs Portal by whether you need the underlying input to keep its
-keyboard.
+Choose Modal vs Portal by whether the underlying input can lose its keyboard.
 
 ## Gotcha 2 — Portal breaks lifecycle and coordinate-system inheritance
 
@@ -60,8 +59,7 @@ quietly relying on:
   component may stay mounted (offscreen, in a tab) — the popover stays with it.
   Gate `visible` on a screen-focus signal. For panes inside `agent-panel`, the
   `isPaneFocused` prop already exists and flips on pane switches; pass
-  `visible={isYourOwnVisible && isPaneFocused}`. See
-  `composer.tsx:1604` and `autocomplete-popover.tsx`.
+  `visible={isYourOwnVisible && isPaneFocused}`.
 - **Transforms.** The composer is wrapped in a Reanimated `Animated.View` with
   `translateY: -keyboardShift` (see `use-keyboard-shift-style.ts`). The chat
   content has the same transform applied (`agent-panel.tsx:939`). They move
@@ -69,11 +67,12 @@ quietly relying on:
   the composer tree — it does not get that transform unless you apply it
   yourself.
 - **Layering.** The default root host renders after app content, so it sits
-  above compact sidebars. Autocomplete should use
-  `useFloatingPanelPortalHostName()` and render through the current
-  `FloatingPanelPortalHost` instead. The app shell provides a default content
-  host; workspace screens provide a per-workspace host between the center pane
-  and explorer sidebar so both compact sidebars cover autocomplete.
+  above compact sidebars. Content overlays that must sit below sidebars should
+  use the current `FloatingPanelPortalHost`.
+- **Coordinate systems.** `measureInWindow` gives window coordinates. A Portal
+  renders inside its host, not necessarily at window origin. Position anchored
+  content relative to the host: `anchorRect - hostRect`. This is what
+  `measureFloatingPanelPortalHost()` is for.
 
 The fix for transforms is Gotcha 3.
 
@@ -85,7 +84,8 @@ properties, and Android's `getLocationInWindow` reads transformed coords). In
 practice it's racy — the measurement may snapshot mid-animation, and on Android
 with Reanimated worklets the result is not always stable.
 
-Do not try to track the keyboard by re-measuring on every frame. Instead,
+If the panel cannot stay inside the transformed ancestor, do not try to track
+the keyboard by re-measuring on every frame. Instead,
 **slave the popover's transform to the same SharedValue the composer uses**:
 
 1. Snapshot `openShift = shift.value` at the moment you measure the anchor.
@@ -95,31 +95,29 @@ Do not try to track the keyboard by re-measuring on every frame. Instead,
 When `shift` equals `openShift`, the translate is 0 and the popover sits at
 the measured position. When the keyboard moves afterward, the delta translates
 the popover by exactly the amount the composer translates. They move in
-lockstep, no re-measurement needed. See `autocomplete-popover.tsx` —
-`openShift` / `shift` / `animatedTransformStyle`.
+lockstep, no re-measurement needed.
 
 Re-measure on `Keyboard.addListener('keyboardDidShow'|'keyboardDidHide')` only
 to refresh the snapshot if the keyboard was mid-transition when the popover
 opened.
 
-## Gotcha 4 — Status-bar offset for Portal-based positioning on Android
+## Gotcha 4 — Host-relative positioning before platform offsets
 
-On Android, `measureInWindow` returns coords **below** the status bar (the
-status bar is system-owned space). A Portal overlay positioned at `top: 0`
-inside the `PortalProvider` may start at the **top of the window** (above the
-status bar) depending on the wrapper chain. The result: position the popover
-at the measured `rect.y` and it sits `StatusBar.currentHeight` higher than the
-anchor on Android.
+The generic anchored-overlay rule is:
 
-Mirror what tooltip does: shift the measured rect down by the status bar height
-on Android only.
+1. Measure the anchor with `measureInWindow`.
+2. Measure the Portal host with `measureFloatingPanelPortalHost(hostName)`.
+3. Position with anchor coordinates relative to the host:
 
 ```ts
-const statusBarOffset = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
-setAnchorRect({ ...rect, y: rect.y + statusBarOffset });
+left = anchorRect.x - hostRect.x;
+bottom = hostRect.height - (anchorRect.y - hostRect.y) + offset;
 ```
 
-See `tooltip.tsx` and `autocomplete-popover.tsx`. iOS and web do not need this.
+Do this before adding any platform offset. If anchor and host are both measured
+with `measureInWindow`, Android's status-bar coordinate behavior cancels out.
+Only add a status-bar offset when the render surface is not measured in the same
+coordinate system. See `tooltip.tsx` for that separate case.
 
 ## Gotcha 5 — The two-measurement flash
 
@@ -165,18 +163,17 @@ Before you write a new one, ask:
    If no, use Portal.
 2. **Does the panel need to dismiss on screen change?** Almost always yes —
    gate `visible` on an upstream focus prop (`isPaneFocused` or similar).
-3. **Does the panel sit above something that moves with the keyboard?** If
+3. **Is the panel rendered in a Portal host?** Measure the host too. Never use
+   raw window coordinates as local Portal coordinates.
+4. **Does the panel sit above something that moves with the keyboard?** If
    yes, slave a Reanimated transform to the same SharedValue (Gotcha 3).
    If no, you can probably skip the transform entirely.
-4. **Will the panel's content height vary?** If yes, you need both
+5. **Will the panel's content height vary?** If yes, you need both
    `anchorRect` and `contentSize` for positioning → apply Gotcha 5 (return
    null until anchor, then opacity-0 until contentSize). If no — content has
    a known fixed max height — you might be able to use bottom-anchored
    positioning (`bottom: windowHeight - anchor.y + gap`) and skip the
    `contentSize` round-trip entirely. **But only if the height is genuinely
-   bounded** — autocomplete's inner detail card escapes the 220-cap
-   container, which is why bottom-anchored looked clean but rendered
-   wrong. Verify before you commit.
-5. **Are you on Android with Portal?** Add the status-bar offset (Gotcha 4).
+   bounded**. Verify before you commit.
 
 Then copy the closest canonical file and trim.
