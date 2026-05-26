@@ -61,11 +61,11 @@ export const RewindMenu = memo(function RewindMenu({
       setPendingMode(mode);
       try {
         await onRewind({ mode, rewoundText });
-        setIsOpen(false);
       } catch {
         // useRewindAgentMutation owns the toast; the menu only owns flow state.
       } finally {
         setPendingMode(null);
+        setIsOpen(false);
       }
     },
     [isLocked, onRewind, rewoundText],
