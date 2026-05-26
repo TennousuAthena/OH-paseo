@@ -1,7 +1,7 @@
 import type { Logger } from "pino";
 
 import type { AgentPromptInput, AgentRunOptions } from "./agent-sdk-types.js";
-import type { AgentManager } from "./agent-manager.js";
+import type { AgentManager, ManagedAgent } from "./agent-manager.js";
 import type { AgentStorage } from "./agent-storage.js";
 import { ensureAgentLoaded } from "./agent-loading.js";
 
@@ -137,6 +137,31 @@ export interface SendPromptToAgentParams {
   logger: Logger;
 }
 
+export interface StartCreatedAgentInitialPromptParams {
+  agentManager: AgentManager;
+  agentId: string;
+  snapshot?: ManagedAgent;
+  prompt: AgentPromptInput | null;
+  runOptions?: AgentRunOptions;
+  logger: Logger;
+}
+
+const AGENT_RUN_START_TIMEOUT_MS = 15_000;
+
+export async function waitForAgentRunStartWithTimeout(
+  agentManager: AgentManager,
+  agentId: string,
+): Promise<void> {
+  const startAbort = new AbortController();
+  const startTimeout = setTimeout(() => startAbort.abort("timeout"), AGENT_RUN_START_TIMEOUT_MS);
+
+  try {
+    await agentManager.waitForAgentRunStart(agentId, { signal: startAbort.signal });
+  } finally {
+    clearTimeout(startTimeout);
+  }
+}
+
 /**
  * Full send-prompt orchestration: (optional unarchive) → load → (optional
  * mode change) → start run.
@@ -175,6 +200,39 @@ export async function sendPromptToAgent(
     replaceRunning: true,
     runOptions: params.runOptions,
   });
+}
+
+export async function startCreatedAgentInitialPrompt(
+  params: StartCreatedAgentInitialPromptParams,
+): Promise<ManagedAgent> {
+  const currentSnapshot = params.agentManager.getAgent(params.agentId) ?? params.snapshot ?? null;
+  if (!currentSnapshot) {
+    throw new Error(`Agent ${params.agentId} not found`);
+  }
+
+  if (params.prompt === null) {
+    return currentSnapshot;
+  }
+
+  const dispatchResult = startAgentRun(
+    params.agentManager,
+    params.agentId,
+    params.prompt,
+    params.logger,
+    {
+      runOptions: params.runOptions,
+    },
+  );
+
+  if (!dispatchResult.outOfBand) {
+    await waitForAgentRunStartWithTimeout(params.agentManager, params.agentId);
+  }
+
+  const refreshedSnapshot = params.agentManager.getAgent(params.agentId) ?? params.snapshot ?? null;
+  if (!refreshedSnapshot) {
+    throw new Error(`Agent ${params.agentId} not found`);
+  }
+  return refreshedSnapshot;
 }
 
 export interface SetupFinishNotificationParams {

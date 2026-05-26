@@ -75,7 +75,11 @@ import {
   toScheduleSummary,
   waitForAgentWithTimeout,
 } from "./mcp-shared.js";
-import { sendPromptToAgent, setupFinishNotification, startAgentRun } from "./agent-prompt.js";
+import {
+  sendPromptToAgent,
+  setupFinishNotification,
+  startCreatedAgentInitialPrompt,
+} from "./agent-prompt.js";
 import type { GitHubService } from "../../services/github-service.js";
 import type { WorkspaceGitService } from "../workspace-git-service.js";
 import type { CreatePaseoWorktreeInput } from "../paseo-worktree-service.js";
@@ -1105,8 +1109,15 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         logger: childLogger,
       });
 
+      let liveSnapshot = snapshot;
       try {
-        startAgentRun(agentManager, snapshot.id, trimmedPrompt, childLogger);
+        liveSnapshot = await startCreatedAgentInitialPrompt({
+          agentManager,
+          agentId: snapshot.id,
+          snapshot,
+          prompt: trimmedPrompt,
+          logger: childLogger,
+        });
         if (notifyOnFinish && callerAgentId) {
           setupFinishNotification({
             agentManager,
@@ -1124,12 +1135,12 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
           });
 
           const responseData = {
-            agentId: snapshot.id,
+            agentId: liveSnapshot.id,
             type: provider,
             status: result.status,
-            cwd: snapshot.cwd,
-            currentModeId: snapshot.currentModeId,
-            availableModes: snapshot.availableModes,
+            cwd: liveSnapshot.cwd,
+            currentModeId: liveSnapshot.currentModeId,
+            availableModes: liveSnapshot.availableModes,
             lastMessage: result.lastMessage,
             permission: sanitizePermissionRequest(result.permission),
           };
@@ -1143,18 +1154,20 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         }
       } catch (error) {
         childLogger.error({ err: error, agentId: snapshot.id }, "Failed to run initial prompt");
+        throw error;
       }
 
       // Return immediately if background=true
+      const currentSnapshot = agentManager.getAgent(snapshot.id) ?? liveSnapshot;
       const response = {
         content: [],
         structuredContent: ensureValidJson({
-          agentId: snapshot.id,
+          agentId: currentSnapshot.id,
           type: provider,
-          status: snapshot.lifecycle,
-          cwd: snapshot.cwd,
-          currentModeId: snapshot.currentModeId,
-          availableModes: snapshot.availableModes,
+          status: currentSnapshot.lifecycle,
+          cwd: currentSnapshot.cwd,
+          currentModeId: currentSnapshot.currentModeId,
+          availableModes: currentSnapshot.availableModes,
           lastMessage: null,
           permission: null,
         }),

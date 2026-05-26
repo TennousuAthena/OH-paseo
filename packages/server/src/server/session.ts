@@ -68,6 +68,8 @@ import { ensureAgentLoaded } from "./agent/agent-loading.js";
 import {
   formatSystemNotificationPrompt,
   sendPromptToAgent,
+  startCreatedAgentInitialPrompt,
+  waitForAgentRunStartWithTimeout,
   unarchiveAgentState,
 } from "./agent/agent-prompt.js";
 import { experimental_createMCPClient } from "ai";
@@ -3188,7 +3190,7 @@ export class Session {
         createdWorktree,
       });
 
-      await this.sendInitialCreateAgentPrompt({
+      const liveSnapshot = await this.sendInitialCreateAgentPrompt({
         snapshot,
         trimmedPrompt,
         images,
@@ -3199,12 +3201,12 @@ export class Session {
       });
 
       if (requestId) {
-        const agentPayload = await this.buildAgentPayload(snapshot);
+        const agentPayload = await this.buildAgentPayload(liveSnapshot);
         this.emit({
           type: "status",
           payload: {
             status: "agent_created",
-            agentId: snapshot.id,
+            agentId: liveSnapshot.id,
             requestId,
             agent: agentPayload,
           },
@@ -3250,20 +3252,20 @@ export class Session {
   }
 
   private async sendInitialCreateAgentPrompt(params: {
-    snapshot: { id: string; cwd: string };
+    snapshot: ManagedAgent;
     trimmedPrompt: string | undefined;
     images: Array<{ data: string; mimeType: string }> | undefined;
     attachments: AgentAttachment[] | undefined;
     clientMessageId: string | undefined;
     outputSchema: Record<string, unknown> | undefined;
     explicitTitle: string | null;
-  }): Promise<void> {
+  }): Promise<ManagedAgent> {
     const { snapshot, trimmedPrompt, images, attachments, clientMessageId, outputSchema } = params;
     const hasPrompt = Boolean(trimmedPrompt);
     const hasImages = (images?.length ?? 0) > 0;
     const hasAttachments = (attachments?.length ?? 0) > 0;
     if (!hasPrompt && !hasImages && !hasAttachments) {
-      return;
+      return snapshot;
     }
     scheduleAgentMetadataGeneration({
       agentManager: this.agentManager,
@@ -3275,18 +3277,18 @@ export class Session {
       paseoHome: this.paseoHome,
       logger: this.sessionLogger,
     });
+    const prompt = this.buildAgentPrompt(trimmedPrompt || "", images, attachments);
 
-    const started = await this.handleSendAgentMessage(
-      snapshot.id,
-      trimmedPrompt || "",
-      resolveClientMessageId(clientMessageId),
-      images,
-      attachments,
-      outputSchema ? { outputSchema } : undefined,
-    );
-    if (!started.ok) {
-      throw new Error(started.error);
-    }
+    return await startCreatedAgentInitialPrompt({
+      agentManager: this.agentManager,
+      agentId: snapshot.id,
+      snapshot,
+      prompt,
+      runOptions: outputSchema ? { outputSchema } : undefined,
+      logger: this.sessionLogger.child({
+        clientMessageId: resolveClientMessageId(clientMessageId),
+      }),
+    });
   }
 
   private async handleResumeAgentRequest(
@@ -7814,11 +7816,8 @@ export class Session {
         return;
       }
 
-      const startAbort = new AbortController();
-      const startTimeoutMs = 15_000;
-      const startTimeout = setTimeout(() => startAbort.abort("timeout"), startTimeoutMs);
       try {
-        await this.agentManager.waitForAgentRunStart(agentId, { signal: startAbort.signal });
+        await waitForAgentRunStartWithTimeout(this.agentManager, agentId);
       } catch (error) {
         this.emit({
           type: "send_agent_message_response",
@@ -7830,8 +7829,6 @@ export class Session {
           },
         });
         return;
-      } finally {
-        clearTimeout(startTimeout);
       }
 
       this.emit({

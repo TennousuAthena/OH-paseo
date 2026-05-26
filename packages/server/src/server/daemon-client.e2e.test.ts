@@ -121,6 +121,192 @@ test("DaemonClient surfaces password auth failures from WebSocket close reasons"
   }
 });
 
+test("createAgent without an initial prompt returns an idle snapshot", async () => {
+  const daemon = await createTestPaseoDaemon();
+  const client = new DaemonClient({
+    url: `ws://127.0.0.1:${daemon.port}/ws`,
+    appVersion: "0.1.82",
+  });
+
+  try {
+    await client.connect();
+    await client.fetchAgents({ subscribe: { subscriptionId: "create-no-prompt" } });
+
+    const agent = await client.createAgent({
+      provider: "codex",
+      cwd: tmpCwd(),
+      title: "No prompt agent",
+      modeId: "full-access",
+      model: "gpt-5.4-mini",
+    });
+
+    expect(agent.status).toBe("idle");
+  } finally {
+    await client.close();
+    await daemon.close();
+  }
+});
+
+test("createAgent with background initialPrompt returns a running snapshot before turn completion", async () => {
+  const daemon = await createTestPaseoDaemon();
+  const client = new DaemonClient({
+    url: `ws://127.0.0.1:${daemon.port}/ws`,
+    appVersion: "0.1.82",
+  });
+
+  try {
+    await client.connect();
+    await client.fetchAgents({ subscribe: { subscriptionId: "create-background-prompt" } });
+
+    const agent = await client.createAgent({
+      provider: "codex",
+      cwd: tmpCwd(),
+      title: "Background prompt agent",
+      modeId: "full-access",
+      model: "gpt-5.4-mini",
+      initialPrompt: "Run exactly: sleep 30",
+    });
+
+    expect(agent.status).toBe("running");
+
+    const fetchedWhileRunning = await client.fetchAgent(agent.id);
+    expect(fetchedWhileRunning?.agent.status).toBe("running");
+
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    const fetchedAfterCompletion = await client.fetchAgent(agent.id);
+    expect(fetchedAfterCompletion?.agent.status).toBe("idle");
+  } finally {
+    await client.close();
+    await daemon.close();
+  }
+});
+
+test("createAgent fails when the initial turn cannot start", async () => {
+  class StartTurnFailureSession implements AgentSession {
+    readonly provider = "codex" as const;
+    readonly id = "start-turn-failure-session";
+    readonly capabilities = {
+      supportsStreaming: false,
+      supportsSessionPersistence: true,
+      supportsDynamicModes: false,
+      supportsMcpServers: false,
+      supportsReasoningStream: false,
+      supportsToolInvocations: false,
+      supportsRewindConversation: false,
+      supportsRewindFiles: false,
+      supportsRewindBoth: false,
+    } as const;
+
+    async run(): Promise<AgentRunResult> {
+      return {
+        sessionId: this.id,
+        finalText: "",
+        timeline: [],
+      };
+    }
+
+    async startTurn(): Promise<{ turnId: string }> {
+      throw new Error("Initial turn failed to start");
+    }
+
+    subscribe(): () => void {
+      return () => undefined;
+    }
+
+    async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
+      yield* [];
+    }
+
+    async getRuntimeInfo() {
+      return {
+        provider: "codex" as const,
+        sessionId: this.id,
+        model: "gpt-5.4-mini",
+        modeId: "full-access",
+      };
+    }
+
+    async getAvailableModes(): Promise<Array<{ id: string; label: string; description: string }>> {
+      return [{ id: "full-access", label: "Full access", description: "No prompts" }];
+    }
+
+    async getCurrentMode(): Promise<string | null> {
+      return "full-access";
+    }
+
+    async setMode(): Promise<void> {}
+
+    getPendingPermissions() {
+      return [];
+    }
+
+    async respondToPermission(): Promise<void> {}
+
+    describePersistence(): AgentPersistenceHandle | null {
+      return { provider: "codex", sessionId: this.id };
+    }
+
+    async interrupt(): Promise<void> {}
+
+    async close(): Promise<void> {}
+  }
+
+  class StartTurnFailureClient implements AgentClient {
+    readonly provider = "codex" as const;
+    readonly capabilities = {
+      supportsStreaming: false,
+      supportsSessionPersistence: true,
+      supportsDynamicModes: false,
+      supportsMcpServers: false,
+      supportsReasoningStream: false,
+      supportsToolInvocations: false,
+      supportsRewindConversation: false,
+      supportsRewindFiles: false,
+      supportsRewindBoth: false,
+    } as const;
+
+    async isAvailable(): Promise<boolean> {
+      return true;
+    }
+
+    async createSession(_config: AgentSessionConfig): Promise<AgentSession> {
+      return new StartTurnFailureSession();
+    }
+
+    async resumeSession(): Promise<AgentSession> {
+      return new StartTurnFailureSession();
+    }
+  }
+
+  const daemon = await createTestPaseoDaemon({
+    agentClients: { codex: new StartTurnFailureClient() },
+  });
+  const client = new DaemonClient({
+    url: `ws://127.0.0.1:${daemon.port}/ws`,
+    appVersion: "0.1.82",
+  });
+
+  try {
+    await client.connect();
+    await client.fetchAgents({ subscribe: { subscriptionId: "create-start-failure" } });
+
+    await expect(
+      client.createAgent({
+        provider: "codex",
+        cwd: tmpCwd(),
+        title: "Start failure agent",
+        modeId: "full-access",
+        model: "gpt-5.4-mini",
+        initialPrompt: "Run exactly: sleep 30",
+      }),
+    ).rejects.toThrow("Initial turn failed to start");
+  } finally {
+    await client.close();
+    await daemon.close();
+  }
+});
+
 function waitForSignal<T>(
   timeoutMs: number,
   setup: (resolve: (value: T) => void, reject: (error: Error) => void) => () => void,
