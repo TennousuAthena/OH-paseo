@@ -370,15 +370,31 @@ interface ScheduleUpdateToolInput {
   clearExpires?: boolean;
 }
 
+function normalizeScheduleCadenceArg(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "/__omit__") {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
 function resolveScheduleUpdateCadence(input: ScheduleUpdateToolInput): ScheduleCadence | undefined {
-  if (input.every !== undefined && input.cron !== undefined) {
+  const every = normalizeScheduleCadenceArg(input.every);
+  const cron = normalizeScheduleCadenceArg(input.cron);
+
+  if (every !== undefined && cron !== undefined) {
     throw new Error("Specify at most one of every or cron");
   }
-  if (input.every !== undefined) {
-    return { type: "every", everyMs: parseDurationString(input.every) };
+  if (every !== undefined) {
+    return { type: "every", everyMs: parseDurationString(every) };
   }
-  if (input.cron !== undefined) {
-    return { type: "cron", expression: input.cron.trim() };
+  if (cron !== undefined) {
+    return { type: "cron", expression: cron };
   }
   return undefined;
 }
@@ -1779,7 +1795,10 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         throw new Error("Schedule service is not configured");
       }
 
-      const cadenceCount = Number(every !== undefined) + Number(cron !== undefined);
+      const normalizedEvery = normalizeScheduleCadenceArg(every);
+      const normalizedCron = normalizeScheduleCadenceArg(cron);
+      const cadenceCount =
+        Number(normalizedEvery !== undefined) + Number(normalizedCron !== undefined);
       if (cadenceCount !== 1) {
         throw new Error("Specify exactly one of every or cron");
       }
@@ -1817,9 +1836,10 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
 
       const schedule = await scheduleService.create({
         prompt: prompt.trim(),
-        cadence: every
-          ? { type: "every" as const, everyMs: parseDurationString(every) }
-          : { type: "cron" as const, expression: cron!.trim() },
+        cadence:
+          normalizedEvery !== undefined
+            ? { type: "every" as const, everyMs: parseDurationString(normalizedEvery) }
+            : { type: "cron" as const, expression: normalizedCron! },
         target: scheduleTarget,
         ...(name?.trim() ? { name: name.trim() } : {}),
         ...(maxRuns === undefined ? {} : { maxRuns }),

@@ -94,6 +94,15 @@ function registeredTool(
   return { ...tool, handler };
 }
 
+async function invokeToolWithParsedInput(
+  tool: RegisteredMcpToolWithHandler,
+  input: Record<string, unknown>,
+) {
+  const parsed = await tool.inputSchema.safeParseAsync(input);
+  expect(parsed.success).toBe(true);
+  return tool.handler(parsed.data);
+}
+
 function agentsOf(response: {
   structuredContent: LooseStructuredContent;
 }): Array<Record<string, unknown>> {
@@ -1718,6 +1727,146 @@ describe("create_schedule MCP tool", () => {
       }),
     );
   });
+
+  it("accepts blank cron placeholder when every is provided", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const create = vi.fn(async (scheduleInput: CreateScheduleInput) =>
+      createStoredSchedule(scheduleInput),
+    );
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      scheduleService: { create } as unknown as ScheduleService,
+      logger,
+    });
+    const tool = registeredTool(server, "create_schedule");
+
+    await invokeToolWithParsedInput(tool, {
+      prompt: "say hello",
+      every: "10m",
+      cron: "",
+      provider: "codex",
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cadence: { type: "every", everyMs: 600000 },
+      }),
+    );
+  });
+
+  it.each([
+    {
+      label: "omit cron placeholder",
+      input: { prompt: "say hello", every: "10m", cron: "/__omit__", provider: "codex" },
+      cadence: { type: "every", everyMs: 600000 },
+    },
+    {
+      label: "whitespace cron placeholder",
+      input: { prompt: "say hello", every: "10m", cron: "   ", provider: "codex" },
+      cadence: { type: "every", everyMs: 600000 },
+    },
+    {
+      label: "blank every placeholder for cron cadence",
+      input: {
+        prompt: "say hello",
+        every: "",
+        cron: "*/10 * * * *",
+        provider: "codex",
+      },
+      cadence: { type: "cron", expression: "*/10 * * * *" },
+    },
+    {
+      label: "omit every placeholder for cron cadence",
+      input: {
+        prompt: "say hello",
+        every: "/__omit__",
+        cron: "*/10 * * * *",
+        provider: "codex",
+      },
+      cadence: { type: "cron", expression: "*/10 * * * *" },
+    },
+    {
+      label: "whitespace every placeholder for cron cadence",
+      input: {
+        prompt: "say hello",
+        every: "   ",
+        cron: "*/10 * * * *",
+        provider: "codex",
+      },
+      cadence: { type: "cron", expression: "*/10 * * * *" },
+    },
+  ])("normalizes create_schedule cadence placeholder for $label", async ({ input, cadence }) => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const create = vi.fn(async (scheduleInput: CreateScheduleInput) =>
+      createStoredSchedule(scheduleInput),
+    );
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      scheduleService: { create } as unknown as ScheduleService,
+      logger,
+    });
+    const tool = registeredTool(server, "create_schedule");
+
+    await invokeToolWithParsedInput(tool, input);
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cadence,
+      }),
+    );
+  });
+
+  it("still rejects both real every and cron inputs", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const create = vi.fn();
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      scheduleService: { create } as unknown as ScheduleService,
+      logger,
+    });
+    const tool = registeredTool(server, "create_schedule");
+
+    await expect(
+      invokeToolWithParsedInput(tool, {
+        prompt: "say hello",
+        every: "10m",
+        cron: "*/10 * * * *",
+        provider: "codex",
+      }),
+    ).rejects.toThrow("Specify exactly one of every or cron");
+
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: "missing both cadence fields",
+      input: { prompt: "say hello", provider: "codex" },
+    },
+    {
+      label: "placeholder-only cadence fields",
+      input: { prompt: "say hello", every: "   ", cron: "/__omit__", provider: "codex" },
+    },
+  ])("still rejects create_schedule when $label", async ({ input }) => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const create = vi.fn();
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      scheduleService: { create } as unknown as ScheduleService,
+      logger,
+    });
+    const tool = registeredTool(server, "create_schedule");
+
+    await expect(invokeToolWithParsedInput(tool, input)).rejects.toThrow(
+      "Specify exactly one of every or cron",
+    );
+
+    expect(create).not.toHaveBeenCalled();
+  });
 });
 
 describe("update_schedule MCP tool", () => {
@@ -1792,6 +1941,76 @@ describe("update_schedule MCP tool", () => {
     expect(update).toHaveBeenCalledWith({
       id: "schedule-1",
       cadence: { type: "every", everyMs: 600000 },
+    });
+  });
+
+  it("accepts blank cron placeholder when updating every cadence", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const stored = makeStoredSchedule();
+    const update = vi.fn(async (_input: UpdateScheduleInput) => stored);
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      scheduleService: { update } as unknown as ScheduleService,
+      logger,
+    });
+    const tool = registeredTool(server, "update_schedule");
+
+    await invokeToolWithParsedInput(tool, {
+      id: "schedule-1",
+      every: "10m",
+      cron: "",
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      id: "schedule-1",
+      cadence: { type: "every", everyMs: 600000 },
+    });
+  });
+
+  it.each([
+    {
+      label: "omit cron placeholder",
+      input: { id: "schedule-1", every: "10m", cron: "/__omit__" },
+      cadence: { type: "every", everyMs: 600000 },
+    },
+    {
+      label: "whitespace cron placeholder",
+      input: { id: "schedule-1", every: "10m", cron: "   " },
+      cadence: { type: "every", everyMs: 600000 },
+    },
+    {
+      label: "blank every placeholder for cron cadence",
+      input: { id: "schedule-1", every: "", cron: "*/10 * * * *" },
+      cadence: { type: "cron", expression: "*/10 * * * *" },
+    },
+    {
+      label: "omit every placeholder for cron cadence",
+      input: { id: "schedule-1", every: "/__omit__", cron: "*/10 * * * *" },
+      cadence: { type: "cron", expression: "*/10 * * * *" },
+    },
+    {
+      label: "whitespace every placeholder for cron cadence",
+      input: { id: "schedule-1", every: "   ", cron: "*/10 * * * *" },
+      cadence: { type: "cron", expression: "*/10 * * * *" },
+    },
+  ])("normalizes update_schedule cadence placeholder for $label", async ({ input, cadence }) => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const stored = makeStoredSchedule();
+    const update = vi.fn(async (_input: UpdateScheduleInput) => stored);
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      scheduleService: { update } as unknown as ScheduleService,
+      logger,
+    });
+    const tool = registeredTool(server, "update_schedule");
+
+    await invokeToolWithParsedInput(tool, input);
+
+    expect(update).toHaveBeenCalledWith({
+      id: "schedule-1",
+      cadence,
     });
   });
 
