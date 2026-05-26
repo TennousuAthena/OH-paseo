@@ -536,6 +536,7 @@ export class ScheduleService {
       sandboxMode: schedule.target.config.sandboxMode,
       networkAccess: schedule.target.config.networkAccess,
       webSearch: schedule.target.config.webSearch,
+      featureValues: schedule.target.config.featureValues,
       extra: schedule.target.config.extra,
       systemPrompt: schedule.target.config.systemPrompt,
       mcpServers: schedule.target.config.mcpServers as AgentSessionConfig["mcpServers"],

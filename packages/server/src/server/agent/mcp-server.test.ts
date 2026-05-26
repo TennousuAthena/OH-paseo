@@ -4,7 +4,9 @@ import { realpathSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import { tmpdir } from "node:os";
+import Ajv from "ajv";
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { createAgentMcpServer } from "./mcp-server.js";
@@ -51,6 +53,7 @@ interface LooseStructuredContent {
 
 interface RegisteredMcpTool {
   inputSchema: LooseInputSchema;
+  outputSchema?: unknown;
   callback?: (
     input: unknown,
     extra?: unknown,
@@ -101,6 +104,14 @@ async function invokeToolWithParsedInput(
   const parsed = await tool.inputSchema.safeParseAsync(input);
   expect(parsed.success).toBe(true);
   return tool.handler(parsed.data);
+}
+
+function expectOutputSchemaAccepts(tool: RegisteredMcpTool, data: unknown): void {
+  expect(tool.outputSchema).toBeDefined();
+  const jsonSchema = zodToJsonSchema(tool.outputSchema as z.ZodTypeAny);
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  const validate = ajv.compile(jsonSchema);
+  expect(validate(data), JSON.stringify(validate.errors, null, 2)).toBe(true);
 }
 
 function agentsOf(response: {
@@ -543,6 +554,38 @@ describe("create_agent MCP tool", () => {
       undefined,
       undefined,
     );
+  });
+
+  it("advertises create_agent output schema that accepts full provider modes", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.createAgent.mockResolvedValue({
+      id: "mode-agent",
+      cwd: REPO_CWD,
+      lifecycle: "idle",
+      currentModeId: "build",
+      availableModes: [
+        {
+          id: "build",
+          label: "Build",
+          description: null,
+          icon: "hammer",
+          colorTier: "dangerous",
+        },
+      ],
+      config: { title: "Mode test" },
+    } as ManagedAgent);
+
+    const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
+    const tool = registeredTool(server, "create_agent");
+    const response = await tool.handler({
+      cwd: existingCwd,
+      title: "Mode test",
+      provider: "codex/gpt-5.4",
+      initialPrompt: "Do work",
+      background: true,
+    });
+
+    expectOutputSchemaAccepts(tool, response.structuredContent);
   });
 
   it("requires provider as provider/model and rejects the old model field", async () => {
@@ -1760,6 +1803,45 @@ describe("create_schedule MCP tool", () => {
         },
       }),
     );
+  });
+
+  it("advertises create_schedule output schema that accepts inherited feature values", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.getAgent.mockReturnValue({
+      id: "parent-agent",
+      provider: "opencode",
+      cwd: REPO_CWD,
+      lifecycle: "idle",
+      currentModeId: "build",
+      availableModes: [],
+      config: {
+        title: "Parent agent",
+        model: "openai/gpt-5.5",
+        featureValues: { auto_accept: true },
+      },
+    } as ManagedAgent);
+    const create = vi.fn(async (input: CreateScheduleInput) => createStoredSchedule(input));
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      scheduleService: { create } as unknown as ScheduleService,
+      callerAgentId: "parent-agent",
+      logger,
+    });
+    const tool = registeredTool(server, "create_schedule");
+
+    const response = await tool.handler({
+      prompt: "say hello",
+      every: "5m",
+      target: "new-agent",
+      provider: "opencode/openai/gpt-5.5",
+    });
+
+    expect(response.structuredContent.target).toMatchObject({
+      type: "new-agent",
+      config: { featureValues: { auto_accept: true } },
+    });
+    expectOutputSchemaAccepts(tool, response.structuredContent);
   });
 
   it("accepts a blank cron field when every is provided", async () => {

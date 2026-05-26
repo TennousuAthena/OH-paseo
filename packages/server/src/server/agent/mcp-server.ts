@@ -246,6 +246,37 @@ function formatStructuredContentForModel(structuredContent: unknown): string {
   return summary.length > 0 ? `${summary.join("\n")}\n\n${json}` : json;
 }
 
+function isZodSchema(value: unknown): value is z.ZodTypeAny {
+  return (
+    typeof value === "object" && value !== null && "_def" in value && "safeParseAsync" in value
+  );
+}
+
+function relaxMcpOutputSchema(outputSchema: unknown): unknown {
+  if (!outputSchema) {
+    return outputSchema;
+  }
+
+  if (isZodSchema(outputSchema)) {
+    return outputSchema instanceof z.ZodObject ? outputSchema.passthrough() : outputSchema;
+  }
+
+  return z.object(outputSchema as z.ZodRawShape).passthrough();
+}
+
+function relaxMcpToolOutputSchema<TConfig extends { outputSchema?: unknown }>(
+  config: TConfig,
+): TConfig {
+  if (config.outputSchema === undefined) {
+    return config;
+  }
+
+  return {
+    ...config,
+    outputSchema: relaxMcpOutputSchema(config.outputSchema),
+  } as TConfig;
+}
+
 type McpToolContext = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
 function parseTimestamp(value: string | null | undefined): number {
@@ -564,7 +595,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   });
   const registerRawTool = server.registerTool.bind(server);
   const registerTool: McpServer["registerTool"] = (name, config, handler) =>
-    registerRawTool(name, config, (async (args: never, extra: never) =>
+    registerRawTool(name, relaxMcpToolOutputSchema(config), (async (args: never, extra: never) =>
       addModelVisibleStructuredContent(await handler(args, extra))) as typeof handler);
 
   const resolveCallerAgent = () => {
@@ -1122,13 +1153,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         status: AgentStatusEnum,
         cwd: z.string(),
         currentModeId: z.string().nullable(),
-        availableModes: z.array(
-          z.object({
-            id: z.string(),
-            label: z.string(),
-            description: z.string().nullable().optional(),
-          }),
-        ),
+        availableModes: z.array(ProviderModeSchema),
         lastMessage: z.string().nullable().optional(),
         permission: AgentPermissionRequestPayloadSchema.nullable().optional(),
       },
