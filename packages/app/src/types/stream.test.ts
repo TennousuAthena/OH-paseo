@@ -724,6 +724,7 @@ describe("stream reducer canonical tool calls", () => {
 
   it("preserves optimistic user message images when authoritative user message arrives", () => {
     const messageId = "msg-user-images";
+    const optimisticTimestamp = new Date("2025-01-01T11:10:00Z");
     const optimisticImages = [
       {
         id: "att-optimistic",
@@ -738,7 +739,7 @@ describe("stream reducer canonical tool calls", () => {
         kind: "user_message",
         id: messageId,
         text: "Analyze this image",
-        timestamp: new Date("2025-01-01T11:10:00Z"),
+        timestamp: optimisticTimestamp,
         optimistic: true,
         images: optimisticImages,
       },
@@ -760,7 +761,8 @@ describe("stream reducer canonical tool calls", () => {
     assert.ok(message);
     assert.strictEqual(message.id, messageId);
     assert.deepStrictEqual(message.images, optimisticImages);
-    assert.strictEqual(message.timestamp.getTime(), authoritativeTimestamp.getTime());
+    assert.strictEqual(message.text, "Analyze this image");
+    assert.strictEqual(message.timestamp.getTime(), optimisticTimestamp.getTime());
   });
 
   it("keeps canonical assistant/user/assistant order during replay", () => {
@@ -991,7 +993,9 @@ describe("turn lifecycle events", () => {
       const userMessage = userMessages[0];
       invariant(userMessage?.kind === "user_message");
       assert.strictEqual(userMessage.id, "provider-owned-id");
-      assert.strictEqual(userMessage.text, "server-owned rendered text");
+      assert.strictEqual(userMessage.text, optimistic.text);
+      assert.strictEqual(userMessage.timestamp.getTime(), optimistic.timestamp.getTime());
+      assert.strictEqual(userMessage.optimistic, undefined);
       assert.deepStrictEqual(userMessage.images, optimistic.images);
       assert.deepStrictEqual(userMessage.attachments, optimistic.attachments);
     },
@@ -1029,6 +1033,7 @@ describe("turn lifecycle events", () => {
     invariant(userMessage?.kind === "user_message");
     assert.strictEqual(userMessage.id, "msg_opencode_provider_owned");
     assert.strictEqual(userMessage.text, "typed plain text");
+    assert.strictEqual(userMessage.timestamp.getTime(), optimisticTimestamp.getTime());
     assert.strictEqual(userMessage.optimistic, undefined);
   });
 
@@ -1062,7 +1067,7 @@ describe("turn lifecycle events", () => {
         provider: "claude",
         item: {
           type: "user_message",
-          text: "Analyze this",
+          text: "server-rendered attachment text",
           messageId: "provider-owned-canonical",
         },
       },
@@ -1075,6 +1080,8 @@ describe("turn lifecycle events", () => {
     const userMessage = userMessages[0];
     invariant(userMessage?.kind === "user_message");
     assert.strictEqual(userMessage.id, "provider-owned-canonical");
+    assert.strictEqual(userMessage.text, "Analyze this");
+    assert.strictEqual(userMessage.timestamp.getTime(), optimisticTimestamp.getTime());
     assert.strictEqual(userMessage.optimistic, undefined);
     assert.deepStrictEqual(userMessage.images, [image]);
     assert.deepStrictEqual(userMessage.attachments, [attachment]);
@@ -1212,8 +1219,8 @@ describe("turn lifecycle events", () => {
     assert.deepStrictEqual(
       userMessages.map((item) => [item.id, item.text, item.optimistic]),
       [
-        ["provider-owned-first", "first server text", undefined],
-        ["provider-owned-second", "second server text", undefined],
+        ["provider-owned-first", "first typed text", undefined],
+        ["provider-owned-second", "second typed text", undefined],
       ],
     );
   });

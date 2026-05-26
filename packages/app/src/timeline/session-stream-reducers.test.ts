@@ -326,7 +326,7 @@ describe("processTimelineResponse", () => {
             ...makeTimelineEntry(1, "Analyze this", "user_message"),
             item: {
               type: "user_message",
-              text: "Analyze this",
+              text: "server-rendered attachment text",
               messageId: "canonical-create-user",
             },
           },
@@ -339,6 +339,7 @@ describe("processTimelineResponse", () => {
     expect(userMessages[0]).toMatchObject({
       id: "canonical-create-user",
       text: "Analyze this",
+      timestamp: new Date(1000),
       images: [image],
       attachments: [attachment],
     });

@@ -201,18 +201,26 @@ function buildUserMessageItem(input: {
   timestamp: Date;
   optimistic?: UserMessageItem | null;
 }): UserMessageItem {
-  const preservedImages = input.optimistic?.images;
-  const preservedAttachments = input.optimistic?.attachments;
+  if (input.optimistic) {
+    return {
+      kind: "user_message",
+      id: input.id,
+      text: input.optimistic.text,
+      timestamp: input.optimistic.timestamp,
+      ...(input.optimistic.images && input.optimistic.images.length > 0
+        ? { images: input.optimistic.images }
+        : {}),
+      ...(input.optimistic.attachments && input.optimistic.attachments.length > 0
+        ? { attachments: input.optimistic.attachments }
+        : {}),
+    };
+  }
 
   return {
     kind: "user_message",
     id: input.id,
     text: input.text,
     timestamp: input.timestamp,
-    ...(preservedImages && preservedImages.length > 0 ? { images: preservedImages } : {}),
-    ...(preservedAttachments && preservedAttachments.length > 0
-      ? { attachments: preservedAttachments }
-      : {}),
   };
 }
 

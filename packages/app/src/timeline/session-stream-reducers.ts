@@ -295,16 +295,15 @@ function mergeCanonicalUserWithOptimistic(
   canonical: UserMessageItem,
   optimistic: UserMessageItem,
 ): UserMessageItem {
-  const shouldPreserveImages =
-    (!canonical.images || canonical.images.length === 0) &&
-    Boolean(optimistic.images && optimistic.images.length > 0);
-  const shouldPreserveAttachments =
-    (!canonical.attachments || canonical.attachments.length === 0) &&
-    Boolean(optimistic.attachments && optimistic.attachments.length > 0);
   return {
-    ...canonical,
-    ...(shouldPreserveImages ? { images: optimistic.images } : {}),
-    ...(shouldPreserveAttachments ? { attachments: optimistic.attachments } : {}),
+    kind: "user_message",
+    id: canonical.id,
+    text: optimistic.text,
+    timestamp: optimistic.timestamp,
+    ...(optimistic.images && optimistic.images.length > 0 ? { images: optimistic.images } : {}),
+    ...(optimistic.attachments && optimistic.attachments.length > 0
+      ? { attachments: optimistic.attachments }
+      : {}),
   };
 }
 
