@@ -301,6 +301,9 @@ export class TerminalEmulatorRuntime {
         { prefix: "?", intermediates: "$", final: "p" },
         () => true,
       );
+      for (const code of [10, 11, 12]) {
+        terminal.parser.registerOscHandler(code, (data) => data.trim() === "?");
+      }
     };
     registerProtocolQuerySuppression();
 

@@ -176,6 +176,26 @@ process.stdin.on("data", (chunk) => {
 process.stdout.write(query);
 `;
 
+const OSC11_HELPER_SCRIPT = `process.stdin.setRawMode(true);
+process.stdin.resume();
+let buf = "";
+const timer = setTimeout(() => {
+  process.stdout.write("OSC11_TIMEOUT\\n");
+  process.exit(2);
+}, 2500);
+process.stdin.on("data", (chunk) => {
+  buf += chunk.toString("binary");
+  const match = buf.match(/\\x1b\\]11;rgb:[0-9a-f/]+\\x1b\\\\/);
+  if (!match) {
+    return;
+  }
+  clearTimeout(timer);
+  process.stdout.write("OSC11_OK:" + match[0].replace(/\\x1b/g, "ESC") + "\\n");
+  process.exit(0);
+});
+process.stdout.write("\\x1b]11;?\\x07");
+`;
+
 function writeDaHelper(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   temporaryDirs.push(dir);
@@ -192,6 +212,14 @@ function writeDsrHelper(prefix: string): string {
   return path;
 }
 
+function writeOsc11Helper(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  temporaryDirs.push(dir);
+  const path = join(dir, "helper.cjs");
+  writeFileSync(path, OSC11_HELPER_SCRIPT);
+  return path;
+}
+
 function isDaOkLine(line: string): boolean {
   return line.startsWith("DA_OK:");
 }
@@ -200,12 +228,20 @@ function isDsrOkLine(line: string): boolean {
   return line.startsWith("DSR_OK:");
 }
 
+function isOsc11OkLine(line: string): boolean {
+  return line.startsWith("OSC11_OK:");
+}
+
 function hasDaOkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
   return getLines(state).some(isDaOkLine);
 }
 
 function hasDsrOkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
   return getLines(state).some(isDsrOkLine);
+}
+
+function hasOsc11OkLine(state: ReturnType<TerminalSession["getState"]>): boolean {
+  return getLines(state).some(isOsc11OkLine);
 }
 
 function lastNonEmptyLineIsPrompt(state: ReturnType<TerminalSession["getState"]>): boolean {
@@ -981,6 +1017,25 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
 
       const ack = getLines(session.getState()).find(isDsrOkLine) ?? "";
       expect(ack).toBe("DSR_OK:status");
+    });
+
+    it("delivers OSC 11 background-color replies to a foreground app on stdin", async () => {
+      const helperPath = writeOsc11Helper("terminal-osc11-helper-");
+
+      const session = trackSession(
+        await createTerminal({
+          cwd: "/tmp",
+          shell: "/bin/sh",
+          env: { PS1: "$ " },
+        }),
+      );
+      await waitForLines(session, ["$"]);
+
+      session.send({ type: "input", data: `${process.execPath} ${helperPath}\r` });
+      await waitForState(session, hasOsc11OkLine);
+
+      const ack = getLines(session.getState()).find(isOsc11OkLine) ?? "";
+      expect(ack).toBe("OSC11_OK:ESC]11;rgb:0b0b/0b0b/0b0bESC\\");
     });
   });
 

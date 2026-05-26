@@ -319,6 +319,9 @@ describe("terminal emulator runtime in a real browser", () => {
     { name: "DSR-?6", bytes: "\x1b[?6n" },
     { name: "DECRQM", bytes: "\x1b[1$p" },
     { name: "DECRQM-?", bytes: "\x1b[?1$p" },
+    { name: "OSC-10-foreground-color", bytes: "\x1b]10;?\x07" },
+    { name: "OSC-11-background-color", bytes: "\x1b]11;?\x07" },
+    { name: "OSC-12-cursor-color", bytes: "\x1b]12;?\x07" },
   ])("does not emit a PTY input reply for $name", async ({ bytes }) => {
     await page.viewport(900, 600);
     const mounted = createTerminalHost({ width: 720, height: 360 });
