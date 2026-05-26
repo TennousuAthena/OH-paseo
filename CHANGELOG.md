@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.82 - 2026-05-26
+
+### Added
+
+- **Rewind chat or files from any user message** ([#1154](https://github.com/getpaseo/paseo/pull/1154))
+- **See the cumulative cost of an agent session** ([#1163](https://github.com/getpaseo/paseo/pull/1163))
+- **Drop files onto the terminal to insert their paths** ([#1173](https://github.com/getpaseo/paseo/pull/1173))
+- **Tap a file path in the terminal to open it in the workspace preview** ([#1174](https://github.com/getpaseo/paseo/pull/1174))
+- **Approve OpenCode permissions for the whole session** ([#1168](https://github.com/getpaseo/paseo/pull/1168))
+- **Workspace scripts now appear on the mobile header** ([#1093](https://github.com/getpaseo/paseo/pull/1093) by [@ayhanmalkoc](https://github.com/ayhanmalkoc))
+- Devin CLI in the ACP provider catalog (by [@Alcimerio](https://github.com/Alcimerio))
+- OpenCode agents show their mode colors
+
+### Improved
+
+- Mobile terminal keyboard hides when you open a sidebar
+- Tool activity for read, write, and OpenCode tools renders more consistently ([#1171](https://github.com/getpaseo/paseo/pull/1171))
+- Compact workspace header actions are tidier
+- Settings latency readouts are easier to scan ([#1170](https://github.com/getpaseo/paseo/pull/1170))
+- Pull request merge is available as soon as GitHub reports the PR is ready ([#1172](https://github.com/getpaseo/paseo/pull/1172))
+
+### Fixed
+
+- Mobile slash command autocomplete no longer flickers or mis-layers
+- Interrupting an OpenCode agent returns it to idle instead of showing an error ([#1169](https://github.com/getpaseo/paseo/pull/1169))
+- Provider model selection per workspace is honored ([#1167](https://github.com/getpaseo/paseo/pull/1167))
+- Draft composer keeps the permission mode you selected ([#1175](https://github.com/getpaseo/paseo/pull/1175))
+- Terminal color queries no longer return malformed replies
+- File links in chat no longer crash when a message contains a bare '%' (by [@Elliotwu-7](https://github.com/Elliotwu-7))
+
 ## 0.1.81 - 2026-05-24
 
 ### Added
