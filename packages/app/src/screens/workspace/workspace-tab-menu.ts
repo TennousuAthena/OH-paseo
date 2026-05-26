@@ -1,5 +1,6 @@
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import { encodeFilePathForPathSegment } from "@/utils/host-routes";
+import { buildDeterministicWorkspaceTabId } from "@/workspace-tabs/identity";
 
 export type WorkspaceTabMenuSurface = "desktop" | "mobile";
 
@@ -228,7 +229,7 @@ export function buildWorkspaceTabMenuEntries(
 export function buildWorkspaceDesktopTabActions(
   input: BuildWorkspaceDesktopTabActionsInput,
 ): WorkspaceDesktopTabActions {
-  const contextMenuTestId = `workspace-tab-context-${input.tab.key}`;
+  const contextMenuTestId = `workspace-tab-context-${buildDeterministicWorkspaceTabId(input.tab.target)}`;
   return {
     contextMenuTestId,
     menuEntries: buildWorkspaceTabMenuEntries({
