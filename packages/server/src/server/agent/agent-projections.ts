@@ -229,7 +229,7 @@ export function buildStoredAgentPayload(
     availableModes: [],
     pendingPermissions: [],
     persistence,
-    title: record.title ?? record.config?.title ?? null,
+    title: record.title ?? null,
     requiresAttention: record.requiresAttention ?? false,
     attentionReason: record.attentionReason ?? null,
     attentionTimestamp: record.attentionTimestamp ?? null,
@@ -319,9 +319,6 @@ function normalizePromptPreview(text: string): string | null {
 
 function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentConfig | null {
   const serializable: SerializableAgentConfig = {};
-  if (Object.prototype.hasOwnProperty.call(config, "title")) {
-    serializable.title = config.title ?? null;
-  }
   if (config.modeId) {
     serializable.modeId = config.modeId;
   }

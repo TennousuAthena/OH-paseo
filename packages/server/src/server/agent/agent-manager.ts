@@ -91,7 +91,6 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
   if (!record.config) {
     return config;
   }
-  if (record.config.title != null) config.title = record.config.title;
   if (record.config.modeId != null) config.modeId = record.config.modeId;
   if (record.config.model != null) config.model = record.config.model;
   if (record.config.thinkingOptionId != null) {
@@ -793,6 +792,7 @@ export class AgentManager {
       initialPrompt?: string;
       env?: Record<string, string>;
       persistSession?: boolean;
+      initialTitle?: string | null;
     },
   ): Promise<ManagedAgent> {
     const resolvedAgentId = validateAgentId(agentId ?? this.idFactory(), "createAgent");
@@ -822,6 +822,7 @@ export class AgentManager {
     return this.registerSession(session, normalizedConfig, resolvedAgentId, {
       labels: options?.labels,
       workspaceId: options?.workspaceId,
+      initialTitle: options?.initialTitle,
     });
   }
 
@@ -1234,7 +1235,7 @@ export class AgentManager {
     this.emitState(agent, { persist: false });
   }
 
-  async setGeneratedTitleIfUnset(agentId: string, title: string): Promise<void> {
+  async setGeneratedTitle(agentId: string, title: string): Promise<void> {
     const agent = this.requireAgent(agentId);
     const normalizedTitle = title.trim();
     if (!normalizedTitle) {
@@ -1242,10 +1243,7 @@ export class AgentManager {
     }
 
     const registry = this.requireRegistry();
-    const persisted = await registry.setGeneratedTitleIfUnset(agent.id, normalizedTitle);
-    if (!persisted) {
-      return;
-    }
+    const persisted = await registry.setGeneratedTitle(agent.id, normalizedTitle);
 
     agent.updatedAt = new Date(persisted.updatedAt);
     this.emitState(agent, { persist: false });
@@ -2243,13 +2241,18 @@ export class AgentManager {
       lastUsage?: AgentUsage;
       lastError?: string;
       attention?: AttentionState;
+      initialTitle?: string | null;
     },
   ): Promise<ManagedAgent> {
     const resolvedAgentId = validateAgentId(agentId, "registerSession");
     if (this.agents.has(resolvedAgentId)) {
       throw new Error(`Agent with id ${resolvedAgentId} already exists`);
     }
-    const initialPersistedTitle = await this.resolveInitialPersistedTitle(resolvedAgentId, config);
+    const initialPersistedTitle = await this.resolveInitialPersistedTitle(
+      resolvedAgentId,
+      config,
+      options?.initialTitle ?? null,
+    );
 
     const now = new Date();
     const { durableTimelineHasRows } = await this.initializeAgentTimelineForRegister({
@@ -2520,15 +2523,17 @@ export class AgentManager {
   private async resolveInitialPersistedTitle(
     agentId: string,
     config: AgentSessionConfig,
+    fallbackTitle: string | null,
   ): Promise<string | null> {
     const existing = await this.registry?.get(agentId);
     if (existing) {
       return existing.title ?? null;
     }
-    if (Object.prototype.hasOwnProperty.call(config, "title")) {
-      return config.title ?? null;
-    }
-    return null;
+    const explicitTitle =
+      typeof config.title === "string" && config.title.trim().length > 0
+        ? config.title.trim()
+        : null;
+    return explicitTitle ?? fallbackTitle;
   }
 
   private async persistSnapshot(

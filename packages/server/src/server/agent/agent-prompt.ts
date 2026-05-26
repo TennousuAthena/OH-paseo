@@ -205,7 +205,8 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
     fired = true;
     unsubscribe?.();
 
-    const title = agentManager.getAgent(childAgentId)?.config?.title ?? childAgentId;
+    const record = await agentStorage.get(childAgentId);
+    const title = record?.title ?? childAgentId;
     const body = `Agent ${childAgentId} (${title}) ${reason}.`;
 
     await sendPromptToAgent({

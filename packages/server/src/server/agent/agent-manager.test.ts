@@ -1593,32 +1593,7 @@ test("setTitle bumps updatedAt and persists title in the same snapshot write", a
   expect(live!.updatedAt.getTime()).toBeGreaterThan(Date.parse(before!.updatedAt));
 });
 
-test("setGeneratedTitleIfUnset preserves an existing user title", async () => {
-  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-generated-title-preserve-"));
-  const storagePath = join(workdir, "agents");
-  const storage = new AgentStorage(storagePath, logger);
-  const manager = new AgentManager({
-    clients: {
-      codex: new TestAgentClient(),
-    },
-    registry: storage,
-    logger,
-    idFactory: () => "00000000-0000-4000-8000-000000000128",
-  });
-
-  const snapshot = await manager.createAgent({
-    provider: "codex",
-    cwd: workdir,
-  });
-
-  await manager.setTitle(snapshot.id, "User title");
-  await manager.setGeneratedTitleIfUnset(snapshot.id, "Generated title");
-
-  const after = await storage.get(snapshot.id);
-  expect(after?.title).toBe("User title");
-});
-
-test("setGeneratedTitleIfUnset persists generated title when no title exists", async () => {
+test("setGeneratedTitle persists generated title when no title exists", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-generated-title-empty-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -1636,13 +1611,13 @@ test("setGeneratedTitleIfUnset persists generated title when no title exists", a
     cwd: workdir,
   });
 
-  await manager.setGeneratedTitleIfUnset(snapshot.id, "Generated title");
+  await manager.setGeneratedTitle(snapshot.id, "Generated title");
 
   const after = await storage.get(snapshot.id);
   expect(after?.title).toBe("Generated title");
 });
 
-test("setGeneratedTitleIfUnset ignores blank generated titles", async () => {
+test("setGeneratedTitle ignores blank generated titles", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-generated-title-blank-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -1672,7 +1647,7 @@ test("setGeneratedTitleIfUnset ignores blank generated titles", async () => {
     { agentId: snapshot.id, replayState: false },
   );
 
-  await manager.setGeneratedTitleIfUnset(snapshot.id, "   ");
+  await manager.setGeneratedTitle(snapshot.id, "   ");
 
   const after = await storage.get(snapshot.id);
   expect(after?.title).toBeNull();
@@ -1681,7 +1656,7 @@ test("setGeneratedTitleIfUnset ignores blank generated titles", async () => {
   expect(stateEvents).toEqual([]);
 });
 
-test("setGeneratedTitleIfUnset throws for an unknown agent", async () => {
+test("setGeneratedTitle throws for an unknown agent", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-generated-title-unknown-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -1694,7 +1669,7 @@ test("setGeneratedTitleIfUnset throws for an unknown agent", async () => {
   });
 
   await expect(
-    manager.setGeneratedTitleIfUnset("00000000-0000-4000-8000-000000000999", "Generated title"),
+    manager.setGeneratedTitle("00000000-0000-4000-8000-000000000999", "Generated title"),
   ).rejects.toThrow("Unknown agent '00000000-0000-4000-8000-000000000999'");
 });
 

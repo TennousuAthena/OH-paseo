@@ -1417,7 +1417,7 @@ export class Session {
 
   private async buildAgentPayload(agent: ManagedAgent): Promise<AgentSnapshotPayload> {
     const storedRecord = await this.agentStorage.get(agent.id);
-    const title = storedRecord?.title ?? storedRecord?.config?.title ?? null;
+    const title = storedRecord?.title ?? null;
     const payload = toAgentPayload(agent, { title });
     const storedUpdatedAt = storedRecord ? resolveStoredAgentPayloadUpdatedAt(storedRecord) : null;
     if (storedUpdatedAt) {
@@ -3145,10 +3145,7 @@ export class Session {
         configTitle: config.title,
         initialPrompt: trimmedPrompt,
       });
-      const resolvedConfig: AgentSessionConfig = {
-        ...config,
-        ...(provisionalTitle ? { title: provisionalTitle } : {}),
-      };
+      const resolvedConfig: AgentSessionConfig = config;
 
       const firstAgentContext: FirstAgentContext = {
         ...(trimmedPrompt ? { prompt: trimmedPrompt } : {}),
@@ -3182,6 +3179,7 @@ export class Session {
         workspaceId: resolvedWorkspace.workspaceId,
         initialPrompt: trimmedPrompt,
         env,
+        initialTitle: provisionalTitle,
       });
       createdAgentId = snapshot.id;
       await this.forwardAgentUpdate(snapshot);

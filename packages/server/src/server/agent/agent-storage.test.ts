@@ -173,7 +173,6 @@ describe("AgentStorage", () => {
     expect(records).toHaveLength(1);
     const [record] = records;
     expect(record.provider).toBe("claude");
-    expect(record.config?.title).toBe("Initial title");
     expect(record.config?.modeId).toBe("coding");
     expect(record.config?.model).toBe("gpt-5.1");
     expect(record.config?.systemPrompt).toBe("Be terse and explicit.");
@@ -321,38 +320,26 @@ describe("AgentStorage", () => {
     );
   });
 
-  test("setGeneratedTitleIfUnset aborts when a user title is already set", async () => {
-    const agentId = "agent-generated-title-race";
-    await storage.applySnapshot(createManagedAgent({ id: agentId }));
-    await storage.setTitle(agentId, "User title");
-
-    const result = await storage.setGeneratedTitleIfUnset(agentId, "Generated title");
-
-    expect(result).toBeNull();
-    const record = await storage.get(agentId);
-    expect(record?.title).toBe("User title");
-  });
-
-  test("setGeneratedTitleIfUnset with concurrent writes does not corrupt state", async () => {
+  test("setGeneratedTitle with concurrent writes does not corrupt state", async () => {
     const agentId = "agent-generated-title-concurrent";
     await storage.applySnapshot(createManagedAgent({ id: agentId }));
 
     await Promise.all([
-      storage.setGeneratedTitleIfUnset(agentId, "Title A"),
-      storage.setGeneratedTitleIfUnset(agentId, "Title B"),
+      storage.setGeneratedTitle(agentId, "Title A"),
+      storage.setGeneratedTitle(agentId, "Title B"),
     ]);
 
     const record = await storage.get(agentId);
     expect(["Title A", "Title B"]).toContain(record?.title);
   });
 
-  test("setGeneratedTitleIfUnset writes the generated title only when title is empty", async () => {
+  test("setGeneratedTitle writes the generated title", async () => {
     const agentId = "agent-generated-title-empty";
     await storage.applySnapshot(createManagedAgent({ id: agentId }));
 
-    const written = await storage.setGeneratedTitleIfUnset(agentId, "Generated title");
+    const written = await storage.setGeneratedTitle(agentId, "Generated title");
 
-    expect(written?.title).toBe("Generated title");
+    expect(written.title).toBe("Generated title");
     const record = await storage.get(agentId);
     expect(record?.title).toBe("Generated title");
   });

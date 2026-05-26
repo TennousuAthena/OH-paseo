@@ -30,6 +30,10 @@ export interface TerminalPerfDaemonClient {
     featureValues?: Record<string, unknown>;
     initialPrompt?: string;
   }): Promise<{ id: string; status: string }>;
+  fetchAgents(options?: { scope?: "active" }): Promise<{
+    entries: Array<{ agent: { id: string; cwd: string; title?: string | null } }>;
+  }>;
+  updateAgent(agentId: string, updates: { name?: string }): Promise<void>;
   waitForAgentUpsert(
     agentId: string,
     predicate: (snapshot: { status: string }) => boolean,

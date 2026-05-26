@@ -11,7 +11,6 @@ import type { AgentSessionConfig } from "./agent-sdk-types.js";
 
 const SERIALIZABLE_CONFIG_SCHEMA = z
   .object({
-    title: z.string().nullable().optional(),
     modeId: z.string().nullable().optional(),
     model: z.string().nullable().optional(),
     thinkingOptionId: z.string().nullable().optional(),
@@ -68,7 +67,6 @@ const STORED_AGENT_SCHEMA = z.object({
 
 export type SerializableAgentConfig = Pick<
   AgentSessionConfig,
-  | "title"
   | "modeId"
   | "model"
   | "thinkingOptionId"
@@ -232,33 +230,15 @@ export class AgentStorage {
     await this.upsert({ ...record, title });
   }
 
-  async setGeneratedTitleIfUnset(
-    agentId: string,
-    title: string,
-  ): Promise<StoredAgentRecord | null> {
+  async setGeneratedTitle(agentId: string, title: string): Promise<StoredAgentRecord> {
     await this.load();
     await this.waitForPendingWrite(agentId);
     const record = this.cache.get(agentId) ?? null;
     if (!record) {
       throw new Error(`Agent ${agentId} not found`);
     }
-    if (record.title) {
-      return null;
-    }
-
-    // Re-drain pending writes: a concurrent setTitle may have queued between the
-    // first drain and here. After waiting, re-read the cache before writing.
-    await this.waitForPendingWrite(agentId);
-    const latestRecord = this.cache.get(agentId) ?? null;
-    if (!latestRecord) {
-      throw new Error(`Agent ${agentId} not found`);
-    }
-    if (latestRecord.title) {
-      return null;
-    }
-
     const nextRecord = {
-      ...latestRecord,
+      ...record,
       title,
       updatedAt: new Date().toISOString(),
     };

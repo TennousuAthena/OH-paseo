@@ -152,7 +152,7 @@ export async function generateAndApplyAgentMetadata(
   if (needs.needsTitle && typeof result.title === "string") {
     const normalizedTitle = normalizeAutoTitle(result.title);
     if (normalizedTitle) {
-      await options.agentManager.setGeneratedTitleIfUnset(options.agentId, normalizedTitle);
+      await options.agentManager.setGeneratedTitle(options.agentId, normalizedTitle);
     }
   }
 }
