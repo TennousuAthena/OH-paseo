@@ -56,6 +56,49 @@ describe("convertClaudeHistoryEntry", () => {
     expect(Array.isArray(mapBlocks.mock.calls[0][0])).toBe(true);
   });
 
+  test("replays persisted Claude tool results as completed tool calls", () => {
+    const entry = {
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu_persisted",
+            content: "done",
+          },
+        ],
+      },
+      toolUseResult: {
+        stdout: "done",
+        stderr: "",
+        interrupted: false,
+      },
+    };
+
+    const completedToolCall: AgentTimelineItem[] = [
+      {
+        type: "tool_call",
+        callId: "toolu_persisted",
+        name: "Bash",
+        status: "completed",
+        detail: {
+          type: "shell",
+          command: "echo done",
+          output: "done",
+          exitCode: 0,
+        },
+        error: null,
+      },
+    ];
+
+    const mapPersistedToolResultBlocks = (): AgentTimelineItem[] => completedToolCall;
+
+    expect(convertClaudeHistoryEntry(entry, mapPersistedToolResultBlocks)).toEqual(
+      completedToolCall,
+    );
+  });
+
   test("returns user messages when no tool blocks exist", () => {
     const entry = {
       type: "user",

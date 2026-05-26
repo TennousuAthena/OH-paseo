@@ -1188,7 +1188,7 @@ function isToolResultUserEntry(entry: unknown): boolean {
 }
 
 function isSyntheticHistoryUserEntry(entry: Record<string, unknown>): boolean {
-  return isSyntheticUserEntry(entry);
+  return isSyntheticUserEntry(entry) && !isToolResultUserEntry(entry);
 }
 
 function firstTrimmedString(sources: readonly unknown[]): string | null {
@@ -4666,7 +4666,7 @@ function convertClaudeHistoryEntryPreamble(
   if (entry.isCompactSummary) {
     return { shortCircuit: [] };
   }
-  if (entry.type === "user" && isSyntheticUserEntry(entry)) {
+  if (entry.type === "user" && isSyntheticHistoryUserEntry(entry)) {
     return { shortCircuit: [] };
   }
 
