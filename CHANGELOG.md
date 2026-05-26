@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.83 - 2026-05-26
+
+### Fixed
+
+- Creating an agent via MCP now waits for it to actually start, so failures surface as a clear create error
+- Scheduling an agent via MCP no longer rejects blank cadence placeholders
+- Draft messages show the agent mode chip again on models without thinking options
+
 ## 0.1.82 - 2026-05-26
 
 ### Added
