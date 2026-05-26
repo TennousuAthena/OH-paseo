@@ -226,23 +226,21 @@ describe("providers snapshot hook cache scope", () => {
     await waitForSnapshotEntries(result, [codexEntry("ready", [readyCodexModel])]);
   });
 
-  it("refetches loading snapshot updates through the read path but ignores empty updates", async () => {
+  it("applies loading snapshot updates without refetching through the read path", async () => {
     enableProvidersSnapshot();
-    mockClient.getProvidersSnapshot
-      .mockResolvedValueOnce(providersSnapshot([codexEntry("ready", [])]))
-      .mockResolvedValueOnce(providersSnapshot([codexEntry("ready", [readyCodexModel])]));
+    mockClient.getProvidersSnapshot.mockResolvedValueOnce(
+      providersSnapshot([codexEntry("ready", [])]),
+    );
 
-    renderProvidersSnapshotHook();
+    const { result } = renderProvidersSnapshotHook();
 
     await waitForSnapshotReads(1);
-    await emitProvidersSnapshotUpdate([]);
 
+    const loadingEntries = [codexEntry("loading")];
+    await emitProvidersSnapshotUpdate(loadingEntries);
+
+    await waitForSnapshotEntries(result, loadingEntries);
     expect(mockClient.getProvidersSnapshot).toHaveBeenCalledTimes(1);
-
-    await emitProvidersSnapshotUpdate([codexEntry("loading")]);
-    await waitForSnapshotReads(2);
-
-    expect(mockClient.getProvidersSnapshot).toHaveBeenLastCalledWith({});
     expect(mockClient.refreshProvidersSnapshot).not.toHaveBeenCalled();
   });
 

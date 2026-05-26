@@ -85,14 +85,6 @@ export function useProvidersSnapshot(
         generatedAt: message.payload.generatedAt,
         requestId: "providers_snapshot_update",
       });
-      const shouldRefetch = message.payload.entries.some((entry) => entry.status === "loading");
-      if (shouldRefetch) {
-        void queryClient.invalidateQueries({
-          queryKey: updateQueryKey,
-          exact: true,
-          refetchType: "active",
-        });
-      }
     });
   }, [client, enabled, isConnected, queryClient, serverId, supportsSnapshot]);
 
