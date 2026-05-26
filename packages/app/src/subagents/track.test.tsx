@@ -5,7 +5,7 @@ import React from "react";
 import { act } from "@testing-library/react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SubagentsSection } from "./section";
+import { SubagentsTrack } from "./track";
 import type { SubagentRow } from "./select";
 
 const { theme } = vi.hoisted(() => ({
@@ -98,8 +98,10 @@ vi.mock("@/components/synced-loader", () => ({
 }));
 
 vi.mock("lucide-react-native", () => {
-  const createIcon = (name: string) => (props: Record<string, unknown>) =>
-    React.createElement("span", { ...props, "data-icon": name });
+  const createIcon = (name: string) =>
+    function IconStub(props: Record<string, unknown>) {
+      return React.createElement("span", { ...props, "data-icon": name });
+    };
   return {
     Archive: createIcon("Archive"),
     Check: createIcon("Check"),
@@ -131,13 +133,13 @@ function queryByTestId(testID: string): HTMLElement | null {
 
 function queryRowIds(): string[] {
   return Array.from(
-    document.querySelectorAll<HTMLElement>('[data-testid^="subagents-section-row-"]'),
-  ).map((node) => node.getAttribute("data-testid")?.replace("subagents-section-row-", "") ?? "");
+    document.querySelectorAll<HTMLElement>('[data-testid^="subagents-track-row-"]'),
+  ).map((node) => node.getAttribute("data-testid")?.replace("subagents-track-row-", "") ?? "");
 }
 
 type SubagentAction = (id: string) => void;
 
-describe("SubagentsSection", () => {
+describe("SubagentsTrack", () => {
   let container: HTMLElement | null = null;
   let root: Root | null = null;
 
@@ -176,7 +178,7 @@ describe("SubagentsSection", () => {
   ): SubagentAction {
     act(() => {
       root?.render(
-        <SubagentsSection
+        <SubagentsTrack
           rows={rows}
           onOpenSubagent={onOpenSubagent}
           onArchiveSubagent={onArchiveSubagent}
@@ -188,27 +190,27 @@ describe("SubagentsSection", () => {
 
   it("renders nothing when rows is empty", () => {
     render([]);
-    expect(queryByTestId("subagents-section")).toBeNull();
-    expect(queryByTestId("subagents-section-header")).toBeNull();
+    expect(queryByTestId("subagents-track")).toBeNull();
+    expect(queryByTestId("subagents-track-header")).toBeNull();
     expect(queryRowIds()).toEqual([]);
   });
 
   it("shows only the collapsed header and no rows initially", () => {
     render([row({ id: "child-a" }), row({ id: "child-b" })]);
-    expect(queryByTestId("subagents-section-header")).not.toBeNull();
+    expect(queryByTestId("subagents-track-header")).not.toBeNull();
     expect(queryRowIds()).toEqual([]);
   });
 
   it("expands rows in the given order when the header is pressed", () => {
     render([row({ id: "child-b" }), row({ id: "child-a" }), row({ id: "child-c" })]);
-    click(queryByTestId("subagents-section-header")!);
+    click(queryByTestId("subagents-track-header")!);
     expect(queryRowIds()).toEqual(["child-b", "child-a", "child-c"]);
   });
 
   it("calls onOpenSubagent with the row id when a row is pressed", () => {
     const onOpenSubagent = render([row({ id: "child-a" }), row({ id: "child-b" })]);
-    click(queryByTestId("subagents-section-header")!);
-    click(queryByTestId("subagents-section-row-child-b")!);
+    click(queryByTestId("subagents-track-header")!);
+    click(queryByTestId("subagents-track-row-child-b")!);
     expect(onOpenSubagent).toHaveBeenCalledTimes(1);
     expect(onOpenSubagent).toHaveBeenCalledWith("child-b");
   });
@@ -216,7 +218,7 @@ describe("SubagentsSection", () => {
   describe("header copy", () => {
     it("renders '2 subagents' when two rows are not running", () => {
       render([row({ id: "child-a" }), row({ id: "child-b" })]);
-      expect(queryByTestId("subagents-section-header")?.textContent).toBe("2 subagents");
+      expect(queryByTestId("subagents-track-header")?.textContent).toBe("2 subagents");
     });
 
     it("renders '3 subagents · 1 running' with a single running row", () => {
@@ -225,14 +227,12 @@ describe("SubagentsSection", () => {
         row({ id: "child-b" }),
         row({ id: "child-c" }),
       ]);
-      expect(queryByTestId("subagents-section-header")?.textContent).toBe(
-        "3 subagents · 1 running",
-      );
+      expect(queryByTestId("subagents-track-header")?.textContent).toBe("3 subagents · 1 running");
     });
 
     it("renders '1 subagent' for a finished row that still requires attention upstream", () => {
       render([row({ id: "child-a", requiresAttention: true })]);
-      expect(queryByTestId("subagents-section-header")?.textContent).toBe("1 subagent");
+      expect(queryByTestId("subagents-track-header")?.textContent).toBe("1 subagent");
     });
 
     it("renders '5 subagents · 2 running' when finished rows require attention upstream", () => {
@@ -243,9 +243,7 @@ describe("SubagentsSection", () => {
         row({ id: "d" }),
         row({ id: "e" }),
       ]);
-      expect(queryByTestId("subagents-section-header")?.textContent).toBe(
-        "5 subagents · 2 running",
-      );
+      expect(queryByTestId("subagents-track-header")?.textContent).toBe("5 subagents · 2 running");
     });
   });
 
@@ -255,7 +253,7 @@ describe("SubagentsSection", () => {
       row({ id: "b", status: "idle", requiresAttention: false }),
       row({ id: "c", status: "idle", requiresAttention: true }),
     ]);
-    expect(queryByTestId("subagents-section-header")?.textContent).toBe("3 subagents");
+    expect(queryByTestId("subagents-track-header")?.textContent).toBe("3 subagents");
   });
 
   it("still counts running rows even when they require attention", () => {
@@ -264,7 +262,7 @@ describe("SubagentsSection", () => {
       row({ id: "b", status: "running", requiresAttention: true }),
       row({ id: "c", status: "idle", requiresAttention: true }),
     ]);
-    expect(queryByTestId("subagents-section-header")?.textContent).toBe("3 subagents · 1 running");
+    expect(queryByTestId("subagents-track-header")?.textContent).toBe("3 subagents · 1 running");
   });
 
   it("renders each row through the shared workspace tab icon primitives", () => {
@@ -272,14 +270,14 @@ describe("SubagentsSection", () => {
       row({ id: "idle-child", status: "idle", provider: "codex" }),
       row({ id: "running-child", status: "running", provider: "claude-code" }),
     ]);
-    click(queryByTestId("subagents-section-header")!);
+    click(queryByTestId("subagents-track-header")!);
 
-    const idleRow = queryByTestId("subagents-section-row-idle-child");
+    const idleRow = queryByTestId("subagents-track-row-idle-child");
     expect(idleRow).not.toBeNull();
     expect(idleRow!.querySelectorAll('[data-testid="subagents-provider-icon"]').length).toBe(1);
     expect(idleRow!.querySelectorAll('[data-testid="subagents-synced-loader"]').length).toBe(0);
 
-    const runningRow = queryByTestId("subagents-section-row-running-child");
+    const runningRow = queryByTestId("subagents-track-row-running-child");
     expect(runningRow).not.toBeNull();
     expect(runningRow!.querySelectorAll('[data-testid="subagents-synced-loader"]').length).toBe(1);
     expect(runningRow!.querySelectorAll('[data-testid="subagents-provider-icon"]').length).toBe(0);

@@ -10,10 +10,11 @@ import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
-import { Composer } from "@/components/composer";
+import { Composer } from "@/composer";
+import { AgentModeControl } from "@/composer/agent-controls/mode-control";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
-import type { ImageAttachment } from "@/components/message-input";
+import type { ImageAttachment } from "@/composer/types";
 import { getProviderIcon } from "@/components/provider-icons";
 import { ToastViewport, useToastHost } from "@/components/toast-host";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
@@ -25,7 +26,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
-import { useAgentInputDraft, type AgentInputDraft } from "@/hooks/use-agent-input-draft";
+import { useAgentInputDraft, type AgentInputDraft } from "@/composer/draft/input-draft";
 import {
   type AgentScreenAgent,
   type AgentScreenContinuity,
@@ -50,7 +51,7 @@ import {
   deriveRouteBottomAnchorIntent,
   deriveRouteBottomAnchorRequest,
 } from "@/screens/agent/agent-ready-screen-bottom-anchor";
-import { WorkspaceDraftAgentTab } from "@/screens/workspace/workspace-draft-agent-tab";
+import { WorkspaceDraftAgentTab } from "@/composer/draft/workspace-tab";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
@@ -58,7 +59,7 @@ import { type Agent, useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import type { Theme } from "@/styles/theme";
-import { SubagentsSection, useArchiveSubagent, useSubagentsForParent } from "@/subagents";
+import { SubagentsTrack, useArchiveSubagent, useSubagentsForParent } from "@/subagents";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
@@ -1395,9 +1396,17 @@ function ActiveAgentComposer({
     [insets.bottom],
   );
 
+  const composerFooter = useMemo(
+    () =>
+      isCompact ? (
+        <AgentModeControl serverId={serverId} agentId={agentId} placement="footer" />
+      ) : undefined,
+    [isCompact, serverId, agentId],
+  );
+
   return (
     <View style={inputAreaStyle}>
-      <SubagentsSection
+      <SubagentsTrack
         rows={subagentRows}
         onOpenSubagent={handleOpenSubagent}
         onArchiveSubagent={handleArchiveSubagent}
@@ -1422,6 +1431,7 @@ function ActiveAgentComposer({
         onComposerHeightChange={onComposerHeightChange}
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
+        footer={composerFooter}
       />
     </View>
   );

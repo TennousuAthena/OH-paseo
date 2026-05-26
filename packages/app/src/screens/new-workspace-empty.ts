@@ -1,6 +1,6 @@
 import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
 import type { normalizeWorkspaceDescriptor } from "@/stores/session-store";
-import type { MessagePayload } from "@/components/message-input";
+import type { MessagePayload } from "@/composer/types";
 import type { AgentAttachment } from "@server/shared/messages";
 
 export function isEmptyWorkspaceSubmission(payload: MessagePayload): boolean {

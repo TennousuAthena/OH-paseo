@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeCanStartDictation } from "./message-input-state";
+import { computeCanStartDictation } from "./state";
 
 const connected = { isConnected: true } as never;
 const disconnected = { isConnected: false } as never;

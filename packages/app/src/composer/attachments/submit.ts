@@ -1,12 +1,11 @@
-import type { AttachmentMetadata, ComposerAttachment } from "@/attachments/types";
+import type { ComposerAttachment } from "@/attachments/types";
+import type { ImageAttachment } from "@/composer/types";
 import {
   isWorkspaceAttachment,
   workspaceAttachmentToSubmitAttachment,
 } from "@/attachments/workspace-attachment-utils";
 import type { AgentAttachment } from "@server/shared/messages";
 import { buildGitHubAttachmentFromSearchItem } from "@/utils/review-attachments";
-
-export type ImageAttachment = AttachmentMetadata;
 
 export function splitComposerAttachmentsForSubmit(attachments: ComposerAttachment[]): {
   images: ImageAttachment[];

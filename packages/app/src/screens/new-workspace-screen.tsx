@@ -3,12 +3,12 @@ import { Pressable, Text, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated from "react-native-reanimated";
 import { createNameId } from "mnemonic-id";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronDown, GitBranch, GitPullRequest, X } from "lucide-react-native";
-import { Composer } from "@/components/composer";
-import { splitComposerAttachmentsForSubmit } from "@/components/composer-attachments";
+import { Composer } from "@/composer";
+import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
+import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import type { ComboboxOption as ComboboxOptionType } from "@/components/ui/combobox";
@@ -18,9 +18,8 @@ import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
-import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
+import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import { useGithubSearchQuery } from "@/git/use-github-search-query";
-import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
 import { generateDraftId } from "@/stores/draft-keys";
@@ -31,7 +30,7 @@ import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
-import type { ImageAttachment, MessagePayload } from "@/components/message-input";
+import type { ImageAttachment, MessagePayload } from "@/composer/types";
 import type { AgentAttachment, GitHubSearchItem } from "@server/shared/messages";
 import type { CreatePaseoWorktreeInput } from "@server/client/daemon-client";
 import type { AgentProvider } from "@server/server/agent/agent-sdk-types";
@@ -510,9 +509,6 @@ export function NewWorkspaceScreen({
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const isCompact = useIsCompactFormFactor();
-  const { style: keyboardAnimatedStyle } = useKeyboardShiftStyle({
-    mode: "translate",
-  });
   const toast = useToast();
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -846,16 +842,11 @@ export function NewWorkspaceScreen({
     [isCompact, insets.bottom],
   );
 
-  const optionsRowStyle = useMemo(
-    () => [styles.optionsRow, keyboardAnimatedStyle],
-    [keyboardAnimatedStyle],
-  );
-
-  const statusControlsWithDisabled = useMemo(
+  const agentControlsWithDisabled = useMemo(
     () =>
       composerState
         ? {
-            ...composerState.statusControls,
+            ...composerState.agentControls,
             disabled: isPending,
           }
         : undefined,
@@ -866,6 +857,73 @@ export function NewWorkspaceScreen({
     branchSuggestionsQuery.isFetching || githubPrSearchQuery.isFetching
       ? "Searching..."
       : "No matching refs.";
+
+  const composerFooter = useMemo(
+    () => (
+      <View testID="new-workspace-ref-picker-row" style={styles.optionsRow}>
+        <View>
+          <RefPickerTrigger
+            pickerAnchorRef={pickerAnchorRef}
+            onPress={openPicker}
+            disabled={isPending}
+            badgePressableStyle={badgePressableStyle}
+            selectedItem={selectedItem}
+            triggerLabel={triggerLabel}
+            iconColor={theme.colors.foregroundMuted}
+            iconSize={theme.iconSize.sm}
+          />
+          <Combobox
+            options={options}
+            value={selectedOptionId}
+            onSelect={handleSelectOption}
+            searchable
+            searchPlaceholder="Search branches and PRs"
+            title="Start from"
+            open={pickerOpen}
+            onOpenChange={handlePickerOpenChange}
+            onSearchQueryChange={setPickerSearchQuery}
+            desktopPlacement="bottom-start"
+            anchorRef={pickerAnchorRef}
+            emptyText={pickerEmptyText}
+            renderOption={renderPickerOption}
+          />
+        </View>
+        {agentControlsWithDisabled ? (
+          <DraftAgentModeControl placement="footer" {...agentControlsWithDisabled} />
+        ) : null}
+        {checkoutHintPrAttachment ? (
+          <CheckoutHintBadge
+            prNumber={checkoutHintPrAttachment.item.number}
+            onAccept={acceptCheckoutHint}
+            onDismiss={dismissCheckoutHint}
+            iconColor={theme.colors.foregroundMuted}
+            iconSize={theme.iconSize.sm}
+          />
+        ) : null}
+      </View>
+    ),
+    [
+      acceptCheckoutHint,
+      badgePressableStyle,
+      checkoutHintPrAttachment,
+      dismissCheckoutHint,
+      handlePickerOpenChange,
+      handleSelectOption,
+      isPending,
+      openPicker,
+      options,
+      pickerEmptyText,
+      pickerOpen,
+      renderPickerOption,
+      selectedItem,
+      selectedOptionId,
+      setPickerSearchQuery,
+      agentControlsWithDisabled,
+      theme.colors.foregroundMuted,
+      theme.iconSize.sm,
+      triggerLabel,
+    ],
+  );
 
   return (
     <FileDropZone onFilesDropped={handleFilesDropped}>
@@ -909,47 +967,10 @@ export function NewWorkspaceScreen({
               clearDraft={handleClearDraft}
               autoFocus
               commandDraftConfig={composerState?.commandDraftConfig}
-              statusControls={statusControlsWithDisabled}
+              agentControls={agentControlsWithDisabled}
               onAddImages={handleAddImagesCallback}
+              footer={composerFooter}
             />
-            <Animated.View testID="new-workspace-ref-picker-row" style={optionsRowStyle}>
-              <View>
-                <RefPickerTrigger
-                  pickerAnchorRef={pickerAnchorRef}
-                  onPress={openPicker}
-                  disabled={isPending}
-                  badgePressableStyle={badgePressableStyle}
-                  selectedItem={selectedItem}
-                  triggerLabel={triggerLabel}
-                  iconColor={theme.colors.foregroundMuted}
-                  iconSize={theme.iconSize.sm}
-                />
-                <Combobox
-                  options={options}
-                  value={selectedOptionId}
-                  onSelect={handleSelectOption}
-                  searchable
-                  searchPlaceholder="Search branches and PRs"
-                  title="Start from"
-                  open={pickerOpen}
-                  onOpenChange={handlePickerOpenChange}
-                  onSearchQueryChange={setPickerSearchQuery}
-                  desktopPlacement="bottom-start"
-                  anchorRef={pickerAnchorRef}
-                  emptyText={pickerEmptyText}
-                  renderOption={renderPickerOption}
-                />
-              </View>
-              {checkoutHintPrAttachment ? (
-                <CheckoutHintBadge
-                  prNumber={checkoutHintPrAttachment.item.number}
-                  onAccept={acceptCheckoutHint}
-                  onDismiss={dismissCheckoutHint}
-                  iconColor={theme.colors.foregroundMuted}
-                  iconSize={theme.iconSize.sm}
-                />
-              ) : null}
-            </Animated.View>
             {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
           </View>
         </View>
@@ -1014,8 +1035,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     flexWrap: "wrap",
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[4] + theme.spacing[4] - 6,
-    marginTop: -theme.spacing[2],
   },
   badge: {
     flexDirection: "row",

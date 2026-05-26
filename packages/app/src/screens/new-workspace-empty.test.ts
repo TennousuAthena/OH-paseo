@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { ComposerAttachment } from "@/attachments/types";
-import type { MessagePayload } from "@/components/message-input";
+import type { MessagePayload } from "@/composer/types";
 
 const navigateToWorkspace = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/use-workspace-navigation", () => ({ navigateToWorkspace }));

@@ -3,23 +3,25 @@ import { Image, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { createNameId } from "mnemonic-id";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
-import { Composer } from "@/components/composer";
+import { Composer } from "@/composer";
+import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { useToast } from "@/contexts/toast-context";
-import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
+import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import { useProjectIconQuery } from "@/hooks/use-project-icon-query";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { encodeImages } from "@/utils/encode-images";
 import { toErrorMessage } from "@/utils/error-messages";
-import { splitComposerAttachmentsForSubmit } from "@/components/composer-attachments";
+import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import type { CreateAgentRequestOptions, DaemonClient } from "@server/client/daemon-client";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { requireWorkspaceExecutionAuthority } from "@/utils/workspace-execution";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
-import type { ImageAttachment, MessagePayload } from "./message-input";
+import type { ImageAttachment, MessagePayload } from "@/composer/types";
 
 function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): string | null {
   if (!icon) {
@@ -347,16 +349,25 @@ export function WorkspaceSetupDialog() {
     addImagesRef.current = addImages;
   }, []);
 
+  const isCompact = useIsCompactFormFactor();
   const iconSource = useMemo(() => (iconDataUri ? { uri: iconDataUri } : null), [iconDataUri]);
-  const statusControlsWithDisabled = useMemo(
+  const agentControlsWithDisabled = useMemo(
     () =>
       composerState
         ? {
-            ...composerState.statusControls,
+            ...composerState.agentControls,
             disabled: pendingAction !== null,
           }
         : undefined,
     [composerState, pendingAction],
+  );
+
+  const composerFooter = useMemo(
+    () =>
+      isCompact && agentControlsWithDisabled ? (
+        <DraftAgentModeControl placement="footer" {...agentControlsWithDisabled} />
+      ) : undefined,
+    [isCompact, agentControlsWithDisabled],
   );
 
   const subtitleContent = useMemo(
@@ -412,9 +423,10 @@ export function WorkspaceSetupDialog() {
           clearDraft={chatDraft.clear}
           autoFocus
           commandDraftConfig={composerState?.commandDraftConfig}
-          statusControls={statusControlsWithDisabled}
+          agentControls={agentControlsWithDisabled}
           inputWrapperStyle={styles.composerInputWrapper}
           onAddImages={handleAddImagesCallback}
+          footer={composerFooter}
         />
       </View>
 

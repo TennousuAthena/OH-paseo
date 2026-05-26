@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveDraftKey } from "./use-agent-input-draft-core";
+import { resolveDraftKey } from "./input-draft-core";
 import {
   buildDraftCommandConfig,
   resolveEffectiveComposerModelId,

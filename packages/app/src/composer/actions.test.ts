@@ -26,7 +26,7 @@ import {
   type ComposerSendClient,
   type QueueWriter,
   type QueuedComposerMessage,
-} from "./composer-actions";
+} from "./actions";
 
 const imageMetadata: AttachmentMetadata = {
   id: "img-1",

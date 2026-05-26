@@ -24,8 +24,8 @@ import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { useDictation } from "@/hooks/use-dictation";
-import { DictationOverlay } from "./dictation-controls";
-import { RealtimeVoiceOverlay } from "./realtime-voice-overlay";
+import { DictationOverlay } from "@/components/dictation-controls";
+import { RealtimeVoiceOverlay } from "@/components/realtime-voice-overlay";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { useSessionStore } from "@/stores/session-store";
 import { useVoiceOptional } from "@/contexts/voice-context";
@@ -35,8 +35,8 @@ import {
   collectImageFilesFromClipboardData,
   filesToImageAttachments,
 } from "@/utils/image-attachments-from-files";
-import type { AttachmentMetadata } from "@/attachments/types";
 import type { ComposerAttachment } from "@/attachments/types";
+import type { ImageAttachment, MessagePayload } from "@/composer/types";
 import { focusWithRetries } from "@/utils/web-focus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -55,18 +55,8 @@ import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { isImeComposingKeyboardEvent } from "@/utils/keyboard-ime";
 import { isWeb } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { useComposerHeightMirror } from "./composer-height-mirror";
-import { computeCanStartDictation } from "./message-input-state";
-
-export type ImageAttachment = AttachmentMetadata;
-
-export interface MessagePayload {
-  text: string;
-  attachments: ComposerAttachment[];
-  cwd: string;
-  /** When true, bypasses queue and sends immediately even if agent is running */
-  forceSend?: boolean;
-}
+import { useComposerHeightMirror } from "./height-mirror";
+import { computeCanStartDictation } from "./state";
 
 export interface AttachmentMenuItem {
   id: string;
@@ -103,7 +93,7 @@ export interface MessageInputProps {
   disabled?: boolean;
   /** True when this composer's pane is focused. Used to gate global hotkeys and stop dictation when hidden. */
   isPaneFocused?: boolean;
-  /** Content to render on the left side of the button row (e.g., AgentStatusBar) */
+  /** Content to render on the left side of the composer toolbar (e.g., AgentControls) */
   leftContent?: React.ReactNode;
   /** Content to render on the right side before the voice button (e.g., context window meter) */
   beforeVoiceContent?: React.ReactNode;
@@ -1771,7 +1761,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
           {/* Button row */}
           <View style={styles.buttonRow}>
-            {/* Left: attachment button + leftContent slot */}
+            {/* Toolbar left: attachment button + agent controls */}
             <View style={styles.leftButtonGroup}>
               <AttachmentDropdown
                 isConnected={isConnected}

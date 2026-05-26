@@ -8,7 +8,7 @@ import {
   isWorkspaceAttachment,
   userAttachmentsOnly,
 } from "@/attachments/workspace-attachment-utils";
-import { splitComposerAttachmentsForSubmit } from "@/components/composer-attachments";
+import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import {
   appendOptimisticUserMessageToStream,
   buildOptimisticUserMessage,

@@ -1,5 +1,5 @@
 import type { UserComposerAttachment } from "@/attachments/types";
-import type { DraftAgentStatusBarProps } from "@/components/agent-status-bar";
+import type { DraftAgentControlsProps } from "@/composer/agent-controls";
 import type { UseAgentFormStateResult } from "@/hooks/use-agent-form-state";
 
 export interface DraftKeyContext {
@@ -18,12 +18,12 @@ export function resolveDraftKey(input: {
   return input.draftKey;
 }
 
-export function buildDraftStatusControls(input: {
+export function buildDraftAgentControls(input: {
   formState: UseAgentFormStateResult;
-  features?: DraftAgentStatusBarProps["features"];
-  onSetFeature?: DraftAgentStatusBarProps["onSetFeature"];
-  onDropdownClose?: DraftAgentStatusBarProps["onDropdownClose"];
-}): DraftAgentStatusBarProps {
+  features?: DraftAgentControlsProps["features"];
+  onSetFeature?: DraftAgentControlsProps["onSetFeature"];
+  onDropdownClose?: DraftAgentControlsProps["onDropdownClose"];
+}): DraftAgentControlsProps {
   const { formState, features, onSetFeature, onDropdownClose } = input;
   return {
     providerDefinitions: formState.providerDefinitions,

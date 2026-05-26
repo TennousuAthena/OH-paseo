@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ReactElement,
+  type ReactNode,
   type RefObject,
 } from "react";
 import {
@@ -18,18 +19,7 @@ import {
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
-import { useStoreWithEqualityFn } from "zustand/traditional";
-import {
-  Brain,
-  ChevronDown,
-  ListTodo,
-  Settings2,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldOff,
-  ShieldQuestionMark,
-  Zap,
-} from "lucide-react-native";
+import { Brain, ChevronDown, ListTodo, Settings2, Zap } from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import {
@@ -52,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
+import { DraftAgentModeControl, AgentModeControl } from "@/composer/agent-controls/mode-control";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type {
@@ -61,42 +52,38 @@ import type {
   AgentProvider,
 } from "@server/server/agent/agent-sdk-types";
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
-import { getModeVisuals, type AgentModeColorTier } from "@server/server/agent/provider-manifest";
 import {
   getFeatureHighlightColor,
   getFeatureTooltip,
-  getStatusSelectorHint,
+  getAgentControlHint,
+  formatThinkingOptionLabel,
   resolveAgentModelSelection,
-} from "@/components/agent-status-bar.utils";
+} from "@/composer/agent-controls/utils";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
 
-interface StatusOption {
+interface AgentControlOption {
   id: string;
   label: string;
 }
 
-type StatusSelector = "provider" | "mode" | "model" | "thinking" | `feature-${string}`;
+type AgentControlSelector = "provider" | "mode" | "model" | "thinking" | `feature-${string}`;
 
-interface ControlledAgentStatusBarProps {
+interface ControlledAgentControlsProps {
   provider: string;
-  providerOptions?: StatusOption[];
+  providerOptions?: AgentControlOption[];
   selectedProviderId?: string;
   onSelectProvider?: (providerId: string) => void;
-  modeOptions?: StatusOption[];
-  selectedModeId?: string;
-  onSelectMode?: (modeId: string) => void;
-  modelOptions?: StatusOption[];
+  modelOptions?: AgentControlOption[];
   selectedModelId?: string;
   onSelectModel?: (modelId: string) => void;
   onSelectProviderAndModel?: (provider: string, modelId: string) => void;
-  thinkingOptions?: StatusOption[];
+  thinkingOptions?: AgentControlOption[];
   selectedThinkingOptionId?: string;
   onSelectThinkingOption?: (thinkingOptionId: string) => void;
   disabled?: boolean;
   isModelLoading?: boolean;
-  providerDefinitions: AgentProviderDefinition[];
   modelSelectorProviders?: ProviderSelectorProvider[];
   favoriteKeys?: Set<string>;
   onToggleFavoriteModel?: (provider: string, modelId: string) => void;
@@ -104,9 +91,11 @@ interface ControlledAgentStatusBarProps {
   onSetFeature?: (featureId: string, value: unknown) => void;
   onDropdownClose?: () => void;
   onModelSelectorOpen?: () => void;
+  /** Extra elements rendered inline with the agent controls (desktop only). */
+  desktopExtras?: ReactNode;
 }
 
-export interface DraftAgentStatusBarProps {
+export interface DraftAgentControlsProps {
   providerDefinitions: AgentProviderDefinition[];
   selectedProvider: AgentProvider | null;
   onSelectProvider: (provider: AgentProvider) => void;
@@ -130,14 +119,14 @@ export interface DraftAgentStatusBarProps {
   disabled?: boolean;
 }
 
-interface AgentStatusBarProps {
+interface AgentControlsProps {
   agentId: string;
   serverId: string;
   onDropdownClose?: () => void;
 }
 
 function findOptionLabel(
-  options: StatusOption[] | undefined,
+  options: AgentControlOption[] | undefined,
   selectedId: string | undefined,
   fallback: string,
 ) {
@@ -180,16 +169,9 @@ function getFeatureIconColor(
   }
 }
 
-const MODE_ICONS = {
-  ShieldCheck,
-  ShieldAlert,
-  ShieldOff,
-  ShieldQuestionMark,
-} as const;
-
 function resolveDisplayModel(
   isModelLoading: boolean,
-  modelOptions: StatusOption[] | undefined,
+  modelOptions: AgentControlOption[] | undefined,
   selectedModelId: string | undefined,
 ) {
   if (isModelLoading && (!modelOptions || modelOptions.length === 0)) {
@@ -198,7 +180,7 @@ function resolveDisplayModel(
   return findOptionLabel(modelOptions, selectedModelId, "Select model");
 }
 
-// Mobile status bar only — strip namespace prefix so providers like OpenCode
+// Mobile agent controls only — strip namespace prefix so providers like OpenCode
 // show "gpt-5.5" instead of "openrouter/gpt-5.5". Full label still appears in
 // the model picker.
 function shortModelLabel(label: string): string {
@@ -206,37 +188,41 @@ function shortModelLabel(label: string): string {
   return i === -1 ? label : label.slice(i + 1);
 }
 
-type ActiveSheet = "thinking" | "mode" | "features" | null;
+type ActiveSheet = "thinking" | "features" | null;
 
 function resolveHasAnyControl({
   providerOptions,
-  modeOptions,
   canSelectModel,
   thinkingOptions,
   features,
 }: {
-  providerOptions: StatusOption[] | undefined;
-  modeOptions: StatusOption[] | undefined;
+  providerOptions: AgentControlOption[] | undefined;
   canSelectModel: boolean;
-  thinkingOptions: StatusOption[] | undefined;
+  thinkingOptions: AgentControlOption[] | undefined;
   features: AgentFeature[] | undefined;
 }) {
   return (
     Boolean(providerOptions?.length) ||
-    Boolean(modeOptions?.length) ||
     canSelectModel ||
     Boolean(thinkingOptions?.length) ||
     Boolean(features?.length)
   );
 }
 
-function toComboboxOptions(options: StatusOption[] | undefined): ComboboxOption[] {
+function toComboboxOptions(options: AgentControlOption[] | undefined): ComboboxOption[] {
   return (options ?? []).map((o) => ({ id: o.id, label: o.label }));
+}
+
+function toThinkingControlOptions(options: AgentControlOption[] | undefined): AgentControlOption[] {
+  return (options ?? []).map((option) => ({
+    id: option.id,
+    label: formatThinkingOptionLabel(option),
+  }));
 }
 
 function buildFallbackModelSelectorProviders(
   provider: string,
-  modelOptions: StatusOption[] | undefined,
+  modelOptions: AgentControlOption[] | undefined,
 ): ProviderSelectorProvider[] {
   if (!modelOptions || modelOptions.length === 0) {
     return [];
@@ -314,20 +300,6 @@ function pickDesktopModel({
   }
 }
 
-function resolveModeVisualsForProvider(
-  provider: string,
-  selectedModeId: string | undefined,
-  providerDefinitions: AgentProviderDefinition[],
-  palette: Parameters<typeof getModeIconColor>[1],
-) {
-  const modeVisuals = selectedModeId
-    ? getModeVisuals(provider, selectedModeId, providerDefinitions)
-    : undefined;
-  const icon = modeVisuals?.icon ? MODE_ICONS[modeVisuals.icon] : null;
-  const color = getModeIconColor(modeVisuals?.colorTier, palette);
-  return { icon, color };
-}
-
 function resolveProviderIcon(provider: string) {
   if (provider.trim().length === 0) {
     return null;
@@ -335,10 +307,9 @@ function resolveProviderIcon(provider: string) {
   return getProviderIcon(provider);
 }
 
-type AgentStatusBarSlice = {
+type AgentControlsSlice = {
   provider: string;
   cwd: string | null;
-  currentModeId: string | null | undefined;
   runtimeModelId: string | null;
   model: string | null | undefined;
   features: AgentFeature[] | undefined;
@@ -346,11 +317,11 @@ type AgentStatusBarSlice = {
   lastUsage: unknown;
 } | null;
 
-function selectAgentStatusBarSlice(
+function selectAgentControlsSlice(
   state: ReturnType<typeof useSessionStore.getState>,
   serverId: string,
   agentId: string,
-): AgentStatusBarSlice {
+): AgentControlsSlice {
   const currentAgent = state.sessions[serverId]?.agents?.get(agentId) ?? null;
   if (!currentAgent) {
     return null;
@@ -358,7 +329,6 @@ function selectAgentStatusBarSlice(
   return {
     provider: currentAgent.provider,
     cwd: currentAgent.cwd,
-    currentModeId: currentAgent.currentModeId,
     runtimeModelId: currentAgent.runtimeInfo?.model ?? null,
     model: currentAgent.model,
     features: currentAgent.features,
@@ -398,21 +368,9 @@ function buildAgentProviderModels(
   return map;
 }
 
-function compareAvailableModes(a: AgentMode[], b: AgentMode[]): boolean {
-  return a === b || JSON.stringify(a) === JSON.stringify(b);
-}
-
-function resolveAgentDisplayMode(
-  availableModes: AgentMode[],
-  currentModeId: string | null | undefined,
-): string {
-  const found = availableModes.find((mode) => mode.id === currentModeId);
-  return found?.label || currentModeId || "default";
-}
-
 function buildOpenChangeHandler(
-  selector: StatusSelector,
-  setOpenSelector: (next: StatusSelector | null) => void,
+  selector: AgentControlSelector,
+  setOpenSelector: (next: AgentControlSelector | null) => void,
   onDropdownClose?: () => void,
 ) {
   return (nextOpen: boolean) => {
@@ -423,37 +381,11 @@ function buildOpenChangeHandler(
   };
 }
 
-function getModeIconColor(
-  colorTier: AgentModeColorTier | undefined,
-  palette: {
-    blue: { 500: string };
-    green: { 500: string };
-    red: { 500: string };
-    purple: { 500: string };
-  },
-): string {
-  switch (colorTier) {
-    case "safe":
-      return palette.green[500];
-    case "moderate":
-      return palette.blue[500];
-    case "dangerous":
-      return palette.red[500];
-    case "planning":
-      return palette.purple[500];
-    default:
-      return palette.blue[500];
-  }
-}
-
-function ControlledStatusBar({
+function ControlledAgentControls({
   provider,
   providerOptions,
   selectedProviderId,
   onSelectProvider,
-  modeOptions,
-  selectedModeId,
-  onSelectMode,
   modelOptions,
   selectedModelId,
   onSelectModel,
@@ -463,7 +395,6 @@ function ControlledStatusBar({
   onSelectThinkingOption,
   disabled = false,
   isModelLoading = false,
-  providerDefinitions,
   modelSelectorProviders,
   favoriteKeys = new Set<string>(),
   onToggleFavoriteModel,
@@ -471,21 +402,20 @@ function ControlledStatusBar({
   onSetFeature,
   onDropdownClose,
   onModelSelectorOpen,
-}: ControlledAgentStatusBarProps) {
+  desktopExtras,
+}: ControlledAgentControlsProps) {
   const { theme } = useUnistyles();
   const isCompact = useIsCompactFormFactor();
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null);
-  const [openSelector, setOpenSelector] = useState<StatusSelector | null>(null);
+  const [openSelector, setOpenSelector] = useState<AgentControlSelector | null>(null);
 
   const providerAnchorRef = useRef<View>(null);
-  const modeAnchorRef = useRef<View>(null);
   const _modelAnchorRef = useRef<View>(null);
   const thinkingAnchorRef = useRef<View>(null);
 
   const canSelectProvider = Boolean(
     onSelectProvider && providerOptions && providerOptions.length > 0,
   );
-  const canSelectMode = Boolean(onSelectMode && modeOptions && modeOptions.length > 0);
   const canSelectModel = Boolean(onSelectModel);
   const canSelectThinking = Boolean(
     onSelectThinkingOption && thinkingOptions && thinkingOptions.length > 0,
@@ -493,23 +423,20 @@ function ControlledStatusBar({
 
   const displayProvider = findOptionLabel(providerOptions, selectedProviderId, "Provider");
   const displayModel = resolveDisplayModel(isModelLoading, modelOptions, selectedModelId);
+  const formattedThinkingOptions = useMemo(
+    () => toThinkingControlOptions(thinkingOptions),
+    [thinkingOptions],
+  );
   const displayThinking = findOptionLabel(
-    thinkingOptions,
+    formattedThinkingOptions,
     selectedThinkingOptionId,
-    thinkingOptions?.[0]?.label ?? "Unknown",
+    formattedThinkingOptions[0]?.label ?? "Unknown",
   );
 
-  const { icon: ModeIconComponent, color: modeIconColor } = resolveModeVisualsForProvider(
-    provider,
-    selectedModeId,
-    providerDefinitions,
-    theme.colors.palette,
-  );
   const ProviderIcon = resolveProviderIcon(provider);
 
   const hasAnyControl = resolveHasAnyControl({
     providerOptions,
-    modeOptions,
     canSelectModel,
     thinkingOptions,
     features,
@@ -521,34 +448,16 @@ function ControlledStatusBar({
     () => toComboboxOptions(providerOptions),
     [providerOptions],
   );
-  const comboboxModeOptions = useMemo<ComboboxOption[]>(
-    () => toComboboxOptions(modeOptions),
-    [modeOptions],
-  );
   const fallbackModelSelectorProviders = useMemo(
     () => buildFallbackModelSelectorProviders(provider, modelOptions),
     [modelOptions, provider],
   );
   const effectiveModelSelectorProviders = modelSelectorProviders ?? fallbackModelSelectorProviders;
   const comboboxThinkingOptions = useMemo<ComboboxOption[]>(
-    () => toComboboxOptions(thinkingOptions),
-    [thinkingOptions],
+    () => toComboboxOptions(formattedThinkingOptions),
+    [formattedThinkingOptions],
   );
 
-  const renderModeOption = useCallback(
-    (args: { option: ComboboxOption; selected: boolean; active: boolean; onPress: () => void }) => (
-      <ModeComboboxOption
-        option={args.option}
-        selected={args.selected}
-        active={args.active}
-        onPress={args.onPress}
-        provider={provider}
-        providerDefinitions={providerDefinitions}
-        iconColor={theme.colors.foreground}
-      />
-    ),
-    [provider, providerDefinitions, theme.colors.foreground],
-  );
   const renderThinkingOption = useCallback(
     (args: { option: ComboboxOption; selected: boolean; active: boolean; onPress: () => void }) => (
       <ThinkingComboboxOption
@@ -563,7 +472,7 @@ function ControlledStatusBar({
   );
 
   const handleOpenChange = useCallback(
-    (selector: StatusSelector) =>
+    (selector: AgentControlSelector) =>
       buildOpenChangeHandler(selector, setOpenSelector, onDropdownClose),
     [onDropdownClose],
   );
@@ -576,13 +485,8 @@ function ControlledStatusBar({
     handleOpenChange("thinking")(openSelector !== "thinking");
   }, [handleOpenChange, openSelector]);
 
-  const handleModePress = useCallback(() => {
-    handleOpenChange("mode")(openSelector !== "mode");
-  }, [handleOpenChange, openSelector]);
-
   const handleProviderOpenChange = useMemo(() => handleOpenChange("provider"), [handleOpenChange]);
   const handleThinkingOpenChange = useMemo(() => handleOpenChange("thinking"), [handleOpenChange]);
-  const handleModeOpenChange = useMemo(() => handleOpenChange("mode"), [handleOpenChange]);
 
   const handleProviderSelect = useCallback(
     (id: string) => onSelectProvider?.(id),
@@ -592,7 +496,6 @@ function ControlledStatusBar({
     (id: string) => onSelectThinkingOption?.(id),
     [onSelectThinkingOption],
   );
-  const handleModeSelect = useCallback((id: string) => onSelectMode?.(id), [onSelectMode]);
 
   const handleDesktopModelSelect = useCallback(
     (nextProviderId: string, modelId: string) => {
@@ -623,17 +526,6 @@ function ControlledStatusBar({
     [canSelectThinking, disabled, openSelector],
   );
 
-  const modePressableStyle = useMemo(
-    () =>
-      makeBadgePressableStyle(
-        styles.modeIconBadge,
-        styles.disabledBadge,
-        disabled || !canSelectMode,
-        openSelector === "mode",
-      ),
-    [canSelectMode, disabled, openSelector],
-  );
-
   const handleOpenSheet = useCallback((sheet: Exclude<ActiveSheet, null>) => {
     Keyboard.dismiss();
     setActiveSheet(sheet);
@@ -649,14 +541,6 @@ function ControlledStatusBar({
       setActiveSheet(null);
     },
     [onSelectThinkingOption],
-  );
-
-  const handleSelectModeAndClose = useCallback(
-    (modeId: string) => {
-      onSelectMode?.(modeId);
-      setActiveSheet(null);
-    },
-    [onSelectMode],
   );
 
   const handleSheetModelSelect = useCallback(
@@ -680,64 +564,51 @@ function ControlledStatusBar({
   return (
     <View style={styles.container}>
       {!isCompact ? (
-        <DesktopStatusBarContent
+        <DesktopAgentControlsContent
           provider={provider}
           providerOptions={providerOptions}
           selectedProviderId={selectedProviderId}
-          modeOptions={modeOptions}
-          selectedModeId={selectedModeId}
           modelOptions={modelOptions}
           selectedModelId={selectedModelId}
-          thinkingOptions={thinkingOptions}
+          thinkingOptions={formattedThinkingOptions}
           selectedThinkingOptionId={selectedThinkingOptionId}
           features={features}
           onSetFeature={onSetFeature}
           onToggleFavoriteModel={onToggleFavoriteModel}
           onDropdownClose={onDropdownClose}
           onModelSelectorOpen={onModelSelectorOpen}
-          providerDefinitions={providerDefinitions}
           favoriteKeys={favoriteKeys}
           disabled={disabled}
           isModelLoading={isModelLoading}
           canSelectProvider={canSelectProvider}
-          canSelectMode={canSelectMode}
           canSelectModel={canSelectModel}
           canSelectThinking={canSelectThinking}
           modelSelectorProviders={effectiveModelSelectorProviders}
           modelDisabled={modelDisabled}
           comboboxProviderOptions={comboboxProviderOptions}
-          comboboxModeOptions={comboboxModeOptions}
           comboboxThinkingOptions={comboboxThinkingOptions}
           displayProvider={displayProvider}
           displayModel={displayModel}
           displayThinking={displayThinking}
-          ModeIconComponent={ModeIconComponent}
-          modeIconColor={modeIconColor}
           openSelector={openSelector}
           providerAnchorRef={providerAnchorRef}
           thinkingAnchorRef={thinkingAnchorRef}
-          modeAnchorRef={modeAnchorRef}
           providerPressableStyle={providerPressableStyle}
           thinkingPressableStyle={thinkingPressableStyle}
-          modePressableStyle={modePressableStyle}
           handleProviderPress={handleProviderPress}
           handleThinkingPress={handleThinkingPress}
-          handleModePress={handleModePress}
           handleProviderSelect={handleProviderSelect}
           handleThinkingSelect={handleThinkingSelect}
-          handleModeSelect={handleModeSelect}
           handleDesktopModelSelect={handleDesktopModelSelect}
           handleProviderOpenChange={handleProviderOpenChange}
           handleThinkingOpenChange={handleThinkingOpenChange}
-          handleModeOpenChange={handleModeOpenChange}
           handleOpenChange={handleOpenChange}
-          renderModeOption={renderModeOption}
           renderThinkingOption={renderThinkingOption}
+          extras={desktopExtras}
         />
       ) : (
-        <SheetStatusBarContent
+        <SheetAgentControlsContent
           provider={provider}
-          selectedModeId={selectedModeId}
           selectedModelId={selectedModelId}
           selectedThinkingOptionId={selectedThinkingOptionId}
           features={features}
@@ -748,15 +619,11 @@ function ControlledStatusBar({
           favoriteKeys={favoriteKeys}
           disabled={disabled}
           isModelLoading={isModelLoading}
-          canSelectMode={canSelectMode}
           canSelectModel={canSelectModel}
           canSelectThinking={canSelectThinking}
           modelSelectorProviders={effectiveModelSelectorProviders}
           modelDisabled={modelDisabled}
-          comboboxModeOptions={comboboxModeOptions}
           comboboxThinkingOptions={comboboxThinkingOptions}
-          ModeIconComponent={ModeIconComponent}
-          modeIconColor={modeIconColor}
           openSelector={openSelector}
           ProviderIcon={ProviderIcon}
           activeSheet={activeSheet}
@@ -764,9 +631,7 @@ function ControlledStatusBar({
           handleCloseSheet={handleCloseSheet}
           handleSheetModelSelect={handleSheetModelSelect}
           handleSelectThinkingAndClose={handleSelectThinkingAndClose}
-          handleSelectModeAndClose={handleSelectModeAndClose}
           handleOpenChange={handleOpenChange}
-          renderModeOption={renderModeOption}
           renderThinkingOption={renderThinkingOption}
         />
       )}
@@ -774,81 +639,62 @@ function ControlledStatusBar({
   );
 }
 
-interface DesktopStatusBarContentProps {
+interface DesktopAgentControlsContentProps {
   provider: string;
-  providerOptions?: StatusOption[];
+  providerOptions?: AgentControlOption[];
   selectedProviderId?: string;
-  modeOptions?: StatusOption[];
-  selectedModeId?: string;
-  modelOptions?: StatusOption[];
+  modelOptions?: AgentControlOption[];
   selectedModelId?: string;
-  thinkingOptions?: StatusOption[];
+  thinkingOptions?: AgentControlOption[];
   selectedThinkingOptionId?: string;
   features?: AgentFeature[];
   onSetFeature?: (featureId: string, value: unknown) => void;
   onToggleFavoriteModel?: (provider: string, modelId: string) => void;
   onDropdownClose?: () => void;
   onModelSelectorOpen?: () => void;
-  providerDefinitions: AgentProviderDefinition[];
   favoriteKeys: Set<string>;
   disabled: boolean;
   isModelLoading: boolean;
   canSelectProvider: boolean;
-  canSelectMode: boolean;
   canSelectModel: boolean;
   canSelectThinking: boolean;
   modelSelectorProviders: ProviderSelectorProvider[];
   modelDisabled: boolean;
   comboboxProviderOptions: ComboboxOption[];
-  comboboxModeOptions: ComboboxOption[];
   comboboxThinkingOptions: ComboboxOption[];
   displayProvider: string;
   displayModel: string;
   displayThinking: string;
-  ModeIconComponent: (typeof MODE_ICONS)[keyof typeof MODE_ICONS] | null;
-  modeIconColor: string;
-  openSelector: StatusSelector | null;
+  openSelector: AgentControlSelector | null;
   providerAnchorRef: RefObject<View | null>;
   thinkingAnchorRef: RefObject<View | null>;
-  modeAnchorRef: RefObject<View | null>;
   providerPressableStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
   thinkingPressableStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
-  modePressableStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
   handleProviderPress: () => void;
   handleThinkingPress: () => void;
-  handleModePress: () => void;
   handleProviderSelect: (id: string) => void;
   handleThinkingSelect: (id: string) => void;
-  handleModeSelect: (id: string) => void;
   handleDesktopModelSelect: (providerId: string, modelId: string) => void;
   handleProviderOpenChange: (open: boolean) => void;
   handleThinkingOpenChange: (open: boolean) => void;
-  handleModeOpenChange: (open: boolean) => void;
-  handleOpenChange: (selector: StatusSelector) => (nextOpen: boolean) => void;
-  renderModeOption: (args: {
-    option: ComboboxOption;
-    selected: boolean;
-    active: boolean;
-    onPress: () => void;
-  }) => ReactElement;
+  handleOpenChange: (selector: AgentControlSelector) => (nextOpen: boolean) => void;
   renderThinkingOption: (args: {
     option: ComboboxOption;
     selected: boolean;
     active: boolean;
     onPress: () => void;
   }) => ReactElement;
+  extras?: ReactNode;
 }
 
 const DESKTOP_SEARCH_THRESHOLD = 6;
 
-function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
+function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
   const { theme } = useUnistyles();
   const {
     provider,
     providerOptions,
     selectedProviderId,
-    modeOptions,
-    selectedModeId,
     selectedModelId,
     thinkingOptions,
     selectedThinkingOptionId,
@@ -861,39 +707,30 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
     disabled,
     isModelLoading,
     canSelectProvider,
-    canSelectMode,
     canSelectModel,
     canSelectThinking,
     modelSelectorProviders,
     modelDisabled,
     comboboxProviderOptions,
-    comboboxModeOptions,
     comboboxThinkingOptions,
     displayProvider,
     displayModel,
     displayThinking,
-    ModeIconComponent,
-    modeIconColor,
     openSelector,
     providerAnchorRef,
     thinkingAnchorRef,
-    modeAnchorRef,
     providerPressableStyle,
     thinkingPressableStyle,
-    modePressableStyle,
     handleProviderPress,
     handleThinkingPress,
-    handleModePress,
     handleProviderSelect,
     handleThinkingSelect,
-    handleModeSelect,
     handleDesktopModelSelect,
     handleProviderOpenChange,
     handleThinkingOpenChange,
-    handleModeOpenChange,
     handleOpenChange,
-    renderModeOption,
     renderThinkingOption,
+    extras,
   } = props;
 
   return (
@@ -950,7 +787,7 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
             </View>
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>{getStatusSelectorHint("model")}</Text>
+            <Text style={styles.tooltipText}>{getAgentControlHint("model")}</Text>
           </TooltipContent>
         </Tooltip>
       ) : null}
@@ -975,7 +812,7 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
               </Pressable>
             </TooltipTrigger>
             <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{getStatusSelectorHint("thinking")}</Text>
+              <Text style={styles.tooltipText}>{getAgentControlHint("thinking")}</Text>
             </TooltipContent>
           </Tooltip>
           <Combobox
@@ -992,44 +829,7 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
         </>
       ) : null}
 
-      {modeOptions && modeOptions.length > 0 ? (
-        <>
-          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-            <TooltipTrigger asChild triggerRefProp="ref">
-              <Pressable
-                ref={modeAnchorRef}
-                collapsable={false}
-                disabled={disabled || !canSelectMode}
-                onPress={handleModePress}
-                style={modePressableStyle}
-                accessibilityRole="button"
-                accessibilityLabel={`Select agent mode (${selectedModeId ?? ""})`}
-                testID="agent-mode-selector"
-              >
-                {ModeIconComponent ? (
-                  <ModeIconComponent size={theme.iconSize.md} color={modeIconColor} />
-                ) : (
-                  <ShieldCheck size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-                )}
-              </Pressable>
-            </TooltipTrigger>
-            <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{getStatusSelectorHint("mode")}</Text>
-            </TooltipContent>
-          </Tooltip>
-          <Combobox
-            options={comboboxModeOptions}
-            value={selectedModeId ?? ""}
-            onSelect={handleModeSelect}
-            searchable={comboboxModeOptions.length > DESKTOP_SEARCH_THRESHOLD}
-            open={openSelector === "mode"}
-            onOpenChange={handleModeOpenChange}
-            anchorRef={modeAnchorRef}
-            desktopPlacement="top-start"
-            renderOption={renderModeOption}
-          />
-        </>
-      ) : null}
+      {extras}
 
       {features?.map((feature) => (
         <DesktopFeatureItem
@@ -1045,9 +845,8 @@ function DesktopStatusBarContent(props: DesktopStatusBarContentProps) {
   );
 }
 
-interface SheetStatusBarContentProps {
+interface SheetAgentControlsContentProps {
   provider: string;
-  selectedModeId?: string;
   selectedModelId?: string;
   selectedThinkingOptionId?: string;
   features?: AgentFeature[];
@@ -1058,30 +857,19 @@ interface SheetStatusBarContentProps {
   favoriteKeys: Set<string>;
   disabled: boolean;
   isModelLoading: boolean;
-  canSelectMode: boolean;
   canSelectModel: boolean;
   canSelectThinking: boolean;
   modelSelectorProviders: ProviderSelectorProvider[];
   modelDisabled: boolean;
-  comboboxModeOptions: ComboboxOption[];
   comboboxThinkingOptions: ComboboxOption[];
-  ModeIconComponent: (typeof MODE_ICONS)[keyof typeof MODE_ICONS] | null;
-  modeIconColor: string;
-  openSelector: StatusSelector | null;
+  openSelector: AgentControlSelector | null;
   ProviderIcon: ReturnType<typeof getProviderIcon> | null;
   activeSheet: ActiveSheet;
   handleOpenSheet: (sheet: Exclude<ActiveSheet, null>) => void;
   handleCloseSheet: () => void;
   handleSheetModelSelect: (providerId: string, modelId: string) => void;
   handleSelectThinkingAndClose: (thinkingOptionId: string) => void;
-  handleSelectModeAndClose: (modeId: string) => void;
-  handleOpenChange: (selector: StatusSelector) => (nextOpen: boolean) => void;
-  renderModeOption: (args: {
-    option: ComboboxOption;
-    selected: boolean;
-    active: boolean;
-    onPress: () => void;
-  }) => ReactElement;
+  handleOpenChange: (selector: AgentControlSelector) => (nextOpen: boolean) => void;
   renderThinkingOption: (args: {
     option: ComboboxOption;
     selected: boolean;
@@ -1090,11 +878,10 @@ interface SheetStatusBarContentProps {
   }) => ReactElement;
 }
 
-function SheetStatusBarContent(props: SheetStatusBarContentProps) {
+function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
   const { theme } = useUnistyles();
   const {
     provider,
-    selectedModeId,
     selectedModelId,
     selectedThinkingOptionId,
     features,
@@ -1105,15 +892,11 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
     favoriteKeys,
     disabled,
     isModelLoading,
-    canSelectMode,
     canSelectModel,
     canSelectThinking,
     modelSelectorProviders,
     modelDisabled,
-    comboboxModeOptions,
     comboboxThinkingOptions,
-    ModeIconComponent,
-    modeIconColor,
     openSelector,
     ProviderIcon,
     activeSheet,
@@ -1121,36 +904,21 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
     handleCloseSheet,
     handleSheetModelSelect,
     handleSelectThinkingAndClose,
-    handleSelectModeAndClose,
     handleOpenChange,
-    renderModeOption,
     renderThinkingOption,
   } = props;
 
   const thinkingAnchorRef = useRef<View | null>(null);
-  const modeAnchorRef = useRef<View | null>(null);
 
   const hasThinking = comboboxThinkingOptions.length > 0;
-  const hasMode = Boolean(canSelectMode && comboboxModeOptions.length > 0);
   const hasFeatures = Boolean(features && features.length > 0);
 
   const handleOpenThinking = useCallback(() => handleOpenSheet("thinking"), [handleOpenSheet]);
-  const handleOpenMode = useCallback(() => handleOpenSheet("mode"), [handleOpenSheet]);
   const handleOpenFeatures = useCallback(() => handleOpenSheet("features"), [handleOpenSheet]);
   const handleThinkingSheetOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {
         handleOpenSheet("thinking");
-      } else {
-        handleCloseSheet();
-      }
-    },
-    [handleCloseSheet, handleOpenSheet],
-  );
-  const handleModeSheetOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (nextOpen) {
-        handleOpenSheet("mode");
       } else {
         handleCloseSheet();
       }
@@ -1167,7 +935,7 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
       disabled: boolean;
       isOpen: boolean;
     }) => (
-      <View pointerEvents="none" style={styles.prefsButton} testID="agent-status-bar-model">
+      <View pointerEvents="none" style={styles.prefsButton} testID="agent-controls-model">
         {ProviderIcon ? (
           <ProviderIcon size={theme.iconSize.lg} color={theme.colors.foregroundMuted} />
         ) : null}
@@ -1184,12 +952,6 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
     styles.disabledBadge,
     disabled || !canSelectThinking,
     activeSheet === "thinking",
-  );
-  const modeButtonStyle = makeBadgePressableStyle(
-    styles.modeIconBadge,
-    styles.disabledBadge,
-    disabled || !canSelectMode,
-    activeSheet === "mode",
   );
   const featuresButtonStyle = makeBadgePressableStyle(
     styles.modeIconBadge,
@@ -1224,27 +986,9 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
           style={thinkingButtonStyle}
           accessibilityRole="button"
           accessibilityLabel="Select thinking option"
-          testID="agent-status-bar-thinking"
+          testID="agent-controls-thinking"
         >
           <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-        </Pressable>
-      ) : null}
-
-      {hasMode ? (
-        <Pressable
-          ref={modeAnchorRef}
-          onPress={handleOpenMode}
-          disabled={disabled || !canSelectMode}
-          style={modeButtonStyle}
-          accessibilityRole="button"
-          accessibilityLabel={`Select agent mode (${selectedModeId ?? ""})`}
-          testID="agent-preferences-mode"
-        >
-          {ModeIconComponent ? (
-            <ModeIconComponent size={theme.iconSize.md} color={modeIconColor} />
-          ) : (
-            <ShieldCheck size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-          )}
         </Pressable>
       ) : null}
 
@@ -1255,7 +999,7 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
           style={featuresButtonStyle}
           accessibilityRole="button"
           accessibilityLabel="Open agent features"
-          testID="agent-status-bar-features"
+          testID="agent-controls-features"
         >
           <Settings2 size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
         </Pressable>
@@ -1272,20 +1016,6 @@ function SheetStatusBarContent(props: SheetStatusBarContentProps) {
           onOpenChange={handleThinkingSheetOpenChange}
           anchorRef={thinkingAnchorRef}
           renderOption={renderThinkingOption}
-        />
-      ) : null}
-
-      {hasMode ? (
-        <Combobox
-          options={comboboxModeOptions}
-          value={selectedModeId ?? ""}
-          onSelect={handleSelectModeAndClose}
-          searchable={false}
-          title="Mode"
-          open={activeSheet === "mode"}
-          onOpenChange={handleModeSheetOpenChange}
-          renderOption={renderModeOption}
-          anchorRef={modeAnchorRef}
         />
       ) : null}
 
@@ -1319,12 +1049,12 @@ function DesktopFeatureItem({
 }: {
   feature: AgentFeature;
   disabled: boolean;
-  openSelector: StatusSelector | null;
-  handleOpenChange: (selector: StatusSelector) => (nextOpen: boolean) => void;
+  openSelector: AgentControlSelector | null;
+  handleOpenChange: (selector: AgentControlSelector) => (nextOpen: boolean) => void;
   onSetFeature?: (featureId: string, value: unknown) => void;
 }) {
   const { theme } = useUnistyles();
-  const featureSelector: StatusSelector = `feature-${feature.id}`;
+  const featureSelector: AgentControlSelector = `feature-${feature.id}`;
 
   const handleFeatureOpenChange = useMemo(
     () => handleOpenChange(featureSelector),
@@ -1444,12 +1174,12 @@ function SheetFeatureItem({
 }: {
   feature: AgentFeature;
   disabled: boolean;
-  openSelector: StatusSelector | null;
-  handleOpenChange: (selector: StatusSelector) => (nextOpen: boolean) => void;
+  openSelector: AgentControlSelector | null;
+  handleOpenChange: (selector: AgentControlSelector) => (nextOpen: boolean) => void;
   onSetFeature?: (featureId: string, value: unknown) => void;
 }) {
   const { theme } = useUnistyles();
-  const featureSelector: StatusSelector = `feature-${feature.id}`;
+  const featureSelector: AgentControlSelector = `feature-${feature.id}`;
 
   const handleFeatureOpenChange = useMemo(
     () => handleOpenChange(featureSelector),
@@ -1587,56 +1317,16 @@ function ThinkingComboboxOption({
   );
 }
 
-function ModeComboboxOption({
-  option,
-  selected,
-  active,
-  onPress,
-  provider,
-  providerDefinitions,
-  iconColor,
-}: {
-  option: ComboboxOption;
-  selected: boolean;
-  active: boolean;
-  onPress: () => void;
-  provider: string;
-  providerDefinitions: AgentProviderDefinition[];
-  iconColor: string;
-}) {
-  const visuals = getModeVisuals(provider, option.id, providerDefinitions);
-  const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck;
-  const leadingSlot = useMemo(
-    () => <IconComponent size={16} color={iconColor} />,
-    [IconComponent, iconColor],
-  );
-  return (
-    <ComboboxItem
-      label={option.label}
-      selected={selected}
-      active={active}
-      onPress={onPress}
-      leadingSlot={leadingSlot}
-    />
-  );
-}
-
-const EMPTY_MODES: AgentMode[] = [];
 const FEATURES_SHEET_HEADER: SheetHeader = { title: "Features" };
 
-export const AgentStatusBar = memo(function AgentStatusBar({
+export const AgentControls = memo(function AgentControls({
   agentId,
   serverId,
   onDropdownClose,
-}: AgentStatusBarProps) {
+}: AgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
   const agent = useSessionStore(
-    useShallow((state) => selectAgentStatusBarSlice(state, serverId, agentId)),
-  );
-  const availableModes = useStoreWithEqualityFn(
-    useSessionStore,
-    (state) => state.sessions[serverId]?.agents?.get(agentId)?.availableModes ?? EMPTY_MODES,
-    compareAvailableModes,
+    useShallow((state) => selectAgentControlsSlice(state, serverId, agentId)),
   );
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const toast = useToast();
@@ -1673,8 +1363,6 @@ export const AgentStatusBar = memo(function AgentStatusBar({
     [agentProviderDefinitions, agentProviderModels],
   );
 
-  const displayMode = resolveAgentDisplayMode(availableModes, agent?.currentModeId);
-
   const modelSelection = resolveAgentModelSelection({
     models,
     runtimeModelId: agent?.runtimeModelId,
@@ -1682,14 +1370,7 @@ export const AgentStatusBar = memo(function AgentStatusBar({
     explicitThinkingOptionId: agent?.thinkingOptionId,
   });
 
-  const modeOptions = useMemo<StatusOption[]>(() => {
-    return availableModes.map((mode) => ({
-      id: mode.id,
-      label: mode.label,
-    }));
-  }, [availableModes]);
-
-  const modelOptions = useMemo<StatusOption[]>(() => {
+  const modelOptions = useMemo<AgentControlOption[]>(() => {
     return (models ?? []).map((model) => ({ id: model.id, label: model.label }));
   }, [models]);
   const favoriteKeys = useMemo(
@@ -1700,28 +1381,15 @@ export const AgentStatusBar = memo(function AgentStatusBar({
     [preferences.favoriteModels],
   );
 
-  const thinkingOptions = useMemo<StatusOption[]>(() => {
+  const thinkingOptions = useMemo<AgentControlOption[]>(() => {
     return (modelSelection.thinkingOptions ?? []).map((option) => ({
       id: option.id,
-      label: option.label,
+      label: formatThinkingOptionLabel(option),
     }));
   }, [modelSelection.thinkingOptions]);
 
   const agentProvider = agent?.provider;
   const activeModelId = modelSelection.activeModelId;
-
-  const handleSelectMode = useCallback(
-    (modeId: string) => {
-      if (!client) {
-        return;
-      }
-      void client.setAgentMode(agentId, modeId).catch((error) => {
-        console.warn("[AgentStatusBar] setAgentMode failed", error);
-        toast.error(toErrorMessage(error));
-      });
-    },
-    [agentId, client, toast],
-  );
 
   const handleSelectModel = useCallback(
     (modelId: string) => {
@@ -1737,10 +1405,10 @@ export const AgentStatusBar = memo(function AgentStatusBar({
           },
         }),
       ).catch((error) => {
-        console.warn("[AgentStatusBar] persist model preference failed", error);
+        console.warn("[AgentControls] persist model preference failed", error);
       });
       void client.setAgentModel(agentId, modelId).catch((error) => {
-        console.warn("[AgentStatusBar] setAgentModel failed", error);
+        console.warn("[AgentControls] setAgentModel failed", error);
         toast.error(toErrorMessage(error));
       });
     },
@@ -1752,7 +1420,7 @@ export const AgentStatusBar = memo(function AgentStatusBar({
       void updatePreferences((current) =>
         toggleFavoriteModel({ preferences: current, provider, modelId }),
       ).catch((error) => {
-        console.warn("[AgentStatusBar] toggle favorite model failed", error);
+        console.warn("[AgentControls] toggle favorite model failed", error);
       });
     },
     [updatePreferences],
@@ -1776,11 +1444,11 @@ export const AgentStatusBar = memo(function AgentStatusBar({
             },
           }),
         ).catch((error) => {
-          console.warn("[AgentStatusBar] persist thinking preference failed", error);
+          console.warn("[AgentControls] persist thinking preference failed", error);
         });
       }
       void client.setAgentThinkingOption(agentId, thinkingOptionId).catch((error) => {
-        console.warn("[AgentStatusBar] setAgentThinkingOption failed", error);
+        console.warn("[AgentControls] setAgentThinkingOption failed", error);
         toast.error(toErrorMessage(error));
       });
     },
@@ -1803,10 +1471,10 @@ export const AgentStatusBar = memo(function AgentStatusBar({
           },
         }),
       ).catch((error) => {
-        console.warn("[AgentStatusBar] persist feature preference failed", error);
+        console.warn("[AgentControls] persist feature preference failed", error);
       });
       void client.setAgentFeature(agentId, featureId, value).catch((error) => {
-        console.warn("[AgentStatusBar] setAgentFeature failed", error);
+        console.warn("[AgentControls] setAgentFeature failed", error);
         toast.error(toErrorMessage(error));
       });
     },
@@ -1817,12 +1485,9 @@ export const AgentStatusBar = memo(function AgentStatusBar({
     refetchSnapshotIfStale(agentProvider);
   }, [agentProvider, refetchSnapshotIfStale]);
 
-  const fallbackModeOptions = useMemo<StatusOption[]>(
-    () =>
-      modeOptions.length > 0
-        ? modeOptions
-        : [{ id: agent?.currentModeId ?? "", label: displayMode }],
-    [agent?.currentModeId, displayMode, modeOptions],
+  const modeChip = useMemo(
+    () => <AgentModeControl serverId={serverId} agentId={agentId} placement="toolbar" />,
+    [serverId, agentId],
   );
 
   if (!agent) {
@@ -1830,13 +1495,9 @@ export const AgentStatusBar = memo(function AgentStatusBar({
   }
 
   return (
-    <ControlledStatusBar
+    <ControlledAgentControls
       provider={agent.provider}
-      modeOptions={fallbackModeOptions}
-      selectedModeId={agent.currentModeId ?? undefined}
-      providerDefinitions={agentProviderDefinitions}
       modelSelectorProviders={agentModelSelectorProviders}
-      onSelectMode={handleSelectMode}
       modelOptions={modelOptions}
       selectedModelId={modelSelection.activeModelId ?? undefined}
       onSelectModel={handleSelectModel}
@@ -1851,11 +1512,12 @@ export const AgentStatusBar = memo(function AgentStatusBar({
       onModelSelectorOpen={handleModelSelectorOpen}
       onDropdownClose={onDropdownClose}
       disabled={!client}
+      desktopExtras={modeChip}
     />
   );
 });
 
-export function DraftAgentStatusBar({
+export function DraftAgentControls({
   providerDefinitions,
   selectedProvider,
   onSelectProvider: _onSelectProvider,
@@ -1877,22 +1539,12 @@ export function DraftAgentStatusBar({
   onDropdownClose,
   onModelSelectorOpen,
   disabled = false,
-}: DraftAgentStatusBarProps) {
+}: DraftAgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
   const isCompact = useIsCompactFormFactor();
 
-  const mappedModeOptions = useMemo<StatusOption[]>(() => {
-    if (modeOptions.length === 0) {
-      return [{ id: "", label: "Default" }];
-    }
-    return modeOptions.map((mode) => ({
-      id: mode.id,
-      label: mode.label,
-    }));
-  }, [modeOptions]);
-
-  const mappedThinkingOptions = useMemo<StatusOption[]>(() => {
-    return thinkingOptions.map((option) => ({ id: option.id, label: option.label }));
+  const mappedThinkingOptions = useMemo<AgentControlOption[]>(() => {
+    return toThinkingControlOptions(thinkingOptions);
   }, [thinkingOptions]);
   const favoriteKeys = useMemo(
     () =>
@@ -1902,12 +1554,10 @@ export function DraftAgentStatusBar({
     [preferences.favoriteModels],
   );
 
-  const effectiveSelectedMode = selectedMode || mappedModeOptions[0]?.id || "";
   const effectiveSelectedThinkingOption =
     selectedThinkingOptionId || mappedThinkingOptions[0]?.id || undefined;
-  const hasSelectedProvider = selectedProvider !== null;
 
-  const modelOptions = useMemo<StatusOption[]>(
+  const modelOptions = useMemo<AgentControlOption[]>(
     () =>
       models.map((model) => ({
         id: model.id,
@@ -1921,10 +1571,25 @@ export function DraftAgentStatusBar({
       void updatePreferences((current) =>
         toggleFavoriteModel({ preferences: current, provider, modelId }),
       ).catch((error) => {
-        console.warn("[DraftAgentStatusBar] toggle favorite model failed", error);
+        console.warn("[DraftAgentControls] toggle favorite model failed", error);
       });
     },
     [updatePreferences],
+  );
+
+  const draftModeChip = useMemo(
+    () => (
+      <DraftAgentModeControl
+        placement="toolbar"
+        selectedProvider={selectedProvider}
+        providerDefinitions={providerDefinitions}
+        modeOptions={modeOptions}
+        selectedMode={selectedMode}
+        onSelectMode={onSelectMode}
+        disabled={disabled}
+      />
+    ),
+    [selectedProvider, providerDefinitions, modeOptions, selectedMode, onSelectMode, disabled],
   );
 
   if (!isCompact) {
@@ -1943,12 +1608,8 @@ export function DraftAgentStatusBar({
           onClose={onDropdownClose}
         />
         {selectedProvider ? (
-          <ControlledStatusBar
+          <ControlledAgentControls
             provider={selectedProvider}
-            providerDefinitions={providerDefinitions}
-            modeOptions={mappedModeOptions}
-            selectedModeId={effectiveSelectedMode}
-            onSelectMode={onSelectMode}
             thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
             selectedThinkingOptionId={effectiveSelectedThinkingOption}
             onSelectThinkingOption={onSelectThinkingOption}
@@ -1956,6 +1617,7 @@ export function DraftAgentStatusBar({
             onSetFeature={onSetFeature}
             onDropdownClose={onDropdownClose}
             disabled={disabled}
+            desktopExtras={draftModeChip}
           />
         ) : null}
       </View>
@@ -1963,13 +1625,9 @@ export function DraftAgentStatusBar({
   }
 
   return (
-    <ControlledStatusBar
+    <ControlledAgentControls
       provider={selectedProvider ?? ""}
-      providerDefinitions={providerDefinitions}
       modelSelectorProviders={modelSelectorProviders}
-      modeOptions={hasSelectedProvider ? mappedModeOptions : undefined}
-      selectedModeId={effectiveSelectedMode}
-      onSelectMode={onSelectMode}
       modelOptions={modelOptions}
       selectedModelId={selectedModel}
       onSelectModel={onSelectModel}

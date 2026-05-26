@@ -30,7 +30,7 @@ vi.mock("@/attachments/service", () => ({
   garbageCollectAttachments: async () => undefined,
 }));
 
-vi.mock("./use-agent-form-state", () => ({
+vi.mock("@/hooks/use-agent-form-state", () => ({
   useAgentFormState: () => ({
     selectedServerId: "host-1",
     setSelectedServerId: () => undefined,
@@ -114,7 +114,7 @@ vi.mock("./use-agent-form-state", () => ({
   }),
 }));
 
-let useAgentInputDraft: typeof import("./use-agent-input-draft").useAgentInputDraft;
+let useAgentInputDraft: typeof import("./input-draft").useAgentInputDraft;
 type DraftRecordForTest = ReturnType<typeof useDraftStore.getState>["drafts"][string];
 
 beforeAll(async () => {
@@ -139,7 +139,7 @@ beforeAll(async () => {
     configurable: true,
   });
 
-  ({ useAgentInputDraft } = await import("./use-agent-input-draft"));
+  ({ useAgentInputDraft } = await import("./input-draft"));
 });
 
 describe("useAgentInputDraft live contract", () => {
@@ -209,7 +209,7 @@ describe("useAgentInputDraft live contract", () => {
       );
     });
 
-    expect(getLatest().composerState?.statusControls.selectedProvider).toBe("codex");
+    expect(getLatest().composerState?.agentControls.selectedProvider).toBe("codex");
     expect(getLatest().composerState?.commandDraftConfig).toEqual({
       provider: "codex",
       cwd: "/repo",

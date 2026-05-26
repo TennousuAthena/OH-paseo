@@ -1,7 +1,7 @@
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 
-import { isProviderModelsQueryLoading } from "./agent-status-bar.model-loading";
+import { isProviderModelsQueryLoading } from "./model-loading";
 
 describe("isProviderModelsQueryLoading", () => {
   it("does not treat a disabled pending query as loading", () => {

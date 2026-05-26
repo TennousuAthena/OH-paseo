@@ -23,7 +23,7 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
 
-export interface SubagentsSectionProps {
+export interface SubagentsTrackProps {
   rows: SubagentRow[];
   onOpenSubagent: (id: string) => void;
   onArchiveSubagent: (id: string) => void;
@@ -76,11 +76,11 @@ function buildRowPresentation(row: SubagentRow): WorkspaceTabPresentation {
   };
 }
 
-export function SubagentsSection({
+export function SubagentsTrack({
   rows,
   onOpenSubagent,
   onArchiveSubagent,
-}: SubagentsSectionProps): ReactElement | null {
+}: SubagentsTrackProps): ReactElement | null {
   const [expanded, setExpanded] = useState(false);
 
   const toggleExpanded = useCallback(() => {
@@ -108,13 +108,13 @@ export function SubagentsSection({
   const headerLabel = formatHeaderLabel(rows);
 
   return (
-    <View style={styles.outer} testID="subagents-section">
+    <View style={styles.outer} testID="subagents-track">
       <View style={styles.track}>
         <View style={surfaceStyle}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={headerLabel}
-            testID="subagents-section-header"
+            testID="subagents-track-header"
             onPress={toggleExpanded}
             style={headerStyle}
           >
@@ -135,7 +135,7 @@ export function SubagentsSection({
               nestedScrollEnabled
             >
               {rows.map((row) => (
-                <SubagentsSectionRow
+                <SubagentsTrackRow
                   key={row.id}
                   row={row}
                   onOpenSubagent={onOpenSubagent}
@@ -150,17 +150,17 @@ export function SubagentsSection({
   );
 }
 
-interface SubagentsSectionRowProps {
+interface SubagentsTrackRowProps {
   row: SubagentRow;
   onOpenSubagent: (id: string) => void;
   onArchiveSubagent: (id: string) => void;
 }
 
-function SubagentsSectionRow({
+function SubagentsTrackRow({
   row,
   onOpenSubagent,
   onArchiveSubagent,
-}: SubagentsSectionRowProps): ReactElement {
+}: SubagentsTrackRowProps): ReactElement {
   const isCompact = useIsCompactFormFactor();
   const [hovered, setHovered] = useState(false);
   const presentation = useMemo(() => buildRowPresentation(row), [row]);
@@ -184,7 +184,7 @@ function SubagentsSectionRow({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={displayLabel}
-        testID={`subagents-section-row-${row.id}`}
+        testID={`subagents-track-row-${row.id}`}
         onPress={handlePress}
       >
         {({ pressed }) => (
@@ -227,7 +227,7 @@ function SubagentArchiveButton({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Archive ${displayLabel}`}
-            testID={`subagents-section-archive-${rowId}`}
+            testID={`subagents-track-archive-${rowId}`}
             onPress={onPress}
             style={styles.archiveButton}
             hitSlop={8}

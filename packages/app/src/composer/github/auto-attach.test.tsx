@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { GitHubSearchClient } from "@/git/use-github-search-query";
 import type { GitHubSearchItem, GitHubSearchResponse } from "@server/shared/messages";
-import { useComposerGithubAutoAttach } from "./use-composer-github-auto-attach";
+import { useComposerGithubAutoAttach } from "./auto-attach";
 
 type GitHubSearchPayload = GitHubSearchResponse["payload"];
 

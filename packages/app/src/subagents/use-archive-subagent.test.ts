@@ -23,8 +23,8 @@ vi.mock("@/utils/confirm-dialog", () => ({
   confirmDialog: confirmDialogMock,
 }));
 
-vi.mock("./section", () => ({
-  SubagentsSection: () => null,
+vi.mock("./track", () => ({
+  SubagentsTrack: () => null,
 }));
 
 const SERVER_ID = "server-1";

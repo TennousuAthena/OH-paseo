@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { resolveStatusControlMode } from "./composer.status-controls";
+import { resolveAgentControlsMode } from "./mode";
 
-describe("resolveStatusControlMode", () => {
-  it("uses ready mode when no controlled status controls are provided", () => {
-    expect(resolveStatusControlMode(undefined)).toBe("ready");
+describe("resolveAgentControlsMode", () => {
+  it("uses ready mode when no controlled agent controls are provided", () => {
+    expect(resolveAgentControlsMode(undefined)).toBe("ready");
   });
 
-  it("uses draft mode when controlled status controls are provided", () => {
+  it("uses draft mode when controlled agent controls are provided", () => {
     expect(
-      resolveStatusControlMode({
+      resolveAgentControlsMode({
         providerDefinitions: [],
         selectedProvider: "codex",
         onSelectProvider: () => undefined,

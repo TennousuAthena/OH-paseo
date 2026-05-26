@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useReducer } from "react";
 import type { ComposerAttachment } from "@/attachments/types";
-import { splitComposerAttachmentsForSubmit } from "@/components/composer-attachments";
+import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useSessionStore } from "@/stores/session-store";
 import {

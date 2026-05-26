@@ -3,18 +3,16 @@ import { Keyboard, ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import invariant from "tiny-invariant";
-import { Composer } from "@/components/composer";
-import { ComposerImportPill } from "@/screens/workspace/composer-import-pill";
+import { Composer } from "@/composer";
+import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
+import { ComposerImportPill } from "@/composer/draft/import-pill";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { AgentStreamView } from "@/agent-stream/view";
-import { composerWorkspaceAttachment } from "@/attachments/composer-workspace-attachments";
-import type { ImageAttachment } from "@/components/message-input";
-import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
+import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
+import type { ImageAttachment } from "@/composer/types";
+import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
-import {
-  useDraftAgentCreateFlow,
-  type DraftCreateAttempt,
-} from "@/hooks/use-draft-agent-create-flow";
+import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "@/composer/draft/create-flow";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
@@ -26,7 +24,7 @@ import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submi
 import { encodeImages } from "@/utils/encode-images";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
-import { validateDraftSubmission } from "@/screens/workspace/workspace-draft-agent-tab-core";
+import { validateDraftSubmission } from "@/composer/draft/workspace-tab-core";
 import type { AgentCapabilityFlags } from "@server/server/agent/agent-sdk-types";
 import type { AgentSnapshotPayload } from "@server/shared/messages";
 import type { DaemonClient } from "@server/client/daemon-client";
@@ -192,7 +190,7 @@ function buildDraftAgentSnapshot(input: {
     modeOptions: unknown[];
     selectedMode: string;
     selectedProvider: string | null;
-    statusControls: { features?: Agent["features"] };
+    agentControls: { features?: Agent["features"] };
   };
 }): Agent {
   const { attempt, serverId, tabId, workspaceDirectory, autoSubmitConfig, composerState } = input;
@@ -228,7 +226,7 @@ function buildDraftAgentSnapshot(input: {
     title: "Agent",
     cwd: workspaceDirectory,
     model,
-    features: composerState.statusControls.features,
+    features: composerState.agentControls.features,
     thinkingOptionId,
     parentAgentId: null,
     labels: {},
@@ -580,7 +578,7 @@ export function WorkspaceDraftAgentTab({
 
   const handleSetFeatureWithFocus = useCallback(
     (featureId: string, value: unknown) => {
-      composerState.statusControls.onSetFeature?.(featureId, value);
+      composerState.agentControls.onSetFeature?.(featureId, value);
       focusInputRef.current?.();
     },
     [composerState],
@@ -595,9 +593,9 @@ export function WorkspaceDraftAgentTab({
     focusInputRef.current?.();
   }, []);
   const importPillPress = resolveImportPillPress(onOpenImportSheet, isSubmitting);
-  const composerStatusControls = useMemo(
+  const composerAgentControls = useMemo(
     () => ({
-      ...composerState.statusControls,
+      ...composerState.agentControls,
       onSelectProvider: handleProviderSelectWithFocus,
       onSelectMode: handleModeSelectWithFocus,
       onSelectModel: handleModelSelectWithFocus,
@@ -608,7 +606,7 @@ export function WorkspaceDraftAgentTab({
       disabled: isSubmitting,
     }),
     [
-      composerState.statusControls,
+      composerState.agentControls,
       handleProviderSelectWithFocus,
       handleModeSelectWithFocus,
       handleModelSelectWithFocus,
@@ -618,6 +616,13 @@ export function WorkspaceDraftAgentTab({
       handleDropdownCloseFocus,
       isSubmitting,
     ],
+  );
+  const composerFooter = useMemo(
+    () =>
+      isCompact ? (
+        <DraftAgentModeControl placement="footer" {...composerAgentControls} />
+      ) : undefined,
+    [isCompact, composerAgentControls],
   );
 
   return (
@@ -678,7 +683,8 @@ export function WorkspaceDraftAgentTab({
             onAddImages={handleAddImagesCallback}
             onFocusInput={handleFocusInputCallback}
             commandDraftConfig={composerState.commandDraftConfig}
-            statusControls={composerStatusControls}
+            agentControls={composerAgentControls}
+            footer={composerFooter}
           />
         </View>
       </View>

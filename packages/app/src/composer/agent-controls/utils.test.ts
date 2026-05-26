@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatAgentModeLabel,
   getFeatureHighlightColor,
   getFeatureTooltip,
-  getStatusSelectorHint,
+  getAgentControlHint,
+  formatThinkingOptionLabel,
   normalizeModelId,
   resolveAgentModelSelection,
-} from "./agent-status-bar.utils";
+} from "./utils";
 
-describe("getStatusSelectorHint", () => {
-  it("explains what each editable status control does", () => {
-    expect(getStatusSelectorHint("thinking")).toBe("Thinking mode");
-    expect(getStatusSelectorHint("model")).toBe("Change model");
-    expect(getStatusSelectorHint("mode")).toBe("Change permission mode");
+describe("getAgentControlHint", () => {
+  it("explains what each editable agent control does", () => {
+    expect(getAgentControlHint("thinking")).toBe("Thinking mode");
+    expect(getAgentControlHint("model")).toBe("Change model");
+    expect(getAgentControlHint("mode")).toBe("Change permission mode");
   });
 });
 
@@ -49,6 +51,36 @@ describe("normalizeModelId", () => {
   it("returns trimmed model ids", () => {
     expect(normalizeModelId(" gpt-5.1-codex ")).toBe("gpt-5.1-codex");
     expect(normalizeModelId(" default ")).toBe("default");
+  });
+});
+
+describe("formatAgentModeLabel", () => {
+  it("sentence-cases provider mode labels", () => {
+    expect(formatAgentModeLabel({ id: "plan", label: "Plan" })).toBe("Plan");
+    expect(formatAgentModeLabel({ id: "full-access", label: "Full Access" })).toBe("Full access");
+    expect(formatAgentModeLabel({ id: "auto-review", label: "Auto-review" })).toBe("Auto-review");
+    expect(formatAgentModeLabel({ id: "read_only", label: "read_only" })).toBe("Read only");
+    expect(formatAgentModeLabel({ id: "acceptEdits", label: "acceptEdits" })).toBe("Accept edits");
+  });
+
+  it("splits compact mode ids when no provider label is available", () => {
+    expect(formatAgentModeLabel({ id: "auto-review" })).toBe("Auto review");
+  });
+});
+
+describe("formatThinkingOptionLabel", () => {
+  it("formats compact thinking option labels for display", () => {
+    expect(formatThinkingOptionLabel({ id: "none", label: "none" })).toBe("None");
+    expect(formatThinkingOptionLabel({ id: "low", label: "low" })).toBe("Low");
+    expect(formatThinkingOptionLabel({ id: "medium", label: "medium" })).toBe("Medium");
+    expect(formatThinkingOptionLabel({ id: "high", label: "high" })).toBe("High");
+    expect(formatThinkingOptionLabel({ id: "xhigh", label: "xhigh" })).toBe("Extra high");
+  });
+
+  it("sentence-cases split provider labels", () => {
+    expect(formatThinkingOptionLabel({ id: "extra_high", label: "extra_high" })).toBe("Extra high");
+    expect(formatThinkingOptionLabel({ id: "think-hard", label: "think-hard" })).toBe("Think hard");
+    expect(formatThinkingOptionLabel({ id: "xhigh", label: "XHigh" })).toBe("Extra high");
   });
 });
 
@@ -95,6 +127,28 @@ describe("resolveAgentModelSelection", () => {
 
     expect(selection.selectedThinkingId).toBe("high");
     expect(selection.displayThinking).toBe("High");
+  });
+
+  it("formats raw thinking labels in the selected model display", () => {
+    const selection = resolveAgentModelSelection({
+      models: [
+        {
+          id: "a",
+          provider: "claude",
+          label: "Model A",
+          thinkingOptions: [
+            { id: "none", label: "none" },
+            { id: "xhigh", label: "xhigh" },
+          ],
+        },
+      ],
+      runtimeModelId: "a",
+      configuredModelId: null,
+      explicitThinkingOptionId: "xhigh",
+    });
+
+    expect(selection.selectedThinkingId).toBe("xhigh");
+    expect(selection.displayThinking).toBe("Extra high");
   });
 
   it("falls back to the provider default model label instead of Auto", () => {

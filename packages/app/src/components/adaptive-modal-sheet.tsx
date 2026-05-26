@@ -14,7 +14,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import { ArrowLeft, Search, X } from "lucide-react-native";
 import { FileDropZone } from "@/components/file-drop-zone";
-import type { ImageAttachment } from "@/components/message-input";
+import type { ImageAttachment } from "@/composer/types";
 import {
   IsolatedBottomSheetModal,
   useIsolatedBottomSheetVisibility,

@@ -15,7 +15,7 @@ import {
 } from "@/git/use-github-search-query";
 import { extractGithubRefs, type GithubRef } from "@/utils/github-refs";
 import type { GitHubSearchItem } from "@server/shared/messages";
-import { isAttachmentSelectedForGithubItem, toggleGithubAttachment } from "./composer-actions";
+import { isAttachmentSelectedForGithubItem, toggleGithubAttachment } from "../actions";
 
 const AUTO_ATTACH_DEBOUNCE_MS = 300;
 

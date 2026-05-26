@@ -6,7 +6,16 @@ import {
   Image,
   type PressableStateCallbackType,
 } from "react-native";
-import { useState, useEffect, useRef, useCallback, useMemo, memo, type ReactElement } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  memo,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShallow } from "zustand/shallow";
@@ -23,20 +32,15 @@ import {
 import Animated from "react-native-reanimated";
 import { FOOTER_HEIGHT, MAX_CONTENT_WIDTH } from "@/constants/layout";
 import {
-  AgentStatusBar,
-  DraftAgentStatusBar,
-  type DraftAgentStatusBarProps,
-} from "./agent-status-bar";
-import { ContextWindowMeter } from "./context-window-meter";
+  AgentControls,
+  DraftAgentControls,
+  type DraftAgentControlsProps,
+} from "@/composer/agent-controls";
+import { ContextWindowMeter } from "@/components/context-window-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useSessionStore } from "@/stores/session-store";
-import {
-  MessageInput,
-  type MessagePayload,
-  type ImageAttachment,
-  type MessageInputRef,
-  type AttachmentMenuItem,
-} from "./message-input";
+import { MessageInput, type MessageInputRef, type AttachmentMenuItem } from "./input/input";
+import type { ImageAttachment, MessagePayload } from "./types";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
@@ -56,7 +60,7 @@ import {
   type AgentStreamWriter,
   type QueueWriter,
   type QueuedComposerMessage,
-} from "@/components/composer-actions";
+} from "@/composer/actions";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -74,12 +78,12 @@ import {
   persistAttachmentFromBlob,
   persistAttachmentFromFileUri,
 } from "@/attachments/service";
-import { resolveStatusControlMode } from "@/components/composer.status-controls";
+import { resolveAgentControlsMode } from "@/composer/agent-controls/mode";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
-import { submitAgentInput } from "@/components/agent-input-submit";
+import { submitAgentInput } from "@/composer/submit";
 import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb, isNative } from "@/constants/platform";
 import type { GitHubSearchItem } from "@server/shared/messages";
@@ -89,7 +93,7 @@ import type {
   UserComposerAttachment,
   WorkspaceComposerAttachment,
 } from "@/attachments/types";
-import { composerWorkspaceAttachment } from "@/attachments/composer-workspace-attachments";
+import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { AttachmentPill } from "@/components/attachment-pill";
@@ -98,7 +102,7 @@ import { openExternalUrl } from "@/utils/open-external-url";
 import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
 import { useGithubSearchQuery } from "@/git/use-github-search-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
-import { useComposerGithubAutoAttach } from "./use-composer-github-auto-attach";
+import { useComposerGithubAutoAttach } from "./github/auto-attach";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
 
 type QueuedMessage = QueuedComposerMessage;
@@ -199,33 +203,42 @@ function renderContextWindowMeterSlot(
 }
 
 interface RenderLeftContentArgs {
-  statusControls: DraftAgentStatusBarProps | undefined;
+  agentControls: DraftAgentControlsProps | undefined;
   agentId: string;
   serverId: string;
   focusInput: () => void;
 }
 
 function renderLeftContent(args: RenderLeftContentArgs): ReactElement {
-  const { statusControls, agentId, serverId, focusInput } = args;
-  if (resolveStatusControlMode(statusControls) === "draft" && statusControls) {
-    return <DraftAgentStatusBar {...statusControls} />;
+  const { agentControls, agentId, serverId, focusInput } = args;
+  if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
+    return <DraftAgentControls {...agentControls} />;
   }
-  return <AgentStatusBar agentId={agentId} serverId={serverId} onDropdownClose={focusInput} />;
+  return <AgentControls agentId={agentId} serverId={serverId} onDropdownClose={focusInput} />;
 }
 
-interface RenderAttachmentPreviewListArgs {
+interface RenderAttachmentTrayArgs {
   selectedAttachments: ComposerAttachment[];
   isComposerLocked: boolean;
   handleOpenAttachment: (attachment: ComposerAttachment) => void;
   handleRemoveAttachment: (index: number) => void;
 }
 
-function renderAttachmentPreviewList(args: RenderAttachmentPreviewListArgs): ReactElement | null {
+function renderComposerFooter(footer: ReactNode): ReactElement | null {
+  if (!footer) return null;
+  return (
+    <View style={styles.footer}>
+      <View style={styles.footerContent}>{footer}</View>
+    </View>
+  );
+}
+
+function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | null {
   const { selectedAttachments, isComposerLocked, handleOpenAttachment, handleRemoveAttachment } =
     args;
   if (selectedAttachments.length === 0) return null;
   return (
-    <View style={styles.attachmentPreviewContainer} testID="composer-attachment-pills">
+    <View style={styles.attachmentTray} testID="composer-attachment-tray">
       {selectedAttachments.map((attachment, index) =>
         renderComposerAttachmentPill({
           attachment,
@@ -239,17 +252,17 @@ function renderAttachmentPreviewList(args: RenderAttachmentPreviewListArgs): Rea
   );
 }
 
-interface RenderQueueListArgs {
+interface RenderQueueTrackArgs {
   queuedMessages: readonly QueuedMessage[];
   handleEditQueuedMessage: (id: string) => void;
   handleSendQueuedNow: (id: string) => Promise<void>;
 }
 
-function renderQueueList(args: RenderQueueListArgs): ReactElement | null {
+function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
   const { queuedMessages, handleEditQueuedMessage, handleSendQueuedNow } = args;
   if (queuedMessages.length === 0) return null;
   return (
-    <View style={styles.queueContainer}>
+    <View style={styles.queueTrack}>
       {queuedMessages.map((item) => (
         <QueuedMessageRow
           key={item.id}
@@ -629,10 +642,12 @@ interface ComposerProps {
   onComposerHeightChange?: (height: number) => void;
   onAttentionInputFocus?: () => void;
   onAttentionPromptSend?: () => void;
-  /** Controlled status controls rendered in input area (draft flows). */
-  statusControls?: DraftAgentStatusBarProps;
+  /** Controlled agent controls rendered in input area (draft flows). */
+  agentControls?: DraftAgentControlsProps;
   /** Extra styles merged onto the message input wrapper (e.g. elevated background). */
   inputWrapperStyle?: import("react-native").ViewStyle;
+  /** Rendered below the input, inside the keyboard-shifted container. */
+  footer?: ReactNode;
 }
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
@@ -824,8 +839,9 @@ export function Composer({
   onComposerHeightChange,
   onAttentionInputFocus,
   onAttentionPromptSend,
-  statusControls,
+  agentControls,
   inputWrapperStyle,
+  footer,
 }: ComposerProps) {
   const buttonIconSize = resolveComposerButtonIconSize();
   const client = useHostRuntimeClient(serverId);
@@ -1499,8 +1515,8 @@ export function Composer({
   );
 
   const leftContent = useMemo(
-    () => renderLeftContent({ statusControls, agentId, serverId, focusInput }),
-    [agentId, focusInput, serverId, statusControls],
+    () => renderLeftContent({ agentControls, agentId, serverId, focusInput }),
+    [agentId, focusInput, serverId, agentControls],
   );
 
   const handleAttachButtonRef = useCallback((node: View | null) => {
@@ -1566,9 +1582,9 @@ export function Composer({
     [isComposerLocked],
   );
 
-  const attachmentPreviewList = useMemo(
+  const attachmentTray = useMemo(
     () =>
-      renderAttachmentPreviewList({
+      renderAttachmentTray({
         selectedAttachments,
         isComposerLocked,
         handleOpenAttachment,
@@ -1578,7 +1594,7 @@ export function Composer({
   );
 
   const queueList = useMemo(
-    () => renderQueueList({ queuedMessages, handleEditQueuedMessage, handleSendQueuedNow }),
+    () => renderQueueTrack({ queuedMessages, handleEditQueuedMessage, handleSendQueuedNow }),
     [handleEditQueuedMessage, handleSendQueuedNow, queuedMessages],
   );
 
@@ -1656,7 +1672,7 @@ export function Composer({
               onFocusChange={handleFocusChange}
               onHeightChange={onComposerHeightChange}
               inputWrapperStyle={inputWrapperStyle}
-              attachmentSlot={attachmentPreviewList}
+              attachmentSlot={attachmentTray}
             />
             <Combobox
               options={githubSearchOptions}
@@ -1677,6 +1693,7 @@ export function Composer({
           </View>
         </View>
       </View>
+      {renderComposerFooter(footer)}
     </Animated.View>
   );
 }
@@ -1707,6 +1724,23 @@ const styles = StyleSheet.create((theme: Theme) => ({
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
     gap: theme.spacing[3],
+  },
+  footer: {
+    width: "100%",
+    paddingHorizontal: theme.spacing[4],
+    marginTop: {
+      xs: -theme.spacing[4],
+      md: -theme.spacing[3],
+    },
+    alignItems: "center",
+  },
+  footerContent: {
+    width: "100%",
+    maxWidth: MAX_CONTENT_WIDTH,
+    paddingLeft: {
+      xs: 6,
+      md: 10,
+    },
   },
   messageInputContainer: {
     position: "relative",
@@ -1747,7 +1781,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
   iconButtonHovered: {
     backgroundColor: theme.colors.surface2,
   },
-  attachmentPreviewContainer: {
+  attachmentTray: {
     flexDirection: "row",
     gap: theme.spacing[2],
     flexWrap: "wrap",
@@ -1794,7 +1828,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
   buttonDisabled: {
     opacity: 0.5,
   },
-  queueContainer: {
+  queueTrack: {
     flexDirection: "column",
     gap: theme.spacing[2],
   },

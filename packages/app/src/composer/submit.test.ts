@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { submitAgentInput } from "./agent-input-submit";
+import { submitAgentInput } from "./submit";
 
 function createDeferredPromise<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;

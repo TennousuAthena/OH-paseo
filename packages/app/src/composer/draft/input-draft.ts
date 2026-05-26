@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UserComposerAttachment } from "@/attachments/types";
-import type { DraftAgentStatusBarProps } from "@/components/agent-status-bar";
+import type { DraftAgentControlsProps } from "@/composer/agent-controls";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import {
   useAgentFormState,
@@ -10,11 +10,11 @@ import {
 import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 import {
   areAttachmentsEqual,
-  buildDraftStatusControls,
+  buildDraftAgentControls,
   hasDraftContent,
   resolveDraftKey,
   type DraftKeyInput,
-} from "@/hooks/use-agent-input-draft-core";
+} from "@/composer/draft/input-draft-core";
 import {
   buildDraftCommandConfig,
   resolveEffectiveComposerModelId,
@@ -46,7 +46,7 @@ type DraftComposerState = UseAgentFormStateResult & {
   effectiveModelId: string;
   effectiveThinkingOptionId: string;
   featureValues: Record<string, unknown> | undefined;
-  statusControls: DraftAgentStatusBarProps;
+  agentControls: DraftAgentControlsProps;
   commandDraftConfig: DraftCommandConfig | undefined;
 };
 
@@ -278,7 +278,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       effectiveModelId,
       effectiveThinkingOptionId,
       featureValues: draftFeatureValues,
-      statusControls: buildDraftStatusControls({
+      agentControls: buildDraftAgentControls({
         formState,
         features: draftFeatures,
         onSetFeature: setDraftFeatureValue,
@@ -314,5 +314,5 @@ export const __private__ = {
   resolveEffectiveComposerThinkingOptionId,
   buildDraftCommandConfig,
   buildDraftComposerCommandConfig: buildDraftCommandConfig,
-  buildDraftStatusControls,
+  buildDraftAgentControls,
 };
