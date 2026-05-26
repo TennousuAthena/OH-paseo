@@ -56,6 +56,7 @@ import { ForegroundRunState, type ForegroundTurnWaiter } from "./foreground-run-
 import { getAgentProviderDefinition } from "./provider-manifest.js";
 import { IMPORTABLE_PROVIDERS } from "./provider-registry.js";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
+import { isSystemInjectedEnvelope } from "./agent-prompt.js";
 
 const RELOAD_SESSION_CLOSE_TIMEOUT_MS = 3_000;
 const INTERRUPT_SESSION_TIMEOUT_MS = 2_000;
@@ -2622,6 +2623,9 @@ export class AgentManager {
       const historyEvents: Extract<AgentStreamEvent, { type: "timeline" }>[] = [];
       for await (const event of agent.session.streamHistory()) {
         if (event.type === "timeline") {
+          if (event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text)) {
+            continue;
+          }
           historyEvents.push(event);
         }
       }
@@ -2655,6 +2659,9 @@ export class AgentManager {
     try {
       for await (const event of agent.session.streamHistory()) {
         if (event.type !== "timeline") {
+          continue;
+        }
+        if (event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text)) {
           continue;
         }
         this.recordTimeline(
@@ -2903,6 +2910,12 @@ export class AgentManager {
     flags: StreamEventFlags;
   }): Promise<void> {
     const { agent, event, options, flags } = params;
+
+    if (event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text)) {
+      flags.shouldDispatchEvent = false;
+      flags.shouldNotifyWaiters = false;
+      return;
+    }
 
     if (options?.fromHistory) {
       this.recordTimeline(

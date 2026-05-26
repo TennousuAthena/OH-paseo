@@ -1268,7 +1268,6 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         agentManager,
         agentStorage,
         agentId,
-        userMessageText: prompt,
         prompt,
         sessionMode,
         logger: childLogger,

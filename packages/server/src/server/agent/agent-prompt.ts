@@ -112,14 +112,18 @@ export function formatSystemNotificationPrompt(reason: string): string {
   return `<paseo-system>\n${reason}\n</paseo-system>`;
 }
 
+const SYSTEM_ENVELOPE_PATTERN = /^<paseo-system>\n[\s\S]*\n<\/paseo-system>$/;
+
+export function isSystemInjectedEnvelope(text: string): boolean {
+  return SYSTEM_ENVELOPE_PATTERN.test(text);
+}
+
 export interface SendPromptToAgentParams {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   agentId: string;
   /** Prompt to dispatch to the provider (may include image blocks or wrapped text). */
   prompt: AgentPromptInput;
-  /** Raw user text. Required when userMessageVisible is true. */
-  userMessageText?: string;
   messageId?: string;
   runOptions?: AgentRunOptions;
   /** Optional mode to set on the agent before the run starts. */
@@ -130,12 +134,6 @@ export interface SendPromptToAgentParams {
    * schedule fires, notify-on-finish).
    */
   unarchive?: boolean;
-  /**
-   * Default true. When false, the prompt is dispatched to the provider as an
-   * invisible/system prompt — the app shows no user-message turn.
-   * Use false for system-injected prompts.
-   */
-  userMessageVisible?: boolean;
   logger: Logger;
 }
 
@@ -154,11 +152,6 @@ export async function sendPromptToAgent(
   params: SendPromptToAgentParams,
 ): Promise<{ outOfBand: boolean }> {
   const unarchive = params.unarchive ?? true;
-  const userMessageVisible = params.userMessageVisible ?? true;
-
-  if (userMessageVisible && params.userMessageText === undefined) {
-    throw new Error("userMessageText is required when userMessageVisible is true");
-  }
 
   const record = await params.agentStorage.get(params.agentId);
   if (record?.archivedAt) {
@@ -215,7 +208,6 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
       agentId: callerAgentId,
       prompt: formatSystemNotificationPrompt(body),
       unarchive: false,
-      userMessageVisible: false,
       logger,
     });
   }

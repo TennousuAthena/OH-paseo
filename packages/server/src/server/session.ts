@@ -3093,7 +3093,6 @@ export class Session {
         agentManager: this.agentManager,
         agentStorage: this.agentStorage,
         agentId,
-        userMessageText: text,
         prompt,
         messageId,
         runOptions,
@@ -7783,7 +7782,6 @@ export class Session {
           agentManager: this.agentManager,
           agentStorage: this.agentStorage,
           agentId,
-          userMessageText: msg.text,
           prompt,
           messageId: msg.messageId,
           logger: this.sessionLogger,
@@ -8830,7 +8828,6 @@ export class Session {
             agentId,
             prompt: formatSystemNotificationPrompt(text),
             unarchive: false,
-            userMessageVisible: false,
             logger: this.sessionLogger,
           });
         },

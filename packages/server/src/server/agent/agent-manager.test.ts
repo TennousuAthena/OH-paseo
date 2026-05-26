@@ -9,6 +9,7 @@ import { createTestLogger } from "../../test-utils/test-logger.js";
 import { AgentManager, type ManagedAgent } from "./agent-manager.js";
 import { AgentStorage } from "./agent-storage.js";
 import { PARENT_AGENT_ID_LABEL } from "../../shared/agent-labels.js";
+import { formatSystemNotificationPrompt } from "./agent-prompt.js";
 import type { StoredAgentRecord } from "./agent-storage.js";
 import type {
   AgentClient,
@@ -388,6 +389,50 @@ class StreamingAssistantClient implements AgentClient {
       cwd: config?.cwd ?? process.cwd(),
     });
   }
+}
+
+interface FakeCodexEmitterArgs {
+  turnItems?: AgentTimelineItem[];
+  historyItems?: AgentTimelineItem[];
+}
+
+function fakeCodexEmitting(args: FakeCodexEmitterArgs): AgentClient {
+  const turnItems = args.turnItems ?? [];
+  const historyItems = args.historyItems ?? [];
+
+  class FakeCodexSession extends TestAgentSession {
+    override async startTurn(): Promise<{ turnId: string }> {
+      const turnId = "turn-fake-codex";
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        for (const item of turnItems) {
+          this.pushEvent({ type: "timeline", provider: this.provider, item, turnId });
+        }
+        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+      }, 0);
+      return { turnId };
+    }
+
+    override async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
+      for (const item of historyItems) {
+        yield { type: "timeline", provider: this.provider, item };
+      }
+    }
+  }
+
+  return {
+    provider: "codex",
+    capabilities: TEST_CAPABILITIES,
+    async isAvailable() {
+      return true;
+    },
+    async createSession(config: AgentSessionConfig) {
+      return new FakeCodexSession(config);
+    },
+    async resumeSession() {
+      throw new Error("unused");
+    },
+  };
 }
 
 const logger = createTestLogger();
@@ -5418,4 +5463,76 @@ test("listImportablePersistedAgents narrows to the providerFilter when supplied"
   expect(claudeClient.calls).toBe(1);
   expect(codexClient.calls).toBe(0);
   expect(result.map((d) => d.provider)).toEqual(["claude"]);
+});
+
+test("user_message events wrapping a paseo-system envelope are not added to the timeline", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-envelope-live-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+
+  const codex = fakeCodexEmitting({
+    turnItems: [
+      {
+        type: "user_message",
+        text: formatSystemNotificationPrompt("child finished"),
+      },
+      { type: "user_message", text: "plain user message" },
+    ],
+  });
+
+  const manager = new AgentManager({
+    clients: { codex },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-0000000005a1",
+  });
+
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir });
+
+  await manager.runAgent(snapshot.id, { text: "do something" });
+
+  const timeline = manager.getTimeline(snapshot.id);
+  const userMessages = timeline.filter((item) => item.type === "user_message");
+
+  expect(userMessages).toHaveLength(1);
+  expect(userMessages[0].text).toBe("plain user message");
+});
+
+test("user_message events wrapping a paseo-system envelope are not restored during history replay", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-envelope-history-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+
+  const codex = fakeCodexEmitting({
+    historyItems: [
+      {
+        type: "user_message",
+        text: formatSystemNotificationPrompt("schedule fired"),
+        messageId: "msg_history_envelope",
+      },
+      {
+        type: "user_message",
+        text: "real user message",
+        messageId: "msg_history_real",
+      },
+      { type: "assistant_message", text: "reply" },
+    ],
+  });
+
+  const manager = new AgentManager({
+    clients: { codex },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-0000000005a2",
+  });
+
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir });
+
+  await manager.hydrateTimelineFromProvider(snapshot.id);
+
+  const timeline = manager.getTimeline(snapshot.id);
+  const userMessages = timeline.filter((item) => item.type === "user_message");
+
+  expect(userMessages).toHaveLength(1);
+  expect(userMessages[0].text).toBe("real user message");
 });
