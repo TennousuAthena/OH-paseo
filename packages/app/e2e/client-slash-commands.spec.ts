@@ -126,7 +126,7 @@ async function expectReplacementDraftMatchesPreviousSetup(page: Page): Promise<v
   await expect(
     page.getByRole("button", { name: "Select model (Ten second stream)" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Select agent mode (load-test)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Select agent mode (Load test)" })).toBeVisible();
 }
 
 async function createAgentFromReplacementDraft(page: Page): Promise<void> {
