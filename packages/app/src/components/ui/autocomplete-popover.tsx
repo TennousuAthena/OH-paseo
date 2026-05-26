@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
-import { Keyboard, Platform, StatusBar, View, type LayoutChangeEvent } from "react-native";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { Keyboard, Platform, StatusBar, View, useWindowDimensions } from "react-native";
 import { Portal } from "@gorhom/portal";
 import Animated, {
   useAnimatedStyle,
@@ -54,7 +54,7 @@ export function AutocompletePopover({
   emptyText,
 }: AutocompletePopoverProps): ReactElement | null {
   const [anchorRect, setAnchorRect] = useState<Rect | null>(null);
-  const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
+  const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
   const { height: rawKeyboardHeight } = useReanimatedKeyboardAnimation();
@@ -76,7 +76,6 @@ export function AutocompletePopover({
   useEffect(() => {
     if (!visible) {
       setAnchorRect(null);
-      setContentSize(null);
       return;
     }
     let cancelled = false;
@@ -106,34 +105,15 @@ export function AutocompletePopover({
     };
   }, [visible, anchorRef, openShift, shift]);
 
-  const handleLayout = useCallback((event: LayoutChangeEvent) => {
-    const { width, height } = event.nativeEvent.layout;
-    setContentSize({ width, height });
-  }, []);
-
   const baseStyle = useMemo(() => {
     if (!anchorRect) return null;
-    if (!contentSize) {
-      // Have the anchor, waiting on the popover's own height. Render with the
-      // final width so the inner Autocomplete lays out at its final size, but
-      // stay invisible — the first visible paint will already be at the correct
-      // top. Mirrors combobox.tsx `shouldHideDesktopContent`. See
-      // docs/floating-panels.md "the two-measurement flash".
-      return inlineUnistylesStyle({
-        position: "absolute" as const,
-        top: 0,
-        left: anchorRect.x,
-        width: anchorRect.width,
-        opacity: 0,
-      });
-    }
     return inlineUnistylesStyle({
       position: "absolute" as const,
-      top: anchorRect.y - contentSize.height - OFFSET_FROM_ANCHOR,
+      bottom: windowHeight - anchorRect.y + OFFSET_FROM_ANCHOR,
       left: anchorRect.x,
       width: anchorRect.width,
     });
-  }, [anchorRect, contentSize]);
+  }, [anchorRect, windowHeight]);
 
   const animatedTransformStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: openShift.value - shift.value }],
@@ -149,7 +129,7 @@ export function AutocompletePopover({
   return (
     <Portal>
       <View style={styles.overlay} pointerEvents="box-none">
-        <Animated.View style={composedStyle} onLayout={handleLayout}>
+        <Animated.View testID="composer-autocomplete-popover" style={composedStyle}>
           <Autocomplete
             options={options}
             selectedIndex={selectedIndex}
