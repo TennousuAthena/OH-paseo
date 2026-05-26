@@ -89,6 +89,16 @@ interface PopoverFrameRecorderWindow extends Window {
   __stopComposerAutocompleteFrameRecorder?: () => void;
 }
 
+async function getTopTestIdAtPoint(page: Page, x: number, y: number) {
+  return page.evaluate(
+    ([pointX, pointY]) => {
+      const element = document.elementFromPoint(pointX, pointY);
+      return element?.closest("[data-testid]")?.getAttribute("data-testid") ?? null;
+    },
+    [x, y],
+  );
+}
+
 function getServerId(): string {
   const serverId = process.env.E2E_SERVER_ID;
   if (!serverId) {
@@ -165,7 +175,10 @@ async function cleanupWithin(timeoutMs: number, cleanup: () => Promise<void>): P
   await Promise.race([operation, new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))]);
 }
 
-async function openReadyMockAgent(page: Page): Promise<{
+async function openReadyMockAgent(
+  page: Page,
+  options?: { expectWorkspaceTab?: boolean },
+): Promise<{
   cleanup: () => Promise<void>;
 }> {
   const repo = await createTempGitRepo("autocomplete-popover-");
@@ -189,7 +202,9 @@ async function openReadyMockAgent(page: Page): Promise<{
       (url) => url.pathname.includes("/workspace/") && !url.searchParams.has("open"),
       { timeout: 60_000 },
     );
-    await expectWorkspaceTabVisible(page, agent.id);
+    if (options?.expectWorkspaceTab !== false) {
+      await expectWorkspaceTabVisible(page, agent.id);
+    }
     await expectComposerVisible(page);
     return {
       cleanup: async () => {
@@ -454,5 +469,41 @@ test.describe("Composer autocomplete", () => {
     } finally {
       await agent.cleanup();
     }
+  });
+
+  test.describe("compact sidebar layering", () => {
+    test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+    test("keeps the mobile agent sidebar above autocomplete", async ({ page }) => {
+      await installListCommandsStub(page);
+      const agent = await openReadyMockAgent(page, { expectWorkspaceTab: false });
+
+      try {
+        const input = composerLocator(page);
+        await expect(input).toBeEditable({ timeout: 30_000 });
+
+        await input.fill("/");
+        const popover = page.getByTestId("composer-autocomplete-popover");
+        await expect(popover.getByText("/help", { exact: true }).first()).toBeVisible({
+          timeout: 30_000,
+        });
+
+        await page.getByRole("button", { name: "Open menu" }).click();
+        await expect(page.getByTestId("sidebar-sessions")).toBeInViewport({ timeout: 5_000 });
+
+        const popoverBox = await popover.boundingBox();
+        expect(popoverBox).not.toBeNull();
+
+        const topTestId = await getTopTestIdAtPoint(
+          page,
+          popoverBox!.x + popoverBox!.width / 2,
+          popoverBox!.y + popoverBox!.height / 2,
+        );
+
+        expect(topTestId).not.toBe("composer-autocomplete-popover");
+      } finally {
+        await agent.cleanup();
+      }
+    });
   });
 });

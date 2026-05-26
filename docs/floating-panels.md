@@ -40,10 +40,12 @@ Two escape hatches in the codebase:
   (it has its own input) and tooltip (no input). **Not** fine for autocomplete
   (the composer's input must stay focused so the user keeps typing).
 - **`<Portal>` from `@gorhom/portal`** (hover-card, autocomplete-popover) —
-  hoists the React subtree to a fixed mount point (`PortalHost name="root"` in
-  `app/_layout.tsx`) whose bounds cover the screen. Same window, same IME,
-  hit-test works because the new parent is full-screen. This is the right
-  default when you must keep IME attachment.
+  hoists the React subtree to a fixed mount point whose bounds cover the
+  screen. Same window, same IME, hit-test works because the new parent is
+  full-screen. This is the right default when you must keep IME attachment.
+  Choose the host by layer: app-global overlays use the root host; composer
+  autocomplete uses the content floating-panel host so sliding sidebars cover
+  it.
 
 Choose Modal vs Portal by whether you need the underlying input to keep its
 keyboard.
@@ -63,8 +65,15 @@ quietly relying on:
 - **Transforms.** The composer is wrapped in a Reanimated `Animated.View` with
   `translateY: -keyboardShift` (see `use-keyboard-shift-style.ts`). The chat
   content has the same transform applied (`agent-panel.tsx:939`). They move
-  together because they share the SharedValue. A portal'd popover is at the
-  app root — it does not get that transform unless you apply it yourself.
+  together because they share the SharedValue. A portal'd popover is outside
+  the composer tree — it does not get that transform unless you apply it
+  yourself.
+- **Layering.** The default root host renders after app content, so it sits
+  above compact sidebars. Autocomplete should use
+  `useFloatingPanelPortalHostName()` and render through the current
+  `FloatingPanelPortalHost` instead. The app shell provides a default content
+  host; workspace screens provide a per-workspace host between the center pane
+  and explorer sidebar so both compact sidebars cover autocomplete.
 
 The fix for transforms is Gotcha 3.
 

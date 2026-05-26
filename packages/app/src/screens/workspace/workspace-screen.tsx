@@ -53,6 +53,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  FloatingPanelPortalHost,
+  FloatingPanelPortalHostNameProvider,
+} from "@/components/ui/floating-panel-portal";
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { SplitContainer } from "@/components/split-container";
 import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
@@ -171,6 +175,7 @@ import {
 } from "@/workspace/file-open";
 
 const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
+const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
 const EMPTY_UI_TABS: WorkspaceTab[] = [];
 const EMPTY_WORKSPACE_SCRIPTS: WorkspaceDescriptor["scripts"] = [];
 const EMPTY_PINNED_AGENT_IDS = new Set<string>();
@@ -3179,6 +3184,11 @@ function WorkspaceScreenContent({
     () => isFocusModeEnabled && !isMobile,
     [isFocusModeEnabled, isMobile],
   );
+  const workspaceFloatingPanelPortalHostName = useMemo(
+    () =>
+      `${WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX}:${normalizedServerId}:${normalizedWorkspaceId}`,
+    [normalizedServerId, normalizedWorkspaceId],
+  );
   const desktopContent = useMemo(() => {
     if (!canRenderDesktopPaneSplits || !workspaceLayout || !persistenceKey) {
       return content;
@@ -3254,6 +3264,120 @@ function WorkspaceScreenContent({
     renderSplitPaneEmptyState,
   ]);
 
+  const workspaceCenterColumn = (
+    <View style={styles.centerColumn}>
+      {showScreenHeader && (
+        <ScreenHeader
+          onRowLayout={onHeaderLayout}
+          left={
+            <>
+              <SidebarMenuToggle />
+              <WorkspaceHeaderTitleBar
+                isLoading={isWorkspaceHeaderLoading}
+                title={workspaceHeaderTitle}
+                subtitle={workspaceHeaderSubtitle}
+                showSubtitle={shouldShowWorkspaceHeaderSubtitle}
+                currentBranchName={currentBranchName}
+                isGitCheckout={isGitCheckout}
+                normalizedServerId={normalizedServerId}
+                normalizedWorkspaceId={normalizedWorkspaceId}
+                workspaceScripts={workspaceScripts}
+                liveTerminalIds={liveTerminalIds}
+                showWorkspaceSetup={showWorkspaceSetup}
+                showCreateBrowserTab={showCreateBrowserTab}
+                isMobile={isMobile}
+                createTerminalDisabled={createTerminalDisabled}
+                importAgentDisabled={!canOpenImportSheet}
+                menuNewAgentIcon={menuNewAgentIcon}
+                menuNewTerminalIcon={menuNewTerminalIcon}
+                menuNewBrowserIcon={MENU_NEW_BROWSER_ICON}
+                menuImportIcon={MENU_IMPORT_ICON}
+                menuCopyIcon={menuCopyIcon}
+                menuSettingsIcon={menuSettingsIcon}
+                onCreateDraftTab={handleCreateDraftTab}
+                onCreateTerminal={handleCreateTerminal}
+                onCreateBrowser={handleCreateBrowserTab}
+                onOpenImportSheet={openImportSheet}
+                onCopyWorkspacePath={handleCopyWorkspacePath}
+                onCopyBranchName={handleCopyBranchName}
+                onOpenSetupTab={handleOpenSetupTab}
+                onScriptTerminalStarted={handleScriptTerminalStarted}
+                onViewScriptTerminal={handleViewScriptTerminal}
+                onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
+              />
+            </>
+          }
+          right={headerRight}
+        />
+      )}
+
+      {isMobile ? (
+        <MobileWorkspaceTabSwitcher
+          tabs={tabs}
+          activeTabKey={activeTabKey}
+          activeTab={activeTabDescriptor}
+          tabSwitcherOptions={tabSwitcherOptions}
+          tabByKey={tabByKey}
+          normalizedServerId={normalizedServerId}
+          normalizedWorkspaceId={normalizedWorkspaceId}
+          onSelectSwitcherTab={handleSelectSwitcherTab}
+          onCopyResumeCommand={handleCopyResumeCommand}
+          onCopyAgentId={handleCopyAgentId}
+          onReloadAgent={handleReloadAgent}
+          onRenameTab={handleRenameTab}
+          onCloseTab={handleCloseTabById}
+          onCloseTabsAbove={handleCloseTabsToLeft}
+          onCloseTabsBelow={handleCloseTabsToRight}
+          onCloseOtherTabs={handleCloseOtherTabs}
+        />
+      ) : null}
+
+      {shouldRenderDesktopPaneFallback ? (
+        <WorkspaceDesktopTabsRow
+          paneId={focusedPaneIdOrUndefined}
+          isFocused={isRouteFocused}
+          tabs={desktopTabRowItems}
+          normalizedServerId={normalizedServerId}
+          normalizedWorkspaceId={normalizedWorkspaceId}
+          setHoveredTabKey={setHoveredTabKey}
+          setHoveredCloseTabKey={setHoveredCloseTabKey}
+          onNavigateTab={navigateToTabId}
+          onCloseTab={handleCloseTabById}
+          onCopyResumeCommand={handleCopyResumeCommand}
+          onCopyAgentId={handleCopyAgentId}
+          onReloadAgent={handleReloadAgent}
+          onRenameTab={handleRenameTab}
+          onCloseTabsToLeft={handleCloseTabsToLeft}
+          onCloseTabsToRight={handleCloseTabsToRight}
+          onCloseOtherTabs={handleCloseOtherTabs}
+          onCreateDraftTab={handleCreateDraftTab}
+          onCreateTerminalTab={handleCreateTerminal}
+          onCreateBrowserTab={handleCreateBrowserTab}
+          showCreateBrowserTab={showCreateBrowserTab}
+          disableCreateTerminal={createTerminalMutation.isPending}
+          isWaitingOnTerminalReadiness={pendingTerminalCreateInput !== null}
+          onReorderTabs={handleReorderTabsInFocusedPane}
+          onSplitRight={noop}
+          onSplitDown={noop}
+          showPaneSplitActions={false}
+        />
+      ) : null}
+
+      <View style={styles.centerContent}>
+        {isMobile ? (
+          <GestureDetector
+            gesture={explorerOpenGesture}
+            touchAction={COMPACT_WEB_GESTURE_TOUCH_ACTION}
+          >
+            <View style={styles.content}>{content}</View>
+          </GestureDetector>
+        ) : (
+          <View style={styles.content}>{desktopContent}</View>
+        )}
+      </View>
+    </View>
+  );
+
   return (
     gatedWorkspaceScreen ?? (
       <WorkspaceFocusProvider workspaceKey={persistenceKey}>
@@ -3265,117 +3389,11 @@ function WorkspaceScreenContent({
             isRouteFocused={isRouteFocused}
           />
           <View style={styles.threePaneRow}>
-            <View style={styles.centerColumn}>
-              {showScreenHeader && (
-                <ScreenHeader
-                  onRowLayout={onHeaderLayout}
-                  left={
-                    <>
-                      <SidebarMenuToggle />
-                      <WorkspaceHeaderTitleBar
-                        isLoading={isWorkspaceHeaderLoading}
-                        title={workspaceHeaderTitle}
-                        subtitle={workspaceHeaderSubtitle}
-                        showSubtitle={shouldShowWorkspaceHeaderSubtitle}
-                        currentBranchName={currentBranchName}
-                        isGitCheckout={isGitCheckout}
-                        normalizedServerId={normalizedServerId}
-                        normalizedWorkspaceId={normalizedWorkspaceId}
-                        workspaceScripts={workspaceScripts}
-                        liveTerminalIds={liveTerminalIds}
-                        showWorkspaceSetup={showWorkspaceSetup}
-                        showCreateBrowserTab={showCreateBrowserTab}
-                        isMobile={isMobile}
-                        createTerminalDisabled={createTerminalDisabled}
-                        importAgentDisabled={!canOpenImportSheet}
-                        menuNewAgentIcon={menuNewAgentIcon}
-                        menuNewTerminalIcon={menuNewTerminalIcon}
-                        menuNewBrowserIcon={MENU_NEW_BROWSER_ICON}
-                        menuImportIcon={MENU_IMPORT_ICON}
-                        menuCopyIcon={menuCopyIcon}
-                        menuSettingsIcon={menuSettingsIcon}
-                        onCreateDraftTab={handleCreateDraftTab}
-                        onCreateTerminal={handleCreateTerminal}
-                        onCreateBrowser={handleCreateBrowserTab}
-                        onOpenImportSheet={openImportSheet}
-                        onCopyWorkspacePath={handleCopyWorkspacePath}
-                        onCopyBranchName={handleCopyBranchName}
-                        onOpenSetupTab={handleOpenSetupTab}
-                        onScriptTerminalStarted={handleScriptTerminalStarted}
-                        onViewScriptTerminal={handleViewScriptTerminal}
-                        onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
-                      />
-                    </>
-                  }
-                  right={headerRight}
-                />
-              )}
+            <FloatingPanelPortalHostNameProvider hostName={workspaceFloatingPanelPortalHostName}>
+              {workspaceCenterColumn}
+            </FloatingPanelPortalHostNameProvider>
 
-              {isMobile ? (
-                <MobileWorkspaceTabSwitcher
-                  tabs={tabs}
-                  activeTabKey={activeTabKey}
-                  activeTab={activeTabDescriptor}
-                  tabSwitcherOptions={tabSwitcherOptions}
-                  tabByKey={tabByKey}
-                  normalizedServerId={normalizedServerId}
-                  normalizedWorkspaceId={normalizedWorkspaceId}
-                  onSelectSwitcherTab={handleSelectSwitcherTab}
-                  onCopyResumeCommand={handleCopyResumeCommand}
-                  onCopyAgentId={handleCopyAgentId}
-                  onReloadAgent={handleReloadAgent}
-                  onRenameTab={handleRenameTab}
-                  onCloseTab={handleCloseTabById}
-                  onCloseTabsAbove={handleCloseTabsToLeft}
-                  onCloseTabsBelow={handleCloseTabsToRight}
-                  onCloseOtherTabs={handleCloseOtherTabs}
-                />
-              ) : null}
-
-              {shouldRenderDesktopPaneFallback ? (
-                <WorkspaceDesktopTabsRow
-                  paneId={focusedPaneIdOrUndefined}
-                  isFocused={isRouteFocused}
-                  tabs={desktopTabRowItems}
-                  normalizedServerId={normalizedServerId}
-                  normalizedWorkspaceId={normalizedWorkspaceId}
-                  setHoveredTabKey={setHoveredTabKey}
-                  setHoveredCloseTabKey={setHoveredCloseTabKey}
-                  onNavigateTab={navigateToTabId}
-                  onCloseTab={handleCloseTabById}
-                  onCopyResumeCommand={handleCopyResumeCommand}
-                  onCopyAgentId={handleCopyAgentId}
-                  onReloadAgent={handleReloadAgent}
-                  onRenameTab={handleRenameTab}
-                  onCloseTabsToLeft={handleCloseTabsToLeft}
-                  onCloseTabsToRight={handleCloseTabsToRight}
-                  onCloseOtherTabs={handleCloseOtherTabs}
-                  onCreateDraftTab={handleCreateDraftTab}
-                  onCreateTerminalTab={handleCreateTerminal}
-                  onCreateBrowserTab={handleCreateBrowserTab}
-                  showCreateBrowserTab={showCreateBrowserTab}
-                  disableCreateTerminal={createTerminalMutation.isPending}
-                  isWaitingOnTerminalReadiness={pendingTerminalCreateInput !== null}
-                  onReorderTabs={handleReorderTabsInFocusedPane}
-                  onSplitRight={noop}
-                  onSplitDown={noop}
-                  showPaneSplitActions={false}
-                />
-              ) : null}
-
-              <View style={styles.centerContent}>
-                {isMobile ? (
-                  <GestureDetector
-                    gesture={explorerOpenGesture}
-                    touchAction={COMPACT_WEB_GESTURE_TOUCH_ACTION}
-                  >
-                    <View style={styles.content}>{content}</View>
-                  </GestureDetector>
-                ) : (
-                  <View style={styles.content}>{desktopContent}</View>
-                )}
-              </View>
-            </View>
+            <FloatingPanelPortalHost name={workspaceFloatingPanelPortalHostName} />
 
             {showExplorerSidebar && workspaceDirectory ? (
               <ExplorerSidebar

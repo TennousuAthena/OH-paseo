@@ -10,6 +10,7 @@ import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native-unistyles";
 import { Autocomplete, type AutocompleteOption } from "@/components/ui/autocomplete";
+import { useFloatingPanelPortalHostName } from "@/components/ui/floating-panel-portal";
 import { SPACING } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
@@ -56,6 +57,7 @@ export function AutocompletePopover({
   const [anchorRect, setAnchorRect] = useState<Rect | null>(null);
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const portalHostName = useFloatingPanelPortalHostName();
 
   const { height: rawKeyboardHeight } = useReanimatedKeyboardAnimation();
   const bottomInsetSV = useSharedValue(insets.bottom);
@@ -127,7 +129,7 @@ export function AutocompletePopover({
   if (!visible || !anchorRect || !baseStyle) return null;
 
   return (
-    <Portal>
+    <Portal hostName={portalHostName}>
       <View style={styles.overlay} pointerEvents="box-none">
         <Animated.View testID="composer-autocomplete-popover" style={composedStyle}>
           <Autocomplete
