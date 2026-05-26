@@ -1,7 +1,7 @@
 import type { AgentFeature, AgentModelDefinition } from "@server/server/agent/agent-sdk-types";
 
 export type ExplainedAgentControl = "mode" | "model" | "thinking";
-export type FeatureHighlightColor = "blue" | "default" | "yellow";
+export type FeatureHighlightColor = "blue" | "default" | "green" | "yellow";
 
 export function getAgentControlHint(selector: ExplainedAgentControl): string {
   switch (selector) {
@@ -32,6 +32,8 @@ export function getFeatureHighlightColor(featureId: string): FeatureHighlightCol
   switch (featureId) {
     case "fast_mode":
       return "yellow";
+    case "auto_accept":
+      return "green";
     case "plan_mode":
       return "blue";
     default:

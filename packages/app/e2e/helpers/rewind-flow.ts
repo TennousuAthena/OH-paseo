@@ -27,6 +27,7 @@ interface ProviderLaunchConfig {
   model?: string;
   thinkingOptionId?: string;
   modeId?: string;
+  featureValues?: Record<string, unknown>;
 }
 
 const SEND_TIMEOUT_MS = 240_000;
@@ -52,7 +53,12 @@ function fullAccessConfig(provider: RewindFlowProvider): ProviderLaunchConfig {
         modeId: "full-access",
       };
     case "opencode":
-      return { provider, model: "opencode/big-pickle", modeId: "full-access" };
+      return {
+        provider,
+        model: "opencode/big-pickle",
+        modeId: "build",
+        featureValues: { auto_accept: true },
+      };
     case "pi":
       return {
         provider,

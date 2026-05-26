@@ -1156,11 +1156,12 @@ export class AgentManager {
   async setAgentMode(agentId: string, modeId: string): Promise<void> {
     const agent = this.requireSessionAgent(agentId);
     await agent.session.setMode(modeId);
-    agent.config.modeId = modeId;
-    agent.currentModeId = modeId;
+    const currentMode = await agent.session.getCurrentMode();
+    agent.config.modeId = currentMode ?? undefined;
+    agent.currentModeId = currentMode;
     // Update runtimeInfo to reflect the new mode
     if (agent.runtimeInfo) {
-      agent.runtimeInfo = { ...agent.runtimeInfo, modeId };
+      agent.runtimeInfo = { ...agent.runtimeInfo, modeId: currentMode };
     }
     this.touchUpdatedAt(agent);
     this.emitState(agent);

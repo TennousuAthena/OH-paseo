@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
-import { Brain, ChevronDown, ListTodo, Settings2, Zap } from "lucide-react-native";
+import { Brain, ChevronDown, ListTodo, Settings2, ShieldCheck, Zap } from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import {
@@ -139,6 +139,7 @@ function findOptionLabel(
 
 const FEATURE_ICONS: Record<string, typeof Zap> = {
   "list-todo": ListTodo,
+  "shield-check": ShieldCheck,
   zap: Zap,
 };
 
@@ -151,6 +152,7 @@ function getFeatureIconColor(
   enabled: boolean,
   palette: {
     blue: { 400: string };
+    green: { 400: string };
     yellow: { 400: string };
   },
   foregroundMuted: string,
@@ -162,6 +164,8 @@ function getFeatureIconColor(
   switch (getFeatureHighlightColor(featureId)) {
     case "blue":
       return palette.blue[400];
+    case "green":
+      return palette.green[400];
     case "yellow":
       return palette.yellow[400];
     default:

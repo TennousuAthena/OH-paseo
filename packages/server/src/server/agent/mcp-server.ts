@@ -10,7 +10,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import type { AgentProvider } from "./agent-sdk-types.js";
-import type { AgentManager, WaitForAgentResult } from "./agent-manager.js";
+import type { AgentManager, ManagedAgent, WaitForAgentResult } from "./agent-manager.js";
 import {
   AgentFeatureSchema,
   AgentPermissionRequestPayloadSchema,
@@ -133,6 +133,42 @@ const CODEX_TO_CLAUDE_MODE: Record<string, string> = {
   auto: "default",
   "full-access": "bypassPermissions",
 };
+
+const OPENCODE_PROVIDER_ID = "opencode";
+const OPENCODE_BUILD_MODE_ID = "build";
+const OPENCODE_LEGACY_FULL_ACCESS_MODE_ID = "full-access";
+const OPENCODE_AUTO_ACCEPT_FEATURE_ID = "auto_accept";
+
+function isOpenCodeLegacyFullAccessMode(
+  provider: AgentProvider,
+  modeId: string | undefined,
+): boolean {
+  return provider === OPENCODE_PROVIDER_ID && modeId === OPENCODE_LEGACY_FULL_ACCESS_MODE_ID;
+}
+
+function withOpenCodeAutoAcceptFeature(
+  features: Record<string, unknown> | undefined,
+  enabled: boolean,
+): Record<string, unknown> {
+  return {
+    ...features,
+    [OPENCODE_AUTO_ACCEPT_FEATURE_ID]: enabled,
+  };
+}
+
+function hasOpenCodeAutoAcceptFeature(agent: ManagedAgent): boolean {
+  if (agent.provider !== OPENCODE_PROVIDER_ID) {
+    return false;
+  }
+  return (
+    agent.features?.some(
+      (feature) =>
+        feature.id === OPENCODE_AUTO_ACCEPT_FEATURE_ID &&
+        feature.type === "toggle" &&
+        feature.value === true,
+    ) === true || agent.config.featureValues?.[OPENCODE_AUTO_ACCEPT_FEATURE_ID] === true
+  );
+}
 
 function mapModeAcrossProviders(
   sourceMode: string,
@@ -583,6 +619,9 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         : {}),
       ...(callerAgent.config.title ? { title: callerAgent.config.title } : {}),
       ...(callerAgent.config.extra ? { extra: callerAgent.config.extra } : {}),
+      ...(callerAgent.config.featureValues
+        ? { featureValues: callerAgent.config.featureValues }
+        : {}),
       ...(callerAgent.config.systemPrompt ? { systemPrompt: callerAgent.config.systemPrompt } : {}),
       ...(callerAgent.config.mcpServers ? { mcpServers: callerAgent.config.mcpServers } : {}),
     };
@@ -910,6 +949,48 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     return modes.some((mode) => mode.id === modeId && mode.isUnattended === true);
   };
 
+  const isAgentInUnattendedState = (agent: ManagedAgent): boolean => {
+    return (
+      isParentInUnattendedMode(agent.provider, agent.currentModeId) ||
+      hasOpenCodeAutoAcceptFeature(agent)
+    );
+  };
+
+  const resolveCreateModeAndFeatures = (input: {
+    provider: AgentProvider;
+    requestedMode: string | undefined;
+    parent: { provider: AgentProvider; modeId: string | null; isUnattended: boolean } | null;
+    features: Record<string, unknown> | undefined;
+  }): { mode: string | undefined; features: Record<string, unknown> | undefined } => {
+    const legacyOpenCodeFullAccess = isOpenCodeLegacyFullAccessMode(
+      input.provider,
+      input.requestedMode,
+    );
+    const inheritsOpenCodeUnattended =
+      input.provider === OPENCODE_PROVIDER_ID &&
+      input.requestedMode === undefined &&
+      input.parent?.isUnattended === true;
+    const inheritsOpenCodeAutoAccept =
+      inheritsOpenCodeUnattended && input.features?.[OPENCODE_AUTO_ACCEPT_FEATURE_ID] === undefined;
+    const requestedMode = legacyOpenCodeFullAccess ? OPENCODE_BUILD_MODE_ID : input.requestedMode;
+    const features =
+      legacyOpenCodeFullAccess || inheritsOpenCodeAutoAccept
+        ? withOpenCodeAutoAcceptFeature(input.features, true)
+        : input.features;
+    const mode =
+      inheritsOpenCodeUnattended && requestedMode === undefined
+        ? OPENCODE_BUILD_MODE_ID
+        : resolveAndValidateCreateAgentMode({
+            requestedMode,
+            targetProvider: input.provider,
+            parent: input.parent,
+            availableModes: getAvailableModeIds(input.provider),
+            targetUnattendedMode: getUnattendedModeId(input.provider),
+          });
+
+    return { mode, features };
+  };
+
   const resolveCallerCreateAgentArgs = (
     args: unknown,
     parentAgentId: string,
@@ -928,16 +1009,15 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       lockedCwd: callerContext?.lockedCwd,
       allowCustomCwd: callerContext?.allowCustomCwd ?? true,
     });
-    const resolvedMode = resolveAndValidateCreateAgentMode({
+    const resolvedRuntime = resolveCreateModeAndFeatures({
+      provider,
       requestedMode: settings?.modeId,
-      targetProvider: provider,
       parent: {
         provider: parentAgent.provider,
         modeId: parentAgent.currentModeId,
-        isUnattended: isParentInUnattendedMode(parentAgent.provider, parentAgent.currentModeId),
+        isUnattended: isAgentInUnattendedState(parentAgent),
       },
-      availableModes: getAvailableModeIds(provider),
-      targetUnattendedMode: getUnattendedModeId(provider),
+      features: settings?.features,
     });
     return {
       provider,
@@ -946,11 +1026,11 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       normalizedTitle: callerArgs.title.trim(),
       model: resolvedProviderModel.model,
       thinkingOptionId: settings?.thinkingOptionId,
-      features: settings?.features,
+      features: resolvedRuntime.features,
       labels: callerArgs.labels,
       notifyOnFinish: callerArgs.notifyOnFinish ?? false,
       resolvedCwd,
-      resolvedMode,
+      resolvedMode: resolvedRuntime.mode,
       setupContinuation: undefined,
     };
   };
@@ -962,12 +1042,11 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     const resolvedProviderModel = resolveRequiredProviderModel(topLevelArgs.provider);
     const { cwd, settings, worktreeName, baseBranch, refName, action, githubPrNumber } =
       topLevelArgs;
-    const resolvedMode = resolveAndValidateCreateAgentMode({
+    const resolvedRuntime = resolveCreateModeAndFeatures({
+      provider: resolvedProviderModel.provider,
       requestedMode: settings?.modeId,
-      targetProvider: resolvedProviderModel.provider,
       parent: null,
-      availableModes: getAvailableModeIds(resolvedProviderModel.provider),
-      targetUnattendedMode: getUnattendedModeId(resolvedProviderModel.provider),
+      features: settings?.features,
     });
     let resolvedCwd = expandUserPath(cwd);
     let setupContinuation: AgentWorktreeSetupContinuation | undefined;
@@ -1021,11 +1100,11 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       normalizedTitle: topLevelArgs.title.trim(),
       model: resolvedProviderModel.model,
       thinkingOptionId: settings?.thinkingOptionId,
-      features: settings?.features,
+      features: resolvedRuntime.features,
       labels: topLevelArgs.labels,
       notifyOnFinish: topLevelArgs.notifyOnFinish ?? false,
       resolvedCwd,
-      resolvedMode,
+      resolvedMode: resolvedRuntime.mode,
       setupContinuation,
     };
   };

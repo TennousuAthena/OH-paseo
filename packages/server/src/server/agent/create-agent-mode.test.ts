@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveAndValidateCreateAgentMode } from "./create-agent-mode.js";
 
 const CLAUDE_MODES = ["default", "acceptEdits", "plan", "bypassPermissions"];
-const OPENCODE_MODES = ["build", "full-access", "plan"];
+const OPENCODE_MODES = ["build", "plan"];
 const CODEX_MODES = ["auto", "full-access"];
 
 describe("resolveAndValidateCreateAgentMode", () => {
@@ -25,7 +25,7 @@ describe("resolveAndValidateCreateAgentMode", () => {
         availableModes: OPENCODE_MODES,
       }),
     ).toThrow(
-      "Invalid mode 'bypassPermissions' for provider 'opencode'. Available modes: build, full-access, plan",
+      "Invalid mode 'bypassPermissions' for provider 'opencode'. Available modes: build, plan",
     );
   });
 
@@ -68,7 +68,7 @@ describe("resolveAndValidateCreateAgentMode", () => {
         availableModes: OPENCODE_MODES,
       }),
     ).toThrow(
-      "cannot inherit mode 'bypassPermissions' from caller (provider 'claude') for new agent (provider 'opencode'). Pass an explicit mode. Available modes for 'opencode': build, full-access, plan",
+      "cannot inherit mode 'bypassPermissions' from caller (provider 'claude') for new agent (provider 'opencode'). Pass an explicit mode. Available modes for 'opencode': build, plan",
     );
   });
 

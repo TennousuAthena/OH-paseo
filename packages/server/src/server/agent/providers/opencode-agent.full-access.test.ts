@@ -61,8 +61,8 @@ function questionEvent(): unknown {
   };
 }
 
-describe("OpenCode full-access mode", () => {
-  test("includes virtual full-access mode with dynamic OpenCode agents", async () => {
+describe("OpenCode auto_accept feature", () => {
+  test("lists OpenCode modes without the legacy virtual full-access mode", async () => {
     const { runtime } = mockOpenCodeClient({
       agents: [
         { name: "build", mode: "primary", hidden: false, description: "Build agent" },
@@ -73,14 +73,36 @@ describe("OpenCode full-access mode", () => {
     const client = new OpenCodeAgentClient(createTestLogger(), undefined, { runtime });
     const modes = await client.listModes({ cwd: "/tmp/project", force: false });
 
-    expect(modes.map((mode) => mode.id)).toEqual(["build", "plan", "full-access", "paseo-custom"]);
-    expect(modes.find((mode) => mode.id === "full-access")).toMatchObject({
-      label: "Full Access",
-      description: "Automatically approves all tool permission prompts for the session",
-    });
+    expect(modes.map((mode) => mode.id)).toEqual(["build", "plan", "paseo-custom"]);
   });
 
-  test("reports full-access but sends prompts through OpenCode build agent", async () => {
+  test("lists auto accept as a provider feature", async () => {
+    const { runtime } = mockOpenCodeClient();
+
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, { runtime });
+    const enabledFeatures = await client.listFeatures({
+      provider: "opencode",
+      cwd: "/tmp/project",
+      featureValues: { auto_accept: true },
+    });
+    const legacyFeatures = await client.listFeatures({
+      provider: "opencode",
+      cwd: "/tmp/project",
+      modeId: "full-access",
+    });
+
+    expect(enabledFeatures).toEqual([
+      expect.objectContaining({
+        type: "toggle",
+        id: "auto_accept",
+        label: "Auto Accept",
+        value: true,
+      }),
+    ]);
+    expect(legacyFeatures).toEqual([expect.objectContaining({ id: "auto_accept", value: true })]);
+  });
+
+  test("keeps legacy full-access as an alias for build plus auto accept", async () => {
     const { openCodeClient, runtime } = mockOpenCodeClient();
 
     const client = new OpenCodeAgentClient(createTestLogger(), undefined, { runtime });
@@ -90,7 +112,8 @@ describe("OpenCode full-access mode", () => {
       modeId: "full-access",
     });
 
-    expect(await session.getCurrentMode()).toBe("full-access");
+    expect(await session.getCurrentMode()).toBe("build");
+    expect(session.features).toEqual([expect.objectContaining({ id: "auto_accept", value: true })]);
 
     await session.run("Implement the change");
 
@@ -102,7 +125,7 @@ describe("OpenCode full-access mode", () => {
     await session.close();
   });
 
-  test("auto-approves tool permissions in full-access without surfacing them", async () => {
+  test("auto-approves tool permissions when auto accept is enabled", async () => {
     const { openCodeClient, runtime } = mockOpenCodeClient({
       events: [toolPermissionEvent(), idleEvent()],
     });
@@ -112,7 +135,7 @@ describe("OpenCode full-access mode", () => {
     const session = await client.createSession({
       provider: "opencode",
       cwd: "/tmp/project",
-      modeId: "full-access",
+      featureValues: { auto_accept: true },
     });
     session.subscribe((event) => receivedEvents.push(event));
 
@@ -130,7 +153,7 @@ describe("OpenCode full-access mode", () => {
     await session.close();
   });
 
-  test("keeps questions separate from full-access tool auto-approval", async () => {
+  test("keeps questions separate from auto accept tool approval", async () => {
     const { openCodeClient, runtime } = mockOpenCodeClient({
       events: [questionEvent(), idleEvent()],
     });
@@ -140,7 +163,7 @@ describe("OpenCode full-access mode", () => {
     const session = await client.createSession({
       provider: "opencode",
       cwd: "/tmp/project",
-      modeId: "full-access",
+      featureValues: { auto_accept: true },
     });
     session.subscribe((event) => receivedEvents.push(event));
 

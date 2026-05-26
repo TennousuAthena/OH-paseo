@@ -4,6 +4,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import {
+  Bot,
   ChevronDown,
   ShieldAlert,
   ShieldCheck,
@@ -33,6 +34,7 @@ function shouldRenderForPlacement(placement: AgentModeControlPlacement, isCompac
 }
 
 const MODE_ICONS = {
+  Bot,
   ShieldCheck,
   ShieldAlert,
   ShieldOff,
