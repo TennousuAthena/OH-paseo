@@ -2491,6 +2491,25 @@ function unwrapOpenCodeGlobalEvent(event: unknown): OpenCodeEvent | null {
   return null;
 }
 
+function isOpenCodeUserMessageEvent(event: OpenCodeEvent, sessionId: string): boolean {
+  return (
+    event.type === "message.updated" &&
+    event.properties.info.sessionID === sessionId &&
+    event.properties.info.role === "user"
+  );
+}
+
+function isOpenCodeTerminalEvent(event: OpenCodeEvent, sessionId: string): boolean {
+  if (event.type === "session.idle" || event.type === "session.error") {
+    return event.properties.sessionID === sessionId;
+  }
+  return (
+    event.type === "session.status" &&
+    event.properties.sessionID === sessionId &&
+    event.properties.status.type === "idle"
+  );
+}
+
 class OpenCodeAgentSession implements AgentSession {
   readonly provider = "opencode" as const;
   readonly capabilities = OPENCODE_CAPABILITIES;
@@ -2530,6 +2549,7 @@ class OpenCodeAgentSession implements AgentSession {
   private releaseServer: (() => void) | null;
   private eventStreamAbortController: AbortController | null = null;
   private eventStreamReady: Deferred<void> | null = null;
+  private suppressTerminalUntilNextUserMessage = false;
   private closed = false;
   private readonly persistSession: boolean;
   private deletedFromProvider = false;
@@ -2615,6 +2635,7 @@ class OpenCodeAgentSession implements AgentSession {
       );
     });
     if (turnId) {
+      this.suppressTerminalUntilNextUserMessage = true;
       this.finishForegroundTurn(
         { type: "turn_canceled", provider: "opencode", reason: "interrupted" },
         turnId,
@@ -3006,6 +3027,18 @@ class OpenCodeAgentSession implements AgentSession {
         type: event.type,
       });
       return;
+    }
+    if (this.suppressTerminalUntilNextUserMessage) {
+      if (isOpenCodeUserMessageEvent(event, this.sessionId)) {
+        this.suppressTerminalUntilNextUserMessage = false;
+      } else if (isOpenCodeTerminalEvent(event, this.sessionId)) {
+        this.traceOpenCode("provider.opencode.event.skip", {
+          n: eventCount,
+          reason: "stale_interrupt_terminal",
+          type: event.type,
+        });
+        return;
+      }
     }
     const translated = await this.translateEvent(event);
     this.traceOpenCode("provider.opencode.parsed_event", {
