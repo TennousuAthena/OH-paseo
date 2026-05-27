@@ -70,13 +70,16 @@ The frozen home used for the comparison contained 22 workspaces.
 
 ### Before/After
 
-| run         | code shape    | client shape                              | git commands | failures | elapsed |
-| ----------- | ------------- | ----------------------------------------- | -----------: | -------: | ------: |
-| baseline    | before change | legacy sidebar PR fanout                  |          529 |       20 | 39039ms |
-| split check | after change  | legacy sidebar PR fanout                  |          375 |       15 | 39039ms |
-| after       | after change  | snapshot-only sidebar, no PR badge fanout |          372 |       15 | 31273ms |
+| run         | code shape                 | client shape                              | git commands | failures | elapsed |
+| ----------- | -------------------------- | ----------------------------------------- | -----------: | -------: | ------: |
+| baseline    | before change              | legacy sidebar PR fanout                  |          529 |       20 | 39039ms |
+| split check | after change               | legacy sidebar PR fanout                  |          375 |       15 | 39039ms |
+| after       | after change               | snapshot-only sidebar, no PR badge fanout |          372 |       15 | 31273ms |
+| after 2     | after service fact sharing | snapshot-only sidebar, no PR badge fanout |          308 |       15 | 31334ms |
 
 The server-side fact reuse accounts for nearly all measured git command reduction: `529 -> 375` (`-154`, `-29.1%`) even when the old PR fanout is still forced. Removing the sidebar fanout removes the ad hoc request path, but in this run it only changed command count by `3` because the refreshed workspace snapshots already carried the PR data by the time the fanout ran.
+
+The second pass shares checkout facts between workspace observation setup and snapshot refresh. That removes another `64` git commands from the same frozen-home run: `372 -> 308` (`-17.2%` from the previous after, `-41.8%` from baseline).
 
 ### Baseline: before change + legacy PR fanout
 
@@ -148,6 +151,41 @@ The server-side fact reuse accounts for nearly all measured git command reductio
 }
 ```
 
+### After 2: shared service-level facts
+
+```json
+{
+  "scenario": "snapshotOnly",
+  "workspaceCount": 22,
+  "elapsedMs": 31334,
+  "git": {
+    "total": 308,
+    "failed": 15,
+    "maxConcurrent": 8,
+    "byCommand": [
+      { "key": "show-ref --verify --quiet refs/heads/main", "count": 31 },
+      { "key": "rev-parse --git-common-dir", "count": 26 },
+      { "key": "show-ref --verify --quiet refs/remotes/origin/main", "count": 22 },
+      { "key": "ls-files --others --exclude-standard", "count": 18 },
+      { "key": "status --porcelain", "count": 18 },
+      { "key": "merge-base HEAD origin/main", "count": 17 },
+      { "key": "config --get remote.origin.url", "count": 13 },
+      { "key": "rev-parse --abbrev-ref HEAD", "count": 13 },
+      { "key": "rev-parse --absolute-git-dir", "count": 13 },
+      { "key": "rev-parse --show-toplevel", "count": 13 },
+      { "key": "symbolic-ref --quiet refs/remotes/origin/HEAD", "count": 13 },
+      { "key": "fetch origin --prune", "count": 5 }
+    ]
+  },
+  "process": {
+    "cpuUserMs": 1817,
+    "cpuSystemMs": 1869,
+    "rssDeltaMb": 16.7,
+    "heapUsedDeltaMb": 10.4
+  }
+}
+```
+
 ## Snapshot Equivalence Guard
 
 Added a focused utility test proving that status, shortstat, and PR status return the same data when run from shared snapshot facts. The same test records git calls and asserts the facts-backed path does not re-run:
@@ -165,9 +203,9 @@ This pass reshaped the data flow and removed the sidebar PR badge special path. 
 
 The benchmark still shows repeated per-workspace reads that are candidates for the next pass:
 
-- origin URL lookup repeats across snapshot facts and GitHub remote resolution paths.
 - base ref existence checks still repeat as `show-ref` probes.
-- repo/worktree identity still requires one root/current-branch rev-parse per workspace.
+- default branch resolution still repeats `symbolic-ref refs/remotes/origin/HEAD`.
+- repo common-dir lookup is lower, but still above the apparent git workspace count.
 - shortstat still runs its own merge-base/diff/untracked scan per workspace.
 
 The important invariant now is clearer: sidebar-visible git data should flow from `WorkspaceGitService` snapshots, and snapshot builders should receive reusable git facts through `CheckoutContext`.

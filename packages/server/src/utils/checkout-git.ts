@@ -735,6 +735,8 @@ export type CheckoutSnapshotFacts =
       worktreeRoot: string;
       currentBranch: string | null;
       remoteUrl: string | null;
+      absoluteGitDir: string | null;
+      gitCommonDir: string | null;
       paseoWorktree: PaseoWorktreeForCwd;
       storedBaseRef: string | null;
       resolvedBaseRef: string | null;
@@ -817,7 +819,13 @@ export async function getMainRepoRoot(cwd: string): Promise<string> {
     cwd,
     envOverlay: READ_ONLY_GIT_ENV,
   });
-  const commonDir = resolveGitRevParsePath(cwd, commonDirOut);
+  return getMainRepoRootFromCommonDir(cwd, resolveGitRevParsePath(cwd, commonDirOut));
+}
+
+async function getMainRepoRootFromCommonDir(
+  cwd: string,
+  commonDir: string | null,
+): Promise<string> {
   if (!commonDir) {
     throw new Error("Not in a git repository");
   }
@@ -1096,6 +1104,18 @@ export async function resolveAbsoluteGitDir(cwd: string): Promise<string | null>
     });
     const gitDir = stdout.trim();
     return gitDir.length > 0 ? gitDir : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveGitCommonDir(cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await runGitCommand(["rev-parse", "--git-common-dir"], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+    });
+    return resolveGitRevParsePath(cwd, stdout);
   } catch {
     return null;
   }
@@ -1389,6 +1409,8 @@ interface CheckoutInspectionContext {
   worktreeRoot: string;
   currentBranch: string | null;
   remoteUrl: string | null;
+  absoluteGitDir: string | null;
+  gitCommonDir: string | null;
   paseoWorktree: PaseoWorktreeForCwd;
 }
 
@@ -1402,16 +1424,21 @@ async function inspectCheckoutContext(
       return null;
     }
 
-    const [currentBranch, remoteUrl, paseoWorktree] = await Promise.all([
-      getCurrentBranch(cwd),
-      getOriginRemoteUrl(cwd),
-      getPaseoWorktreeForCwd(cwd, context, root),
-    ]);
+    const [currentBranch, remoteUrl, absoluteGitDir, gitCommonDir, paseoWorktree] =
+      await Promise.all([
+        getCurrentBranch(cwd),
+        getOriginRemoteUrl(cwd),
+        resolveAbsoluteGitDir(cwd),
+        resolveGitCommonDir(cwd),
+        getPaseoWorktreeForCwd(cwd, context, root),
+      ]);
 
     return {
       worktreeRoot: root,
       currentBranch,
       remoteUrl,
+      absoluteGitDir,
+      gitCommonDir,
       paseoWorktree,
     };
   } catch (error) {
@@ -1464,7 +1491,9 @@ export async function getCheckoutSnapshotFacts(
     ? readPaseoWorktreeBaseRef(inspected.paseoWorktree.worktreeRoot)
     : null;
   const resolvedBaseRef = storedBaseRef ?? (await resolveBaseRef(cwd));
-  const mainRepoRoot = await getMainRepoRoot(cwd).catch(() => null);
+  const mainRepoRoot = await getMainRepoRootFromCommonDir(cwd, inspected.gitCommonDir).catch(
+    () => null,
+  );
   let comparisonBaseRef: string | null = null;
   if (
     resolvedBaseRef &&
@@ -1512,6 +1541,8 @@ export async function getCheckoutSnapshotFacts(
     worktreeRoot: inspected.worktreeRoot,
     currentBranch: inspected.currentBranch,
     remoteUrl: inspected.remoteUrl,
+    absoluteGitDir: inspected.absoluteGitDir,
+    gitCommonDir: inspected.gitCommonDir,
     paseoWorktree: inspected.paseoWorktree,
     storedBaseRef,
     resolvedBaseRef,

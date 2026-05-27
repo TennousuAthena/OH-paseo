@@ -47,6 +47,7 @@ const WORKING_TREE_WATCH_FALLBACK_REFRESH_MS = 5_000;
 const WORKSPACE_GIT_AUXILIARY_READ_TTL_MS = 15_000;
 // Non-forced refresh triggers share this minimum gap to absorb watcher/self-heal bursts; force bypasses it.
 const WORKSPACE_GIT_INTERNAL_MIN_GAP_MS = 2_000;
+const WORKSPACE_GIT_FACTS_REUSE_TTL_MS = 1_000;
 const LINUX_WATCH_MAX_DIRS = 5_000;
 const LINUX_WATCH_REFRESH_COOLDOWN_MS = 2_000;
 const LINUX_WATCH_IGNORE_TTL_MS = 5 * 60 * 1_000;
@@ -271,6 +272,9 @@ interface WorkspaceGitTarget {
   latestGithubLoadedAtMs: number | null;
   latestSnapshot: WorkspaceGitRuntimeSnapshot | null;
   latestSnapshotLoadedAtMs: number | null;
+  latestFacts: CheckoutSnapshotFacts | null;
+  latestFactsLoadedAtMs: number | null;
+  factsPromise: Promise<CheckoutSnapshotFacts> | null;
   latestFingerprint: string | null;
   lastShellOutAtMs: number | null;
   repoGitRoot: string | null;
@@ -787,6 +791,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       latestGithubLoadedAtMs: null,
       latestSnapshot: null,
       latestSnapshotLoadedAtMs: null,
+      latestFacts: null,
+      latestFactsLoadedAtMs: null,
+      factsPromise: null,
       latestFingerprint: null,
       lastShellOutAtMs: null,
       repoGitRoot: null,
@@ -837,7 +844,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   }
 
   private async setupWorkspaceObservation(target: WorkspaceGitTarget): Promise<void> {
-    const gitDir = await this.deps.resolveAbsoluteGitDir(target.cwd);
+    const facts = await this.getFactsForObservation(target);
+    const gitDir = facts?.isGit ? facts.absoluteGitDir : null;
     if (!this.isActiveObservedWorkspaceTarget(target)) {
       return;
     }
@@ -846,7 +854,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       return;
     }
 
-    const repoGitRoot = await this.resolveWorkspaceGitRefsRoot(gitDir);
+    const repoGitRoot =
+      facts?.isGit && facts.gitCommonDir
+        ? facts.gitCommonDir
+        : await this.resolveWorkspaceGitRefsRoot(gitDir);
     if (!this.isActiveObservedWorkspaceTarget(target)) {
       return;
     }
@@ -856,6 +867,48 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     if (this.isActiveObservedWorkspaceTarget(target)) {
       target.observationSetupComplete = true;
     }
+  }
+
+  private async getFactsForObservation(
+    target: WorkspaceGitTarget,
+  ): Promise<CheckoutSnapshotFacts | null> {
+    return this.loadCheckoutFacts(target, {
+      paseoHome: this.paseoHome,
+      logger: this.logger,
+      allowRecent: true,
+    });
+  }
+
+  private loadCheckoutFacts(
+    target: WorkspaceGitTarget,
+    options: CheckoutContext & { allowRecent: boolean },
+  ): Promise<CheckoutSnapshotFacts> {
+    if (options.allowRecent && target.latestFacts && target.latestFactsLoadedAtMs !== null) {
+      const ageMs = this.deps.now().getTime() - target.latestFactsLoadedAtMs;
+      if (ageMs < WORKSPACE_GIT_FACTS_REUSE_TTL_MS) {
+        return Promise.resolve(target.latestFacts);
+      }
+    }
+
+    if (target.factsPromise) {
+      return target.factsPromise;
+    }
+
+    const { allowRecent: _allowRecent, ...context } = options;
+    const promise = this.deps
+      .getCheckoutSnapshotFacts(target.cwd, context)
+      .then((facts) => {
+        target.latestFacts = facts;
+        target.latestFactsLoadedAtMs = this.deps.now().getTime();
+        return facts;
+      })
+      .finally(() => {
+        if (target.factsPromise === promise) {
+          target.factsPromise = null;
+        }
+      });
+    target.factsPromise = promise;
+    return promise;
   }
 
   private isActiveObservedWorkspaceTarget(target: WorkspaceGitTarget): boolean {
@@ -996,7 +1049,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       return;
     }
 
-    const hasOrigin = await this.deps.hasOriginRemote(workspaceTarget.cwd);
+    const facts = workspaceTarget.latestFacts;
+    const hasOrigin =
+      facts?.isGit === true
+        ? facts.remoteUrl !== null
+        : await this.deps.hasOriginRemote(workspaceTarget.cwd);
     if (!this.isActiveObservedWorkspaceTarget(workspaceTarget)) {
       return;
     }
@@ -1505,7 +1562,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     const cwd = target.cwd;
     const previousGitHubPollKey = this.getGitHubPollKey(target);
     const baseContext: CheckoutContext = { paseoHome: this.paseoHome, logger: this.logger };
-    const facts = await this.deps.getCheckoutSnapshotFacts(cwd, baseContext);
+    const facts = await this.loadCheckoutFacts(target, {
+      ...baseContext,
+      allowRecent: !request.force,
+    });
     const context: CheckoutContext = { ...baseContext, facts };
     const checkoutStatus = await this.deps.getCheckoutStatus(cwd, context);
     if (!checkoutStatus.isGit) {
