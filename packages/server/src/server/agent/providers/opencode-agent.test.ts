@@ -1,8 +1,7 @@
-import { afterAll, describe, expect, test, vi } from "vitest";
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { describe, expect, test, vi } from "vitest";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import type { Event as OpenCodeEvent } from "@opencode-ai/sdk/v2/client";
@@ -11,7 +10,6 @@ import {
   OpenCodeAgentClient,
   translateOpenCodeEvent,
 } from "./opencode-agent.js";
-import { OpenCodeServerManager } from "./opencode/server-manager.js";
 import { streamSession } from "./test-utils/session-stream-adapter.js";
 import {
   TestOpenCodeClient,
@@ -34,7 +32,7 @@ function tmpCwd(): string {
   }
 }
 
-const TEST_MODEL = "openrouter/~openai/gpt-mini-latest";
+const TEST_MODEL = "opencode/big-pickle";
 
 interface TurnResult {
   events: AgentStreamEvent[];
@@ -82,20 +80,39 @@ async function collectTurnEvents(iterator: AsyncGenerator<AgentStreamEvent>): Pr
   return result;
 }
 
-function isBinaryInstalled(binary: string): boolean {
-  try {
-    const out = execFileSync("which", [binary], { encoding: "utf8" }).trim();
-    return out.length > 0;
-  } catch {
-    return false;
-  }
+function assistantTurnEvents({
+  sessionId = "session-1",
+  text = "Hello from OpenCode",
+}: {
+  sessionId?: string;
+  text?: string;
+} = {}): unknown[] {
+  return [
+    {
+      type: "message.updated",
+      properties: {
+        info: {
+          id: "msg_assistant",
+          sessionID: sessionId,
+          role: "assistant",
+        },
+      },
+    },
+    {
+      type: "message.part.delta",
+      properties: {
+        sessionID: sessionId,
+        messageID: "msg_assistant",
+        partID: "prt_text",
+        field: "text",
+        delta: text,
+      },
+    },
+    { type: "session.idle", properties: { sessionID: sessionId } },
+  ];
 }
 
-const hasOpenCode = isBinaryInstalled("opencode");
-const hasOpenRouterKey = Boolean(process.env.OPENROUTER_API_KEY);
-const canRunLiveOpenCodeTurns = hasOpenCode && hasOpenRouterKey;
-
-(canRunLiveOpenCodeTurns ? describe : describe.skip)("OpenCodeAgentClient smoke tests", () => {
+describe("OpenCodeAgentClient adapter smoke tests", () => {
   const logger = createTestLogger();
   const buildConfig = (cwd: string): AgentSessionConfig => ({
     provider: "opencode",
@@ -103,16 +120,13 @@ const canRunLiveOpenCodeTurns = hasOpenCode && hasOpenRouterKey;
     model: TEST_MODEL,
   });
 
-  afterAll(async () => {
-    await OpenCodeServerManager.getInstance(logger).shutdown();
-  });
-
   test("creates a session with valid id and provider", async () => {
     const cwd = tmpCwd();
-    const client = new OpenCodeAgentClient(logger);
+    const runtime = new TestOpenCodeRuntime();
+    runtime.enqueueClient(new TestOpenCodeClient());
+    const client = new OpenCodeAgentClient(logger, undefined, { runtime });
     const session = await client.createSession(buildConfig(cwd));
 
-    // HARD ASSERT: Session has required fields
     expect(typeof session.id).toBe("string");
     expect(session.id.length).toBeGreaterThan(0);
     expect(session.provider).toBe("opencode");
@@ -123,44 +137,68 @@ const canRunLiveOpenCodeTurns = hasOpenCode && hasOpenRouterKey;
 
   test("single turn completes with streaming deltas", async () => {
     const cwd = tmpCwd();
-    const client = new OpenCodeAgentClient(logger);
+    const runtime = new TestOpenCodeRuntime();
+    const openCodeClient = new TestOpenCodeClient();
+    openCodeClient.sessionPromptAsyncEvents = assistantTurnEvents();
+    runtime.enqueueClient(openCodeClient);
+    const client = new OpenCodeAgentClient(logger, undefined, { runtime });
     const session = await client.createSession(buildConfig(cwd));
 
     const iterator = streamSession(session, "Say hello");
     const turn = await collectTurnEvents(iterator);
 
-    // HARD ASSERT: Turn completed successfully
     expect(turn.turnCompleted).toBe(true);
     expect(turn.turnFailed).toBe(false);
-
-    // HARD ASSERT: Got at least one assistant message
     expect(turn.assistantMessages.length).toBeGreaterThan(0);
-
-    // HARD ASSERT: Each delta is non-empty
     for (const msg of turn.assistantMessages) {
       expect(msg.text.length).toBeGreaterThan(0);
     }
-
-    // HARD ASSERT: Concatenated deltas form non-empty response
     const fullResponse = turn.assistantMessages.map((m) => m.text).join("");
-    expect(fullResponse.length).toBeGreaterThan(0);
+    expect(fullResponse).toBe("Hello from OpenCode");
+    expect(openCodeClient.calls.sessionPromptAsync).toEqual([
+      expect.objectContaining({
+        sessionID: "session-1",
+        directory: cwd,
+        model: { providerID: "opencode", modelID: "big-pickle" },
+        agent: "build",
+      }),
+    ]);
 
     await session.close();
     rmSync(cwd, { recursive: true, force: true });
   }, 120_000);
 
   test("listModels returns models with required fields", async () => {
-    const client = new OpenCodeAgentClient(logger);
-    const models = await client.listModels({ cwd: os.homedir(), force: false });
+    const runtime = new TestOpenCodeRuntime();
+    const openCodeClient = new TestOpenCodeClient();
+    openCodeClient.providerListResponse = {
+      data: {
+        connected: ["opencode"],
+        all: [
+          {
+            id: "opencode",
+            name: "OpenCode",
+            source: "api",
+            models: {
+              "big-pickle": {
+                name: "Big Pickle",
+                limit: {
+                  context: 200_000,
+                },
+              },
+            },
+          },
+        ],
+      },
+    };
+    runtime.enqueueClient(openCodeClient);
+    const client = new OpenCodeAgentClient(logger, undefined, { runtime });
+    const cwd = os.homedir();
+    const models = await client.listModels({ cwd, force: false });
 
-    // HARD ASSERT: Returns an array
     expect(Array.isArray(models)).toBe(true);
+    expect(models).toHaveLength(1);
 
-    // HARD ASSERT: At least one model is returned (OpenCode has connected providers)
-    expect(models.length).toBeGreaterThan(0);
-    expect(models.some((model) => model.id === TEST_MODEL)).toBe(true);
-
-    // HARD ASSERT: Each model has required fields with correct types
     for (const model of models) {
       expect(model.provider).toBe("opencode");
       expect(typeof model.id).toBe("string");
@@ -174,17 +212,25 @@ const canRunLiveOpenCodeTurns = hasOpenCode && hasOpenRouterKey;
         providerId: expect.any(String),
         modelId: expect.any(String),
       });
-      // contextWindowMaxTokens is upstream-provided and may be absent for some
-      // OpenCode-routed providers; assert the type only when present.
-      if (model.metadata?.contextWindowMaxTokens !== undefined) {
-        expect(typeof model.metadata.contextWindowMaxTokens).toBe("number");
-      }
+      expect(typeof model.metadata?.contextWindowMaxTokens).toBe("number");
     }
+    expect(models[0]).toMatchObject({
+      id: TEST_MODEL,
+      label: "Big Pickle",
+      metadata: {
+        providerId: "opencode",
+        modelId: "big-pickle",
+        contextWindowMaxTokens: 200_000,
+      },
+    });
+    expect(openCodeClient.calls.providerList).toEqual([{ directory: cwd }]);
   }, 60_000);
 
   test("available modes include build and plan", async () => {
     const cwd = tmpCwd();
-    const client = new OpenCodeAgentClient(logger);
+    const runtime = new TestOpenCodeRuntime();
+    runtime.enqueueClient(new TestOpenCodeClient());
+    const client = new OpenCodeAgentClient(logger, undefined, { runtime });
     const session = await client.createSession(buildConfig(cwd));
 
     const modes = await session.getAvailableModes();
@@ -198,19 +244,23 @@ const canRunLiveOpenCodeTurns = hasOpenCode && hasOpenRouterKey;
 
   test("custom agents defined in opencode.json appear in available modes", async () => {
     const cwd = tmpCwd();
-    writeFileSync(
-      path.join(cwd, "opencode.json"),
-      JSON.stringify({
-        agent: {
-          "paseo-test-custom": {
-            description: "Custom agent defined for Paseo integration test",
-            mode: "primary",
-          },
+    const runtime = new TestOpenCodeRuntime();
+    const openCodeClient = new TestOpenCodeClient();
+    openCodeClient.appAgentsResponse = {
+      data: [
+        {
+          name: "paseo-test-custom",
+          description: "Custom agent defined for Paseo integration test",
+          mode: "primary",
         },
-      }),
-    );
+        { name: "compaction", mode: "subagent" },
+        { name: "summary", mode: "subagent" },
+        { name: "title", mode: "subagent" },
+      ],
+    };
+    runtime.enqueueClient(openCodeClient);
 
-    const client = new OpenCodeAgentClient(logger);
+    const client = new OpenCodeAgentClient(logger, undefined, { runtime });
     const session = await client.createSession(buildConfig(cwd));
 
     const modes = await session.getAvailableModes();
@@ -232,10 +282,46 @@ const canRunLiveOpenCodeTurns = hasOpenCode && hasOpenRouterKey;
     rmSync(cwd, { recursive: true, force: true });
   }, 60_000);
 
-  test("plan mode blocks edits while build mode can write files", async () => {
+  test("plan and build modes are sent to OpenCode as distinct runtime agents", async () => {
     const cwd = tmpCwd();
-    const planFile = path.join(cwd, "plan-mode-output.txt");
-    const client = new OpenCodeAgentClient(logger);
+    const runtime = new TestOpenCodeRuntime();
+    const planOpenCodeClient = new TestOpenCodeClient();
+    planOpenCodeClient.sessionPromptAsyncEvents = assistantTurnEvents({ text: "Plan response" });
+    const buildOpenCodeClient = new TestOpenCodeClient();
+    buildOpenCodeClient.sessionPromptAsyncEvents = [
+      {
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg_assistant",
+            sessionID: "session-1",
+            role: "assistant",
+          },
+        },
+      },
+      {
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "prt_tool",
+            sessionID: "session-1",
+            messageID: "msg_assistant",
+            type: "tool",
+            tool: "write",
+            callID: "call_write",
+            state: {
+              status: "completed",
+              input: { filePath: "build-mode-output.txt", content: "hello" },
+              output: "created build-mode-output.txt",
+            },
+          },
+        },
+      },
+      ...assistantTurnEvents({ text: "Build response" }),
+    ];
+    runtime.enqueueClient(planOpenCodeClient);
+    runtime.enqueueClient(buildOpenCodeClient);
+    const client = new OpenCodeAgentClient(logger, undefined, { runtime });
 
     const planSession = await client.createSession({
       ...buildConfig(cwd),
@@ -251,8 +337,14 @@ const canRunLiveOpenCodeTurns = hasOpenCode && hasOpenRouterKey;
 
     expect(planTurn.turnCompleted).toBe(true);
     expect(planTurn.turnFailed).toBe(false);
-    expect(existsSync(planFile)).toBe(false);
     expect(planTurn.toolCalls).toHaveLength(0);
+    expect(planOpenCodeClient.calls.sessionPromptAsync).toEqual([
+      expect.objectContaining({
+        sessionID: "session-1",
+        directory: cwd,
+        agent: "plan",
+      }),
+    ]);
 
     const planResponse = planTurn.assistantMessages
       .map((message) => message.text)
@@ -277,6 +369,13 @@ const canRunLiveOpenCodeTurns = hasOpenCode && hasOpenRouterKey;
     expect(buildTurn.turnCompleted).toBe(true);
     expect(buildTurn.turnFailed).toBe(false);
     expect(buildTurn.toolCalls.some((toolCall) => toolCall.status === "completed")).toBe(true);
+    expect(buildOpenCodeClient.calls.sessionPromptAsync).toEqual([
+      expect.objectContaining({
+        sessionID: "session-1",
+        directory: cwd,
+        agent: "build",
+      }),
+    ]);
 
     const buildResponse = buildTurn.assistantMessages
       .map((message) => message.text)
