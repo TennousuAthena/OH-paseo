@@ -59,6 +59,15 @@ export function SiteHeader() {
           </svg>
         </a>
         <a
+          href="https://www.reddit.com/r/PaseoAI/"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Reddit"
+          className="text-muted-foreground hover:text-foreground transition-colors inline-flex items-center"
+        >
+          <RedditIcon />
+        </a>
+        <a
           href="https://github.com/getpaseo/paseo"
           target="_blank"
           rel="noopener noreferrer"
@@ -78,5 +87,20 @@ export function SiteHeader() {
         </a>
       </div>
     </header>
+  );
+}
+
+function RedditIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      fill="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path d="M20.12 11.08c-.1-.02-.2-.03-.31-.03-.78 0-1.45.5-1.69 1.2-1.43-.93-3.38-1.53-5.55-1.6l.95-4.47 3.1.66c.03.77.66 1.38 1.44 1.38.8 0 1.45-.65 1.45-1.45s-.65-1.45-1.45-1.45c-.57 0-1.06.33-1.29.81l-3.47-.74a.48.48 0 0 0-.56.37l-1.04 4.89c-2.22.05-4.21.65-5.67 1.6a1.8 1.8 0 0 0-1.69-1.2c-.1 0-.21.01-.31.03A2.53 2.53 0 0 0 4.7 15.8c-.03.18-.05.37-.05.56 0 3.16 3.29 5.72 7.35 5.72s7.35-2.56 7.35-5.72c0-.19-.02-.38-.05-.56a2.53 2.53 0 0 0 .82-4.72ZM8.72 15.27c0-.8.65-1.45 1.45-1.45s1.45.65 1.45 1.45-.65 1.45-1.45 1.45-1.45-.65-1.45-1.45Zm6.74 3.7c-.99.99-2.89 1.06-3.46 1.06s-2.47-.07-3.46-1.06a.48.48 0 0 1 .68-.68c.62.62 1.96.77 2.78.77s2.16-.15 2.78-.77a.48.48 0 1 1 .68.68Zm-1.63-2.25c-.8 0-1.45-.65-1.45-1.45s.65-1.45 1.45-1.45 1.45.65 1.45 1.45-.65 1.45-1.45 1.45Z" />
+    </svg>
   );
 }
