@@ -10,7 +10,6 @@ import {
   type Session as OpenCodeSession,
   type TextPartInput as OpenCodeTextPartInput,
 } from "@opencode-ai/sdk/v2/client";
-import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
 import { createPathEquivalenceMatcher } from "../../../utils/path.js";
 import type { Logger } from "pino";
 import { z } from "zod";
@@ -46,7 +45,12 @@ import {
   type ToolCallDetail,
   type ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
-import { createProviderEnvSpec, type ProviderRuntimeSettings } from "../provider-launch-config.js";
+import {
+  checkProviderLaunchAvailable,
+  createProviderEnvSpec,
+  resolveProviderLaunch,
+  type ProviderRuntimeSettings,
+} from "../provider-launch-config.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
 import { execCommand } from "../../../utils/spawn.js";
 import { buildToolCallDisplayModel } from "../../../shared/tool-call-display.js";
@@ -56,7 +60,7 @@ import {
   formatDiagnosticStatus,
   formatProviderDiagnostic,
   formatProviderDiagnosticError,
-  resolveBinaryVersion,
+  buildBinaryDiagnosticRows,
   toDiagnosticErrorMessage,
 } from "./diagnostic-utils.js";
 import { runProviderTurn } from "./provider-runner.js";
@@ -1391,17 +1395,22 @@ export class OpenCodeAgentClient implements AgentClient {
   }
 
   async isAvailable(): Promise<boolean> {
-    const command = this.runtimeSettings?.command;
-    if (command?.mode === "replace") {
-      return await isCommandAvailable(command.argv[0]);
-    }
-    return await isCommandAvailable("opencode");
+    const launch = await resolveProviderLaunch({
+      commandConfig: this.runtimeSettings?.command,
+      defaultBinary: "opencode",
+    });
+    const availability = await checkProviderLaunchAvailable(launch);
+    return availability.available;
   }
 
   async getDiagnostic(): Promise<{ diagnostic: string }> {
     try {
-      const available = await this.isAvailable();
-      const resolvedBinary = await findExecutable("opencode");
+      const launch = await resolveProviderLaunch({
+        commandConfig: this.runtimeSettings?.command,
+        defaultBinary: "opencode",
+      });
+      const availability = await checkProviderLaunchAvailable(launch);
+      const available = availability.available;
       let serverStatus = "Not running";
       let modelsValue = "Not checked";
       let status = formatDiagnosticStatus(available);
@@ -1414,12 +1423,19 @@ export class OpenCodeAgentClient implements AgentClient {
       }
 
       let authValue = "Not checked";
-      if (resolvedBinary) {
+      const authCommand = availability.available
+        ? (availability.resolvedPath ?? launch.command)
+        : null;
+      if (authCommand) {
         try {
-          const { stdout, stderr } = await execCommand(resolvedBinary, ["auth", "list"], {
-            ...createProviderEnvSpec(),
-            timeout: 5_000,
-          });
+          const { stdout, stderr } = await execCommand(
+            authCommand,
+            [...launch.args, "auth", "list"],
+            {
+              ...createProviderEnvSpec(),
+              timeout: 5_000,
+            },
+          );
           const text = (stdout.trim() || stderr.trim()).trim();
           authValue = text ? `\n    ${text.replace(/\n/g, "\n    ")}` : "(empty)";
         } catch (error) {
@@ -1453,14 +1469,7 @@ export class OpenCodeAgentClient implements AgentClient {
 
       return {
         diagnostic: formatProviderDiagnostic("OpenCode", [
-          {
-            label: "Binary",
-            value: resolvedBinary ?? "not found",
-          },
-          {
-            label: "Version",
-            value: resolvedBinary ? await resolveBinaryVersion(resolvedBinary) : "unknown",
-          },
+          ...(await buildBinaryDiagnosticRows(launch, availability)),
           { label: "Server", value: serverStatus },
           { label: "Auth", value: authValue },
           { label: "Models", value: modelsValue },
