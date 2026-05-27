@@ -2,12 +2,10 @@ import { z } from "zod";
 import type { AgentMode } from "./agent-sdk-types.js";
 
 export type AgentModeColorTier = "safe" | "moderate" | "dangerous" | "planning" | `#${string}`;
-export type AgentModeIcon =
-  | "Bot"
-  | "ShieldCheck"
-  | "ShieldAlert"
-  | "ShieldOff"
-  | "ShieldQuestionMark";
+// Open string by design: the client looks icons up in a registry and falls back
+// to a default for unknown values. Daemon downgrades unknown icons for clients
+// that pre-date the open-string contract (see CLIENT_CAPS.customModeIcons).
+export type AgentModeIcon = string;
 
 export interface AgentModeVisuals {
   icon: AgentModeIcon;

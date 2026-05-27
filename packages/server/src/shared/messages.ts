@@ -4053,6 +4053,7 @@ export const WSHelloMessageSchema = z.object({
       voice: z.boolean().optional(),
       pushNotifications: z.boolean().optional(),
       [CLIENT_CAPS.reasoningMergeEnum]: z.boolean().optional(),
+      [CLIENT_CAPS.customModeIcons]: z.boolean().optional(),
     })
     .passthrough()
     .optional(),

@@ -1,4 +1,12 @@
-import { memo, useCallback, useMemo, useRef, useState, type ReactElement } from "react";
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactElement,
+} from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
@@ -33,13 +41,18 @@ function shouldRenderForPlacement(placement: AgentModeControlPlacement, isCompac
   return placement === "footer" ? isCompact : !isCompact;
 }
 
-const MODE_ICONS = {
+interface ModeIconProps {
+  size?: number;
+  color?: string;
+}
+
+const MODE_ICONS: Record<string, ComponentType<ModeIconProps>> = {
   Bot,
   ShieldCheck,
   ShieldAlert,
   ShieldOff,
   ShieldQuestionMark,
-} as const;
+};
 
 interface ModePalette {
   blue: { 500: string };
@@ -87,9 +100,9 @@ function ModeComboboxOption({
   iconColor,
 }: ModeComboboxOptionProps) {
   const visuals = getModeVisuals(provider, option.id, providerDefinitions);
-  const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck;
+  const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
   const leadingSlot = useMemo(
-    () => <IconComponent size={16} color={iconColor} />,
+    () => (IconComponent ? <IconComponent size={16} color={iconColor} /> : null),
     [IconComponent, iconColor],
   );
   return (
@@ -137,7 +150,7 @@ function AgentModeControlView({
   const visuals = selectedMode
     ? getModeVisuals(provider, selectedMode.id, providerDefinitions)
     : undefined;
-  const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck;
+  const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
   const iconColor = getModeIconColor(visuals?.colorTier, theme.colors.palette);
   const selectedModeLabel = selectedMode ? formatAgentModeLabel(selectedMode) : "";
 
@@ -224,7 +237,7 @@ function AgentModeControlView({
         accessibilityLabel={`Select agent mode (${selectedModeLabel})`}
         testID="mode-control"
       >
-        <Icon size={theme.iconSize.md} color={iconColor} />
+        {Icon ? <Icon size={theme.iconSize.md} color={iconColor} /> : null}
         <Text style={labelStyle}>{selectedModeLabel}</Text>
         <ChevronDown size={theme.iconSize.sm} color={iconColor} />
       </Pressable>

@@ -324,6 +324,14 @@ type GitMutationRefreshReason =
 // Clients before 0.1.45 validate providers with z.enum(["claude", "codex", "opencode"]) and reject
 // the entire session message if they encounter an unknown provider.
 const LEGACY_PROVIDER_IDS = new Set(["claude", "codex", "opencode"]);
+// COMPAT(customModeIcons): the only mode icons known to clients before v0.1.84. Any
+// other icon name is downgraded to "ShieldCheck" for those clients.
+const LEGACY_MODE_ICONS = new Set<string>([
+  "ShieldCheck",
+  "ShieldAlert",
+  "ShieldOff",
+  "ShieldQuestionMark",
+]);
 const MIN_VERSION_ALL_PROVIDERS = "0.1.45";
 const MIN_VERSION_FLEXIBLE_EDITOR_IDS = "0.1.50";
 
@@ -994,6 +1002,25 @@ export class Session {
     return this.clientCapabilities.has(capability);
   }
 
+  // COMPAT(customModeIcons): rewrite icons unknown to v0.1.83 clients (whose MODE_ICONS
+  // map is a closed enum and would render `undefined`, crashing in render). Drop
+  // this and the cap gate when floor >= v0.1.84.
+  private downgradeModeIconsForClient<T extends { icon?: string }>(modes: T[]): T[] {
+    if (this.supports(CLIENT_CAPS.customModeIcons)) return modes;
+    return modes.map((mode) =>
+      mode.icon && !LEGACY_MODE_ICONS.has(mode.icon) ? { ...mode, icon: "ShieldCheck" } : mode,
+    );
+  }
+
+  private downgradeEntryModesForClient<T extends { modes?: { icon?: string }[] }>(
+    entries: T[],
+  ): T[] {
+    if (this.supports(CLIENT_CAPS.customModeIcons)) return entries;
+    return entries.map((entry) =>
+      entry.modes ? { ...entry, modes: this.downgradeModeIconsForClient(entry.modes) } : entry,
+    );
+  }
+
   async syncWorkspaceGitObserverForWorkspace(workspace: PersistedWorkspaceRecord): Promise<void> {
     const descriptor = await this.describeWorkspaceRecordWithGitData(workspace);
     this.syncWorkspaceGitObservers([descriptor]);
@@ -1244,7 +1271,7 @@ export class Session {
           type: "providers_snapshot_update",
           payload: {
             ...(snapshotCwd ? { cwd: snapshotCwd } : {}),
-            entries: visibleEntries,
+            entries: this.downgradeEntryModesForClient(visibleEntries),
             generatedAt: new Date().toISOString(),
           },
         });
@@ -3800,7 +3827,7 @@ export class Session {
           type: "list_provider_modes_response",
           payload: {
             provider: msg.provider,
-            modes: entry.modes ?? [],
+            modes: this.downgradeModeIconsForClient(entry.modes ?? []),
             error: null,
             fetchedAt: entry.fetchedAt ?? fetchedAt,
             requestId: msg.requestId,
@@ -3841,7 +3868,7 @@ export class Session {
         type: "list_provider_modes_response",
         payload: {
           provider: msg.provider,
-          modes,
+          modes: this.downgradeModeIconsForClient(modes),
           error: null,
           fetchedAt,
           requestId: msg.requestId,
@@ -4065,7 +4092,7 @@ export class Session {
     this.emit({
       type: "get_providers_snapshot_response",
       payload: {
-        entries,
+        entries: this.downgradeEntryModesForClient(entries),
         generatedAt: new Date().toISOString(),
         requestId: msg.requestId,
       },

@@ -4264,6 +4264,7 @@ export class DaemonClient {
           protocolVersion: 1,
           capabilities: {
             [CLIENT_CAPS.reasoningMergeEnum]: true,
+            [CLIENT_CAPS.customModeIcons]: true,
           },
           ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
         }),
