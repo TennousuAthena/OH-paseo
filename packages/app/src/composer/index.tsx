@@ -186,20 +186,34 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
   };
 }
 
-function renderContextWindowMeterSlot(
+function renderContextWindowMeter(
   contextWindowMaxTokens: number | null,
   contextWindowUsedTokens: number | null,
   totalCostUsd: number | null,
-): ReactElement {
-  const meter =
-    contextWindowMaxTokens !== null && contextWindowUsedTokens !== null ? (
-      <ContextWindowMeter
-        maxTokens={contextWindowMaxTokens}
-        usedTokens={contextWindowUsedTokens}
-        totalCostUsd={totalCostUsd}
-      />
-    ) : null;
-  return <View style={styles.contextWindowMeterSlot}>{meter}</View>;
+): ReactElement | null {
+  if (contextWindowMaxTokens === null || contextWindowUsedTokens === null) {
+    return null;
+  }
+  return (
+    <ContextWindowMeter
+      maxTokens={contextWindowMaxTokens}
+      usedTokens={contextWindowUsedTokens}
+      totalCostUsd={totalCostUsd}
+    />
+  );
+}
+
+function resolveContextWindowPlacement(
+  meter: ReactElement | null,
+  isMobile: boolean,
+): { beforeVoiceContent: ReactNode; footerRight: ReactNode } {
+  if (isMobile) {
+    return { beforeVoiceContent: null, footerRight: meter };
+  }
+  return {
+    beforeVoiceContent: <View style={styles.contextWindowMeterSlot}>{meter}</View>,
+    footerRight: null,
+  };
 }
 
 interface RenderLeftContentArgs {
@@ -224,11 +238,14 @@ interface RenderAttachmentTrayArgs {
   handleRemoveAttachment: (index: number) => void;
 }
 
-function renderComposerFooter(footer: ReactNode): ReactElement | null {
-  if (!footer) return null;
+function renderComposerFooter(footer: ReactNode, footerRight: ReactNode): ReactElement | null {
+  if (!footer && !footerRight) return null;
   return (
     <View style={styles.footer}>
-      <View style={styles.footerContent}>{footer}</View>
+      <View style={styles.footerContent}>
+        <View style={styles.footerLeft}>{footer}</View>
+        <View style={styles.footerRight}>{footerRight}</View>
+      </View>
     </View>
   );
 }
@@ -1441,14 +1458,18 @@ export function Composer({
     agentState.contextWindowUsedTokens,
   );
 
-  const beforeVoiceContent = useMemo(
+  const contextWindowMeter = useMemo(
     () =>
-      renderContextWindowMeterSlot(
+      renderContextWindowMeter(
         contextWindowMaxTokens,
         contextWindowUsedTokens,
         agentState.totalCostUsd,
       ),
     [contextWindowMaxTokens, contextWindowUsedTokens, agentState.totalCostUsd],
+  );
+  const { beforeVoiceContent, footerRight } = useMemo(
+    () => resolveContextWindowPlacement(contextWindowMeter, isMobile),
+    [contextWindowMeter, isMobile],
   );
 
   const githubSearchQueryTrimmed = githubSearchQuery.trim();
@@ -1693,7 +1714,7 @@ export function Composer({
           </View>
         </View>
       </View>
-      {renderComposerFooter(footer)}
+      {renderComposerFooter(footer, footerRight)}
     </Animated.View>
   );
 }
@@ -1737,10 +1758,27 @@ const styles = StyleSheet.create((theme: Theme) => ({
   footerContent: {
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingLeft: {
       xs: 6,
       md: 10,
     },
+    paddingRight: {
+      xs: 6,
+      md: 10,
+    },
+  },
+  footerLeft: {
+    flexShrink: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  footerRight: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
   },
   messageInputContainer: {
     position: "relative",
