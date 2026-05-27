@@ -2338,12 +2338,31 @@ const WorkspaceGitHubRuntimePayloadSchema = z
     featuresEnabled: z.boolean().optional(),
     pullRequest: z
       .object({
+        number: z.number().optional(),
         url: z.string(),
         title: z.string(),
         state: z.string(),
         baseRefName: z.string(),
         headRefName: z.string(),
         isMerged: z.boolean(),
+        isDraft: z.boolean().optional(),
+        mergeable: z.enum(["MERGEABLE", "CONFLICTING", "UNKNOWN"]).catch("UNKNOWN").optional(),
+        checks: z
+          .array(
+            z.object({
+              name: z.string(),
+              status: z.enum(["success", "failure", "pending", "skipped", "cancelled"]),
+              url: z.string().nullable(),
+              workflow: z.string().optional(),
+              duration: z.string().optional(),
+            }),
+          )
+          .optional(),
+        checksStatus: z.enum(["none", "pending", "success", "failure"]).optional(),
+        reviewDecision: z.enum(["approved", "changes_requested", "pending"]).nullable().optional(),
+        repoOwner: z.string().optional(),
+        repoName: z.string().optional(),
+        github: z.unknown().optional(),
       })
       .nullable()
       .optional(),

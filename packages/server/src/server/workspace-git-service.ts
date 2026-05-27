@@ -8,9 +8,11 @@ import type { CheckoutContext } from "../utils/checkout-git.js";
 import {
   type BranchCheckoutResolution,
   type BranchSuggestion,
+  type CheckoutSnapshotFacts,
   type CheckoutDiffCompare,
   type CheckoutDiffResult,
   getCheckoutDiff,
+  getCheckoutSnapshotFacts,
   getCheckoutShortstat,
   getCheckoutStatus,
   getPullRequestStatus,
@@ -231,6 +233,7 @@ type WorkspaceGitRefreshState =
 interface WorkspaceGitServiceDependencies {
   watch: typeof watch;
   readdir: typeof readdir;
+  getCheckoutSnapshotFacts: typeof getCheckoutSnapshotFacts;
   getCheckoutStatus: typeof getCheckoutStatus;
   getCheckoutShortstat: typeof getCheckoutShortstat;
   getCheckoutDiff: typeof getCheckoutDiff;
@@ -308,6 +311,7 @@ function buildDefaultWorkspaceGitServiceDeps(): WorkspaceGitServiceDependencies 
   return {
     watch,
     readdir,
+    getCheckoutSnapshotFacts,
     getCheckoutStatus,
     getCheckoutShortstat,
     getCheckoutDiff,
@@ -1481,9 +1485,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target: WorkspaceGitTarget,
     request: WorkspaceGitRefreshRequest,
   ): Promise<WorkspaceGitRuntimeSnapshot> {
-    await this.refreshGitSnapshot(target, request);
+    const facts = await this.refreshGitSnapshot(target, request);
     if (request.includeGitHub) {
-      await this.refreshGitHubSnapshot(target, request);
+      await this.refreshGitHubSnapshot(target, request, facts);
     }
 
     const snapshot = this.combineSnapshot(target);
@@ -1494,13 +1498,15 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   private async refreshGitSnapshot(
     target: WorkspaceGitTarget,
     request: WorkspaceGitRefreshRequest,
-  ): Promise<void> {
+  ): Promise<CheckoutSnapshotFacts> {
     const now = this.deps.now();
     target.lastShellOutAtMs = now.getTime();
 
     const cwd = target.cwd;
     const previousGitHubPollKey = this.getGitHubPollKey(target);
-    const context: CheckoutContext = { paseoHome: this.paseoHome, logger: this.logger };
+    const baseContext: CheckoutContext = { paseoHome: this.paseoHome, logger: this.logger };
+    const facts = await this.deps.getCheckoutSnapshotFacts(cwd, baseContext);
+    const context: CheckoutContext = { ...baseContext, facts };
     const checkoutStatus = await this.deps.getCheckoutStatus(cwd, context);
     if (!checkoutStatus.isGit) {
       target.latestGit = buildNotGitSnapshot(cwd).git;
@@ -1508,7 +1514,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       target.cachedGitHubRemote = null;
       target.latestGithub = buildGitHubUnavailableSnapshot();
       target.latestGithubLoadedAtMs = target.latestGitLoadedAtMs;
-      return;
+      return facts;
     }
 
     await this.resolveGitHubRemoteForTarget(target, checkoutStatus.remoteUrl);
@@ -1537,11 +1543,13 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       target.latestGithub = buildGitHubUnavailableSnapshot();
       target.latestGithubLoadedAtMs = target.latestGitLoadedAtMs;
     }
+    return facts;
   }
 
   private async refreshGitHubSnapshot(
     target: WorkspaceGitTarget,
     request: WorkspaceGitRefreshRequest,
+    facts: CheckoutSnapshotFacts,
   ): Promise<void> {
     const githubRemote = target.cachedGitHubRemote?.identity ?? null;
     const forceGitHub = request.force && request.includeGitHub;
@@ -1556,6 +1564,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       deps: this.deps,
       force: forceGitHub,
       reason: request.reason,
+      facts,
     });
     target.latestGithubLoadedAtMs = this.deps.now().getTime();
   }
@@ -1768,6 +1777,7 @@ async function loadGitHubSnapshot(options: {
   deps: Pick<WorkspaceGitServiceDependencies, "getPullRequestStatus" | "github">;
   force?: boolean;
   reason?: string;
+  facts?: CheckoutSnapshotFacts;
 }): Promise<WorkspaceGitRuntimeSnapshot["github"]> {
   if (!options.githubRemote) {
     return {
@@ -1788,10 +1798,15 @@ async function loadGitHubSnapshot(options: {
   }
 
   try {
-    const result = await options.deps.getPullRequestStatus(options.cwd, options.deps.github, {
-      force: options.force,
-      reason: options.reason,
-    });
+    const result = await options.deps.getPullRequestStatus(
+      options.cwd,
+      options.deps.github,
+      {
+        force: options.force,
+        reason: options.reason,
+      },
+      { facts: options.facts },
+    );
     return {
       featuresEnabled: true,
       pullRequest: result.status,

@@ -99,7 +99,7 @@ import { Shortcut } from "@/components/ui/shortcut";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
-import { type PrHint, useWorkspacePrHint } from "@/git/use-pr-status-query";
+import type { PrHint } from "@/git/use-pr-status-query";
 import { buildSidebarProjectRowModel } from "@/utils/sidebar-project-row-model";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
@@ -1346,14 +1346,7 @@ function WorkspaceRowInner({
   const _isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);
   const isTouchPlatform = platformIsNative;
-  const workspaceDirectory = resolveWorkspaceExecutionDirectory({
-    workspaceDirectory: workspace.workspaceDirectory,
-  });
-  const prHint = useWorkspacePrHint({
-    serverId: workspace.serverId,
-    cwd: workspaceDirectory ?? "",
-    enabled: workspace.projectKind === "git" && Boolean(workspaceDirectory),
-  });
+  const prHint = workspace.prHint;
   const interaction = useLongPressDragInteraction({
     drag,
     menuController,

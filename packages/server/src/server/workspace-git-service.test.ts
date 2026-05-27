@@ -4,7 +4,11 @@ import path, { join } from "node:path";
 import type { FSWatcher } from "node:fs";
 import type pino from "pino";
 import type { GitHubService } from "../services/github-service.js";
-import type { CheckoutStatusGit, PullRequestStatusResult } from "../utils/checkout-git.js";
+import type {
+  CheckoutSnapshotFacts,
+  CheckoutStatusGit,
+  PullRequestStatusResult,
+} from "../utils/checkout-git.js";
 import {
   WorkspaceGitServiceImpl,
   type WorkspaceGitRuntimeSnapshot,
@@ -102,6 +106,24 @@ function createCheckoutStatus(
   };
 }
 
+function createCheckoutSnapshotFacts(cwd: string): CheckoutSnapshotFacts {
+  return {
+    isGit: true,
+    worktreeRoot: cwd,
+    currentBranch: "main",
+    remoteUrl: "https://github.com/acme/repo.git",
+    paseoWorktree: { isPaseoOwnedWorktree: false },
+    storedBaseRef: null,
+    resolvedBaseRef: "main",
+    mainRepoRoot: null,
+    comparisonBaseRef: null,
+    branchRemoteName: "origin",
+    branchMergeRef: "refs/heads/main",
+    trackedOriginBranch: "main",
+    pullRequestLookupTarget: { headRef: "main" },
+  };
+}
+
 function createPullRequestStatusResult(
   overrides?: Partial<PullRequestStatusResult>,
 ): PullRequestStatusResult {
@@ -179,6 +201,7 @@ function createGitHubServiceStub(): GitHubService {
 
 interface CreateServiceTestOptions {
   getCheckoutStatus?: ReturnType<typeof vi.fn>;
+  getCheckoutSnapshotFacts?: ReturnType<typeof vi.fn>;
   getCheckoutShortstat?: ReturnType<typeof vi.fn>;
   getPullRequestStatus?: ReturnType<typeof vi.fn>;
   github?: GitHubService;
@@ -195,6 +218,7 @@ function buildDefaultTestServiceDeps() {
   return {
     watch: (() => createWatcher()) as unknown as typeof import("node:fs").watch,
     readdir: vi.fn(async () => []),
+    getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutSnapshotFacts(cwd)),
     getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
     getCheckoutShortstat: vi.fn(async () => ({
       additions: 1,
