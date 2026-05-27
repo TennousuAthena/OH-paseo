@@ -31,6 +31,7 @@ import { OpenCodeAgentClient } from "./providers/opencode-agent.js";
 import { OpenCodeServerManager } from "./providers/opencode/server-manager.js";
 import { PiRpcAgentClient } from "./providers/pi/agent.js";
 import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
+import { MockSlowProviderClient } from "./providers/mock-slow-provider.js";
 import {
   AGENT_PROVIDER_DEFINITIONS,
   BUILTIN_PROVIDER_IDS,
@@ -126,6 +127,7 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       runtimeSettings,
     }),
   mock: (logger) => new MockLoadTestAgentClient(logger),
+  "mock-slow": () => new MockSlowProviderClient(),
 };
 
 function getCursorACPCommand(

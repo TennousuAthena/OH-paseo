@@ -94,11 +94,11 @@ export function useProvidersSnapshot(
         return;
       }
       await refreshSnapshot(providers);
-      if (isProvidersSnapshotHomeScope(cwd)) {
-        queryClient.removeQueries({ queryKey: queryRoot, exact: false });
-      }
       const snapshot = await client.getProvidersSnapshot(requestOptions);
       queryClient.setQueryData(queryKey, snapshot);
+      if (isProvidersSnapshotHomeScope(cwd)) {
+        void queryClient.invalidateQueries({ queryKey: queryRoot, exact: false });
+      }
     },
     [client, cwd, queryClient, queryKey, queryRoot, refreshSnapshot, requestOptions],
   );

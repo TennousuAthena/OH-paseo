@@ -99,14 +99,39 @@ describe("combined model selector data", () => {
     ).toEqual([]);
   });
 
-  it("excludes providers that are not ready", () => {
+  it("surfaces non-ready providers with their state-specific selection", () => {
     expect(
       buildSelectableProviderSelectorProviders([
         snapshotEntry({ provider: "loading-provider", status: "loading", models: [] }),
-        snapshotEntry({ provider: "error-provider", status: "error", models: [] }),
-        snapshotEntry({ provider: "unavailable-provider", status: "unavailable", models: [] }),
+        snapshotEntry({
+          provider: "error-provider",
+          status: "error",
+          error: "boom",
+          models: [],
+        }),
+        snapshotEntry({
+          provider: "unavailable-provider",
+          status: "unavailable",
+          models: [],
+        }),
       ]),
-    ).toEqual([]);
+    ).toEqual([
+      {
+        id: "loading-provider",
+        label: "loading-provider",
+        modelSelection: { kind: "loading" },
+      },
+      {
+        id: "error-provider",
+        label: "error-provider",
+        modelSelection: { kind: "error", message: "boom" },
+      },
+      {
+        id: "unavailable-provider",
+        label: "unavailable-provider",
+        modelSelection: { kind: "error", message: "Unavailable" },
+      },
+    ]);
   });
 
   it("builds selector providers from an already-curated provider list", () => {

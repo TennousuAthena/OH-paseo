@@ -187,13 +187,12 @@ function AgentModeControlView({
     () => ({
       title: "Mode",
       search: {
-        value: searchQuery,
         onChange: setSearchQuery,
         placeholder: "Search modes...",
         testID: "mode-search-input",
       },
     }),
-    [searchQuery],
+    [],
   );
 
   if (!selectedMode) return null;

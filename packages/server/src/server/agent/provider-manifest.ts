@@ -151,6 +151,16 @@ const MOCK_LOAD_TEST_MODES: AgentProviderModeDefinition[] = [
   },
 ];
 
+const MOCK_SLOW_MODES: AgentProviderModeDefinition[] = [
+  {
+    id: "default",
+    label: "Default",
+    description: "Dev-only mode for the mock slow provider",
+    icon: "ShieldOff",
+    colorTier: "dangerous",
+  },
+];
+
 export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
   {
     id: "claude",
@@ -211,6 +221,13 @@ export const DEV_AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
       "Development-only provider that emits synthetic agent traffic for performance tests",
     defaultModeId: "load-test",
     modes: MOCK_LOAD_TEST_MODES,
+  },
+  {
+    id: "mock-slow",
+    label: "Mock Slow Provider",
+    description: "Dev-only: hangs during model discovery to test loading and timeout UI",
+    defaultModeId: "default",
+    modes: MOCK_SLOW_MODES,
   },
 ];
 
