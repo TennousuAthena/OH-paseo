@@ -411,13 +411,10 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   },
   copyButton: {
     alignSelf: "center",
-    width: 24,
-    height: 24,
-    padding: 0,
-    margin: 0,
+    padding: theme.spacing[1],
+    paddingTop: theme.spacing[1],
+    marginTop: 0,
     marginRight: -theme.spacing[1],
-    alignItems: "center",
-    justifyContent: "center",
   },
   trailingRow: {
     alignSelf: "flex-end",
