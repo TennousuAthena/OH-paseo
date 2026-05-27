@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import { realpathSync } from "node:fs";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import { tmpdir } from "node:os";
 import Ajv from "ajv";
@@ -146,6 +146,7 @@ function buildAgentManagerSpies() {
     setAgentFeature: vi.fn().mockResolvedValue(undefined),
     setLabels: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
+    updateAgentMetadata: vi.fn().mockResolvedValue(undefined),
     archiveAgent: vi.fn().mockResolvedValue({ archivedAt: new Date().toISOString() }),
     notifyAgentState: vi.fn(),
     getAgent: vi.fn(),
@@ -560,6 +561,7 @@ describe("create_agent MCP tool", () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockResolvedValue({
       id: "mode-agent",
+      provider: "codex",
       cwd: REPO_CWD,
       lifecycle: "idle",
       currentModeId: "build",
@@ -1282,6 +1284,82 @@ describe("create_agent MCP tool", () => {
     }
   });
 
+  it("archives a worktree by slug", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const tempDir = realpathSync.native(
+      await mkdtemp(join(tmpdir(), "paseo-mcp-archive-worktree-slug-")),
+    );
+    const repoDir = join(tempDir, "repo");
+    const paseoHome = join(tempDir, ".paseo");
+
+    try {
+      execFileSync("git", ["init", repoDir], { stdio: "pipe" });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["config", "commit.gpgsign", "false"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
+      await writeFile(join(repoDir, "README.md"), "hello\n");
+      execFileSync("git", ["add", "README.md"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["commit", "-m", "init"], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["branch", "-M", "main"], { cwd: repoDir, stdio: "pipe" });
+
+      const workspaceGitService = {
+        getSnapshot: vi.fn(async () => null),
+        listWorktrees: vi.fn(async () => []),
+        resolveRepoRoot: vi.fn(async () => repoDir),
+      };
+      const server = await createAgentMcpServer({
+        agentManager,
+        agentStorage,
+        paseoHome,
+        createPaseoWorktree: createPaseoWorktreeForMcpTest({ paseoHome, broadcasts: [] }),
+        workspaceGitService: workspaceGitService as unknown as Pick<
+          WorkspaceGitService,
+          "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
+        >,
+        archiveWorkspaceRecord: vi.fn(async () => undefined),
+        emitWorkspaceUpdatesForWorkspaceIds: vi.fn(async () => undefined),
+        markWorkspaceArchiving: vi.fn(),
+        clearWorkspaceArchiving: vi.fn(),
+        emitSessionMessage: vi.fn(),
+        github: createGitHubServiceStub(),
+        logger,
+      });
+      const createTool = registeredTool(server, "create_worktree");
+      const archiveTool = registeredTool(server, "archive_worktree");
+      const created = await createTool.handler({
+        cwd: repoDir,
+        target: { mode: "branch-off", newBranch: "archive-slug-worktree", base: "main" },
+      });
+
+      const response = await archiveTool.handler({
+        cwd: repoDir,
+        worktreeSlug: "archive-slug-worktree",
+      });
+
+      expect(response.structuredContent).toEqual({ success: true });
+      expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith(repoDir, {
+        force: true,
+        reason: "archive-worktree",
+      });
+      expect(workspaceGitService.resolveRepoRoot).toHaveBeenCalledWith(repoDir);
+      expect(workspaceGitService.listWorktrees).toHaveBeenCalledWith(repoDir, {
+        force: true,
+        reason: "mcp:archive-worktree",
+      });
+      await expect(
+        access(z.string().parse(created.structuredContent.worktreePath)),
+      ).rejects.toThrow();
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("routes list_worktrees through WorkspaceGitService", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const workspaceGitService = {
@@ -1677,7 +1755,6 @@ describe("update_agent MCP tool", () => {
 
   it("updates runtime settings before metadata", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentStorage.get.mockResolvedValue(createStoredRecord({ id: "agent-1" }));
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = registeredTool(server, "update_agent");
     const input = {
@@ -1701,14 +1778,26 @@ describe("update_agent MCP tool", () => {
     expect(spies.agentManager.setAgentModel).toHaveBeenCalledWith("agent-1", "gpt-5.4");
     expect(spies.agentManager.setAgentThinkingOption).toHaveBeenCalledWith("agent-1", "high");
     expect(spies.agentManager.setAgentFeature).toHaveBeenCalledWith("agent-1", "fast_mode", true);
-    expect(spies.agentStorage.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "agent-1",
-        title: "Updated agent",
-      }),
-    );
-    expect(spies.agentManager.setLabels).toHaveBeenCalledWith("agent-1", { role: "worker" });
+    expect(spies.agentManager.updateAgentMetadata).toHaveBeenCalledWith("agent-1", {
+      title: "Updated agent",
+      labels: { role: "worker" },
+    });
     expect(response.structuredContent).toEqual({ success: true });
+  });
+
+  it("reports success for a no-op update with neither metadata nor settings", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
+    const tool = registeredTool(server, "update_agent");
+
+    const response = await tool.handler({ agentId: "agent-1" });
+
+    expect(response.structuredContent).toEqual({ success: true });
+    expect(spies.agentManager.updateAgentMetadata).not.toHaveBeenCalled();
+    expect(spies.agentManager.setAgentMode).not.toHaveBeenCalled();
+    expect(spies.agentManager.setAgentModel).not.toHaveBeenCalled();
+    expect(spies.agentManager.setAgentThinkingOption).not.toHaveBeenCalled();
+    expect(spies.agentManager.setAgentFeature).not.toHaveBeenCalled();
   });
 
   it("does not update metadata when runtime settings fail", async () => {
@@ -1727,8 +1816,7 @@ describe("update_agent MCP tool", () => {
     ).rejects.toThrow("unsupported feature");
 
     expect(spies.agentStorage.get).not.toHaveBeenCalled();
-    expect(spies.agentStorage.upsert).not.toHaveBeenCalled();
-    expect(spies.agentManager.setLabels).not.toHaveBeenCalled();
+    expect(spies.agentManager.updateAgentMetadata).not.toHaveBeenCalled();
   });
 });
 

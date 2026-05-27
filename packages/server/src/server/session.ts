@@ -68,10 +68,11 @@ import { ensureAgentLoaded } from "./agent/agent-loading.js";
 import {
   formatSystemNotificationPrompt,
   sendPromptToAgent,
-  startCreatedAgentInitialPrompt,
   waitForAgentRunStartWithTimeout,
   unarchiveAgentState,
 } from "./agent/agent-prompt.js";
+import { resolveCreateAgentTitles } from "./agent/create-agent-title.js";
+import { respondToAgentPermission } from "./agent/permission-response.js";
 import { experimental_createMCPClient } from "ai";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
@@ -106,8 +107,14 @@ import type {
   AgentTimelineFetchDirection,
   ManagedAgent,
 } from "./agent/agent-manager.js";
-import { scheduleAgentMetadataGeneration } from "./agent/agent-metadata-generator.js";
-import { resolveCreateAgentTitles } from "./agent/create-agent-title.js";
+import { createAgentCommand } from "./agent/create-agent/create.js";
+import {
+  archiveAgentCommand,
+  cancelAgentRunCommand,
+  closeAgentCommand,
+  setAgentModeCommand,
+  updateAgentCommand,
+} from "./agent/lifecycle-command.js";
 import {
   buildStoredAgentPayload,
   resolveEffectiveThinkingOptionId,
@@ -138,7 +145,6 @@ import {
   type AgentPromptInput,
   type AgentRunOptions,
   type AgentSessionConfig,
-  type AgentStreamEvent,
   type ProviderSnapshotEntry,
 } from "./agent/agent-sdk-types.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
@@ -213,7 +219,6 @@ import type { LocalSpeechModelId } from "./speech/providers/local/models.js";
 import { toResolver, type Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot, SpeechReadinessState } from "./speech/speech-runtime.js";
 import type pino from "pino";
-import { resolveClientMessageId } from "./client-message-id.js";
 import {
   ChatServiceError,
   FileBackedChatService,
@@ -1168,52 +1173,6 @@ export class Session {
       return false;
     }
     return this.agentManager.hasInFlightRun(agentId);
-  }
-
-  /**
-   * Start streaming an agent run and forward results via the websocket broadcast
-   */
-  private startAgentStream(
-    agentId: string,
-    prompt: AgentPromptInput,
-    runOptions?: AgentRunOptions,
-  ): { ok: true } | { ok: false; error: string } {
-    this.sessionLogger.trace(
-      {
-        agentId,
-        promptType: typeof prompt === "string" ? "string" : "structured",
-        hasRunOptions: Boolean(runOptions),
-      },
-      "agent.session.start_stream.request",
-    );
-    let iterator: AsyncGenerator<AgentStreamEvent>;
-    try {
-      const shouldReplace = this.agentManager.hasInFlightRun(agentId);
-      iterator = shouldReplace
-        ? this.agentManager.replaceAgentRun(agentId, prompt, runOptions)
-        : this.agentManager.streamAgent(agentId, prompt, runOptions);
-      this.sessionLogger.trace(
-        { agentId, shouldReplace },
-        "agent.session.start_stream.iterator_returned",
-      );
-    } catch (error) {
-      this.handleAgentRunError(agentId, error, "Failed to start agent run");
-      return { ok: false, error: errorToFriendlyMessage(error) };
-    }
-
-    void (async () => {
-      try {
-        for await (const _ of iterator) {
-          // Events are forwarded via the session's AgentManager subscription.
-        }
-        this.sessionLogger.trace({ agentId }, "agent.session.iterator.drained");
-      } catch (error) {
-        this.sessionLogger.trace({ agentId, err: error }, "agent.session.iterator.error");
-        this.handleAgentRunError(agentId, error, "Agent stream failed");
-      }
-    })();
-
-    return { ok: true };
   }
 
   private handleAgentRunError(agentId: string, error: unknown, context: string): void {
@@ -2357,7 +2316,7 @@ export class Session {
     beginAgentDeleteIfSupported(this.agentStorage, agentId);
 
     try {
-      await this.agentManager.closeAgent(agentId);
+      await closeAgentCommand({ agentManager: this.agentManager }, agentId);
     } catch (error) {
       this.sessionLogger.warn(
         { err: error, agentId },
@@ -2411,43 +2370,17 @@ export class Session {
     });
   }
 
-  private async archiveStoredAgentForClose(
-    agentId: string,
-  ): Promise<{ agentId: string; archivedAt: string }> {
-    const existing = await this.agentStorage.get(agentId);
-    if (!existing) {
-      throw new Error(`Agent not found: ${agentId}`);
-    }
-
-    if (existing.archivedAt) {
-      return {
-        agentId,
-        archivedAt: existing.archivedAt,
-      };
-    }
-
-    const archivedAt = new Date().toISOString();
-    await this.agentManager.archiveSnapshot(agentId, archivedAt);
-
-    return { agentId, archivedAt };
-  }
-
   private async archiveAgentForClose(
     agentId: string,
   ): Promise<{ agentId: string; archivedAt: string }> {
-    const liveAgent = this.agentManager.getAgent(agentId);
-    if (liveAgent) {
-      await this.interruptAgentIfRunning(agentId);
-      await this.agentManager.clearAgentAttention(agentId).catch(() => undefined);
-      await this.agentManager.archiveAgent(agentId);
-    } else {
-      await this.archiveStoredAgentForClose(agentId);
-    }
-
-    const archivedRecord = await this.agentStorage.get(agentId);
-    if (!archivedRecord) {
-      throw new Error(`Agent not found in storage after archive: ${agentId}`);
-    }
+    const { archivedAt, record: archivedRecord } = await archiveAgentCommand(
+      {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      },
+      agentId,
+    );
 
     if (this.agentUpdatesSubscription) {
       const payload = this.buildStoredAgentPayload(archivedRecord);
@@ -2480,11 +2413,7 @@ export class Session {
       await this.emitWorkspaceUpdateForCwd(payload.cwd);
     }
 
-    if (!archivedRecord.archivedAt) {
-      throw new Error(`Agent missing archivedAt after archive: ${agentId}`);
-    }
-
-    return { agentId, archivedAt: archivedRecord.archivedAt };
+    return { agentId, archivedAt };
   }
 
   private async handleCloseItemsRequest(msg: CloseItemsRequest): Promise<void> {
@@ -2559,27 +2488,24 @@ export class Session {
       "session: update_agent_request",
     );
 
-    const normalizedName = name?.trim();
-    const normalizedLabels = labels && Object.keys(labels).length > 0 ? labels : undefined;
-
-    if (!normalizedName && !normalizedLabels) {
-      this.emit({
-        type: "update_agent_response",
-        payload: {
-          requestId,
-          agentId,
-          accepted: false,
-          error: "Nothing to update (provide name and/or labels)",
-        },
-      });
-      return;
-    }
-
     try {
-      await this.agentManager.updateAgentMetadata(agentId, {
-        ...(normalizedName ? { title: normalizedName } : {}),
-        ...(normalizedLabels ? { labels: normalizedLabels } : {}),
-      });
+      const result = await updateAgentCommand(
+        { agentManager: this.agentManager },
+        { agentId, name, labels },
+      );
+
+      if (!result.accepted) {
+        this.emit({
+          type: "update_agent_response",
+          payload: {
+            requestId,
+            agentId,
+            accepted: false,
+            error: result.error,
+          },
+        });
+        return;
+      }
 
       this.emit({
         type: "update_agent_response",
@@ -3173,7 +3099,6 @@ export class Session {
         configTitle: config.title,
         initialPrompt: trimmedPrompt,
       });
-      const resolvedConfig: AgentSessionConfig = config;
 
       const firstAgentContext: FirstAgentContext = {
         ...(trimmedPrompt ? { prompt: trimmedPrompt } : {}),
@@ -3187,44 +3112,45 @@ export class Session {
       });
       createdWorktreeForCleanup = createdWorktree;
       const createAgentConfig: AgentSessionConfig = createdWorktree
-        ? { ...resolvedConfig, cwd: createdWorktree.worktree.worktreePath }
-        : resolvedConfig;
-      const { sessionConfig, setupContinuation } = await this.buildAgentSessionConfig(
-        createAgentConfig,
-        git,
-        worktreeName,
-        firstAgentContext,
+        ? { ...config, cwd: createdWorktree.worktree.worktreePath }
+        : config;
+
+      const { snapshot, liveSnapshot } = await createAgentCommand(
+        {
+          agentManager: this.agentManager,
+          agentStorage: this.agentStorage,
+          logger: this.sessionLogger,
+          paseoHome: this.paseoHome,
+          workspaceGitService: this.workspaceGitService,
+        },
+        {
+          kind: "session",
+          config: createAgentConfig,
+          workspaceId: msg.workspaceId,
+          worktreeName,
+          initialPrompt,
+          clientMessageId,
+          outputSchema,
+          images,
+          attachments,
+          git,
+          labels,
+          env,
+          provisionalTitle,
+          explicitTitle,
+          firstAgentContext,
+          buildSessionConfig: (sessionConfig, gitOptions, legacyWorktreeName, ctx) =>
+            this.buildAgentSessionConfig(sessionConfig, gitOptions, legacyWorktreeName, ctx),
+          resolveWorkspace: ({ cwd, workspaceId }) =>
+            this.resolveCreateAgentWorkspace(cwd, workspaceId),
+        },
       );
-      let resolvedWorkspace = msg.workspaceId
-        ? await this.workspaceRegistry.get(msg.workspaceId)
-        : ((await this.findWorkspaceByDirectory(sessionConfig.cwd)) ??
-          (await this.findOrCreateWorkspaceForDirectory(sessionConfig.cwd)));
-      if (!resolvedWorkspace) {
-        throw new Error(`Workspace not found: ${msg.workspaceId}`);
-      }
-      const snapshot = await this.agentManager.createAgent(sessionConfig, undefined, {
-        labels,
-        workspaceId: resolvedWorkspace.workspaceId,
-        initialPrompt: trimmedPrompt,
-        env,
-        initialTitle: provisionalTitle,
-      });
       createdAgentId = snapshot.id;
       await this.forwardAgentUpdate(snapshot);
       this.createAgentLifecycleDispatch.registerAutoArchiveIfRequested({
         autoArchive,
         agentId: snapshot.id,
         createdWorktree,
-      });
-
-      const liveSnapshot = await this.sendInitialCreateAgentPrompt({
-        snapshot,
-        trimmedPrompt,
-        images,
-        attachments,
-        clientMessageId,
-        outputSchema,
-        explicitTitle,
       });
 
       if (requestId) {
@@ -3239,10 +3165,6 @@ export class Session {
           },
         });
       }
-
-      setupContinuation?.startAfterAgentCreate({
-        agentId: snapshot.id,
-      });
 
       this.sessionLogger.info(
         { agentId: snapshot.id, provider: snapshot.provider },
@@ -3278,44 +3200,18 @@ export class Session {
     }
   }
 
-  private async sendInitialCreateAgentPrompt(params: {
-    snapshot: ManagedAgent;
-    trimmedPrompt: string | undefined;
-    images: Array<{ data: string; mimeType: string }> | undefined;
-    attachments: AgentAttachment[] | undefined;
-    clientMessageId: string | undefined;
-    outputSchema: Record<string, unknown> | undefined;
-    explicitTitle: string | null;
-  }): Promise<ManagedAgent> {
-    const { snapshot, trimmedPrompt, images, attachments, clientMessageId, outputSchema } = params;
-    const hasPrompt = Boolean(trimmedPrompt);
-    const hasImages = (images?.length ?? 0) > 0;
-    const hasAttachments = (attachments?.length ?? 0) > 0;
-    if (!hasPrompt && !hasImages && !hasAttachments) {
-      return snapshot;
+  private async resolveCreateAgentWorkspace(
+    cwd: string,
+    workspaceId?: string,
+  ): Promise<{ workspaceId: string }> {
+    const resolvedWorkspace = workspaceId
+      ? await this.workspaceRegistry.get(workspaceId)
+      : ((await this.findWorkspaceByDirectory(cwd)) ??
+        (await this.findOrCreateWorkspaceForDirectory(cwd)));
+    if (!resolvedWorkspace) {
+      throw new Error(`Workspace not found: ${workspaceId}`);
     }
-    scheduleAgentMetadataGeneration({
-      agentManager: this.agentManager,
-      agentId: snapshot.id,
-      cwd: snapshot.cwd,
-      workspaceGitService: this.workspaceGitService,
-      initialPrompt: trimmedPrompt,
-      explicitTitle: params.explicitTitle,
-      paseoHome: this.paseoHome,
-      logger: this.sessionLogger,
-    });
-    const prompt = this.buildAgentPrompt(trimmedPrompt || "", images, attachments);
-
-    return await startCreatedAgentInitialPrompt({
-      agentManager: this.agentManager,
-      agentId: snapshot.id,
-      snapshot,
-      prompt,
-      runOptions: outputSchema ? { outputSchema } : undefined,
-      logger: this.sessionLogger.child({
-        clientMessageId: resolveClientMessageId(clientMessageId),
-      }),
-    });
+    return { workspaceId: resolvedWorkspace.workspaceId };
   }
 
   private async handleResumeAgentRequest(
@@ -3541,7 +3437,10 @@ export class Session {
     this.sessionLogger.info({ agentId }, `Cancel request received for agent ${agentId}`);
 
     try {
-      await this.interruptAgentIfRunning(agentId);
+      await cancelAgentRunCommand(
+        { agentManager: this.agentManager, logger: this.sessionLogger },
+        agentId,
+      );
       if (requestId) {
         const agent = this.agentManager.getAgent(agentId);
         const payload = agent ? await this.buildAgentPayload(agent) : null;
@@ -4411,7 +4310,7 @@ export class Session {
     this.sessionLogger.info({ agentId, modeId, requestId }, "session: set_agent_mode_request");
 
     try {
-      await this.agentManager.setAgentMode(agentId, modeId);
+      await setAgentModeCommand({ agentManager: this.agentManager }, { agentId, modeId });
       this.sessionLogger.info(
         { agentId, modeId, requestId },
         "session: set_agent_mode_request success",
@@ -4732,22 +4631,14 @@ export class Session {
     requestId: string,
     response: AgentPermissionResponse,
   ): Promise<void> {
-    this.sessionLogger.debug(
-      { agentId, requestId },
-      `Handling permission response for agent ${agentId}, request ${requestId}`,
-    );
-
     try {
-      const result = await this.agentManager.respondToPermission(agentId, requestId, response);
-      this.sessionLogger.debug({ agentId }, `Permission response forwarded to agent ${agentId}`);
-
-      if (result?.followUpPrompt) {
-        this.sessionLogger.debug(
-          { agentId },
-          "Permission response requires follow-up turn, starting agent stream",
-        );
-        this.startAgentStream(agentId, result.followUpPrompt);
-      }
+      await respondToAgentPermission({
+        agentManager: this.agentManager,
+        agentId,
+        requestId,
+        response,
+        logger: this.sessionLogger,
+      });
     } catch (error) {
       this.sessionLogger.error(
         { err: error, agentId, requestId },
