@@ -68,7 +68,7 @@ describe("combined model selector data", () => {
     ]);
   });
 
-  it("represents ready enabled providers without explicit models as provider-default selection", () => {
+  it("synthesizes a default model row for ready enabled providers without explicit models", () => {
     expect(
       buildSelectableProviderSelectorProviders([
         snapshotEntry({
@@ -81,7 +81,20 @@ describe("combined model selector data", () => {
       {
         id: "deepseek-tui",
         label: "DeepSeek TUI",
-        modelSelection: { kind: "providerDefault", label: "Default" },
+        modelSelection: {
+          kind: "models",
+          rows: [
+            {
+              favoriteKey: "deepseek-tui:",
+              provider: "deepseek-tui",
+              providerLabel: "DeepSeek TUI",
+              modelId: "",
+              modelLabel: "Default",
+              description: undefined,
+              isDefault: true,
+            },
+          ],
+        },
       },
     ]);
   });
