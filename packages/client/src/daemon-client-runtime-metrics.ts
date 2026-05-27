@@ -1,4 +1,4 @@
-import type { SessionOutboundMessage } from "../shared/messages.js";
+import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 interface RuntimeMetricsLogger {
   info(obj: object, msg?: string): void;

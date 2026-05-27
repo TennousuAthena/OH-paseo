@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { CLIENT_CAPS } from "../shared/client-capabilities.js";
+import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import {
   AgentCreateFailedStatusPayloadSchema,
   AgentCreatedStatusPayloadSchema,
@@ -13,7 +13,7 @@ import {
   SessionInboundMessageSchema,
   type ServerInfoStatusPayload,
   WSOutboundMessageSchema,
-} from "../shared/messages.js";
+} from "@getpaseo/protocol/messages";
 import type {
   AgentStreamEventPayload,
   AgentSnapshotPayload,
@@ -79,16 +79,16 @@ import type {
   EditorTargetId,
   PaseoConfigRaw,
   PaseoConfigRevision,
-} from "../shared/messages.js";
+} from "@getpaseo/protocol/messages";
 import type {
   AgentPermissionRequest,
   AgentPermissionResponse,
   AgentPersistenceHandle,
   AgentProvider,
   AgentSessionConfig,
-} from "../server/agent/agent-sdk-types.js";
-import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "../shared/messages.js";
-import { isRelayClientWebSocketUrl } from "../shared/daemon-endpoints.js";
+} from "@getpaseo/protocol/agent-types";
+import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@getpaseo/protocol/messages";
+import { isRelayClientWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
 import {
   asUint8Array,
   decodeFileTransferFrame,
@@ -96,7 +96,7 @@ import {
   FileTransferOpcode,
   TerminalStreamOpcode,
   type FileTransferFrame,
-} from "../shared/binary-frames/index.js";
+} from "@getpaseo/protocol/binary-frames/index";
 import {
   createRelayE2eeTransportFactory,
   createWebSocketTransportFactory,
@@ -4263,8 +4263,8 @@ export class DaemonClient {
           clientType: this.config.clientType ?? "cli",
           protocolVersion: 1,
           capabilities: {
-            [CLIENT_CAPS.reasoningMergeEnum]: true,
             [CLIENT_CAPS.customModeIcons]: true,
+            [CLIENT_CAPS.reasoningMergeEnum]: true,
           },
           ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
         }),
