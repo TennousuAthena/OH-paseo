@@ -31,7 +31,6 @@ import { formatAgentModeLabel } from "@/composer/agent-controls/utils";
 import type { AgentMode, AgentProvider } from "@server/server/agent/agent-sdk-types";
 import {
   getModeVisuals,
-  type AgentModeColorTier,
   type AgentProviderDefinition,
 } from "@server/server/agent/provider-manifest";
 
@@ -53,32 +52,6 @@ const MODE_ICONS: Record<string, ComponentType<ModeIconProps>> = {
   ShieldOff,
   ShieldQuestionMark,
 };
-
-interface ModePalette {
-  blue: { 500: string };
-  green: { 500: string };
-  red: { 500: string };
-  purple: { 500: string };
-}
-
-function getModeIconColor(colorTier: AgentModeColorTier | undefined, palette: ModePalette): string {
-  if (colorTier?.startsWith("#")) {
-    return colorTier;
-  }
-
-  switch (colorTier) {
-    case "safe":
-      return palette.green[500];
-    case "moderate":
-      return palette.blue[500];
-    case "dangerous":
-      return palette.red[500];
-    case "planning":
-      return palette.purple[500];
-    default:
-      return palette.blue[500];
-  }
-}
 
 interface ModeComboboxOptionProps {
   option: ComboboxOption;
@@ -151,7 +124,7 @@ function AgentModeControlView({
     ? getModeVisuals(provider, selectedMode.id, providerDefinitions)
     : undefined;
   const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
-  const iconColor = getModeIconColor(visuals?.colorTier, theme.colors.palette);
+  const iconColor = theme.colors.foregroundMuted;
   const selectedModeLabel = selectedMode ? formatAgentModeLabel(selectedMode) : "";
 
   const allOptions = useMemo<ComboboxOption[]>(
@@ -208,7 +181,7 @@ function AgentModeControlView({
     [open, disabled],
   );
 
-  const labelStyle = useMemo(() => [styles.chipLabel, { color: iconColor }], [iconColor]);
+  const labelStyle = styles.chipLabel;
 
   const sheetHeader = useMemo<SheetHeader>(
     () => ({
