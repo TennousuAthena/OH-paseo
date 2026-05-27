@@ -227,7 +227,7 @@ test("passes password as HTTP bearer header and WebSocket subprotocol", async ()
   });
 });
 
-test("advertises reasoning_merge_enum in hello", async () => {
+test("advertises client capabilities in hello", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();
 
@@ -251,6 +251,7 @@ test("advertises reasoning_merge_enum in hello", async () => {
     clientType: "cli",
     protocolVersion: 1,
     capabilities: {
+      custom_mode_icons: true,
       reasoning_merge_enum: true,
     },
   });
