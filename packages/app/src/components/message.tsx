@@ -10,6 +10,7 @@ import {
   ViewStyle,
   type TextStyle,
 } from "react-native";
+import { MarkdownParagraphView, MarkdownTextSpan } from "@/components/markdown-text";
 import * as React from "react";
 import {
   useState,
@@ -1527,7 +1528,7 @@ function MarkdownInheritedText({
     () => [inheritedStyles, textStyle, overrideStyle],
     [inheritedStyles, textStyle, overrideStyle],
   );
-  return <Text style={style}>{children}</Text>;
+  return <MarkdownTextSpan style={style}>{children}</MarkdownTextSpan>;
 }
 
 interface MarkdownListItemContentProps {
@@ -1539,18 +1540,6 @@ const MARKDOWN_LIST_ITEM_CONTENT_FLEX: ViewStyle = { flex: 1, flexShrink: 1, min
 
 function MarkdownListItemContent({ contentStyle, children }: MarkdownListItemContentProps) {
   const style = useMemo(() => [contentStyle, MARKDOWN_LIST_ITEM_CONTENT_FLEX], [contentStyle]);
-  return <View style={style}>{children}</View>;
-}
-
-interface MarkdownParagraphViewProps {
-  paragraphStyle: ViewStyle;
-  children: ReactNode;
-}
-
-const MARKDOWN_PARAGRAPH_RESET: ViewStyle = { marginBottom: 0 };
-
-function MarkdownParagraphView({ paragraphStyle, children }: MarkdownParagraphViewProps) {
-  const style = useMemo(() => [paragraphStyle, MARKDOWN_PARAGRAPH_RESET], [paragraphStyle]);
   return <View style={style}>{children}</View>;
 }
 
