@@ -608,7 +608,7 @@ const sheetStyles = StyleSheet.create((theme) => ({
   },
   monoHint: {
     fontFamily: Fonts.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.code,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
   },
@@ -717,7 +717,7 @@ const sheetStyles = StyleSheet.create((theme) => ({
   },
   codeText: {
     fontFamily: Fonts.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.code,
     color: theme.colors.foreground,
     lineHeight: 18,
   },

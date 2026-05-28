@@ -844,7 +844,7 @@ const styles = StyleSheet.create((theme) => {
     },
     scrollText: {
       fontFamily: Fonts.mono,
-      fontSize: theme.fontSize.xs,
+      fontSize: theme.fontSize.code,
       color: theme.colors.foreground,
       lineHeight: 18,
       ...(isWeb
@@ -859,7 +859,7 @@ const styles = StyleSheet.create((theme) => {
     },
     subAgentSessionText: {
       fontFamily: Fonts.mono,
-      fontSize: theme.fontSize.xs,
+      fontSize: theme.fontSize.code,
       color: theme.colors.foregroundMuted,
       lineHeight: 18,
       marginBottom: theme.spacing[2],
@@ -875,13 +875,13 @@ const styles = StyleSheet.create((theme) => {
     },
     subAgentActionTool: {
       fontFamily: Fonts.mono,
-      fontSize: theme.fontSize.xs,
+      fontSize: theme.fontSize.code,
       color: theme.colors.foregroundMuted,
       lineHeight: 18,
     },
     subAgentActionSummary: {
       fontFamily: Fonts.mono,
-      fontSize: theme.fontSize.xs,
+      fontSize: theme.fontSize.code,
       color: theme.colors.foreground,
       lineHeight: 18,
     },

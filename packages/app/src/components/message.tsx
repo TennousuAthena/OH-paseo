@@ -1975,7 +1975,7 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
   },
   metadataText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.code,
     fontFamily: Fonts.mono,
     lineHeight: 16,
   },
