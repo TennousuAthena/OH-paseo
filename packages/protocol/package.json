@@ -4,6 +4,7 @@
   "description": "Paseo shared protocol schemas and wire types",
   "files": [
     "dist",
+    "!dist/**/*.map",
     "README.md"
   ],
   "type": "module",

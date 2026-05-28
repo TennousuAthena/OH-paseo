@@ -6,7 +6,7 @@
     "dist/server",
     "dist/src",
     "dist/scripts",
-    "src/server/speech/providers/local/sherpa/assets",
+    "!dist/**/*.map",
     "README.md",
     ".env.example"
   ],

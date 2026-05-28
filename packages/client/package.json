@@ -4,6 +4,7 @@
   "description": "Paseo client SDK package",
   "files": [
     "dist",
+    "!dist/**/*.map",
     "README.md"
   ],
   "type": "module",
