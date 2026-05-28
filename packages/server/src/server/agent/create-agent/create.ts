@@ -16,68 +16,20 @@ import type { AgentAttachment, FirstAgentContext, GitSetupOptions } from "../../
 import type { AgentManager, ManagedAgent } from "../agent-manager.js";
 import { scheduleAgentMetadataGeneration } from "../agent-metadata-generator.js";
 import type {
-  AgentProvider,
   AgentPromptContentBlock,
   AgentPromptInput,
   AgentRunOptions,
   AgentSessionConfig,
 } from "../agent-sdk-types.js";
 import type { AgentStorage } from "../agent-storage.js";
-import { getAgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
-import type { ProviderDefinition } from "../provider-registry.js";
+import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
 import { setupFinishNotification, startCreatedAgentInitialPrompt } from "../agent-prompt.js";
-import { resolveAndValidateCreateAgentMode } from "../create-agent-mode.js";
 import { resolveClientMessageId } from "../../client-message-id.js";
 import { resolveRequiredProviderModel } from "../mcp-shared.js";
 import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
 } from "../timeline-append.js";
-
-const OPENCODE_PROVIDER_ID = "opencode";
-const OPENCODE_BUILD_MODE_ID = "build";
-const OPENCODE_LEGACY_FULL_ACCESS_MODE_ID = "full-access";
-const OPENCODE_AUTO_ACCEPT_FEATURE_ID = "auto_accept";
-
-function isOpenCodeLegacyFullAccessMode(
-  provider: AgentProvider,
-  modeId: string | undefined,
-): boolean {
-  return provider === OPENCODE_PROVIDER_ID && modeId === OPENCODE_LEGACY_FULL_ACCESS_MODE_ID;
-}
-
-function withOpenCodeAutoAcceptFeature(
-  features: Record<string, unknown> | undefined,
-  enabled: boolean,
-): Record<string, unknown> {
-  return {
-    ...features,
-    [OPENCODE_AUTO_ACCEPT_FEATURE_ID]: enabled,
-  };
-}
-
-function hasOpenCodeAutoAcceptFeature(agent: ManagedAgent): boolean {
-  if (agent.provider !== OPENCODE_PROVIDER_ID) {
-    return false;
-  }
-  return (
-    agent.features?.some(
-      (feature) =>
-        feature.id === OPENCODE_AUTO_ACCEPT_FEATURE_ID &&
-        (feature.value === true || feature.value === "true"),
-    ) === true || agent.config.featureValues?.[OPENCODE_AUTO_ACCEPT_FEATURE_ID] === true
-  );
-}
-
-function isAgentInUnattendedState(
-  dependencies: CreateAgentCommandDependencies,
-  agent: ManagedAgent,
-): boolean {
-  return (
-    isParentInUnattendedMode(dependencies, agent.provider, agent.currentModeId) ||
-    hasOpenCodeAutoAcceptFeature(agent)
-  );
-}
 
 export interface CreateAgentWorkspace {
   workspaceId: string;
@@ -98,7 +50,7 @@ interface CreateAgentCommandDependencies {
     "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
   >;
   terminalManager?: TerminalManager | null;
-  providerRegistry?: Record<AgentProvider, ProviderDefinition> | null;
+  providerSnapshotManager: ProviderSnapshotManager;
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
 }
 
@@ -293,22 +245,14 @@ async function resolveMcpCreateAgent(
     initialPrompt: input.initialPrompt,
   });
 
-  const parentForResolve = parentAgent
-    ? {
-        provider: parentAgent.provider,
-        modeId: parentAgent.currentModeId,
-        isUnattended: isAgentInUnattendedState(dependencies, parentAgent),
-      }
-    : null;
-  const { mode: resolvedMode, features: resolvedFeatures } = resolveCreateModeAndFeatures(
-    dependencies,
-    {
+  const { modeId: resolvedMode, featureValues: resolvedFeatures } =
+    await dependencies.providerSnapshotManager.resolveCreateConfig({
+      cwd: resolvedCwd,
       provider,
       requestedMode: input.mode,
-      parent: parentForResolve,
-      features: input.features,
-    },
-  );
+      featureValues: input.features,
+      parent: parentAgent,
+    });
 
   const labels = mergeLabels(
     input.callerAgentId,
@@ -335,44 +279,6 @@ async function resolveMcpCreateAgent(
     background: input.background,
     promptFailure: "log",
   };
-}
-
-function resolveCreateModeAndFeatures(
-  dependencies: CreateAgentCommandDependencies,
-  input: {
-    provider: AgentProvider;
-    requestedMode: string | undefined;
-    parent: { provider: AgentProvider; modeId: string | null; isUnattended: boolean } | null;
-    features: Record<string, unknown> | undefined;
-  },
-): { mode: string | undefined; features: Record<string, unknown> | undefined } {
-  const legacyOpenCodeFullAccess = isOpenCodeLegacyFullAccessMode(
-    input.provider,
-    input.requestedMode,
-  );
-  const inheritsOpenCodeUnattended =
-    input.provider === OPENCODE_PROVIDER_ID &&
-    input.requestedMode === undefined &&
-    input.parent?.isUnattended === true;
-  const inheritsOpenCodeAutoAccept =
-    inheritsOpenCodeUnattended && input.features?.[OPENCODE_AUTO_ACCEPT_FEATURE_ID] === undefined;
-  const requestedMode = legacyOpenCodeFullAccess ? OPENCODE_BUILD_MODE_ID : input.requestedMode;
-  const features =
-    legacyOpenCodeFullAccess || inheritsOpenCodeAutoAccept
-      ? withOpenCodeAutoAcceptFeature(input.features, true)
-      : input.features;
-  const mode =
-    inheritsOpenCodeUnattended && requestedMode === undefined
-      ? OPENCODE_BUILD_MODE_ID
-      : resolveAndValidateCreateAgentMode({
-          requestedMode,
-          targetProvider: input.provider,
-          parent: input.parent,
-          availableModes: getAvailableModeIds(dependencies, input.provider),
-          targetUnattendedMode: getUnattendedModeId(dependencies, input.provider),
-        });
-
-  return { mode, features };
 }
 
 async function sendInitialPrompt(
@@ -564,48 +470,4 @@ function mergeLabels(
     ...labels,
   };
   return Object.keys(mergedLabels).length > 0 ? mergedLabels : undefined;
-}
-
-function getProviderModes(
-  dependencies: CreateAgentCommandDependencies,
-  provider: AgentProvider,
-): ProviderDefinition["modes"] | undefined {
-  const fromRegistry = dependencies.providerRegistry?.[provider];
-  if (fromRegistry) {
-    return fromRegistry.modes;
-  }
-  try {
-    return getAgentProviderDefinition(provider).modes;
-  } catch {
-    return undefined;
-  }
-}
-
-function getAvailableModeIds(
-  dependencies: CreateAgentCommandDependencies,
-  provider: AgentProvider,
-): string[] | undefined {
-  return getProviderModes(dependencies, provider)?.map((mode) => mode.id);
-}
-
-function getUnattendedModeId(
-  dependencies: CreateAgentCommandDependencies,
-  provider: AgentProvider,
-): string | undefined {
-  return getProviderModes(dependencies, provider)?.find((mode) => mode.isUnattended)?.id;
-}
-
-function isParentInUnattendedMode(
-  dependencies: CreateAgentCommandDependencies,
-  provider: AgentProvider,
-  modeId: string | null,
-): boolean {
-  if (modeId === null) {
-    return false;
-  }
-  const modes = getProviderModes(dependencies, provider);
-  if (!modes) {
-    return false;
-  }
-  return modes.some((mode) => mode.id === modeId && mode.isUnattended === true);
 }

@@ -37,6 +37,8 @@ import {
   type AgentStreamEvent,
   type AgentTimelineItem,
   type AgentUsage,
+  type ResolveAgentCreateConfigInput,
+  type ResolveAgentCreateConfigResult,
   type ListModelsOptions,
   type ListModesOptions,
   type ListPersistedAgentsOptions,
@@ -45,6 +47,10 @@ import {
   type ToolCallDetail,
   type ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
+import {
+  isDefaultAgentCreateConfigUnattended,
+  resolveDefaultAgentCreateConfig,
+} from "../create-agent-mode.js";
 import {
   checkProviderLaunchAvailable,
   createProviderEnvSpec,
@@ -109,6 +115,55 @@ const DEFAULT_MODES: AgentMode[] = [
 
 function isOpenCodeAutoAcceptEnabled(config: AgentSessionConfig): boolean {
   return config.featureValues?.[OPENCODE_AUTO_ACCEPT_FEATURE_ID] === true;
+}
+
+function withOpenCodeAutoAcceptFeature(
+  featureValues: Record<string, unknown> | undefined,
+  enabled: boolean,
+): Record<string, unknown> {
+  return {
+    ...featureValues,
+    [OPENCODE_AUTO_ACCEPT_FEATURE_ID]: enabled,
+  };
+}
+
+function resolveOpenCodeCreateConfig(
+  input: ResolveAgentCreateConfigInput,
+): ResolveAgentCreateConfigResult {
+  const legacyFullAccess = input.requestedMode === OPENCODE_LEGACY_FULL_ACCESS_MODE_ID;
+  const inheritsUnattended =
+    input.requestedMode === undefined && input.parent?.isUnattended === true;
+  const requestedMode = legacyFullAccess ? OPENCODE_BUILD_MODE_ID : input.requestedMode;
+  const featureValues =
+    legacyFullAccess ||
+    (inheritsUnattended && input.featureValues?.[OPENCODE_AUTO_ACCEPT_FEATURE_ID] === undefined)
+      ? withOpenCodeAutoAcceptFeature(input.featureValues, true)
+      : input.featureValues;
+
+  if (inheritsUnattended && requestedMode === undefined) {
+    return { modeId: OPENCODE_BUILD_MODE_ID, featureValues };
+  }
+
+  const resolved = resolveDefaultAgentCreateConfig({
+    ...input,
+    requestedMode,
+    featureValues,
+  });
+  return { ...resolved, featureValues };
+}
+
+function isOpenCodeCreateConfigUnattended(
+  input: Parameters<typeof isDefaultAgentCreateConfigUnattended>[0],
+): boolean {
+  return (
+    isDefaultAgentCreateConfigUnattended(input) ||
+    input.config.featureValues?.[OPENCODE_AUTO_ACCEPT_FEATURE_ID] === true ||
+    input.features?.some(
+      (feature) =>
+        feature.id === OPENCODE_AUTO_ACCEPT_FEATURE_ID &&
+        (feature.value === true || feature.value === "true"),
+    ) === true
+  );
 }
 
 function buildOpenCodeAutoAcceptFeature(config: AgentSessionConfig): AgentFeature {
@@ -1147,6 +1202,8 @@ class ProductionOpenCodeRuntime implements OpenCodeRuntime {
 export class OpenCodeAgentClient implements AgentClient {
   readonly provider = "opencode" as const;
   readonly capabilities = OPENCODE_CAPABILITIES;
+  readonly resolveCreateConfig = resolveOpenCodeCreateConfig;
+  readonly isCreateConfigUnattended = isOpenCodeCreateConfigUnattended;
 
   private readonly runtime: OpenCodeRuntime;
   private readonly logger: Logger;
@@ -1401,6 +1458,10 @@ export class OpenCodeAgentClient implements AgentClient {
     });
     const availability = await checkProviderLaunchAvailable(launch);
     return availability.available;
+  }
+
+  async shutdown(): Promise<void> {
+    await this.runtime.shutdown();
   }
 
   async getDiagnostic(): Promise<{ diagnostic: string }> {
