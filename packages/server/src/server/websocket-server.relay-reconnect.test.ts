@@ -293,8 +293,8 @@ function createReadySpeechReadinessSnapshot(): SpeechReadinessSnapshot {
 function createDownloadInProgressSpeechReadinessSnapshot(): SpeechReadinessSnapshot {
   return {
     generatedAt: "2026-02-14T00:00:00.000Z",
-    requiredLocalModelIds: ["sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"],
-    missingLocalModelIds: ["sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"],
+    requiredLocalModelIds: ["parakeet-tdt-0.6b-v2-int8"],
+    missingLocalModelIds: ["parakeet-tdt-0.6b-v2-int8"],
     download: {
       inProgress: true,
       error: null,
@@ -320,9 +320,9 @@ function createDownloadInProgressSpeechReadinessSnapshot(): SpeechReadinessSnaps
       available: false,
       reasonCode: "model_download_in_progress",
       message:
-        "Voice features are unavailable while models download in the background (sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20).",
+        "Voice features are unavailable while models download in the background (parakeet-tdt-0.6b-v2-int8).",
       retryable: true,
-      missingModelIds: ["sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"],
+      missingModelIds: ["parakeet-tdt-0.6b-v2-int8"],
     },
   };
 }
