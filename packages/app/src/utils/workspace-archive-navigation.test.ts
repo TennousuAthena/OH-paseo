@@ -1,3 +1,4 @@
+import type { Href } from "expo-router";
 import { describe, expect, it } from "vitest";
 import { buildWorkspaceArchiveRedirectRoute } from "@/utils/workspace-archive-navigation";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
@@ -82,9 +83,9 @@ describe("buildWorkspaceArchiveRedirectRoute", () => {
 
 function createFakeRouter(workspaces: WorkspaceDescriptor[]): {
   deps: RedirectIfArchivingActiveWorkspaceDeps;
-  routes: string[];
+  routes: Href[];
 } {
-  const routes: string[] = [];
+  const routes: Href[] = [];
   return {
     routes,
     deps: {
