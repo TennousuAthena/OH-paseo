@@ -1749,8 +1749,10 @@ const styles = StyleSheet.create((theme: Theme) => ({
   footer: {
     width: "100%",
     paddingHorizontal: theme.spacing[4],
+    // Negative margin pulls the footer up against the input area's paddingBottom.
+    // On mobile, leave a 3px gap (no token sits below spacing[1]); desktop keeps more.
     marginTop: {
-      xs: -theme.spacing[4],
+      xs: -(theme.spacing[4] - 3),
       md: -theme.spacing[3],
     },
     alignItems: "center",
@@ -1761,12 +1763,14 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    // On mobile, the negative margins below cancel each glyph's internal padding
+    // to reach the composer border; this inset adds a small visual gap from it.
     paddingLeft: {
-      xs: 6,
+      xs: 5,
       md: 10,
     },
     paddingRight: {
-      xs: 6,
+      xs: 5,
       md: 10,
     },
   },
@@ -1774,11 +1778,23 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
+    // On mobile, cancel the leading glyph's internal padding (chip paddingHorizontal)
+    // so its icon aligns to the composer border before the footer inset is applied.
+    marginLeft: {
+      xs: -theme.spacing[2],
+      md: 0,
+    },
   },
   footerRight: {
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
+    // On mobile, cancel the trailing glyph's internal inset (28px box around a 16px
+    // ring) so its right edge aligns to the composer border before the footer inset.
+    marginRight: {
+      xs: -6,
+      md: 0,
+    },
   },
   messageInputContainer: {
     position: "relative",
