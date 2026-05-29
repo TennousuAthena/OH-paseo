@@ -919,6 +919,24 @@ describe("processTimelineResponse", () => {
     expect(result.clearInitializing).toBe(true);
   });
 
+  it("keeps init open while an after catch-up page has newer rows", () => {
+    const result = processTimelineResponse({
+      ...baseTimelineInput,
+      isInitializing: true,
+      hasActiveInitDeferred: true,
+      initRequestDirection: "after",
+      payload: {
+        ...baseTimelineInput.payload,
+        direction: "after",
+        hasNewer: true,
+        entries: [],
+      },
+    });
+
+    expect(result.initResolution).toBe(null);
+    expect(result.clearInitializing).toBe(false);
+  });
+
   it("does not resolve init when directions differ (before vs after)", () => {
     const result = processTimelineResponse({
       ...baseTimelineInput,

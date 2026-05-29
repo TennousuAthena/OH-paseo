@@ -783,7 +783,6 @@ export class Session {
     appVisible: boolean;
     appVisibilityChangedAt: Date;
   } | null = null;
-  private readonly MOBILE_BACKGROUND_STREAM_GRACE_MS = 60_000;
   private readonly terminalManager: TerminalManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private unsubscribeProviderSnapshotEvents: (() => void) | null = null;
@@ -1302,13 +1301,6 @@ export class Session {
             });
         }
 
-        // Reduce bandwidth/CPU on mobile: only forward high-frequency agent stream events
-        // for the focused agent, with a short grace window while backgrounded.
-        // History catch-up is handled via pull-based `fetch_agent_timeline_request`.
-        if (this.shouldSkipAgentStreamForward(event.agentId)) {
-          return;
-        }
-
         const serializedEvent = serializeAgentStreamEvent(event.event);
         if (!serializedEvent) {
           return;
@@ -1353,21 +1345,6 @@ export class Session {
       },
       { replayState: false },
     );
-  }
-
-  private shouldSkipAgentStreamForward(agentId: string): boolean {
-    const activity = this.clientActivity;
-    if (activity?.deviceType !== "mobile") {
-      return false;
-    }
-    if (!activity.focusedAgentId || activity.focusedAgentId !== agentId) {
-      return true;
-    }
-    if (activity.appVisible) {
-      return false;
-    }
-    const hiddenForMs = Date.now() - activity.appVisibilityChangedAt.getTime();
-    return hiddenForMs >= this.MOBILE_BACKGROUND_STREAM_GRACE_MS;
   }
 
   private buildAgentStreamPayload(
