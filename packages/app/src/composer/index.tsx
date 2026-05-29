@@ -665,6 +665,8 @@ interface ComposerProps {
   inputWrapperStyle?: import("react-native").ViewStyle;
   /** Rendered below the input, inside the keyboard-shifted container. */
   footer?: ReactNode;
+  /** When true, a parent wrapper owns the keyboard shift, so the composer skips its own. */
+  externalKeyboardShift?: boolean;
 }
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
@@ -859,6 +861,7 @@ export function Composer({
   agentControls,
   inputWrapperStyle,
   footer,
+  externalKeyboardShift,
 }: ComposerProps) {
   const buttonIconSize = resolveComposerButtonIconSize();
   const client = useHostRuntimeClient(serverId);
@@ -1307,6 +1310,7 @@ export function Composer({
 
   const { style: keyboardAnimatedStyle } = useKeyboardShiftStyle({
     mode: "translate",
+    enabled: !externalKeyboardShift,
   });
 
   const isVoiceModeForAgent = resolveIsVoiceModeForAgent(voice, serverId, agentId);
