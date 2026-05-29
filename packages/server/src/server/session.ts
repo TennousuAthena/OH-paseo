@@ -2033,6 +2033,8 @@ export class Session {
         return this.handleCheckoutPullRequest(msg);
       case "checkout_push_request":
         return this.handleCheckoutPushRequest(msg);
+      case "checkout.refresh.request":
+        return this.handleCheckoutRefreshRequest(msg);
       case "checkout_pr_create_request":
         return this.handleCheckoutPrCreateRequest(msg);
       case "checkout_pr_merge_request":
@@ -5287,6 +5289,41 @@ export class Session {
     } catch (error) {
       this.emit({
         type: "checkout_push_response",
+        payload: {
+          cwd,
+          success: false,
+          error: toCheckoutError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  private async handleCheckoutRefreshRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.refresh.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+
+    try {
+      this.github.invalidate({ cwd });
+      await this.workspaceGitService.getSnapshot(cwd, {
+        force: true,
+        includeGitHub: true,
+        reason: "manual-refresh",
+      });
+      this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
+      this.emit({
+        type: "checkout.refresh.response",
+        payload: {
+          cwd,
+          success: true,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "checkout.refresh.response",
         payload: {
           cwd,
           success: false,

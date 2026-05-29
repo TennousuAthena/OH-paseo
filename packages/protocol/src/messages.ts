@@ -1382,6 +1382,12 @@ export const CheckoutPushRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const CheckoutRefreshRequestSchema = z.object({
+  type: z.literal("checkout.refresh.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
 export const CheckoutPrCreateRequestSchema = z.object({
   type: z.literal("checkout_pr_create_request"),
   cwd: z.string(),
@@ -1887,6 +1893,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutMergeFromBaseRequestSchema,
   CheckoutPullRequestSchema,
   CheckoutPushRequestSchema,
+  CheckoutRefreshRequestSchema,
   CheckoutPrCreateRequestSchema,
   CheckoutPrMergeRequestSchema,
   CheckoutGithubSetAutoMergeRequestSchema,
@@ -2121,6 +2128,8 @@ export const ServerInfoStatusPayloadSchema = z
         "terminal-restore-modes": z.boolean().optional(),
         // COMPAT(rewind): added in v0.1.X, drop the gate when floor >= v0.1.X.
         rewind: z.boolean().optional(),
+        // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
+        checkoutRefresh: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3075,6 +3084,16 @@ export const CheckoutPushResponseSchema = z.object({
   }),
 });
 
+export const CheckoutRefreshResponseSchema = z.object({
+  type: z.literal("checkout.refresh.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const CheckoutPrCreateResponseSchema = z.object({
   type: z.literal("checkout_pr_create_response"),
   payload: z.object({
@@ -3687,6 +3706,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutMergeFromBaseResponseSchema,
   CheckoutPullResponseSchema,
   CheckoutPushResponseSchema,
+  CheckoutRefreshResponseSchema,
   CheckoutPrCreateResponseSchema,
   CheckoutPrMergeResponseSchema,
   CheckoutGithubSetAutoMergeResponseSchema,
@@ -3949,6 +3969,8 @@ export type CheckoutPullRequest = z.infer<typeof CheckoutPullRequestSchema>;
 export type CheckoutPullResponse = z.infer<typeof CheckoutPullResponseSchema>;
 export type CheckoutPushRequest = z.infer<typeof CheckoutPushRequestSchema>;
 export type CheckoutPushResponse = z.infer<typeof CheckoutPushResponseSchema>;
+export type CheckoutRefreshRequest = z.infer<typeof CheckoutRefreshRequestSchema>;
+export type CheckoutRefreshResponse = z.infer<typeof CheckoutRefreshResponseSchema>;
 export type CheckoutPrCreateRequest = z.infer<typeof CheckoutPrCreateRequestSchema>;
 export type CheckoutPrCreateResponse = z.infer<typeof CheckoutPrCreateResponseSchema>;
 export type CheckoutPrMergeRequest = z.infer<typeof CheckoutPrMergeRequestSchema>;
