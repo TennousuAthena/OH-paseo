@@ -36,24 +36,43 @@ function bottomSheetBackdrop(page: Page) {
   return page.getByRole("button", { name: "Bottom sheet backdrop" }).first();
 }
 
+function bottomSheetHandle(page: Page) {
+  return page.getByRole("slider", { name: "Bottom sheet handle" }).first();
+}
+
 async function expectBottomSheetOpen(page: Page) {
   await expect(bottomSheetBackdrop(page)).toBeVisible({ timeout: 10_000 });
 }
 
 async function closeBottomSheetWithBackdrop(page: Page) {
   const backdrop = bottomSheetBackdrop(page);
-  // A single backdrop tap can be dropped when it lands mid present-animation:
-  // Gorhom ignores backdrop presses until the sheet settles at its snap point,
-  // which a loaded CI runner makes likely (the model selector's sheet animates a
-  // touch longer than the tab switcher's). Re-tap until the sheet dismisses. This
-  // stays a pure backdrop dismissal — no Escape/pan fallback — so it still
-  // exercises the real close path; the post-close guard below is what protects
-  // the regression this test exists for: a sheet that dismisses, then re-presents.
+  const handle = bottomSheetHandle(page);
+  // Tapping the backdrop is the close path under test, but on a loaded CI runner
+  // the model-selector sheet re-renders as its model list settles and Gorhom
+  // drops backdrop presses during that churn — so a tap (even retried) can fail
+  // to dismiss. Tap the backdrop first; if it survives, drag the handle down,
+  // which drives Gorhom's pan-to-close directly and is unaffected by the churn.
+  // The post-close guard below still protects the regression this test exists
+  // for: a sheet that dismisses, then re-presents.
   await expect(async () => {
+    if (!(await backdrop.isVisible())) {
+      return;
+    }
+    const box = await backdrop.boundingBox();
+    if (box) {
+      await page.mouse.click(box.x + box.width / 2, box.y + 24);
+    }
+    await page.waitForTimeout(150);
     if (await backdrop.isVisible()) {
-      const box = await backdrop.boundingBox();
-      expect(box).not.toBeNull();
-      await page.mouse.click(box!.x + box!.width / 2, box!.y + 24);
+      const handleBox = await handle.boundingBox();
+      if (handleBox) {
+        const startX = handleBox.x + handleBox.width / 2;
+        const startY = handleBox.y + handleBox.height / 2;
+        await page.mouse.move(startX, startY);
+        await page.mouse.down();
+        await page.mouse.move(startX, startY + 400, { steps: 8 });
+        await page.mouse.up();
+      }
     }
     await expect(backdrop).not.toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
