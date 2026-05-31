@@ -62,7 +62,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { createMarkdownStyles } from "@/styles/markdown-styles";
-import { Fonts } from "@/constants/theme";
+import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
@@ -1860,13 +1860,13 @@ const speakMessageStylesheet = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[2],
   },
   headerLabel: {
-    fontFamily: Fonts.sans,
+    fontFamily: theme.fontFamily.ui,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },
   text: {
-    fontFamily: Fonts.sans,
+    fontFamily: theme.fontFamily.ui,
     fontSize: theme.fontSize.base,
     lineHeight: 22,
     color: theme.colors.foreground,
@@ -1976,7 +1976,7 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
   metadataText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.code,
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     lineHeight: 16,
   },
 }));
@@ -2072,7 +2072,7 @@ export const ActivityLog = memo(function ActivityLog({
           </View>
         </View>
         {isExpanded && metadata && (
-          <View style={activityLogStylesheet.metadataContainer}>
+          <View style={activityLogStylesheet.metadataContainer} dataSet={CODE_SURFACE_DATASET}>
             <Text style={activityLogStylesheet.metadataText}>
               {JSON.stringify(metadata, null, 2)}
             </Text>
@@ -2108,7 +2108,7 @@ const compactionStylesheet = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   text: {
-    fontFamily: Fonts.sans,
+    fontFamily: theme.fontFamily.ui,
     fontSize: 13,
     color: theme.colors.foregroundMuted,
   },
