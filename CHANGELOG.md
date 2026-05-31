@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.88 - 2026-05-31
+
+### Added
+
+- **Choose an app theme from the new Appearance settings**
+- **Set a custom interface font**
+- **Set a custom code font**
+- **Adjust the interface text size**
+- **Adjust the code text size**
+- **Choose a syntax highlighting theme**
+
+### Improved
+
+- Settings now has a flatter sidebar with a host picker
+- Workspace tab switching is faster
+- Agent terminals opened in workspace subdirectories now appear with the rest of the workspace terminals
+- Large generated diffs now show a clear too-large placeholder instead of trying to render the whole file
+
+### Fixed
+
+- Chat history catches up correctly around long-running tool updates
+- Terminal panes keep the right size after splitting or resizing panes
+- Restored terminal snapshots reflow correctly after the pane size changes
+- Workspace scripts menus keep the right size after launching a service
+
 ## 0.1.87 - 2026-05-30
 
 ### Added
