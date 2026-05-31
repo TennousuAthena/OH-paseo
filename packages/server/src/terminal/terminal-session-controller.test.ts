@@ -168,6 +168,91 @@ async function flushMicrotasks(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+describe("terminal-session-controller wrap-flag gating", () => {
+  function setup(clientSupportsWrapReflow?: () => boolean): {
+    controller: TerminalSessionController;
+    getTerminalState: ReturnType<typeof vi.fn>;
+  } {
+    const terminal: TerminalSession = {
+      id: "term-1",
+      name: "Terminal",
+      cwd: "/tmp",
+      send: vi.fn(),
+      subscribe: (listener) => {
+        queueMicrotask(() => listener({ type: "snapshotReady", revision: 1 }));
+        return vi.fn();
+      },
+      onExit: () => vi.fn(),
+      onCommandFinished: () => vi.fn(),
+      onTitleChange: () => vi.fn(),
+      getSize: () => ({ rows: 1, cols: 80 }),
+      getState: () => terminalState("hello"),
+      getStateSnapshot: () => ({ state: terminalState("hello"), revision: 1 }),
+      getReplayPreamble: () => "",
+      getTitle: () => undefined,
+      setTitle: vi.fn(),
+      getExitInfo: () => null,
+      kill: vi.fn(),
+      killAndWait: vi.fn(),
+    };
+    const getTerminalState = vi.fn(() =>
+      Promise.resolve<TerminalStateSnapshot>({ state: terminalState("hello"), revision: 1 }),
+    );
+    const terminalManager = {
+      getTerminals: vi.fn(),
+      createTerminal: vi.fn(),
+      registerCwdEnv: vi.fn(),
+      getTerminal: vi.fn(() => terminal),
+      getTerminalState,
+      setTerminalTitle: vi.fn(),
+      killTerminal: vi.fn(),
+      killTerminalAndWait: vi.fn(),
+      captureTerminal: vi.fn(),
+      listDirectories: vi.fn(() => []),
+      killAll: vi.fn(),
+      subscribeTerminalsChanged: vi.fn(() => vi.fn()),
+    } as unknown as TerminalManager;
+    const controller = new TerminalSessionController({
+      terminalManager,
+      emit: vi.fn(),
+      emitBinary: vi.fn(),
+      hasBinaryChannel: () => true,
+      isPathWithinRoot: () => false,
+      sessionLogger: createLogger(),
+      ...(clientSupportsWrapReflow ? { clientSupportsWrapReflow } : {}),
+    });
+    return { controller, getTerminalState };
+  }
+
+  async function subscribe(controller: TerminalSessionController): Promise<void> {
+    await controller.dispatch({
+      type: "subscribe_terminal_request",
+      terminalId: "term-1",
+      requestId: "req-1",
+      restore: { mode: "visible-snapshot", scrollbackLines: 200 },
+    });
+    await flushMicrotasks();
+  }
+
+  test("requests wrap flags when the client supports reflowable snapshots", async () => {
+    const { controller, getTerminalState } = setup(() => true);
+    await subscribe(controller);
+    expect(getTerminalState).toHaveBeenCalledWith(
+      "term-1",
+      expect.objectContaining({ includeWrapFlags: true }),
+    );
+  });
+
+  test("omits wrap flags when the client does not advertise support", async () => {
+    const { controller, getTerminalState } = setup();
+    await subscribe(controller);
+    expect(getTerminalState).toHaveBeenCalledWith(
+      "term-1",
+      expect.objectContaining({ includeWrapFlags: false }),
+    );
+  });
+});
+
 describe("terminal-session-controller subdirectory aggregation", () => {
   test("delivers a subdirectory change to a root subscriber as an aggregated, root-keyed snapshot", async () => {
     const rootCwd = "/work/repo";

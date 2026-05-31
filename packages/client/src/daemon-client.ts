@@ -4279,6 +4279,7 @@ export class DaemonClient {
           capabilities: {
             [CLIENT_CAPS.customModeIcons]: true,
             [CLIENT_CAPS.reasoningMergeEnum]: true,
+            [CLIENT_CAPS.terminalReflowableSnapshot]: true,
           },
           ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
         }),
