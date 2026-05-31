@@ -144,19 +144,19 @@ describe("terminal resize reflow repro (Paseo terminal)", () => {
   it("snapshot-restored rows stay frozen at the snapshot width after the terminal grows", async () => {
     await page.viewport(1600, 700);
     const m = mount(560, 360); // ~70 cols
-    await waitFor(() => m.terminal.cols > 0);
+    await waitFor(() => m.terminal.cols > 40);
     const narrowCols = m.terminal.cols;
 
     // 1) Mid-stream snapshot arrives (server overflowed 256KB). It carries the
     //    long line wrapped at the server width as separate grid rows.
     await renderSnapshotCommitted(m.runtime, buildWrappedSnapshot(narrowCols));
-    await waitFor(() => someRowContains(m.terminal, '"seq":1'));
+    await waitFor(() => someRowContains(m.terminal, "[15:30:00.123]"));
 
     // 2) Normal post-snapshot streaming resumes (autowrap on -> soft-wrapped).
     for (let seq = 90; seq <= 96; seq++) {
       await writeCommitted(m.runtime, encodeTerminalOutput(pinoLine(seq)));
     }
-    await waitFor(() => someRowContains(m.terminal, '"seq":96'));
+    await waitFor(() => someRowContains(m.terminal, "[15:30:36.123]"));
 
     // 3) User resizes the terminal wider.
     m.root.style.width = "1480px";
