@@ -75,6 +75,18 @@ function someRowContains(text: string): boolean {
   return dumpRows().some((r) => r.text.includes(text));
 }
 
+function renderSnapshotCommitted(runtime: TerminalEmulatorRuntime, state: TerminalState) {
+  return new Promise<void>((resolve) => {
+    runtime.renderSnapshot({ state, onCommitted: resolve });
+  });
+}
+
+function writeCommitted(runtime: TerminalEmulatorRuntime, data: Uint8Array) {
+  return new Promise<void>((resolve) => {
+    runtime.write({ data, onCommitted: resolve });
+  });
+}
+
 // Build a server-style snapshot of one long pino line that the SERVER soft-wrapped
 // at `cols`, represented as multiple grid rows (exactly what the daemon stores in
 // its headless xterm and ships in a snapshot).
@@ -122,12 +134,12 @@ describe("terminal resize reflow repro (Paseo terminal)", () => {
 
     // 1) Mid-stream snapshot arrives (server overflowed 256KB). It carries the
     //    long line wrapped at the server width as separate grid rows.
-    m.runtime.renderSnapshot({ state: buildWrappedSnapshot(narrowCols) });
+    await renderSnapshotCommitted(m.runtime, buildWrappedSnapshot(narrowCols));
     await waitFor(() => someRowContains('"seq":1'));
 
     // 2) Normal post-snapshot streaming resumes (autowrap on -> soft-wrapped).
     for (let seq = 90; seq <= 96; seq++) {
-      m.runtime.write({ data: encodeTerminalOutput(pinoLine(seq)) });
+      await writeCommitted(m.runtime, encodeTerminalOutput(pinoLine(seq)));
     }
     await waitFor(() => someRowContains('"seq":96'));
 
