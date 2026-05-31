@@ -15,6 +15,19 @@ interface Mounted {
   host: HTMLDivElement;
   root: HTMLDivElement;
   runtime: TerminalEmulatorRuntime;
+  terminal: InspectableTerminal;
+}
+
+interface InspectableTerminal {
+  cols: number;
+  buffer: {
+    active: {
+      length: number;
+      getLine: (
+        index: number,
+      ) => { translateToString: (trimRight: boolean) => string; isWrapped: boolean } | undefined;
+    };
+  };
 }
 
 const mounted: Mounted[] = [];
@@ -48,7 +61,11 @@ function mount(width: number, height: number): Mounted {
     scrollback: 10_000,
     theme: { background: "#0b0b0b", foreground: "#e6e6e6", cursor: "#e6e6e6" },
   });
-  const m = { host, root, runtime };
+  const terminal = window.__paseoTerminal as InspectableTerminal | undefined;
+  if (!terminal) {
+    throw new Error("terminal did not mount");
+  }
+  const m = { host, root, runtime, terminal };
   mounted.push(m);
   return m;
 }
@@ -58,9 +75,7 @@ interface Row {
   wrapped: boolean;
 }
 
-function dumpRows(): Row[] {
-  const term = window.__paseoTerminal;
-  if (!term) throw new Error("no terminal");
+function dumpRows(term: InspectableTerminal): Row[] {
   const buf = term.buffer.active;
   const rows: Row[] = [];
   for (let i = 0; i < buf.length; i++) {
@@ -71,8 +86,8 @@ function dumpRows(): Row[] {
   return rows;
 }
 
-function someRowContains(text: string): boolean {
-  return dumpRows().some((r) => r.text.includes(text));
+function someRowContains(term: InspectableTerminal, text: string): boolean {
+  return dumpRows(term).some((r) => r.text.includes(text));
 }
 
 function renderSnapshotCommitted(runtime: TerminalEmulatorRuntime, state: TerminalState) {
@@ -129,19 +144,19 @@ describe("terminal resize reflow repro (Paseo terminal)", () => {
   it("snapshot-restored rows stay frozen at the snapshot width after the terminal grows", async () => {
     await page.viewport(1600, 700);
     const m = mount(560, 360); // ~70 cols
-    await waitFor(() => window.__paseoTerminal !== undefined);
-    const narrowCols = window.__paseoTerminal?.cols ?? 0;
+    await waitFor(() => m.terminal.cols > 0);
+    const narrowCols = m.terminal.cols;
 
     // 1) Mid-stream snapshot arrives (server overflowed 256KB). It carries the
     //    long line wrapped at the server width as separate grid rows.
     await renderSnapshotCommitted(m.runtime, buildWrappedSnapshot(narrowCols));
-    await waitFor(() => someRowContains('"seq":1'));
+    await waitFor(() => someRowContains(m.terminal, '"seq":1'));
 
     // 2) Normal post-snapshot streaming resumes (autowrap on -> soft-wrapped).
     for (let seq = 90; seq <= 96; seq++) {
       await writeCommitted(m.runtime, encodeTerminalOutput(pinoLine(seq)));
     }
-    await waitFor(() => someRowContains('"seq":96'));
+    await waitFor(() => someRowContains(m.terminal, '"seq":96'));
 
     // 3) User resizes the terminal wider.
     m.root.style.width = "1480px";
@@ -149,9 +164,9 @@ describe("terminal resize reflow repro (Paseo terminal)", () => {
     m.runtime.resize({ force: true, shouldClaim: true });
     await nextFrame();
     await nextFrame();
-    const wideCols = window.__paseoTerminal?.cols ?? 0;
+    const wideCols = m.terminal.cols;
 
-    const rows = dumpRows();
+    const rows = dumpRows(m.terminal);
     const snapshotRowLen =
       rows.find((r) => r.text.startsWith("[server] [15:30:00"))?.text.length ?? -1;
     const streamedRowLen =
