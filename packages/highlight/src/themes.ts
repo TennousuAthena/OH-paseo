@@ -180,8 +180,20 @@ const oneDark: RolePalette = {
   operator: "#56b6c2",
 };
 
-// --- Nord (dark only) ----------------------------------------------------
-const nord: RolePalette = {
+// --- Nord (Snow Storm light / Polar Night dark) ---------------------------
+const nordLight: RolePalette = {
+  base: "#2e3440",
+  keyword: "#5e81ac",
+  comment: "#6b7280",
+  string: "#4f6f3a",
+  number: "#8f5e91",
+  function: "#2e6f8e",
+  type: "#3b7f87",
+  tag: "#5e81ac",
+  attribute: "#8f5e91",
+  operator: "#5e81ac",
+};
+const nordDark: RolePalette = {
   base: "#d8dee9",
   keyword: "#81a1c1",
   comment: "#616e88",
@@ -269,7 +281,7 @@ export function resolveSyntaxColors(
     case "one":
       return expandRolePalette(dark ? oneDark : oneLight);
     case "nord":
-      return expandRolePalette(nord);
+      return expandRolePalette(dark ? nordDark : nordLight);
     case "gruvbox":
       return expandRolePalette(dark ? gruvboxDark : gruvboxLight);
     case "solarized":

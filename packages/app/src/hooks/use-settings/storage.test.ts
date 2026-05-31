@@ -240,7 +240,7 @@ describe("appearance settings", () => {
     expect(result.monoFontFamily).toBe("");
     expect(result.uiFontSize).toBe(DEFAULT_UI_FONT_SIZE);
     expect(result.codeFontSize).toBe(DEFAULT_CODE_FONT_SIZE);
-    expect(result.syntaxTheme).toBe("github");
+    expect(result.syntaxTheme).toBe("one");
   });
 
   it("clamps the UI font size into range and rejects non-numeric values", async () => {
@@ -346,7 +346,7 @@ describe("appearance settings", () => {
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("github");
+    expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("one");
   });
 
   it("drops an unknown syntax theme id back to the default", async () => {
@@ -356,7 +356,7 @@ describe("appearance settings", () => {
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("github");
+    expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("one");
   });
 });
 

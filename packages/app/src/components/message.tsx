@@ -11,6 +11,7 @@ import {
   type TextStyle,
 } from "react-native";
 import { MarkdownParagraphView, MarkdownTextSpan } from "@/components/markdown-text";
+import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import * as React from "react";
 import {
   useState,
@@ -1496,16 +1497,18 @@ const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
   onLinkPress,
 }: MemoizedMarkdownBlockProps) {
   return (
-    <ThemedMarkdown
-      uniProps={markdownStyleMapping}
-      rules={rules}
-      markdownit={parser}
-      onLinkPress={onLinkPress}
-      allowedImageHandlers={MARKDOWN_ALLOWED_IMAGE_HANDLERS}
-      topLevelMaxExceededItem={MARKDOWN_TOP_LEVEL_MAX_EXCEEDED_ITEM}
-    >
-      {text}
-    </ThemedMarkdown>
+    <AppearanceStyleBoundary>
+      <ThemedMarkdown
+        uniProps={markdownStyleMapping}
+        rules={rules}
+        markdownit={parser}
+        onLinkPress={onLinkPress}
+        allowedImageHandlers={MARKDOWN_ALLOWED_IMAGE_HANDLERS}
+        topLevelMaxExceededItem={MARKDOWN_TOP_LEVEL_MAX_EXCEEDED_ITEM}
+      >
+        {text}
+      </ThemedMarkdown>
+    </AppearanceStyleBoundary>
   );
 });
 
@@ -1513,6 +1516,7 @@ interface MarkdownInheritedTextProps {
   inheritedStyles: TextStyle;
   textStyle: TextStyle;
   style?: StyleProp<TextStyle>;
+  monoSurface?: boolean;
   children: ReactNode;
 }
 
@@ -1520,13 +1524,18 @@ function MarkdownInheritedText({
   inheritedStyles,
   textStyle,
   style: overrideStyle,
+  monoSurface,
   children,
 }: MarkdownInheritedTextProps) {
   const style = useMemo(
     () => [inheritedStyles, textStyle, overrideStyle],
     [inheritedStyles, textStyle, overrideStyle],
   );
-  return <MarkdownTextSpan style={style}>{children}</MarkdownTextSpan>;
+  return (
+    <MarkdownTextSpan monoSurface={monoSurface} style={style}>
+      {children}
+    </MarkdownTextSpan>
+  );
 }
 
 interface MarkdownListItemContentProps {
@@ -1696,6 +1705,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             key={node.key}
             inheritedStyles={inheritedStyles}
             textStyle={styles.code_inline}
+            monoSurface
           >
             {content}
           </MarkdownInheritedText>

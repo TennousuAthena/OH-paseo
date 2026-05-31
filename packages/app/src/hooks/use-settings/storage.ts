@@ -33,7 +33,7 @@ export interface AppSettings {
   monoFontFamily: string; // "" = platform default mono stack
   uiFontSize: number; // clamped px, default 16
   codeFontSize: number; // clamped px, default 12
-  syntaxTheme: SyntaxThemeId; // default "auto"
+  syntaxTheme: SyntaxThemeId; // default "one"
 }
 
 export interface Settings extends AppSettings {
@@ -50,7 +50,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   monoFontFamily: "",
   uiFontSize: DEFAULT_UI_FONT_SIZE,
   codeFontSize: DEFAULT_CODE_FONT_SIZE,
-  syntaxTheme: "github",
+  syntaxTheme: "one",
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {

@@ -32,6 +32,7 @@ import {
   THEME_SWATCHES,
   type Theme,
 } from "@/styles/theme";
+import { isNative } from "@/constants/platform";
 import { settingsStyles } from "@/styles/settings";
 import { AppearancePreview } from "./appearance-preview";
 
@@ -247,6 +248,7 @@ interface FontSizeRowProps {
   title: string;
   accessibilityLabel: string;
   draft: string;
+  withBorder?: boolean;
   onChangeDraft: (value: string) => void;
   onCommit: () => void;
 }
@@ -255,11 +257,12 @@ function FontSizeRow({
   title,
   accessibilityLabel,
   draft,
+  withBorder = true,
   onChangeDraft,
   onCommit,
 }: FontSizeRowProps) {
   return (
-    <View style={styles.rowWithBorder}>
+    <View style={withBorder ? styles.rowWithBorder : settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{title}</Text>
       </View>
@@ -348,6 +351,7 @@ function SyntaxRow({ value, onChange }: SyntaxRowProps) {
 
 export function AppearanceSection() {
   const { settings, updateSettings } = useAppSettings();
+  const showFontFamilyRows = !isNative;
 
   const [uiFontDraft, setUiFontDraft] = useState(settings.uiFontFamily);
   const [monoFontDraft, setMonoFontDraft] = useState(settings.monoFontFamily);
@@ -458,35 +462,40 @@ export function AppearanceSection() {
       </SettingsSection>
       <SettingsSection title="Fonts">
         <View style={settingsStyles.card}>
-          <FontFamilyRow
-            title="Interface font"
-            hint="Used across the app. Leave empty for the system default"
-            accessibilityLabel="Interface font family"
-            placeholder={UI_FONT_PLACEHOLDER}
-            value={settings.uiFontFamily}
-            draft={uiFontDraft}
-            withBorder={false}
-            onChangeDraft={setUiFontDraft}
-            onCommit={commitUiFontFamily}
-          />
+          {showFontFamilyRows ? (
+            <FontFamilyRow
+              title="Interface font"
+              hint="Used across the app. Leave empty for the system default"
+              accessibilityLabel="Interface font family"
+              placeholder={UI_FONT_PLACEHOLDER}
+              value={settings.uiFontFamily}
+              draft={uiFontDraft}
+              withBorder={false}
+              onChangeDraft={setUiFontDraft}
+              onCommit={commitUiFontFamily}
+            />
+          ) : null}
           <FontSizeRow
             title="Interface size"
             accessibilityLabel="Interface font size"
             draft={uiSizeDraft}
+            withBorder={showFontFamilyRows}
             onChangeDraft={handleUiSizeChange}
             onCommit={commitUiSize}
           />
-          <FontFamilyRow
-            title="Code font"
-            hint="Used in code, diffs, and the terminal output. Leave empty for the system default"
-            accessibilityLabel="Code font family"
-            placeholder={MONO_FONT_PLACEHOLDER}
-            value={settings.monoFontFamily}
-            draft={monoFontDraft}
-            withBorder
-            onChangeDraft={setMonoFontDraft}
-            onCommit={commitMonoFontFamily}
-          />
+          {showFontFamilyRows ? (
+            <FontFamilyRow
+              title="Code font"
+              hint="Used in code, diffs, and the terminal output. Leave empty for the system default"
+              accessibilityLabel="Code font family"
+              placeholder={MONO_FONT_PLACEHOLDER}
+              value={settings.monoFontFamily}
+              draft={monoFontDraft}
+              withBorder
+              onChangeDraft={setMonoFontDraft}
+              onCommit={commitMonoFontFamily}
+            />
+          ) : null}
           <FontSizeRow
             title="Code size"
             accessibilityLabel="Code font size"

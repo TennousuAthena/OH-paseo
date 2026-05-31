@@ -68,7 +68,7 @@ function makeInput(overrides: Partial<AppearanceInput> = {}): AppearanceInput {
     monoFontFamily: "",
     uiFontSize: 16,
     codeFontSize: 12,
-    syntaxTheme: "github",
+    syntaxTheme: "one",
     ...overrides,
   };
 }

@@ -59,9 +59,18 @@ describe("resolveSyntaxColors", () => {
   });
 
   it("dark-only themes ignore the color scheme", () => {
-    for (const id of ["dracula", "nord"] as const) {
+    for (const id of ["dracula"] as const) {
       expect(resolveSyntaxColors(id, "light")).toEqual(resolveSyntaxColors(id, "dark"));
     }
+  });
+
+  it("nord uses a dark text palette in light mode", () => {
+    const light = resolveSyntaxColors("nord", "light");
+    const dark = resolveSyntaxColors("nord", "dark");
+
+    expect(light).not.toEqual(dark);
+    expect(light.variable).toBe("#2e3440");
+    expect(light.comment).toBe("#6b7280");
   });
 });
 

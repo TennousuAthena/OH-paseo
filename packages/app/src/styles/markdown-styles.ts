@@ -172,6 +172,7 @@ export function createMarkdownStyles(theme: Theme) {
       borderWidth: 0,
       fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.code,
+      lineHeight: Math.round(theme.fontSize.code * 1.45),
     },
 
     code_block: {
@@ -389,7 +390,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
 
     code_inline: {
       ...baseStyles.code_inline,
-      fontSize: theme.fontSize.sm - 3,
+      fontSize: theme.fontSize.code,
     },
 
     code_block: {
