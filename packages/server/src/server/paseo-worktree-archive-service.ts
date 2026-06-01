@@ -14,6 +14,7 @@ import type { TerminalManager } from "../terminal/terminal-manager.js";
 
 export interface ArchivePaseoWorktreeDependencies {
   paseoHome?: string;
+  worktreesRoot?: string;
   github: GitHubService;
   workspaceGitService: Pick<WorkspaceGitService, "getSnapshot">;
   agentManager: Pick<AgentManager, "listAgents" | "archiveAgent" | "archiveSnapshot">;
@@ -41,12 +42,14 @@ export async function archivePaseoWorktree(
     targetPath: string;
     repoRoot: string | null;
     worktreesRoot?: string;
+    worktreesBaseRoot?: string;
     requestId: string;
   },
 ): Promise<string[]> {
   let targetPath = options.targetPath;
   const resolvedWorktree = await resolvePaseoWorktreeRootForCwd(targetPath, {
     paseoHome: dependencies.paseoHome,
+    worktreesRoot: options.worktreesBaseRoot ?? dependencies.worktreesRoot,
   });
   if (resolvedWorktree) {
     targetPath = resolvedWorktree.worktreePath;
@@ -115,6 +118,7 @@ export async function archivePaseoWorktree(
         worktreePath: targetPath,
         worktreesRoot: options.worktreesRoot,
         paseoHome: dependencies.paseoHome,
+        worktreesBaseRoot: options.worktreesBaseRoot ?? dependencies.worktreesRoot,
       });
     } catch (error) {
       if (error instanceof WorktreeTeardownError) {
