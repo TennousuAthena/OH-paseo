@@ -10,12 +10,15 @@
 - **Adjust the interface text size**
 - **Adjust the code text size**
 - **Choose a syntax highlighting theme**
+- **Keep cron schedules aligned to a chosen time zone** ([#1232](https://github.com/getpaseo/paseo/pull/1232) by [@damselem](https://github.com/damselem))
 
 ### Improved
 
 - Settings now has a flatter sidebar with a host picker
 - Workspace tab switching is faster
+- Compact composers now show context usage as a percentage
 - Agent terminals opened in workspace subdirectories now appear with the rest of the workspace terminals
+- macOS displays can idle normally while the desktop app is open ([#1242](https://github.com/getpaseo/paseo/pull/1242) by [@fireblue](https://github.com/fireblue))
 - Large generated diffs now show a clear too-large placeholder instead of trying to render the whole file
 
 ### Fixed
@@ -24,6 +27,7 @@
 - Terminal panes keep the right size after splitting or resizing panes
 - Restored terminal snapshots reflow correctly after the pane size changes
 - Workspace scripts menus keep the right size after launching a service
+- iOS chat messages no longer hide inline links, URLs, or linked file paths ([#1257](https://github.com/getpaseo/paseo/pull/1257) by [@outofrange-consulting](https://github.com/outofrange-consulting))
 
 ## 0.1.87 - 2026-05-30
 

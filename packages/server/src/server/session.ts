@@ -121,7 +121,9 @@ import {
   emitLiveTimelineItemIfAgentKnown,
 } from "./agent/timeline-append.js";
 import {
+  projectTimelineRows,
   selectProjectedTimelinePage,
+  type TimelineProjectionEntry,
   type TimelineProjectionMode,
 } from "./agent/timeline-projection.js";
 import {
@@ -714,6 +716,15 @@ function parseClientCapabilities(
     }
   }
   return new Set(result);
+}
+
+interface AgentTimelineProjectionSelection {
+  timeline: AgentTimelineFetchResult;
+  entries: TimelineProjectionEntry[];
+  startSeq: number | null;
+  endSeq: number | null;
+  hasOlder: boolean;
+  hasNewer: boolean;
 }
 
 /**
@@ -7437,11 +7448,70 @@ export class Session {
     return timeline.rows.some((row) => row.item.type === "tool_call");
   }
 
+  private selectCanonicalTimelineProjection(input: {
+    timeline: AgentTimelineFetchResult;
+  }): AgentTimelineProjectionSelection {
+    const entries = projectTimelineRows({ rows: input.timeline.rows, mode: "canonical" });
+    return {
+      timeline: input.timeline,
+      entries,
+      startSeq: entries[0]?.seqStart ?? null,
+      endSeq: entries[entries.length - 1]?.seqEnd ?? null,
+      hasOlder: input.timeline.hasOlder,
+      hasNewer: input.timeline.hasNewer,
+    };
+  }
+
+  private selectProjectedTimelineProjection(input: {
+    agentId: string;
+    controlTimeline: AgentTimelineFetchResult;
+    direction: AgentTimelineFetchDirection;
+    cursor?: AgentTimelineCursor;
+    pageLimit: number;
+  }): AgentTimelineProjectionSelection {
+    const timeline = this.shouldUseFullTimelineForProjectedPage({
+      timeline: input.controlTimeline,
+    })
+      ? this.agentManager.fetchTimeline(input.agentId, { direction: "tail", limit: 0 })
+      : input.controlTimeline;
+    const page = selectProjectedTimelinePage({
+      rows: timeline.rows,
+      bounds: timeline.window,
+      direction: input.controlTimeline.reset ? "tail" : input.direction,
+      ...(input.cursor ? { cursorSeq: input.cursor.seq } : {}),
+      limit: input.pageLimit,
+    });
+
+    return {
+      timeline,
+      entries: page.entries,
+      startSeq: page.startSeq,
+      endSeq: page.endSeq,
+      hasOlder: page.hasOlder || (page.startSeq !== null && page.startSeq > timeline.window.minSeq),
+      hasNewer: page.hasNewer,
+    };
+  }
+
+  private selectTimelineProjection(input: {
+    agentId: string;
+    projection: TimelineProjectionMode;
+    controlTimeline: AgentTimelineFetchResult;
+    direction: AgentTimelineFetchDirection;
+    cursor?: AgentTimelineCursor;
+    pageLimit: number;
+  }): AgentTimelineProjectionSelection {
+    if (input.projection === "canonical") {
+      return this.selectCanonicalTimelineProjection({ timeline: input.controlTimeline });
+    }
+
+    return this.selectProjectedTimelineProjection(input);
+  }
+
   private async handleFetchAgentTimelineRequest(
     msg: Extract<SessionInboundMessage, { type: "fetch_agent_timeline_request" }>,
   ): Promise<void> {
     const direction: AgentTimelineFetchDirection = msg.direction ?? (msg.cursor ? "after" : "tail");
-    const projection: TimelineProjectionMode = "projected";
+    const projection: TimelineProjectionMode = msg.projection ?? "projected";
     const requestedLimit = msg.limit;
     const pageLimit = requestedLimit ?? (direction === "after" ? 0 : 200);
     const cursor: AgentTimelineCursor | undefined = msg.cursor
@@ -7464,24 +7534,22 @@ export class Session {
         cursor,
         limit: pageLimit,
       });
-      const timeline = this.shouldUseFullTimelineForProjectedPage({
-        timeline: controlTimeline,
-      })
-        ? this.agentManager.fetchTimeline(msg.agentId, { direction: "tail", limit: 0 })
-        : controlTimeline;
-      const projectedPage = selectProjectedTimelinePage({
-        rows: timeline.rows,
-        bounds: timeline.window,
-        direction: controlTimeline.reset ? "tail" : direction,
-        ...(cursor ? { cursorSeq: cursor.seq } : {}),
-        limit: pageLimit,
+      const selectedTimeline = this.selectTimelineProjection({
+        agentId: msg.agentId,
+        projection,
+        controlTimeline,
+        direction,
+        ...(cursor ? { cursor } : {}),
+        pageLimit,
       });
       const startCursor =
-        projectedPage.startSeq !== null
-          ? { epoch: timeline.epoch, seq: projectedPage.startSeq }
+        selectedTimeline.startSeq !== null
+          ? { epoch: selectedTimeline.timeline.epoch, seq: selectedTimeline.startSeq }
           : null;
       const endCursor =
-        projectedPage.endSeq !== null ? { epoch: timeline.epoch, seq: projectedPage.endSeq } : null;
+        selectedTimeline.endSeq !== null
+          ? { epoch: selectedTimeline.timeline.epoch, seq: selectedTimeline.endSeq }
+          : null;
 
       this.emit({
         type: "fetch_agent_timeline_response",
@@ -7491,18 +7559,16 @@ export class Session {
           agent: agentPayload,
           direction,
           projection,
-          epoch: timeline.epoch,
+          epoch: selectedTimeline.timeline.epoch,
           reset: controlTimeline.reset,
           staleCursor: controlTimeline.staleCursor,
           gap: controlTimeline.gap,
-          window: timeline.window,
+          window: selectedTimeline.timeline.window,
           startCursor,
           endCursor,
-          hasOlder:
-            projectedPage.hasOlder ||
-            (projectedPage.startSeq !== null && projectedPage.startSeq > timeline.window.minSeq),
-          hasNewer: projectedPage.hasNewer,
-          entries: projectedPage.entries.map((entry) => ({
+          hasOlder: selectedTimeline.hasOlder,
+          hasNewer: selectedTimeline.hasNewer,
+          entries: selectedTimeline.entries.map((entry) => ({
             provider: snapshot.provider,
             item: entry.item,
             timestamp: entry.timestamp,
