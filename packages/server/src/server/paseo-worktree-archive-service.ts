@@ -5,7 +5,11 @@ import type { AgentStorage, StoredAgentRecord } from "./agent/agent-storage.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import { normalizeWorkspaceId as normalizePersistedWorkspaceId } from "./workspace-registry-model.js";
 import type { GitHubService } from "../services/github-service.js";
-import { deletePaseoWorktree, resolvePaseoWorktreeRootForCwd } from "../utils/worktree.js";
+import {
+  deletePaseoWorktree,
+  resolvePaseoWorktreeRootForCwd,
+  WorktreeTeardownError,
+} from "../utils/worktree.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 
 export interface ArchivePaseoWorktreeDependencies {
@@ -104,14 +108,27 @@ export async function archivePaseoWorktree(
       }
     }
 
-    await deletePaseoWorktree({
-      cwd: options.repoRoot,
-      worktreePath: targetPath,
-      worktreesRoot: options.worktreesRoot,
-      paseoHome: dependencies.paseoHome,
-    });
+    let teardownError: WorktreeTeardownError | null = null;
+    try {
+      await deletePaseoWorktree({
+        cwd: options.repoRoot,
+        worktreePath: targetPath,
+        worktreesRoot: options.worktreesRoot,
+        paseoHome: dependencies.paseoHome,
+      });
+    } catch (error) {
+      if (error instanceof WorktreeTeardownError) {
+        teardownError = error;
+        dependencies.sessionLogger?.warn(
+          { err: error, targetPath },
+          "Worktree teardown failed during archive; archiving workspace record anyway",
+        );
+      } else {
+        throw error;
+      }
+    }
 
-    if (options.repoRoot) {
+    if (!teardownError && options.repoRoot) {
       try {
         await dependencies.workspaceGitService.getSnapshot(options.repoRoot, {
           force: true,
@@ -136,11 +153,17 @@ export async function archivePaseoWorktree(
         } catch (error) {
           dependencies.sessionLogger?.warn(
             { err: error, workspaceId },
-            "Failed to archive workspace record; worktree FS already removed",
+            teardownError
+              ? "Failed to archive workspace record after teardown failed"
+              : "Failed to archive workspace record; worktree FS already removed",
           );
         }
       }),
     );
+
+    if (teardownError) {
+      throw teardownError;
+    }
   } finally {
     dependencies.clearWorkspaceArchiving(affectedWorkspaceIdList);
     await dependencies.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIdList);
