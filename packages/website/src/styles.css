@@ -9,6 +9,55 @@
   }
 }
 
+@keyframes social-proof-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.social-proof-marquee {
+  margin-inline: calc(50% - 50vw);
+  mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+  overflow-x: clip;
+  padding-inline: max(1.5rem, calc((100vw - 80rem) / 2));
+}
+
+.social-proof-row {
+  display: flex;
+  width: 100%;
+}
+
+.social-proof-track {
+  display: flex;
+  width: max-content;
+  animation: social-proof-scroll 46s linear infinite;
+}
+
+.social-proof-track-reverse {
+  animation-direction: reverse;
+  animation-duration: 52s;
+}
+
+.social-proof-marquee:hover .social-proof-track {
+  animation-play-state: paused;
+}
+
+.social-proof-card-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .social-proof-track {
+    animation: none;
+  }
+}
+
 /* Title font - centralized for easy changes */
 .font-title {
   font-family: inherit;
