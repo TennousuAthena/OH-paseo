@@ -24,6 +24,7 @@ import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostn
 const DEFAULT_PORT = 6767;
 const DEFAULT_RELAY_ENDPOINT = "relay.paseo.sh:443";
 const DEFAULT_APP_BASE_URL = "https://app.paseo.sh";
+const DEFAULT_SERVICE_PROXY_LISTEN = "127.0.0.1:6868";
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
   if (value === undefined) {
@@ -152,6 +153,12 @@ interface ResolvedRelay {
   publicUseTls: boolean;
 }
 
+interface ResolvedServiceProxy {
+  enabled: boolean;
+  listen: string;
+  publicBaseUrl: string | null;
+}
+
 function resolveTlsFromEnv(
   envValue: string | undefined,
   persistedValue: boolean | undefined,
@@ -196,6 +203,38 @@ interface ResolvedVoiceLlm {
   provider: AgentProvider | null;
   providerExplicit: boolean;
   model: string | null;
+}
+
+function resolveServiceProxyPublicBaseUrl(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  try {
+    return new URL(value).toString().replace(/\/$/, "");
+  } catch {
+    throw new Error(`Invalid PASEO_SERVICE_PROXY_PUBLIC_BASE_URL: ${value}`);
+  }
+}
+
+function resolveServiceProxyConfig(
+  env: NodeJS.ProcessEnv,
+  persisted: ReturnType<typeof loadPersistedConfig>,
+): ResolvedServiceProxy {
+  const publicBaseUrl = resolveServiceProxyPublicBaseUrl(
+    env.PASEO_SERVICE_PROXY_PUBLIC_BASE_URL ??
+      persisted.daemon?.serviceProxy?.publicBaseUrl ??
+      null,
+  );
+  const enabled =
+    parseBooleanEnv(env.PASEO_SERVICE_PROXY_ENABLED) ??
+    persisted.daemon?.serviceProxy?.enabled ??
+    publicBaseUrl !== null;
+  const listen =
+    env.PASEO_SERVICE_PROXY_LISTEN ??
+    persisted.daemon?.serviceProxy?.listen ??
+    DEFAULT_SERVICE_PROXY_LISTEN;
+
+  return { enabled, listen, publicBaseUrl };
 }
 
 function resolveVoiceLlmConfig(
@@ -322,6 +361,7 @@ export function loadConfig(
     cliRelayEnabled: options?.cli?.relayEnabled,
     cliRelayUseTls: options?.cli?.relayUseTls,
   });
+  const serviceProxy = resolveServiceProxyConfig(env, persisted);
 
   const { openai, speech } = resolveSpeechConfig({
     paseoHome,
@@ -354,6 +394,7 @@ export function loadConfig(
     relayPublicEndpoint: relay.publicEndpoint,
     relayUseTls: relay.useTls,
     relayPublicUseTls: relay.publicUseTls,
+    serviceProxy,
     appBaseUrl,
     auth: resolveAuthConfig(env, persisted),
     openai,

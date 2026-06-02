@@ -237,6 +237,14 @@ export const PersistedConfigSchema = z
           })
           .strict()
           .optional(),
+        serviceProxy: z
+          .object({
+            enabled: z.boolean().optional(),
+            listen: z.string().optional(),
+            publicBaseUrl: z.string().url().optional(),
+          })
+          .strict()
+          .optional(),
         auth: DaemonAuthSchema.optional(),
       })
       .strict()

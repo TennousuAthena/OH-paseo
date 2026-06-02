@@ -93,6 +93,22 @@
               },
               "additionalProperties": false
             },
+            "serviceProxy": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "listen": {
+                  "type": "string"
+                },
+                "publicBaseUrl": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            },
             "auth": {
               "type": "object",
               "properties": {
