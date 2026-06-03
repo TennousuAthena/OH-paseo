@@ -11,7 +11,7 @@ import {
   deriveAgentStateBucket,
   getWorkspaceStateBucketPriority,
 } from "@getpaseo/protocol/agent-state-bucket";
-import { isDelegatedAgent } from "@getpaseo/protocol/agent-labels";
+import { getParentAgentIdFromLabels, isDelegatedAgent } from "@getpaseo/protocol/agent-labels";
 import { SortablePager } from "./pagination/sortable-pager.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "./workspace-registry.js";
 import { normalizeWorkspaceId } from "./workspace-registry-model.js";
@@ -181,18 +181,34 @@ export class WorkspaceDirectory {
       });
     }
 
-    for (const agent of agents) {
-      if (agent.archivedAt) {
-        continue;
-      }
-      if (!this.deps.isProviderVisibleToClient(agent.provider)) {
-        continue;
-      }
+    const activeAgents = agents.filter(
+      (agent) => !agent.archivedAt && this.deps.isProviderVisibleToClient(agent.provider),
+    );
+    const activeAgentsById = new Map(activeAgents.map((agent) => [agent.id, agent] as const));
+
+    for (const agent of activeAgents) {
+      let workspaceAgent = agent;
+      let bucket: WorkspaceDescriptorPayload["status"];
       if (isDelegatedAgent(agent)) {
-        continue;
+        if (agent.status !== "running") {
+          continue;
+        }
+        const parentAgent = resolveDelegationRootAgent(agent, activeAgentsById);
+        if (!parentAgent) {
+          continue;
+        }
+        workspaceAgent = parentAgent;
+        bucket = "running";
+      } else {
+        bucket = deriveAgentStateBucket({
+          status: agent.status,
+          pendingPermissionCount: agent.pendingPermissions?.length ?? 0,
+          requiresAttention: agent.requiresAttention,
+          attentionReason: agent.attentionReason ?? null,
+        });
       }
 
-      const workspaceId = workspaceIdsByDirectory.get(normalizeWorkspaceId(agent.cwd));
+      const workspaceId = workspaceIdsByDirectory.get(normalizeWorkspaceId(workspaceAgent.cwd));
       if (workspaceId === undefined) {
         continue;
       }
@@ -201,12 +217,6 @@ export class WorkspaceDirectory {
         continue;
       }
 
-      const bucket = deriveAgentStateBucket({
-        status: agent.status,
-        pendingPermissionCount: agent.pendingPermissions?.length ?? 0,
-        requiresAttention: agent.requiresAttention,
-        attentionReason: agent.attentionReason ?? null,
-      });
       if (
         getWorkspaceStateBucketPriority(bucket) < getWorkspaceStateBucketPriority(existing.status)
       ) {
@@ -334,5 +344,29 @@ export class WorkspaceDirectory {
         hasMore,
       },
     };
+  }
+}
+
+function resolveDelegationRootAgent(
+  agent: AgentSnapshotPayload,
+  activeAgentsById: ReadonlyMap<string, AgentSnapshotPayload>,
+): AgentSnapshotPayload | null {
+  const seen = new Set<string>([agent.id]);
+  let current = agent;
+
+  while (true) {
+    const parentAgentId = getParentAgentIdFromLabels(current.labels);
+    if (!parentAgentId) {
+      return current;
+    }
+    if (seen.has(parentAgentId)) {
+      return null;
+    }
+    const parent = activeAgentsById.get(parentAgentId);
+    if (!parent) {
+      return null;
+    }
+    seen.add(parentAgentId);
+    current = parent;
   }
 }
