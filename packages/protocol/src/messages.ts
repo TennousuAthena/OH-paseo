@@ -145,7 +145,6 @@ export const MutableDaemonConfigPatchSchema = z
 
 export type MutableDaemonConfig = z.infer<typeof MutableDaemonConfigSchema>;
 export type MutableDaemonConfigPatch = z.infer<typeof MutableDaemonConfigPatchSchema>;
-import type { LiteralUnion } from "./literal-union.js";
 import type {
   AgentCapabilityFlags,
   AgentModelDefinition,
@@ -1569,47 +1568,18 @@ export const WorkspaceSetupStatusRequestSchema = z.object({
   requestId: z.string(),
 });
 
-// TODO(2026-07): Remove once most clients are on >=0.1.50 and support arbitrary editor ids.
-export const LEGACY_EDITOR_TARGET_IDS = [
-  "cursor",
-  "vscode",
-  "zed",
-  "finder",
-  "explorer",
-  "file-manager",
-] as const;
-
-export const KNOWN_EDITOR_TARGET_IDS = [...LEGACY_EDITOR_TARGET_IDS, "webstorm"] as const;
-
-export const KnownEditorTargetIdSchema = z.enum(KNOWN_EDITOR_TARGET_IDS);
-export const LegacyEditorTargetIdSchema = z.enum(LEGACY_EDITOR_TARGET_IDS);
-export const EditorTargetIdSchema = z.string().trim().min(1);
-
-const KNOWN_EDITOR_TARGET_ID_SET = new Set<string>(KNOWN_EDITOR_TARGET_IDS);
-const LEGACY_EDITOR_TARGET_ID_SET = new Set<string>(LEGACY_EDITOR_TARGET_IDS);
-
-export function isKnownEditorTargetId(value: string): value is KnownEditorTargetId {
-  return KNOWN_EDITOR_TARGET_ID_SET.has(value);
-}
-
-export function isLegacyEditorTargetId(value: string): value is LegacyEditorTargetId {
-  return LEGACY_EDITOR_TARGET_ID_SET.has(value);
-}
-
-export const EditorTargetDescriptorPayloadSchema = z.object({
-  id: EditorTargetIdSchema,
-  label: z.string(),
-});
-
-export const ListAvailableEditorsRequestSchema = z.object({
+// COMPAT(desktopEditorBridge): added in v0.1.88, remove after 2026-12-03 once old clients no longer call daemon editor RPCs.
+export const LegacyListAvailableEditorsRequestSchema = z.object({
   type: z.literal("list_available_editors_request"),
   requestId: z.string(),
 });
 
-export const OpenInEditorRequestSchema = z.object({
+export const LegacyOpenInEditorRequestSchema = z.object({
   type: z.literal("open_in_editor_request"),
   path: z.string(),
-  editorId: EditorTargetIdSchema,
+  editorId: z.string().trim().min(1),
+  mode: z.enum(["open", "reveal"]).optional(),
+  cwd: z.string().optional(),
   requestId: z.string(),
 });
 
@@ -1924,8 +1894,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   PaseoWorktreeArchiveRequestSchema,
   CreatePaseoWorktreeRequestSchema,
   WorkspaceSetupStatusRequestSchema,
-  ListAvailableEditorsRequestSchema,
-  OpenInEditorRequestSchema,
+  LegacyListAvailableEditorsRequestSchema,
+  LegacyOpenInEditorRequestSchema,
   OpenProjectRequestSchema,
   ArchiveWorkspaceRequestSchema,
   FileExplorerRequestSchema,
@@ -2596,16 +2566,22 @@ export const StartWorkspaceScriptResponseMessageSchema = z.object({
   }),
 });
 
-export const ListAvailableEditorsResponseMessageSchema = z.object({
+// COMPAT(desktopEditorBridge): added in v0.1.88, remove after 2026-12-03 once old clients no longer parse daemon editor RPC responses.
+export const LegacyListAvailableEditorsResponseMessageSchema = z.object({
   type: z.literal("list_available_editors_response"),
   payload: z.object({
     requestId: z.string(),
-    editors: z.array(EditorTargetDescriptorPayloadSchema),
+    editors: z.array(
+      z.object({
+        id: z.string().trim().min(1),
+        label: z.string(),
+      }),
+    ),
     error: z.string().nullable(),
   }),
 });
 
-export const OpenInEditorResponseMessageSchema = z.object({
+export const LegacyOpenInEditorResponseMessageSchema = z.object({
   type: z.literal("open_in_editor_response"),
   payload: z.object({
     requestId: z.string(),
@@ -3684,8 +3660,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchWorkspacesResponseMessageSchema,
   OpenProjectResponseMessageSchema,
   StartWorkspaceScriptResponseMessageSchema,
-  ListAvailableEditorsResponseMessageSchema,
-  OpenInEditorResponseMessageSchema,
+  LegacyListAvailableEditorsResponseMessageSchema,
+  LegacyOpenInEditorResponseMessageSchema,
   ArchiveWorkspaceResponseMessageSchema,
   FetchAgentResponseMessageSchema,
   FetchAgentTimelineResponseMessageSchema,
@@ -3811,10 +3787,6 @@ export type WorkspaceDescriptorPayload = z.infer<typeof WorkspaceDescriptorPaylo
 export type WorkspaceScriptLifecycle = z.infer<typeof WorkspaceScriptLifecycleSchema>;
 export type WorkspaceScriptHealth = z.infer<typeof WorkspaceScriptHealthSchema>;
 export type WorkspaceScriptPayload = z.infer<typeof WorkspaceScriptPayloadSchema>;
-export type KnownEditorTargetId = z.infer<typeof KnownEditorTargetIdSchema>;
-export type LegacyEditorTargetId = z.infer<typeof LegacyEditorTargetIdSchema>;
-export type EditorTargetId = LiteralUnion<KnownEditorTargetId, string>;
-export type EditorTargetDescriptorPayload = z.infer<typeof EditorTargetDescriptorPayloadSchema>;
 export type FetchAgentsResponseMessage = z.infer<typeof FetchAgentsResponseMessageSchema>;
 export type FetchAgentHistoryResponseMessage = z.infer<
   typeof FetchAgentHistoryResponseMessageSchema
@@ -3828,10 +3800,12 @@ export type OpenProjectResponseMessage = z.infer<typeof OpenProjectResponseMessa
 export type StartWorkspaceScriptResponseMessage = z.infer<
   typeof StartWorkspaceScriptResponseMessageSchema
 >;
-export type ListAvailableEditorsResponseMessage = z.infer<
-  typeof ListAvailableEditorsResponseMessageSchema
+export type LegacyListAvailableEditorsResponseMessage = z.infer<
+  typeof LegacyListAvailableEditorsResponseMessageSchema
 >;
-export type OpenInEditorResponseMessage = z.infer<typeof OpenInEditorResponseMessageSchema>;
+export type LegacyOpenInEditorResponseMessage = z.infer<
+  typeof LegacyOpenInEditorResponseMessageSchema
+>;
 export type ArchiveWorkspaceResponseMessage = z.infer<typeof ArchiveWorkspaceResponseMessageSchema>;
 export type FetchAgentResponseMessage = z.infer<typeof FetchAgentResponseMessageSchema>;
 export type FetchAgentTimelineResponseMessage = z.infer<
@@ -4030,8 +4004,10 @@ export type PaseoWorktreeListResponse = z.infer<typeof PaseoWorktreeListResponse
 export type PaseoWorktreeArchiveRequest = z.infer<typeof PaseoWorktreeArchiveRequestSchema>;
 export type PaseoWorktreeArchiveResponse = z.infer<typeof PaseoWorktreeArchiveResponseSchema>;
 export type WorkspaceSetupStatusRequest = z.infer<typeof WorkspaceSetupStatusRequestSchema>;
-export type ListAvailableEditorsRequest = z.infer<typeof ListAvailableEditorsRequestSchema>;
-export type OpenInEditorRequest = z.infer<typeof OpenInEditorRequestSchema>;
+export type LegacyListAvailableEditorsRequest = z.infer<
+  typeof LegacyListAvailableEditorsRequestSchema
+>;
+export type LegacyOpenInEditorRequest = z.infer<typeof LegacyOpenInEditorRequestSchema>;
 export type OpenProjectRequest = z.infer<typeof OpenProjectRequestSchema>;
 export type ArchiveWorkspaceRequest = z.infer<typeof ArchiveWorkspaceRequestSchema>;
 export type FileExplorerRequest = z.infer<typeof FileExplorerRequestSchema>;
