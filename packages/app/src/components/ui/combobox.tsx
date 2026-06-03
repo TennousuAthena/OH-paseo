@@ -17,6 +17,7 @@ import {
   ScrollView,
   Platform,
   StatusBar,
+  Keyboard,
   useWindowDimensions,
   type LayoutChangeEvent,
   type PressableStateCallbackType,
@@ -737,6 +738,9 @@ function applySetOpen(
   onOpenChange: ((open: boolean) => void) | undefined,
   nextOpen: boolean,
 ) {
+  if (nextOpen) {
+    Keyboard.dismiss();
+  }
   if (!isControlled) {
     setInternalOpen(nextOpen);
   }

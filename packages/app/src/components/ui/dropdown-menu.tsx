@@ -18,6 +18,7 @@ import {
   Text,
   View,
   Dimensions,
+  Keyboard,
   Platform,
   StatusBar,
   type PressableProps,
@@ -90,6 +91,9 @@ function useControllableOpenState({
   const value = isControlled ? open : internalOpen;
   const setValue = useCallback(
     (next: boolean) => {
+      if (next) {
+        Keyboard.dismiss();
+      }
       if (!isControlled) setInternalOpen(next);
       onOpenChange?.(next);
     },
