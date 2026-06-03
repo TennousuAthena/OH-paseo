@@ -101,7 +101,10 @@ import { SidebarStatusWorkspaceList } from "@/components/sidebar/sidebar-status-
 import {
   SidebarWorkspaceRowFrame,
   SidebarWorkspaceRowContent,
-  sidebarWorkspaceRowStyles,
+  SidebarWorkspaceShortcutBadge,
+  SidebarWorkspaceTrailingActionBase,
+  SidebarWorkspaceTrailingActionOverlay,
+  SidebarWorkspaceTrailingActionSlot,
 } from "@/components/sidebar/sidebar-workspace-row-content";
 import {
   useHydratedWorkspaceEntries,
@@ -652,7 +655,10 @@ function WorkspaceRowRightGroup({
   onCopyPath?: () => void;
   onRename?: () => void;
 }) {
+  const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
+  const showKebabInSlot = showKebab && !showShortcut;
+  const shouldRenderActionSlot = Boolean(onArchive || workspace.diffStat);
   return (
     <>
       {showScriptsIcon ? (
@@ -665,30 +671,35 @@ function WorkspaceRowRightGroup({
         </View>
       ) : null}
       {isCreating ? <Text style={styles.workspaceCreatingText}>Creating...</Text> : null}
-      {showKebab && onArchive ? (
-        <WorkspaceKebabMenu
-          workspaceKey={workspace.workspaceKey}
-          onCopyPath={onCopyPath}
-          onCopyBranchName={onCopyBranchName}
-          onRename={onRename}
-          onMarkAsRead={onMarkAsRead}
-          onArchive={onArchive}
-          archiveLabel={archiveLabel}
-          archiveStatus={archiveStatus}
-          archivePendingLabel={archivePendingLabel}
-          archiveShortcutKeys={archiveShortcutKeys}
-        />
-      ) : null}
-      {!showKebab && workspace.diffStat ? (
-        <DiffStat
-          additions={workspace.diffStat.additions}
-          deletions={workspace.diffStat.deletions}
-        />
-      ) : null}
-      {showShortcutBadge && shortcutNumber !== null ? (
-        <View style={sidebarWorkspaceRowStyles.shortcutBadge}>
-          <Text style={sidebarWorkspaceRowStyles.shortcutBadgeText}>{shortcutNumber}</Text>
-        </View>
+      {shouldRenderActionSlot ? (
+        <SidebarWorkspaceTrailingActionSlot>
+          <SidebarWorkspaceTrailingActionBase
+            visible={Boolean(workspace.diffStat && !showKebabInSlot && !showShortcut)}
+          >
+            {workspace.diffStat ? (
+              <DiffStat
+                additions={workspace.diffStat.additions}
+                deletions={workspace.diffStat.deletions}
+              />
+            ) : null}
+          </SidebarWorkspaceTrailingActionBase>
+          <SidebarWorkspaceTrailingActionOverlay visible={showKebabInSlot}>
+            {onArchive ? (
+              <WorkspaceKebabMenu
+                workspaceKey={workspace.workspaceKey}
+                onCopyPath={onCopyPath}
+                onCopyBranchName={onCopyBranchName}
+                onRename={onRename}
+                onMarkAsRead={onMarkAsRead}
+                onArchive={onArchive}
+                archiveLabel={archiveLabel}
+                archiveStatus={archiveStatus}
+                archivePendingLabel={archivePendingLabel}
+                archiveShortcutKeys={archiveShortcutKeys}
+              />
+            ) : null}
+          </SidebarWorkspaceTrailingActionOverlay>
+        </SidebarWorkspaceTrailingActionSlot>
       ) : null}
     </>
   );
@@ -1275,8 +1286,8 @@ function ProjectHeaderRow({
         removeProjectStatus={removeProjectStatus}
       />
       {showShortcutBadge && shortcutNumber !== null ? (
-        <View style={styles.shortcutBadge}>
-          <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
+        <View style={styles.projectShortcutBadgeOverlay} pointerEvents="none">
+          <SidebarWorkspaceShortcutBadge number={shortcutNumber} />
         </View>
       ) : null}
     </>
@@ -1412,6 +1423,8 @@ function WorkspaceRowInner({
                 isHovered={isHovered}
                 isLoading={isArchiving || isCreating}
                 isCreating={isCreating}
+                shortcutNumber={shortcutNumber}
+                showShortcutBadge={showShortcutBadge}
               >
                 <WorkspaceRowRightGroup
                   workspace={workspace}
@@ -2789,6 +2802,7 @@ const styles = StyleSheet.create((theme) => ({
     textAlign: "center",
   },
   projectRow: {
+    position: "relative",
     minHeight: 36,
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[2],
@@ -2925,6 +2939,11 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   projectActionTooltipShortcut: {},
+  projectShortcutBadgeOverlay: {
+    position: "absolute",
+    top: theme.spacing[2] + 1,
+    right: theme.spacing[2],
+  },
   workspaceRow: {
     minHeight: 36,
     marginBottom: theme.spacing[1],
@@ -3044,24 +3063,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   kebabButtonHovered: {
     backgroundColor: theme.colors.surface2,
-  },
-  shortcutBadge: {
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: theme.spacing[1],
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: theme.borderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.surface2,
-    backgroundColor: theme.colors.surface0,
-    flexShrink: 0,
-  },
-  shortcutBadgeText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    lineHeight: 14,
   },
   statusDotNeedsInput: {
     backgroundColor: theme.colors.palette.amber[500],

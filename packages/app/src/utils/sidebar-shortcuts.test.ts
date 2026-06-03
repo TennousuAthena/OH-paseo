@@ -199,6 +199,37 @@ describe("buildStatusSidebarShortcutModel", () => {
     expect(model.shortcutIndexByWorkspaceKey.get("s1:running-old")).toBe(3);
     expect(model.shortcutIndexByWorkspaceKey.get("s1:done-old")).toBe(4);
   });
+
+  it("excludes collapsed status groups from shortcut targets", () => {
+    const workspaces = [
+      workspace({
+        serverId: "s1",
+        workspaceId: "needs-input",
+        workspaceDirectory: "/repo/needs-input",
+        name: "needs input",
+        projectKey: "p1",
+        statusBucket: "needs_input",
+      }),
+      workspace({
+        serverId: "s1",
+        workspaceId: "running",
+        workspaceDirectory: "/repo/running",
+        name: "running",
+        projectKey: "p1",
+        statusBucket: "running",
+      }),
+    ];
+
+    const model = buildStatusSidebarShortcutModel({
+      workspaces,
+      projectNamesByKey: new Map([["p1", "Project 1"]]),
+      collapsedStatusGroupKeys: new Set(["needs_input"]),
+    });
+
+    expect(model.shortcutTargets).toEqual([{ serverId: "s1", workspaceId: "running" }]);
+    expect(model.shortcutIndexByWorkspaceKey.get("s1:needs-input")).toBeUndefined();
+    expect(model.shortcutIndexByWorkspaceKey.get("s1:running")).toBe(1);
+  });
 });
 
 describe("getRelativeSidebarShortcutTarget", () => {

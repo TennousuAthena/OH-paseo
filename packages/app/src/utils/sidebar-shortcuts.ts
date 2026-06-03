@@ -53,6 +53,7 @@ export function buildSidebarShortcutModel(input: {
 export function buildStatusSidebarShortcutModel(input: {
   workspaces: SidebarWorkspaceEntry[];
   projectNamesByKey: Map<string, string>;
+  collapsedStatusGroupKeys?: ReadonlySet<string>;
   shortcutLimit?: number;
 }): SidebarShortcutModel {
   const maxShortcuts = Math.max(0, Math.floor(input.shortcutLimit ?? 9));
@@ -61,6 +62,10 @@ export function buildStatusSidebarShortcutModel(input: {
   const shortcutIndexByWorkspaceKey = new Map<string, number>();
 
   for (const group of groups) {
+    if (input.collapsedStatusGroupKeys?.has(group.bucket)) {
+      continue;
+    }
+
     for (const workspace of group.rows) {
       if (shortcutTargets.length >= maxShortcuts) {
         break;

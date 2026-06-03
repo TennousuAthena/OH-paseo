@@ -59,7 +59,9 @@ import { useClearWorkspaceAttention } from "@/hooks/use-clear-workspace-attentio
 import {
   SidebarWorkspaceRowFrame,
   SidebarWorkspaceRowContent,
-  sidebarWorkspaceRowStyles,
+  SidebarWorkspaceTrailingActionBase,
+  SidebarWorkspaceTrailingActionOverlay,
+  SidebarWorkspaceTrailingActionSlot,
 } from "@/components/sidebar/sidebar-workspace-row-content";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 
@@ -611,7 +613,10 @@ function StatusWorkspaceRowInner({
   return (
     <SidebarWorkspaceRowFrame workspace={workspace}>
       {({ isHovered, hoverHandlers }) => {
+        const showShortcut = showShortcutBadge && shortcutNumber !== null;
         const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
+        const showKebabInSlot = showKebab && !showShortcut;
+        const shouldRenderActionSlot = Boolean(onArchive || workspace.diffStat);
         const workspaceRowStyle = getStatusWorkspaceRowStyle({ selected, isHovered });
         return (
           <View style={styles.workspaceRowContainer} {...hoverHandlers}>
@@ -628,6 +633,8 @@ function StatusWorkspaceRowInner({
                 subtitle={projectName}
                 isHovered={isHovered}
                 isLoading={isArchiving}
+                shortcutNumber={shortcutNumber}
+                showShortcutBadge={showShortcutBadge}
               >
                 <>
                   {showScriptsIcon ? (
@@ -639,9 +646,11 @@ function StatusWorkspaceRowInner({
                       )}
                     </View>
                   ) : null}
-                  {showKebab && onArchive ? (
-                    <StatusKebabMenu
-                      workspaceKey={workspace.workspaceKey}
+                  {shouldRenderActionSlot ? (
+                    <StatusWorkspaceActionSlot
+                      workspace={workspace}
+                      showBase={Boolean(workspace.diffStat && !showKebabInSlot && !showShortcut)}
+                      showOverlay={showKebabInSlot}
                       onCopyPath={onCopyPath}
                       onCopyBranchName={onCopyBranchName}
                       onRename={onRename}
@@ -653,19 +662,6 @@ function StatusWorkspaceRowInner({
                       archiveShortcutKeys={archiveShortcutKeys}
                     />
                   ) : null}
-                  {!showKebab && workspace.diffStat ? (
-                    <DiffStat
-                      additions={workspace.diffStat.additions}
-                      deletions={workspace.diffStat.deletions}
-                    />
-                  ) : null}
-                  {showShortcutBadge && shortcutNumber !== null ? (
-                    <View style={sidebarWorkspaceRowStyles.shortcutBadge}>
-                      <Text style={sidebarWorkspaceRowStyles.shortcutBadgeText}>
-                        {shortcutNumber}
-                      </Text>
-                    </View>
-                  ) : null}
                 </>
               </SidebarWorkspaceRowContent>
             </Pressable>
@@ -673,6 +669,63 @@ function StatusWorkspaceRowInner({
         );
       }}
     </SidebarWorkspaceRowFrame>
+  );
+}
+
+function StatusWorkspaceActionSlot({
+  workspace,
+  showBase,
+  showOverlay,
+  onCopyPath,
+  onCopyBranchName,
+  onRename,
+  onMarkAsRead,
+  onArchive,
+  archiveLabel,
+  archiveStatus,
+  archivePendingLabel,
+  archiveShortcutKeys,
+}: {
+  workspace: SidebarWorkspaceEntry;
+  showBase: boolean;
+  showOverlay: boolean;
+  onCopyPath?: () => void;
+  onCopyBranchName?: () => void;
+  onRename?: () => void;
+  onMarkAsRead?: () => void;
+  onArchive?: () => void;
+  archiveLabel?: string;
+  archiveStatus?: "idle" | "pending" | "success";
+  archivePendingLabel?: string;
+  archiveShortcutKeys?: ShortcutKey[][] | null;
+}) {
+  return (
+    <SidebarWorkspaceTrailingActionSlot>
+      <SidebarWorkspaceTrailingActionBase visible={showBase}>
+        {workspace.diffStat ? (
+          <DiffStat
+            additions={workspace.diffStat.additions}
+            deletions={workspace.diffStat.deletions}
+          />
+        ) : null}
+      </SidebarWorkspaceTrailingActionBase>
+      <SidebarWorkspaceTrailingActionOverlay visible={showOverlay}>
+        {onArchive ? (
+          <StatusKebabMenu
+            workspaceKey={workspace.workspaceKey}
+            onCopyPath={onCopyPath}
+            onCopyBranchName={onCopyBranchName}
+            onRename={onRename}
+            onMarkAsRead={onMarkAsRead}
+            onArchive={onArchive}
+            archiveLabel={archiveLabel}
+            archiveStatus={archiveStatus}
+            archivePendingLabel={archivePendingLabel}
+            archiveShortcutKeys={archiveShortcutKeys}
+          />
+        ) : null}
+      </SidebarWorkspaceTrailingActionOverlay>
+    </SidebarWorkspaceTrailingActionSlot>
   );
 }
 

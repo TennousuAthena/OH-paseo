@@ -89,6 +89,8 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   isHovered,
   isLoading,
   isCreating = false,
+  shortcutNumber = null,
+  showShortcutBadge = false,
   children,
 }: {
   workspace: SidebarWorkspaceEntry;
@@ -96,6 +98,8 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   isHovered: boolean;
   isLoading: boolean;
   isCreating?: boolean;
+  shortcutNumber?: number | null;
+  showShortcutBadge?: boolean;
   children?: ReactNode;
 }) {
   const workspaceBranchTextStyle = useMemo(
@@ -108,7 +112,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   );
 
   return (
-    <>
+    <View style={styles.workspaceRowContent}>
       <View style={styles.workspaceRowMain}>
         <View style={styles.workspaceRowLeft}>
           <WorkspaceStatusIndicator
@@ -122,6 +126,11 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
         </View>
         <View style={styles.workspaceRowRight}>{children}</View>
       </View>
+      {showShortcutBadge && shortcutNumber !== null ? (
+        <View style={styles.shortcutBadgeOverlay} pointerEvents="none">
+          <SidebarWorkspaceShortcutBadge number={shortcutNumber} />
+        </View>
+      ) : null}
       {subtitle ? (
         <Text style={styles.workspaceSubtitle} numberOfLines={1}>
           {subtitle}
@@ -133,7 +142,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
           <ChecksBadge checks={workspace.prHint.checks} />
         </View>
       ) : null}
-    </>
+    </View>
   );
 });
 
@@ -346,7 +355,7 @@ const checksBadgeStyles = StyleSheet.create((theme) => ({
 export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
   rowRight: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: theme.spacing[2],
     flexShrink: 0,
   },
@@ -368,12 +377,63 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
     lineHeight: 14,
   },
+  hidden: { opacity: 0 },
+  trailingActionSlot: {
+    position: "relative",
+    minWidth: 18,
+    minHeight: 20,
+    flexShrink: 0,
+    alignItems: "flex-end",
+    justifyContent: "flex-start",
+  },
+  trailingActionOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+  },
 }));
 
+export function SidebarWorkspaceShortcutBadge({ number }: { number: number }) {
+  return (
+    <View style={sidebarWorkspaceRowStyles.shortcutBadge}>
+      <Text style={sidebarWorkspaceRowStyles.shortcutBadgeText}>{number}</Text>
+    </View>
+  );
+}
+
+export function SidebarWorkspaceTrailingActionSlot({ children }: { children: ReactNode }) {
+  return <View style={sidebarWorkspaceRowStyles.trailingActionSlot}>{children}</View>;
+}
+
+export function SidebarWorkspaceTrailingActionBase({
+  visible,
+  children,
+}: {
+  visible: boolean;
+  children: ReactNode;
+}) {
+  if (!children) return null;
+  return <View style={visible ? undefined : sidebarWorkspaceRowStyles.hidden}>{children}</View>;
+}
+
+export function SidebarWorkspaceTrailingActionOverlay({
+  visible,
+  children,
+}: {
+  visible: boolean;
+  children: ReactNode;
+}) {
+  if (!visible || !children) return null;
+  return <View style={sidebarWorkspaceRowStyles.trailingActionOverlay}>{children}</View>;
+}
+
 const styles = StyleSheet.create((theme) => ({
+  workspaceRowContent: {
+    position: "relative",
+  },
   workspaceRowMain: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: theme.spacing[2],
     width: "100%",
@@ -386,6 +446,11 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   workspaceRowRight: sidebarWorkspaceRowStyles.rowRight,
+  shortcutBadgeOverlay: {
+    position: "absolute",
+    top: 1,
+    right: 0,
+  },
   workspaceStatusDot: {
     position: "relative",
     width: WORKSPACE_STATUS_DOT_WIDTH,

@@ -28,6 +28,9 @@ export function WorkspaceShortcutTargetsSubscriber({
   const collapsedProjectKeys = useSidebarCollapsedSectionsStore(
     (state) => state.collapsedProjectKeys,
   );
+  const collapsedStatusGroupKeys = useSidebarCollapsedSectionsStore(
+    (state) => state.collapsedStatusGroupKeys,
+  );
   const setSidebarShortcutWorkspaceTargets = useKeyboardShortcutsStore(
     (state) => state.setSidebarShortcutWorkspaceTargets,
   );
@@ -37,6 +40,7 @@ export function WorkspaceShortcutTargetsSubscriber({
       return buildStatusSidebarShortcutModel({
         workspaces: statusWorkspaces,
         projectNamesByKey,
+        collapsedStatusGroupKeys,
       });
     }
 
@@ -44,7 +48,14 @@ export function WorkspaceShortcutTargetsSubscriber({
       projects,
       collapsedProjectKeys,
     });
-  }, [collapsedProjectKeys, groupMode, projectNamesByKey, projects, statusWorkspaces]);
+  }, [
+    collapsedProjectKeys,
+    collapsedStatusGroupKeys,
+    groupMode,
+    projectNamesByKey,
+    projects,
+    statusWorkspaces,
+  ]);
 
   useEffect(() => {
     if (!enabled || !serverId) {
