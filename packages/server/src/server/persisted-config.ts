@@ -8,7 +8,7 @@ import {
   ProviderOverridesSchema,
 } from "./agent/provider-launch-config.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
-import { ensurePrivateFile, writePrivateFileSync } from "./private-files.js";
+import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
@@ -357,7 +357,10 @@ export function loadPersistedConfig(paseoHome: string, logger?: LoggerLike): Per
 
   if (!existsSync(configPath)) {
     try {
-      writePrivateFileSync(configPath, JSON.stringify(DEFAULT_PERSISTED_CONFIG, null, 2) + "\n");
+      writePrivateFileAtomicSync(
+        configPath,
+        JSON.stringify(DEFAULT_PERSISTED_CONFIG, null, 2) + "\n",
+      );
       log?.info(`Initialized config file at ${configPath}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -416,7 +419,7 @@ export function savePersistedConfig(
   }
 
   try {
-    writePrivateFileSync(configPath, JSON.stringify(result.data, null, 2) + "\n");
+    writePrivateFileAtomicSync(configPath, JSON.stringify(result.data, null, 2) + "\n");
     log?.info(`Saved to ${configPath}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

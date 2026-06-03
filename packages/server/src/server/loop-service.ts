@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { Logger } from "pino";
+import { writeJsonFileAtomic } from "./atomic-file.js";
 import { curateAgentActivity } from "./agent/activity-curator.js";
 import type { AgentManager } from "./agent/agent-manager.js";
 import { getStructuredAgentResponse } from "./agent/agent-response-loop.js";
@@ -891,11 +892,10 @@ export class LoopService {
 
   private async persist(): Promise<void> {
     const nextPersist = this.persistQueue.then(async () => {
-      await fs.mkdir(path.dirname(this.storePath), { recursive: true });
       const records = Array.from(this.loops.values()).sort((left, right) =>
         left.createdAt.localeCompare(right.createdAt),
       );
-      await fs.writeFile(this.storePath, JSON.stringify(records, null, 2), "utf8");
+      await writeJsonFileAtomic(this.storePath, records);
       return;
     });
     this.persistQueue = nextPersist.catch(() => {});
