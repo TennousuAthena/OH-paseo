@@ -18,7 +18,6 @@ import {
   Text,
   View,
   Dimensions,
-  Keyboard,
   Platform,
   StatusBar,
   type PressableProps,
@@ -33,6 +32,7 @@ import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import { isWeb } from "@/constants/platform";
+import { useDismissKeyboardOnOpen } from "@/components/ui/keyboard-dismiss";
 
 // Action status for menu items with loading/success feedback
 export type ActionStatus = "idle" | "pending" | "success";
@@ -91,9 +91,6 @@ function useControllableOpenState({
   const value = isControlled ? open : internalOpen;
   const setValue = useCallback(
     (next: boolean) => {
-      if (next) {
-        Keyboard.dismiss();
-      }
       if (!isControlled) setInternalOpen(next);
       onOpenChange?.(next);
     },
@@ -248,6 +245,7 @@ export function DropdownMenu({
     defaultOpen,
     onOpenChange,
   });
+  useDismissKeyboardOnOpen(isOpen);
 
   const flushPendingSelect = useCallback(() => {
     const pendingSelect = pendingSelectRef.current;
