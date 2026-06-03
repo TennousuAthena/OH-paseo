@@ -15,7 +15,11 @@ import type {
   AgentProvider,
 } from "./agent/agent-sdk-types.js";
 import { execCommand, platformShell } from "../utils/spawn.js";
-import { getUnattendedModeId } from "@getpaseo/protocol/provider-manifest";
+import type {
+  ProviderSnapshotManager,
+  ResolvedProviderCreateConfig,
+  ResolveProviderCreateConfigOptions,
+} from "./agent/provider-snapshot-manager.js";
 
 const LOOP_ID_LENGTH = 8;
 const DEFAULT_LOOP_PROVIDER: AgentProvider = "claude";
@@ -207,6 +211,8 @@ function buildVerifierTitle(loop: LoopRecord, iterationIndex: number): string {
   return `${prefix} [loop ${iterationIndex} verifier]`;
 }
 
+type CreateConfigResolver = Pick<ProviderSnapshotManager, "resolveCreateConfig">;
+
 function formatStreamLog(event: AgentStreamEvent): string | null {
   switch (event.type) {
     case "timeline": {
@@ -305,6 +311,7 @@ export class LoopService {
       paseoHome: string;
       agentManager: AgentManager;
       logger: Logger;
+      providerSnapshotManager: CreateConfigResolver;
     },
   ) {
     this.storePath = path.join(options.paseoHome, "loops", "loops.json");
@@ -614,7 +621,7 @@ export class LoopService {
     signal: AbortSignal,
   ): Promise<boolean> {
     const agent = await this.options.agentManager.createAgent(
-      this.buildWorkerConfig(loop, iteration),
+      await this.buildWorkerConfig(loop, iteration),
     );
     iteration.workerAgentId = agent.id;
     loop.activeWorkerAgentId = agent.id;
@@ -721,7 +728,7 @@ export class LoopService {
 
     const startedAt = nowIso();
     const verifierAgent = await this.options.agentManager.createAgent(
-      this.buildVerifierConfig(loop, iteration),
+      await this.buildVerifierConfig(loop, iteration),
     );
     iteration.verifierAgentId = verifierAgent.id;
     loop.activeVerifierAgentId = verifierAgent.id;
@@ -796,31 +803,56 @@ export class LoopService {
     }
   }
 
-  private buildWorkerConfig(loop: LoopRecord, iteration: LoopIterationRecord): AgentSessionConfig {
+  private async buildWorkerConfig(
+    loop: LoopRecord,
+    iteration: LoopIterationRecord,
+  ): Promise<AgentSessionConfig> {
     const provider = loop.workerProvider ?? loop.provider;
+    const resolvedUnattendedConfig = loop.modeId
+      ? { modeId: loop.modeId, featureValues: undefined }
+      : await this.resolveProviderCreateConfig({ provider, cwd: loop.cwd });
     return {
       provider,
       cwd: loop.cwd,
       model: loop.workerModel ?? loop.model ?? undefined,
-      modeId: loop.modeId ?? getUnattendedModeId(provider),
+      modeId: resolvedUnattendedConfig.modeId,
+      featureValues: resolvedUnattendedConfig.featureValues,
       title: buildWorkerTitle(loop, iteration.index),
       internal: true,
     };
   }
 
-  private buildVerifierConfig(
+  private async buildVerifierConfig(
     loop: LoopRecord,
     iteration: LoopIterationRecord,
-  ): AgentSessionConfig {
+  ): Promise<AgentSessionConfig> {
     const provider = loop.verifierProvider ?? loop.provider;
+    const explicitModeId = loop.verifierModeId ?? loop.modeId;
+    const resolvedUnattendedConfig = explicitModeId
+      ? { modeId: explicitModeId, featureValues: undefined }
+      : await this.resolveProviderCreateConfig({ provider, cwd: loop.cwd });
     return {
       provider,
       cwd: loop.cwd,
       model: loop.verifierModel ?? loop.model ?? undefined,
-      modeId: loop.verifierModeId ?? loop.modeId ?? getUnattendedModeId(provider),
+      modeId: resolvedUnattendedConfig.modeId,
+      featureValues: resolvedUnattendedConfig.featureValues,
       title: buildVerifierTitle(loop, iteration.index),
       internal: true,
     };
+  }
+
+  private resolveProviderCreateConfig(
+    input: Pick<ResolveProviderCreateConfigOptions, "provider" | "cwd">,
+  ): Promise<ResolvedProviderCreateConfig> {
+    return this.options.providerSnapshotManager.resolveCreateConfig({
+      provider: input.provider,
+      cwd: input.cwd,
+      requestedMode: undefined,
+      featureValues: undefined,
+      parent: null,
+      unattended: true,
+    });
   }
 
   private resolveFinalText(timeline: AgentTimelineItem[], finalText: string): string {
