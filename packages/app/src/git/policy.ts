@@ -342,6 +342,9 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
   if (canEnablePrAutoMerge(input)) {
     return getDefaultEnablePullRequestAutoMergeActionId(input);
   }
+  if (hasEnabledPrAutoMerge(input)) {
+    return "pr";
+  }
   if (!input.isOnBaseBranch && input.aheadCount > 0) {
     return "merge-branch";
   }
@@ -551,6 +554,16 @@ function canEnablePrAutoMerge(input: BuildGitActionsInput): boolean {
     !github.isMergeQueueEnabled &&
     !github.isInMergeQueue &&
     getAllowedAutoMergeEnableActionModels(input).length > 0
+  );
+}
+
+function hasEnabledPrAutoMerge(input: BuildGitActionsInput): boolean {
+  return (
+    input.githubFeaturesEnabled &&
+    input.hasPullRequest &&
+    input.pullRequestUrl !== null &&
+    hasPullRequestGithubFacts(input.pullRequestGithub) &&
+    input.pullRequestGithub.autoMergeRequest !== null
   );
 }
 

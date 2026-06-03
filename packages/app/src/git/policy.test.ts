@@ -692,6 +692,7 @@ describe("git-actions-policy", () => {
       }),
     );
 
+    expect(actions.primary).toMatchObject({ id: "pr", label: "View PR" });
     expect(actions.secondary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
