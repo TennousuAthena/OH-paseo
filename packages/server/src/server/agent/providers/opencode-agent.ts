@@ -2521,6 +2521,7 @@ function appendOpenCodeQuestionAsked(
         header: q.header,
         options,
         ...(q.multiple === true ? { multiSelect: true } : {}),
+        allowOther: true,
       },
     ];
   });
