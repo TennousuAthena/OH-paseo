@@ -11,6 +11,7 @@ import {
   type TextPartInput as OpenCodeTextPartInput,
 } from "@opencode-ai/sdk/v2/client";
 import { createPathEquivalenceMatcher } from "../../../utils/path.js";
+import pLimit from "p-limit";
 import type { Logger } from "pino";
 import { z } from "zod";
 
@@ -248,6 +249,8 @@ type OpenCodeMcpConfig =
 
 const MCP_ALREADY_PRESENT_ERROR_TOKENS = ["already", "exists", "connected"] as const;
 const OPENCODE_PROVIDER_LIST_TIMEOUT_MS = 30_000;
+const OPENCODE_METADATA_CONCURRENCY = 4;
+const openCodeMetadataLimit = pLimit(OPENCODE_METADATA_CONCURRENCY);
 const OPENCODE_HANDLED_BUILTIN_SLASH_COMMANDS: AgentSlashCommand[] = [
   { name: "compact", description: "Compact the current session", argumentHint: "" },
   { name: "summarize", description: "Compact the current session", argumentHint: "" },
@@ -1336,10 +1339,12 @@ export class OpenCodeAgentClient implements AgentClient {
     try {
       // Background model discovery can be legitimately slow while OpenCode refreshes
       // provider state, so allow longer than turn execution paths.
-      const response = await withTimeout(
-        client.provider.list({ directory: options.cwd }),
-        OPENCODE_PROVIDER_LIST_TIMEOUT_MS,
-        `OpenCode provider.list timed out after ${OPENCODE_PROVIDER_LIST_TIMEOUT_MS / 1000}s - server may not be authenticated or connected to any providers`,
+      const response = await openCodeMetadataLimit(() =>
+        withTimeout(
+          client.provider.list({ directory: options.cwd }),
+          OPENCODE_PROVIDER_LIST_TIMEOUT_MS,
+          `OpenCode provider.list timed out after ${OPENCODE_PROVIDER_LIST_TIMEOUT_MS / 1000}s - server may not be authenticated or connected to any providers`,
+        ),
       );
 
       if (response.error) {
@@ -1401,10 +1406,12 @@ export class OpenCodeAgentClient implements AgentClient {
     const client = this.runtime.createClient({ baseUrl: url, directory });
 
     try {
-      const response = await withTimeout(
-        client.app.agents({ directory }),
-        10_000,
-        "OpenCode app.agents timed out after 10s",
+      const response = await openCodeMetadataLimit(() =>
+        withTimeout(
+          client.app.agents({ directory }),
+          10_000,
+          "OpenCode app.agents timed out after 10s",
+        ),
       );
 
       if (response.error || !response.data) {
@@ -1561,7 +1568,7 @@ export class OpenCodeAgentClient implements AgentClient {
     client: OpencodeClient,
     cwd: string,
   ): Promise<void> {
-    const response = await client.provider.list({ directory: cwd });
+    const response = await openCodeMetadataLimit(() => client.provider.list({ directory: cwd }));
     if (response.error || !response.data) {
       return;
     }
@@ -3350,9 +3357,11 @@ class OpenCodeAgentSession implements AgentSession {
       return this.availableModesCache;
     }
 
-    const response = await this.client.app.agents({
-      directory: this.config.cwd,
-    });
+    const response = await openCodeMetadataLimit(() =>
+      this.client.app.agents({
+        directory: this.config.cwd,
+      }),
+    );
     const agents = response.error || !response.data ? [] : response.data;
 
     const discoveredModes = agents.filter(isSelectableOpenCodeAgent).map(mapOpenCodeAgentToMode);
