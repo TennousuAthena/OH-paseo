@@ -48,9 +48,7 @@ import {
   ExternalLink,
   FolderPlus,
   GitPullRequest,
-  Globe,
   Settings,
-  SquareTerminal,
   MoreVertical,
   Pencil,
   Plus,
@@ -150,8 +148,6 @@ const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const ThemedFolderPlus = withUnistyles(FolderPlus);
-const ThemedGlobe = withUnistyles(Globe);
-const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedSettings = withUnistyles(Settings);
@@ -165,7 +161,6 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
 });
 const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
 const amberColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
-const blueColorMapping = (theme: Theme) => ({ color: theme.colors.palette.blue[500] });
 const greenColorMapping = (theme: Theme) => ({ color: theme.colors.palette.green[500] });
 const purpleColorMapping = (theme: Theme) => ({ color: theme.colors.palette.purple[500] });
 const syncedLoaderColorMapping = (theme: Theme) => ({
@@ -622,8 +617,6 @@ function WorkspaceRowRightGroup({
   workspace,
   isHovered,
   isTouchPlatform,
-  showScriptsIcon,
-  hasRunningService,
   isCreating,
   showShortcutBadge,
   shortcutNumber,
@@ -640,8 +633,6 @@ function WorkspaceRowRightGroup({
   workspace: SidebarWorkspaceEntry;
   isHovered: boolean;
   isTouchPlatform: boolean;
-  showScriptsIcon: boolean;
-  hasRunningService: boolean;
   isCreating: boolean;
   showShortcutBadge: boolean;
   shortcutNumber: number | null;
@@ -661,15 +652,6 @@ function WorkspaceRowRightGroup({
   const shouldRenderActionSlot = Boolean(onArchive || workspace.diffStat);
   return (
     <>
-      {showScriptsIcon ? (
-        <View testID="workspace-globe-icon" accessibilityLabel="Scripts available">
-          {hasRunningService ? (
-            <ThemedGlobe size={12} uniProps={blueColorMapping} />
-          ) : (
-            <ThemedSquareTerminal size={12} uniProps={blueColorMapping} />
-          )}
-        </View>
-      ) : null}
       {isCreating ? <Text style={styles.workspaceCreatingText}>Creating...</Text> : null}
       {shouldRenderActionSlot ? (
         <SidebarWorkspaceTrailingActionSlot>
@@ -1393,6 +1375,10 @@ function WorkspaceRowInner({
         const hasRunningService = workspace.scripts.some(
           (s) => s.lifecycle === "running" && (s.type ?? "service") === "service",
         );
+        let scriptIconKind: "service" | "command" | null = null;
+        if (showScriptsIcon) {
+          scriptIconKind = hasRunningService ? "service" : "command";
+        }
         const workspaceRowStyle = getProjectWorkspaceRowStyle({
           isDragging,
           selected,
@@ -1420,6 +1406,7 @@ function WorkspaceRowInner({
             >
               <SidebarWorkspaceRowContent
                 workspace={workspace}
+                scriptIconKind={scriptIconKind}
                 isHovered={isHovered}
                 isLoading={isArchiving || isCreating}
                 isCreating={isCreating}
@@ -1430,8 +1417,6 @@ function WorkspaceRowInner({
                   workspace={workspace}
                   isHovered={isHovered}
                   isTouchPlatform={isTouchPlatform}
-                  showScriptsIcon={showScriptsIcon}
-                  hasRunningService={hasRunningService}
                   isCreating={isCreating}
                   showShortcutBadge={showShortcutBadge}
                   shortcutNumber={shortcutNumber}
