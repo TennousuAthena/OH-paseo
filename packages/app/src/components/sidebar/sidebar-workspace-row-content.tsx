@@ -186,7 +186,7 @@ function WorkspaceStatusIndicator({
 
   if (loading) {
     return (
-      <View style={styles.workspaceStatusDot}>
+      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-loading">
         <ThemedActivityIndicator size={8} uniProps={foregroundMutedColorMapping} />
       </View>
     );
@@ -194,7 +194,7 @@ function WorkspaceStatusIndicator({
 
   if (shouldShowSyncedLoader) {
     return (
-      <View style={styles.workspaceStatusDot}>
+      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-running">
         <ThemedSyncedLoader size={11} uniProps={syncedLoaderColorMapping} />
       </View>
     );

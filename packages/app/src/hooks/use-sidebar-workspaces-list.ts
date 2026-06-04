@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
-import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
+import { useCreateFlowStore, type PendingCreateAttempt } from "@/stores/create-flow-store";
+import { useSessionStore, type Agent, type WorkspaceDescriptor } from "@/stores/session-store";
+import { useWorkspaceFields } from "@/stores/session-store-hooks";
+import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
+import { normalizeWorkspacePath } from "@/utils/workspace-identity";
 import { selectPrHintFromStatus } from "@/git/use-pr-status-query";
 import { useHostProjects } from "@/projects/host-projects";
 import { fetchAllWorkspaceDescriptors } from "@/projects/workspace-fetching";
@@ -31,7 +35,10 @@ export {
 export function createSidebarWorkspaceEntry(input: {
   serverId: string;
   workspace: WorkspaceDescriptor;
+  pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
+  agents?: Map<string, Agent>;
 }): SidebarWorkspaceEntry {
+  const effectiveStatus = deriveEffectiveWorkspaceStatus(input);
   return {
     workspaceKey: `${input.serverId}:${input.workspace.id}`,
     serverId: input.serverId,
@@ -42,8 +49,8 @@ export function createSidebarWorkspaceEntry(input: {
     projectKind: input.workspace.projectKind,
     workspaceKind: input.workspace.workspaceKind,
     name: input.workspace.name,
-    statusBucket: input.workspace.status,
-    statusEnteredAt: input.workspace.statusEnteredAt,
+    statusBucket: effectiveStatus.status,
+    statusEnteredAt: effectiveStatus.enteredAt,
     archivingAt: input.workspace.archivingAt,
     diffStat: input.workspace.diffStat,
     prHint: selectPrHintFromStatus(input.workspace.githubRuntime?.pullRequest),
@@ -52,6 +59,110 @@ export function createSidebarWorkspaceEntry(input: {
     scripts: input.workspace.scripts,
     hasRunningScripts: input.workspace.scripts.some((script) => script.lifecycle === "running"),
   };
+}
+
+interface EffectiveWorkspaceStatus {
+  status: WorkspaceDescriptor["status"];
+  enteredAt: Date | null;
+}
+
+interface WorkspaceAgentActivity extends EffectiveWorkspaceStatus {}
+
+function deriveEffectiveWorkspaceStatus(input: {
+  serverId: string;
+  workspace: WorkspaceDescriptor;
+  pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
+  agents?: Map<string, Agent>;
+}): EffectiveWorkspaceStatus {
+  if (input.workspace.status !== "done") {
+    return { status: input.workspace.status, enteredAt: input.workspace.statusEnteredAt };
+  }
+
+  const pendingStartedAt = getPendingInitialAgentCreateStartedAt({
+    serverId: input.serverId,
+    workspaceId: input.workspace.id,
+    pendingCreateAttempts: input.pendingCreateAttempts,
+  });
+  if (pendingStartedAt) {
+    return { status: "running", enteredAt: pendingStartedAt };
+  }
+
+  const rootAgentActivity = getRootAgentWorkspaceActivity({
+    workspace: input.workspace,
+    agents: input.agents,
+  });
+  if (rootAgentActivity && rootAgentActivity.status !== "done") {
+    return rootAgentActivity;
+  }
+
+  return { status: input.workspace.status, enteredAt: input.workspace.statusEnteredAt };
+}
+
+function getPendingInitialAgentCreateStartedAt(input: {
+  serverId: string;
+  workspaceId: string;
+  pendingCreateAttempts: Record<string, PendingCreateAttempt> | undefined;
+}): Date | null {
+  let latestStartedAt: Date | null = null;
+  for (const pending of Object.values(input.pendingCreateAttempts ?? {})) {
+    if (pending.serverId !== input.serverId) continue;
+    if (pending.workspaceId !== input.workspaceId) continue;
+    if (pending.lifecycle === "abandoned") continue;
+    const startedAt = new Date(pending.timestamp);
+    if (!latestStartedAt || startedAt > latestStartedAt) {
+      latestStartedAt = startedAt;
+    }
+  }
+  return latestStartedAt;
+}
+
+function getRootAgentWorkspaceActivity(input: {
+  workspace: WorkspaceDescriptor;
+  agents: Map<string, Agent> | undefined;
+}): WorkspaceAgentActivity | null {
+  const workspaceDirectory = normalizeWorkspacePath(input.workspace.workspaceDirectory);
+  if (!workspaceDirectory) {
+    return null;
+  }
+
+  let latest: WorkspaceAgentActivity | null = null;
+  for (const agent of input.agents?.values() ?? []) {
+    if (agent.archivedAt || agent.parentAgentId) continue;
+    if (normalizeWorkspacePath(agent.cwd) !== workspaceDirectory) continue;
+    const status = deriveSidebarStateBucket({
+      status: agent.status,
+      pendingPermissionCount: agent.pendingPermissions.length,
+      requiresAttention: agent.requiresAttention,
+      attentionReason: agent.attentionReason,
+    });
+    const enteredAt = agent.attentionTimestamp ?? agent.updatedAt;
+    if (!latest || enteredAt > (latest.enteredAt ?? new Date(0))) {
+      latest = { status, enteredAt };
+    }
+  }
+  return latest;
+}
+
+export function useSidebarWorkspaceEntry(
+  serverId: string | null,
+  workspaceId: string | null,
+): SidebarWorkspaceEntry | null {
+  const pendingCreateAttempts = useCreateFlowStore((state) => state.pendingByDraftId);
+  const agents = useSessionStore((state) =>
+    serverId ? state.sessions[serverId]?.agents : undefined,
+  );
+  const projectWorkspaceEntry = useCallback(
+    (workspace: WorkspaceDescriptor): SidebarWorkspaceEntry =>
+      createSidebarWorkspaceEntry({
+        serverId: serverId ?? "",
+        workspace,
+        pendingCreateAttempts,
+        agents,
+      }),
+    [agents, pendingCreateAttempts, serverId],
+  );
+
+  return useWorkspaceFields(serverId, workspaceId, projectWorkspaceEntry);
 }
 
 const EMPTY_ORDER: string[] = [];

@@ -26,7 +26,7 @@ import {
   Pencil,
 } from "lucide-react-native";
 import { DiffStat } from "@/components/diff-stat";
-import { useSidebarWorkspaceEntry } from "../sidebar-workspace-list";
+import { useSidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import {
   DropdownMenu,
   DropdownMenuTrigger,

@@ -38,6 +38,147 @@ import {
   workspaceLabelFromPath,
 } from "./helpers/workspace-ui";
 
+interface WorkspaceStatusGroupEvent {
+  rowTestId: string;
+  bucket: string;
+  indicatorTestId: string | null;
+  label: string;
+  at: number;
+}
+
+async function switchSidebarToStatusGrouping(page: import("@playwright/test").Page) {
+  await page.getByTestId("sidebar-grouping-selector").click();
+  await page.getByTestId("sidebar-grouping-status").click();
+  await expect(page.getByTestId("sidebar-status-group-done")).toBeVisible({ timeout: 30_000 });
+}
+
+async function startTrackingSidebarStatusGroups(page: import("@playwright/test").Page) {
+  await page.evaluate(() => {
+    interface StatusGroupEvent {
+      rowTestId: string;
+      bucket: string;
+      indicatorTestId: string | null;
+      label: string;
+      at: number;
+    }
+    const win = window as typeof window & {
+      __workspaceStatusGroupEvents?: StatusGroupEvent[];
+      __workspaceStatusGroupObserver?: MutationObserver;
+    };
+    win.__workspaceStatusGroupEvents = [];
+    win.__workspaceStatusGroupObserver?.disconnect();
+
+    const capture = () => {
+      const events = win.__workspaceStatusGroupEvents;
+      if (!events) return;
+      const groups = document.querySelectorAll<HTMLElement>(
+        '[data-testid^="sidebar-status-group-"]',
+      );
+      for (const group of groups) {
+        const groupTestId = group.getAttribute("data-testid") ?? "";
+        const bucket = groupTestId.replace("sidebar-status-group-", "");
+        const label = group.textContent ?? "";
+        const block = group.parentElement?.parentElement;
+        if (!block) continue;
+        const rows = block.querySelectorAll<HTMLElement>('[data-testid^="sidebar-workspace-row-"]');
+        for (const row of rows) {
+          const rowTestId = row.getAttribute("data-testid");
+          if (!rowTestId) continue;
+          const indicatorTestId =
+            row
+              .querySelector<HTMLElement>('[data-testid^="workspace-status-indicator-"]')
+              ?.getAttribute("data-testid") ?? null;
+          const last = events.at(-1);
+          if (
+            last?.rowTestId === rowTestId &&
+            last.bucket === bucket &&
+            last.indicatorTestId === indicatorTestId
+          ) {
+            continue;
+          }
+          events.push({ rowTestId, bucket, indicatorTestId, label, at: performance.now() });
+        }
+      }
+    };
+
+    capture();
+    const observer = new MutationObserver(capture);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    win.__workspaceStatusGroupObserver = observer;
+  });
+}
+
+async function getTrackedSidebarStatusGroups(
+  page: import("@playwright/test").Page,
+): Promise<WorkspaceStatusGroupEvent[]> {
+  return page.evaluate(() => {
+    const win = window as typeof window & {
+      __workspaceStatusGroupEvents?: WorkspaceStatusGroupEvent[];
+    };
+    return win.__workspaceStatusGroupEvents ?? [];
+  });
+}
+
+async function waitForWorkspaceStatusGroupEvent(input: {
+  page: import("@playwright/test").Page;
+  rowTestId: string;
+  bucket: string;
+}) {
+  await input.page.waitForFunction(
+    ({ expectedRowTestId, expectedBucket }) => {
+      const win = window as typeof window & {
+        __workspaceStatusGroupEvents?: WorkspaceStatusGroupEvent[];
+      };
+      for (const event of win.__workspaceStatusGroupEvents ?? []) {
+        if (event.rowTestId === expectedRowTestId && event.bucket === expectedBucket) {
+          return true;
+        }
+      }
+      return false;
+    },
+    { expectedRowTestId: input.rowTestId, expectedBucket: input.bucket },
+    { timeout: 30_000 },
+  );
+}
+
+async function expectWorkspaceStatusGroupEvents(input: {
+  page: import("@playwright/test").Page;
+  rowTestId: string;
+  includes: string;
+  excludes: string;
+  includesIndicator?: string;
+  excludesIndicator?: string;
+}) {
+  await waitForWorkspaceStatusGroupEvent({
+    page: input.page,
+    rowTestId: input.rowTestId,
+    bucket: input.includes,
+  });
+  const createdWorkspaceEvents = (await getTrackedSidebarStatusGroups(input.page)).filter(
+    (event) => event.rowTestId === input.rowTestId,
+  );
+  expect(createdWorkspaceEvents.map((event) => event.bucket)).toContain(input.includes);
+  expect(createdWorkspaceEvents.filter((event) => event.bucket === input.excludes)).toEqual([]);
+  if (input.includesIndicator) {
+    expect(createdWorkspaceEvents.map((event) => event.indicatorTestId)).toContain(
+      input.includesIndicator,
+    );
+  }
+  if (input.excludesIndicator) {
+    expect(
+      createdWorkspaceEvents.filter((event) => event.indicatorTestId === input.excludesIndicator),
+    ).toEqual([]);
+  }
+}
+
+async function submitNewWorkspaceWithoutPrompt(page: import("@playwright/test").Page) {
+  const createButton = page
+    .getByTestId("message-input-root")
+    .getByRole("button", { name: "Create" });
+  await expect(createButton).toBeVisible({ timeout: 30_000 });
+  await createButton.click();
+}
+
 test.describe("New workspace flow", () => {
   let client: Awaited<ReturnType<typeof connectNewWorkspaceDaemonClient>>;
   const localWorkspaceIds = new Set<string>();
@@ -227,6 +368,8 @@ test.describe("New workspace flow", () => {
         serverId,
         previousWorkspaceId: openedProject.workspaceId,
         projectDisplayName: openedProject.projectDisplayName,
+        assertSidebarRow: false,
+        assertHeader: false,
       });
       createdWorktreeIds.add(createdWorkspace.workspaceId);
 
@@ -313,6 +456,8 @@ test.describe("New workspace flow", () => {
         serverId,
         previousWorkspaceId: openedProject.workspaceId,
         projectDisplayName: openedProject.projectDisplayName,
+        assertSidebarRow: false,
+        assertHeader: false,
       });
       createdWorktreeIds.add(createdWorkspace.workspaceId);
 
@@ -340,6 +485,117 @@ test.describe("New workspace flow", () => {
       ).toHaveCount(1, { timeout: 30_000 });
     } finally {
       agentCreatedDelay.release();
+      await tempRepo.cleanup();
+    }
+  });
+
+  test("new workspace with initial agent never appears in the Done status group", async ({
+    page,
+  }) => {
+    const serverId = getServerId();
+
+    const tempRepo = await createTempGitRepo("new-workspace-status-optimistic-");
+
+    try {
+      const openedProject = await openProjectViaDaemon(client, tempRepo.path);
+      localWorkspaceIds.add(openedProject.workspaceId);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+
+      await switchWorkspaceViaSidebar({
+        page,
+        serverId,
+        targetWorkspacePath: openedProject.workspaceId,
+      });
+      await expectWorkspaceHeader(page, {
+        title: openedProject.workspaceName,
+        subtitle: openedProject.projectDisplayName,
+      });
+
+      await switchSidebarToStatusGrouping(page);
+      await startTrackingSidebarStatusGroups(page);
+
+      await openGlobalNewWorkspaceComposer(page);
+      await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
+      await submitNewWorkspacePrompt(page);
+
+      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
+        serverId,
+        previousWorkspaceId: openedProject.workspaceId,
+        projectDisplayName: openedProject.projectDisplayName,
+        assertSidebarRow: false,
+        assertHeader: false,
+      });
+      createdWorktreeIds.add(createdWorkspace.workspaceId);
+
+      const rowTestId = `sidebar-workspace-row-${serverId}:${createdWorkspace.workspaceId}`;
+      await expectWorkspaceStatusGroupEvents({
+        page,
+        rowTestId,
+        includes: "running",
+        excludes: "done",
+        includesIndicator: "workspace-status-indicator-running",
+      });
+    } finally {
+      await tempRepo.cleanup();
+    }
+  });
+
+  test("new workspace without an initial agent appears in the Done status group", async ({
+    page,
+  }) => {
+    const serverId = getServerId();
+
+    const tempRepo = await createTempGitRepo("new-workspace-status-empty-");
+
+    try {
+      const openedProject = await openProjectViaDaemon(client, tempRepo.path);
+      localWorkspaceIds.add(openedProject.workspaceId);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+
+      await switchWorkspaceViaSidebar({
+        page,
+        serverId,
+        targetWorkspacePath: openedProject.workspaceId,
+      });
+      await expectWorkspaceHeader(page, {
+        title: openedProject.workspaceName,
+        subtitle: openedProject.projectDisplayName,
+      });
+
+      await switchSidebarToStatusGrouping(page);
+      await startTrackingSidebarStatusGroups(page);
+
+      await openGlobalNewWorkspaceComposer(page);
+      await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
+      await submitNewWorkspaceWithoutPrompt(page);
+
+      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
+        serverId,
+        previousWorkspaceId: openedProject.workspaceId,
+        projectDisplayName: openedProject.projectDisplayName,
+      });
+      createdWorktreeIds.add(createdWorkspace.workspaceId);
+
+      const rowTestId = `sidebar-workspace-row-${serverId}:${createdWorkspace.workspaceId}`;
+      await expectWorkspaceStatusGroupEvents({
+        page,
+        rowTestId,
+        includes: "done",
+        excludes: "running",
+        excludesIndicator: "workspace-status-indicator-loading",
+      });
+      await expectWorkspaceStatusGroupEvents({
+        page,
+        rowTestId,
+        includes: "done",
+        excludes: "running",
+        excludesIndicator: "workspace-status-indicator-running",
+      });
+    } finally {
       await tempRepo.cleanup();
     }
   });

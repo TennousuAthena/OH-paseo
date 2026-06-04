@@ -591,7 +591,10 @@ async function createAndMergeWorkspace(input: {
     throw new Error(payload.error ?? "Failed to create worktree");
   }
   const normalizedWorkspace = normalizeWorkspaceDescriptor(payload.workspace);
-  input.mergeWorkspaces(input.serverId, [normalizedWorkspace]);
+  const workspaceForInitialMerge = input.createInput.firstAgentContext
+    ? { ...normalizedWorkspace, status: "running" as const, statusEnteredAt: new Date() }
+    : normalizedWorkspace;
+  input.mergeWorkspaces(input.serverId, [workspaceForInitialMerge]);
   return normalizedWorkspace;
 }
 
@@ -726,6 +729,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
   useCreateFlowStore.getState().setPending({
     serverId,
     draftId,
+    workspaceId,
     agentId: null,
     clientMessageId,
     text: text.trim(),

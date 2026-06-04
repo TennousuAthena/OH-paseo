@@ -238,7 +238,13 @@ export async function expectComposerGithubAttachmentPill(
 
 export async function assertNewWorkspaceSidebarAndHeader(
   page: Page,
-  input: { serverId: string; previousWorkspaceId: string; projectDisplayName: string },
+  input: {
+    serverId: string;
+    previousWorkspaceId: string;
+    projectDisplayName: string;
+    assertSidebarRow?: boolean;
+    assertHeader?: boolean;
+  },
 ): Promise<{ workspaceId: string }> {
   // Wait for URL to redirect to the newly created workspace.
   // Uses URL as source of truth to avoid picking up sidebar rows from concurrent tests.
@@ -256,15 +262,19 @@ export async function assertNewWorkspaceSidebarAndHeader(
     throw new Error(`Expected URL to redirect to a new workspace.\nCurrent URL: ${page.url()}`);
   }
 
-  const createdWorkspaceRow = page.getByTestId(
-    `sidebar-workspace-row-${input.serverId}:${workspaceId}`,
-  );
-  await expect(createdWorkspaceRow.first()).toBeVisible({ timeout: 30_000 });
+  if (input.assertSidebarRow !== false) {
+    const createdWorkspaceRow = page.getByTestId(
+      `sidebar-workspace-row-${input.serverId}:${workspaceId}`,
+    );
+    await expect(createdWorkspaceRow.first()).toBeVisible({ timeout: 30_000 });
+  }
 
-  await expectWorkspaceHeader(page, {
-    title: workspaceLabelFromPath(workspaceId),
-    subtitle: input.projectDisplayName,
-  });
+  if (input.assertHeader !== false) {
+    await expectWorkspaceHeader(page, {
+      title: workspaceLabelFromPath(workspaceId),
+      subtitle: input.projectDisplayName,
+    });
+  }
 
   return { workspaceId };
 }
