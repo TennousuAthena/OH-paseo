@@ -20,6 +20,7 @@ import {
   useIsolatedBottomSheetVisibility,
 } from "@/components/ui/isolated-bottom-sheet-modal";
 import { isNative, isWeb } from "@/constants/platform";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Horizontal indent token shared by the sheet header (title, back arrow,
 // leading icon, search input icon) and any row primitive rendered inside the
@@ -458,7 +459,12 @@ export function AdaptiveModalSheet({
 }: AdaptiveModalSheetProps) {
   const { theme } = useUnistyles();
   const isMobile = useIsCompactFormFactor();
+  const insets = useSafeAreaInsets();
   const resolvedSnapPoints = useMemo(() => snapPoints ?? ["65%", "90%"], [snapPoints]);
+  const footerStyle = useMemo(
+    () => [styles.footer, isMobile ? { paddingBottom: theme.spacing[3] + insets.bottom } : null],
+    [insets.bottom, isMobile, theme.spacing],
+  );
   const handleIndicatorStyle = useMemo(
     () => ({ backgroundColor: theme.colors.surface2 }),
     [theme.colors.surface2],
@@ -515,7 +521,7 @@ export function AdaptiveModalSheet({
         ) : (
           <View style={styles.bottomSheetStaticContent}>{children}</View>
         )}
-        {footer ? <View style={styles.footer}>{footer}</View> : null}
+        {footer ? <View style={footerStyle}>{footer}</View> : null}
       </IsolatedBottomSheetModal>
     );
   }
@@ -534,7 +540,7 @@ export function AdaptiveModalSheet({
       ) : (
         <View style={styles.desktopStaticContent}>{children}</View>
       )}
-      {footer ? <View style={styles.footer}>{footer}</View> : null}
+      {footer ? <View style={footerStyle}>{footer}</View> : null}
     </>
   );
 
