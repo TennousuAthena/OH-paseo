@@ -206,6 +206,29 @@ describe("OpenCode auto_accept feature", () => {
     ).toEqual({ modeId: "paseo-custom", featureValues: { auto_accept: true } });
   });
 
+  test("inherits auto accept from an OpenCode parent when the child chooses a mode", () => {
+    const client = new OpenCodeAgentClient(createTestLogger());
+
+    expect(
+      client.resolveCreateConfig({
+        provider: "opencode",
+        requestedMode: "base",
+        featureValues: undefined,
+        parent: {
+          provider: "opencode",
+          modeId: "orchestrator",
+          isUnattended: true,
+        },
+        unattended: true,
+        availableModes: [
+          { id: "build", label: "Build" },
+          { id: "base", label: "Base" },
+          { id: "orchestrator", label: "Orchestrator" },
+        ],
+      }),
+    ).toEqual({ modeId: "base", featureValues: { auto_accept: true } });
+  });
+
   test("auto-approves tool permissions when auto accept is enabled", async () => {
     const { openCodeClient, runtime } = mockOpenCodeClient({
       events: [toolPermissionEvent(), idleEvent()],
