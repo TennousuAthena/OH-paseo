@@ -1097,13 +1097,30 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
   const sortedHosts = useSortedHosts(hosts, localServerId);
   const hostServerIds = useMemo(() => hosts.map((host) => host.serverId), [hosts]);
   const anyOnlineServerId = useAnyOnlineHostServerId(hostServerIds);
+  const [selectedSettingsHostServerId, setSelectedSettingsHostServerId] = useState<string | null>(
+    view.kind === "host" ? view.serverId : null,
+  );
+  const knownSelectedSettingsHostServerId = useMemo(() => {
+    if (!selectedSettingsHostServerId) {
+      return null;
+    }
+    return hosts.some((host) => host.serverId === selectedSettingsHostServerId)
+      ? selectedSettingsHostServerId
+      : null;
+  }, [hosts, selectedSettingsHostServerId]);
+
+  useEffect(() => {
+    if (view.kind === "host") {
+      setSelectedSettingsHostServerId(view.serverId);
+    }
+  }, [view]);
 
   // The host the four sections scope to: the host on the active view, otherwise
-  // the local daemon, otherwise the first available host.
+  // the picker choice, otherwise the local daemon, otherwise the first host.
   const activeHostServerId = useMemo(() => {
     if (view.kind === "host") return view.serverId;
-    return localServerId ?? sortedHosts[0]?.serverId ?? null;
-  }, [view, localServerId, sortedHosts]);
+    return knownSelectedSettingsHostServerId ?? localServerId ?? sortedHosts[0]?.serverId ?? null;
+  }, [view, knownSelectedSettingsHostServerId, localServerId, sortedHosts]);
 
   const handleSendBehaviorChange = useCallback(
     (behavior: SendBehavior) => {
@@ -1205,10 +1222,15 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
     [isCompactLayout, router],
   );
 
-  // Picker: swap the host but keep the section the user is already looking at.
+  // Picker: choose the host for host-section rows. If the user is already on a
+  // host detail route, keep that detail section and swap only the host segment.
   const handleSelectHost = useCallback(
     (serverId: string) => {
-      const section: HostSectionSlug = view.kind === "host" ? view.section : "connections";
+      setSelectedSettingsHostServerId(serverId);
+      if (view.kind !== "host") {
+        return;
+      }
+      const section: HostSectionSlug = view.section;
       const target = buildSettingsHostSectionRoute(serverId, section);
       if (isCompactLayout) {
         router.push(target);
