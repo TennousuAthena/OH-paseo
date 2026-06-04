@@ -2450,7 +2450,19 @@ function ProjectModeList({
   );
   const selectionEnabled = isWorkspaceRoute;
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
-
+  const nativeScrollGestureProps = useMemo(
+    () =>
+      parentGestureRef
+        ? ({
+            // NestableScrollContainer forwards props to RNGH ScrollView. Keep
+            // vertical scroll and sidebar close pan simultaneous: vertical
+            // intent scrolls immediately, clear horizontal intent can still
+            // activate close from inside the list.
+            simultaneousHandlers: parentGestureRef,
+          } as object)
+        : undefined,
+    [parentGestureRef],
+  );
   const projectIconRequests = useMemo(() => {
     if (!serverId) {
       return [];
@@ -2724,6 +2736,7 @@ function ProjectModeList({
     <View style={styles.container}>
       {platformIsNative ? (
         <NestableScrollContainer
+          {...nativeScrollGestureProps}
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}

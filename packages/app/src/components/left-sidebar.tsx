@@ -40,7 +40,11 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
-import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
+import {
+  MOBILE_VISUAL_PANEL_AGENT,
+  MOBILE_VISUAL_PANEL_AGENT_LIST,
+  useSidebarAnimation,
+} from "@/contexts/sidebar-animation-context";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useSidebarShortcutModel } from "@/hooks/use-sidebar-shortcut-model";
@@ -567,6 +571,7 @@ function MobileSidebar({
     animateToOpen,
     animateToClose,
     isGesturing,
+    mobileVisualPanel,
     gestureAnimatingRef,
     closeGestureRef,
   } = useSidebarAnimation();
@@ -603,7 +608,7 @@ function MobileSidebar({
     () =>
       Gesture.Pan()
         .withRef(closeGestureRef)
-        .enabled(isOpen)
+        .enabled(true)
         .manualActivation(true)
         .onTouchesDown((event) => {
           const touch = event.changedTouches[0];
@@ -624,6 +629,11 @@ function MobileSidebar({
           const deltaY = touch.absoluteY - closeTouchStartY.value;
           const absDeltaX = Math.abs(deltaX);
           const absDeltaY = Math.abs(deltaY);
+
+          if (mobileVisualPanel.value !== MOBILE_VISUAL_PANEL_AGENT_LIST) {
+            stateManager.fail();
+            return;
+          }
 
           if (deltaX >= 10) {
             stateManager.fail();
@@ -654,9 +664,11 @@ function MobileSidebar({
           isGesturing.value = false;
           const shouldClose = event.translationX < -windowWidth / 3 || event.velocityX < -500;
           if (shouldClose) {
+            mobileVisualPanel.value = MOBILE_VISUAL_PANEL_AGENT;
             animateToClose();
             runOnJS(handleCloseFromGesture)();
           } else {
+            mobileVisualPanel.value = MOBILE_VISUAL_PANEL_AGENT_LIST;
             animateToOpen();
           }
         })
@@ -664,11 +676,11 @@ function MobileSidebar({
           isGesturing.value = false;
         }),
     [
-      isOpen,
       closeGestureRef,
       closeTouchStartX,
       closeTouchStartY,
       isGesturing,
+      mobileVisualPanel,
       windowWidth,
       translateX,
       backdropOpacity,
