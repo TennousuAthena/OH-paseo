@@ -220,6 +220,10 @@ function isProjectSelectedByRoute(input: {
   );
 }
 
+function activeWorkspaceSelectionKey(selection: ActiveWorkspaceSelection | null): string {
+  return selection ? `${selection.serverId}:${selection.workspaceId}` : "";
+}
+
 function selectionForSelectedWorkspace(
   selected: boolean,
   workspace: SidebarWorkspaceEntry,
@@ -2299,6 +2303,7 @@ function ProjectBlock({
               keyExtractor={workspaceKeyExtractor}
               renderItem={renderWorkspace}
               onDragEnd={handleWorkspaceDragEnd}
+              extraData={activeWorkspaceSelectionKey(activeWorkspaceSelection)}
               scrollEnabled={false}
               useDragHandle
               nestable={useNestable}
@@ -2315,18 +2320,6 @@ function ProjectBlock({
 type ProjectBlockProps = Parameters<typeof ProjectBlock>[0];
 
 function areProjectBlockPropsEqual(previous: ProjectBlockProps, next: ProjectBlockProps): boolean {
-  const previousActive = isProjectSelectedByRoute({
-    selection: previous.activeWorkspaceSelection,
-    project: previous.project,
-    serverId: previous.serverId,
-    enabled: previous.selectionEnabled,
-  });
-  const nextActive = isProjectSelectedByRoute({
-    selection: next.activeWorkspaceSelection,
-    project: next.project,
-    serverId: next.serverId,
-    enabled: next.selectionEnabled,
-  });
   return (
     previous.project === next.project &&
     previous.collapsed === next.collapsed &&
@@ -2346,7 +2339,35 @@ function areProjectBlockPropsEqual(previous: ProjectBlockProps, next: ProjectBlo
     previous.dragHandleProps === next.dragHandleProps &&
     previous.useNestable === next.useNestable &&
     previous.creatingWorkspaceIds === next.creatingWorkspaceIds &&
-    previousActive === nextActive
+    areProjectBlockSelectionsEqual(previous, next)
+  );
+}
+
+function areProjectBlockSelectionsEqual(
+  previous: ProjectBlockProps,
+  next: ProjectBlockProps,
+): boolean {
+  const previousActive = isProjectSelectedByRoute({
+    selection: previous.activeWorkspaceSelection,
+    project: previous.project,
+    serverId: previous.serverId,
+    enabled: previous.selectionEnabled,
+  });
+  const nextActive = isProjectSelectedByRoute({
+    selection: next.activeWorkspaceSelection,
+    project: next.project,
+    serverId: next.serverId,
+    enabled: next.selectionEnabled,
+  });
+  if (previousActive !== nextActive) {
+    return false;
+  }
+  if (!previousActive) {
+    return true;
+  }
+  return (
+    activeWorkspaceSelectionKey(previous.activeWorkspaceSelection) ===
+    activeWorkspaceSelectionKey(next.activeWorkspaceSelection)
   );
 }
 
@@ -2721,6 +2742,7 @@ function ProjectModeList({
           keyExtractor={projectKeyExtractor}
           renderItem={renderProject}
           onDragEnd={handleProjectDragEnd}
+          extraData={activeWorkspaceSelectionKey(activeWorkspaceSelection)}
           scrollEnabled={false}
           useDragHandle
           nestable={platformIsNative}
