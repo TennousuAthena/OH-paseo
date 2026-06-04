@@ -84,6 +84,7 @@ import {
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
 import { IntegrationsSection } from "@/desktop/components/integrations-section";
+import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section";
 import { isElectronRuntime } from "@/desktop/host";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
@@ -133,6 +134,7 @@ interface SidebarSectionItem {
 
 const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
   { id: "general", label: "General", icon: Settings },
+  { id: "daemon", label: "Daemon", icon: Server, desktopOnly: true },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "shortcuts", label: "Shortcuts", icon: Keyboard, desktopOnly: true },
   { id: "integrations", label: "Integrations", icon: Puzzle, desktopOnly: true },
@@ -154,6 +156,24 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "providers", label: "Providers", icon: Boxes },
   { id: "host", label: "Host", icon: Server },
 ];
+
+function renderHostSettingsContent(
+  view: Extract<SettingsView, { kind: "host" }>,
+  onHostRemoved: () => void,
+): ReactNode {
+  switch (view.section) {
+    case "connections":
+      return <HostConnectionsPage serverId={view.serverId} />;
+    case "agents":
+      return <HostAgentsPage serverId={view.serverId} />;
+    case "workspaces":
+      return <HostWorkspacesPage serverId={view.serverId} />;
+    case "providers":
+      return <HostProvidersPage serverId={view.serverId} />;
+    case "host":
+      return <HostSettingsPage serverId={view.serverId} onHostRemoved={onHostRemoved} />;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Trigger + sidebar style helpers
@@ -1325,18 +1345,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
 
   const content = (() => {
     if (view.kind === "host") {
-      switch (view.section) {
-        case "connections":
-          return <HostConnectionsPage serverId={view.serverId} />;
-        case "agents":
-          return <HostAgentsPage serverId={view.serverId} />;
-        case "workspaces":
-          return <HostWorkspacesPage serverId={view.serverId} />;
-        case "providers":
-          return <HostProvidersPage serverId={view.serverId} />;
-        case "host":
-          return <HostSettingsPage serverId={view.serverId} onHostRemoved={handleHostRemoved} />;
-      }
+      return renderHostSettingsContent(view, handleHostRemoved);
     }
     if (view.kind === "projects") {
       return <ProjectsScreen view={view} />;
@@ -1356,6 +1365,8 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
               handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}
             />
           );
+        case "daemon":
+          return <LocalDaemonSection />;
         case "appearance":
           return <AppearanceSection />;
         case "shortcuts":
