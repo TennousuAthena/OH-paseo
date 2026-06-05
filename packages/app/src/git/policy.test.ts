@@ -49,7 +49,7 @@ function createInput(overrides: Partial<BuildGitActionsInput> = {}): BuildGitAct
     aheadOfOrigin: 0,
     behindOfOrigin: 0,
     shouldPromoteArchive: false,
-    shipDefault: "merge",
+    shipDefault: "pr",
     runtime: {
       commit: {
         disabled: false,
@@ -387,13 +387,31 @@ describe("git-actions-policy", () => {
     });
   });
 
-  it("promotes local merge over update-from-base", () => {
+  it("promotes Create PR over push and local merge when PR is the ship default", () => {
+    const actions = buildGitActions(
+      createInput({
+        hasRemote: true,
+        isOnBaseBranch: false,
+        aheadCount: 2,
+        aheadOfOrigin: 2,
+        behindBaseCount: 3,
+      }),
+    );
+
+    expect(actions.primary).toMatchObject({
+      id: "pr",
+      label: "Create PR",
+    });
+  });
+
+  it("uses local merge when merge is the stored ship default", () => {
     const actions = buildGitActions(
       createInput({
         hasRemote: true,
         isOnBaseBranch: false,
         aheadCount: 2,
         behindBaseCount: 3,
+        shipDefault: "merge",
       }),
     );
 
@@ -665,7 +683,7 @@ describe("git-actions-policy", () => {
       }),
     );
 
-    expect(actions.primary).toMatchObject({ id: "merge-branch", label: "Merge locally" });
+    expect(actions.primary).toMatchObject({ id: "pr", label: "View PR" });
     expect(actions.secondary.some((action) => action.id.startsWith("enable-pr-auto-merge"))).toBe(
       false,
     );
@@ -766,7 +784,7 @@ describe("git-actions-policy", () => {
       }),
     );
 
-    expect(actions.primary).toMatchObject({ id: "merge-branch", label: "Merge locally" });
+    expect(actions.primary).toMatchObject({ id: "pr", label: "View PR" });
     expect(
       actions.secondary.some((action) =>
         ["merge-pr-squash", "merge-pr-merge", "merge-pr-rebase"].includes(action.id),
