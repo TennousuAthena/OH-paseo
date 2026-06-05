@@ -279,6 +279,7 @@ interface ClaudeAgentClientOptions {
   runtimeSettings?: ProviderRuntimeSettings;
   queryFactory?: ClaudeQueryFactory;
   resolveBinary?: () => Promise<string>;
+  configDir?: string;
 }
 
 interface ClaudeAgentSessionOptions {
@@ -1277,6 +1278,7 @@ export class ClaudeAgentClient implements AgentClient {
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly queryFactory?: ClaudeQueryFactory;
   private readonly resolveBinary: () => Promise<string>;
+  private readonly configDir?: string;
 
   constructor(options: ClaudeAgentClientOptions) {
     this.defaults = options.defaults;
@@ -1284,6 +1286,7 @@ export class ClaudeAgentClient implements AgentClient {
     this.runtimeSettings = options.runtimeSettings;
     this.queryFactory = options.queryFactory;
     this.resolveBinary = options.resolveBinary ?? (() => resolveClaudeBinary(this.runtimeSettings));
+    this.configDir = options.configDir;
   }
 
   async createSession(
@@ -1334,7 +1337,7 @@ export class ClaudeAgentClient implements AgentClient {
 
   async listModels(_options: ListModelsOptions): Promise<AgentModelDefinition[]> {
     // Claude exposes a global catalog here; cwd/force are intentionally irrelevant.
-    return await getClaudeModelsWithSettings(this.logger);
+    return await getClaudeModelsWithSettings(this.logger, this.configDir);
   }
 
   async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
