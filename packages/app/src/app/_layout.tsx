@@ -1,4 +1,5 @@
 import "@/styles/unistyles";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { PortalProvider } from "@gorhom/portal";
 import { QueryClientProvider } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
@@ -931,17 +932,20 @@ function RuntimeProviders({ children }: { children: ReactNode }) {
   );
 }
 
-// PortalProvider must remain the innermost global provider here.
+// PortalProvider must stay inside normal app-wide context providers here.
 // `@gorhom/portal` renders portaled children at the host's location in the
 // tree, so any context a portaled sheet might consume (QueryClient, theme,
 // auth, settings, …) must wrap PortalProvider — not be wrapped by it.
-// Adding a new global provider? Put it above PortalProvider.
+// BottomSheetModalProvider is the exception: Gorhom modals consume portal
+// context and need one shared provider for sibling sheets to stack.
 function RootProviders({ children }: { children: ReactNode }) {
   return (
     <QueryProvider>
       <SafeAreaProvider>
         <KeyboardProvider>
-          <PortalProvider>{children}</PortalProvider>
+          <PortalProvider>
+            <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
+          </PortalProvider>
         </KeyboardProvider>
       </SafeAreaProvider>
     </QueryProvider>
