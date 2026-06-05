@@ -103,6 +103,7 @@ interface SidebarSharedProps {
   toggleProjectCollapsed: SidebarShortcutModel["toggleProjectCollapsed"];
   handleRefresh: () => void;
   handleHostSelect: (nextServerId: string) => void;
+  handleNewWorkspaceNavigate: () => void;
   handleOpenProject: () => void;
   handleHome: () => void;
   handleSettings: () => void;
@@ -118,7 +119,7 @@ interface MobileSidebarProps extends SidebarSharedProps {
   insetsTop: number;
   insetsBottom: number;
   isOpen: boolean;
-  closeToAgent: () => void;
+  closeSidebar: () => void;
   handleViewMoreNavigate: () => void;
 }
 
@@ -229,6 +230,11 @@ export const LeftSidebar = memo(function LeftSidebar({
     void openProjectPicker();
   }, [openProjectPicker]);
 
+  const handleNewWorkspaceNavigate = useCallback(() => {
+    if (!activeServerId) return;
+    router.push(buildHostNewWorkspaceRoute(activeServerId));
+  }, [activeServerId]);
+
   const handleSettingsMobile = useCallback(() => {
     showMobileAgent();
     router.push(buildSettingsRoute());
@@ -297,7 +303,8 @@ export const LeftSidebar = memo(function LeftSidebar({
         insetsTop={insets.top}
         insetsBottom={insets.bottom}
         isOpen={isOpen}
-        closeToAgent={showMobileAgent}
+        closeSidebar={showMobileAgent}
+        handleNewWorkspaceNavigate={handleNewWorkspaceNavigate}
         handleOpenProject={handleOpenProjectMobile}
         handleHome={handleHomeMobile}
         handleSettings={handleSettingsMobile}
@@ -311,6 +318,7 @@ export const LeftSidebar = memo(function LeftSidebar({
       {...sharedProps}
       insetsTop={insets.top}
       isOpen={isOpen}
+      handleNewWorkspaceNavigate={handleNewWorkspaceNavigate}
       handleOpenProject={handleOpenProjectDesktop}
       handleHome={handleHomeDesktop}
       handleSettings={handleSettingsDesktop}
@@ -554,13 +562,14 @@ function MobileSidebar({
   handleRefresh,
   handleHostSelect,
   renderHostOption,
+  handleNewWorkspaceNavigate,
   handleOpenProject,
   handleHome,
   handleSettings,
   insetsTop,
   insetsBottom,
   isOpen,
-  closeToAgent,
+  closeSidebar,
   handleViewMoreNavigate,
 }: MobileSidebarProps) {
   const pathname = usePathname();
@@ -581,8 +590,8 @@ function MobileSidebar({
 
   const handleCloseFromGesture = useCallback(() => {
     gestureAnimatingRef.current = true;
-    closeToAgent();
-  }, [closeToAgent, gestureAnimatingRef]);
+    closeSidebar();
+  }, [closeSidebar, gestureAnimatingRef]);
 
   const handleViewMore = useCallback(() => {
     if (!activeServerId) {
@@ -590,20 +599,25 @@ function MobileSidebar({
     }
     translateX.value = -windowWidth;
     backdropOpacity.value = 0;
-    closeToAgent();
+    closeSidebar();
     handleViewMoreNavigate();
   }, [
     activeServerId,
     backdropOpacity,
-    closeToAgent,
+    closeSidebar,
     handleViewMoreNavigate,
     translateX,
     windowWidth,
   ]);
 
   const handleWorkspacePress = useCallback(() => {
-    closeToAgent();
-  }, [closeToAgent]);
+    closeSidebar();
+  }, [closeSidebar]);
+
+  const handleNewWorkspace = useCallback(() => {
+    closeSidebar();
+    handleNewWorkspaceNavigate();
+  }, [closeSidebar, handleNewWorkspaceNavigate]);
 
   const closeGesture = useMemo(
     () =>
@@ -745,10 +759,13 @@ function MobileSidebar({
                 testID="sidebar-sessions"
               />
             </View>
-            <WorkspacesSectionHeader serverId={activeServerId} />
+            <WorkspacesSectionHeader
+              serverId={activeServerId}
+              onNewWorkspacePress={handleNewWorkspace}
+            />
             <Pressable
               style={styles.mobileCloseButton}
-              onPress={closeToAgent}
+              onPress={closeSidebar}
               testID="sidebar-close"
               nativeID="sidebar-close"
               accessible
@@ -826,6 +843,7 @@ function DesktopSidebar({
   handleRefresh,
   handleHostSelect,
   renderHostOption,
+  handleNewWorkspaceNavigate,
   handleOpenProject,
   handleHome,
   handleSettings,
@@ -913,7 +931,10 @@ function DesktopSidebar({
             />
           </View>
         </View>
-        <WorkspacesSectionHeader serverId={activeServerId} />
+        <WorkspacesSectionHeader
+          serverId={activeServerId}
+          onNewWorkspacePress={handleNewWorkspaceNavigate}
+        />
 
         {isInitialLoad ? (
           <SidebarAgentListSkeleton />
@@ -958,17 +979,17 @@ function DesktopSidebar({
   );
 }
 
-function WorkspacesSectionHeader({ serverId }: { serverId: string | null }) {
+function WorkspacesSectionHeader({
+  serverId,
+  onNewWorkspacePress,
+}: {
+  serverId: string | null;
+  onNewWorkspacePress: () => void;
+}) {
   const { theme } = useUnistyles();
   const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const commandCenterKeys = useShortcutKeys("toggle-command-center");
   const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
-  const handleNewWorkspacePress = useCallback(() => {
-    if (!serverId) {
-      return;
-    }
-    router.push(buildHostNewWorkspaceRoute(serverId));
-  }, [serverId]);
   const searchButtonStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.workspacesHeaderIconButton,
@@ -988,7 +1009,7 @@ function WorkspacesSectionHeader({ serverId }: { serverId: string | null }) {
               accessibilityLabel="New workspace"
               testID="sidebar-new-workspace"
               style={searchButtonStyle}
-              onPress={handleNewWorkspacePress}
+              onPress={onNewWorkspacePress}
             >
               {({ hovered, pressed }) => (
                 <Plus
