@@ -19,10 +19,26 @@ type SupervisorLifecycleMessage =
       reason?: string;
     };
 
+interface SupervisorHeartbeatMessage {
+  type: "paseo:supervisor-heartbeat";
+}
+
 interface BootstrapResult {
   paseoHome: string;
   logger: ReturnType<typeof createRootLogger>;
   config: ReturnType<typeof loadConfig>;
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    if (typeof err === "object" && err !== null && "code" in err && err.code === "EPERM") {
+      return true;
+    }
+    return false;
+  }
 }
 
 function bootstrapFromEnvironment(): BootstrapResult {
@@ -149,6 +165,46 @@ async function main() {
     }
     beginShutdown("restart lifecycle intent", { successExitCode: 0 });
   };
+
+  const installSupervisorLivenessGuard = () => {
+    if (typeof process.send !== "function") {
+      return;
+    }
+
+    const supervisorPid = process.ppid;
+    let lastSupervisorHeartbeatAt = Date.now();
+    let supervisorShutdownRequested = false;
+    const requestSupervisorShutdown = (reason: string) => {
+      if (supervisorShutdownRequested) {
+        return;
+      }
+      supervisorShutdownRequested = true;
+      beginShutdown(reason);
+    };
+
+    process.on("message", (message: unknown) => {
+      if (
+        typeof message === "object" &&
+        message !== null &&
+        "type" in message &&
+        (message as SupervisorHeartbeatMessage).type === "paseo:supervisor-heartbeat"
+      ) {
+        lastSupervisorHeartbeatAt = Date.now();
+      }
+    });
+    process.on("disconnect", () => requestSupervisorShutdown("supervisor disconnect"));
+
+    const timer = setInterval(() => {
+      const ipcConnected = typeof process.connected === "boolean" ? process.connected : true;
+      const heartbeatExpired = Date.now() - lastSupervisorHeartbeatAt > 3500;
+      if (ipcConnected === false || !isPidAlive(supervisorPid) || heartbeatExpired) {
+        requestSupervisorShutdown("supervisor disconnect");
+      }
+    }, 1000);
+    timer.unref();
+  };
+
+  installSupervisorLivenessGuard();
 
   try {
     daemon = await createPaseoDaemon(
