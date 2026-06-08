@@ -237,6 +237,7 @@ async function main() {
       const ipcConnected = typeof process.connected === "boolean" ? process.connected : true;
       const heartbeatExpired = Date.now() - lastSupervisorHeartbeatAt > 3500;
       const supervisorChanged = process.ppid !== supervisorPid;
+
       if (ipcConnected === false) {
         exitAfterSupervisorLoss("ipc_disconnected");
         return;
@@ -245,12 +246,8 @@ async function main() {
         exitAfterSupervisorLoss("supervisor_parent_pid_changed");
         return;
       }
-      if (!isPidAlive(supervisorPid)) {
+      if (heartbeatExpired && !isPidAlive(supervisorPid)) {
         exitAfterSupervisorLoss("supervisor_pid_dead");
-        return;
-      }
-      if (heartbeatExpired) {
-        exitAfterSupervisorLoss("supervisor_heartbeat_expired");
       }
     }, 1000);
     timer.unref();
