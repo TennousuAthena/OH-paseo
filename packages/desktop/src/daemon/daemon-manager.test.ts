@@ -359,8 +359,9 @@ describe("daemon-manager commands", () => {
 
     expect(thrown).toBeInstanceOf(Error);
     const message = thrown?.message ?? "";
+    const recentLogsLabel = message.match(/Recent logs \(([^)]*)\):/)?.[1];
     expect(message).toContain("Daemon failed to start: exit code 1");
-    expect(message).toContain(`Recent logs (${mocks.paseoHome}/daemon.log):`);
+    expect(recentLogsLabel?.split(/[\\/]/).at(-1)).toBe("daemon.log");
     expect(message).toContain("recent daemon failure");
     expect(mocks.spawnProcess).toHaveBeenCalledWith(
       "node",

@@ -1,4 +1,4 @@
-import type { Event as OpenCodeEvent, OpencodeClient } from "@opencode-ai/sdk/v2/client";
+import type { OpencodeClient } from "@opencode-ai/sdk/v2/client";
 
 import type { OpenCodeRuntime, OpenCodeServerAcquisition } from "../runtime.js";
 
@@ -92,7 +92,7 @@ export class TestOpenCodeClient {
   sessionMessagesResponse: OpenCodeResponse = { data: [] };
   sessionPromptAsyncEvents: unknown[] = [idleEvent()];
   sessionPromptAsyncResponse: OpenCodeResponse = {};
-  sessionSummarizeEvents: OpenCodeEvent[] = [];
+  sessionSummarizeEvents: unknown[] = [idleEvent()];
   sessionSummarizeResponse: OpenCodeResponse = { data: {} };
   sessionUpdateResponse: OpenCodeResponse = {};
   private readonly queuedEventStream = createQueuedEventStream();
