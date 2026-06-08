@@ -2510,6 +2510,10 @@ function appendOpenCodeMessagePartDelta(
   const knownPartType = partID ? state.partTypes.get(partID) : undefined;
   const isReasoning = knownPartType === "reasoning" || field === "reasoning";
 
+  if (messageID && state.compactionSummaryMessageIds.has(messageID)) {
+    return;
+  }
+
   if (isReasoning) {
     if (partID) {
       state.streamedPartKeys.add(`reasoning:${partID}`);
@@ -2525,6 +2529,10 @@ function appendOpenCodeMessagePartDelta(
     return;
   }
   if (messageRole === "user") {
+    return;
+  }
+  if (messageID && state.suppressAssistantMessagesUntilIdle?.active === true) {
+    state.compactionSummaryMessageIds.add(messageID);
     return;
   }
   if (partID) {
