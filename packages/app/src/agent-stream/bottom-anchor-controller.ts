@@ -560,6 +560,12 @@ function createBottomAnchorControllerDriver(
       });
       if (shouldRestick && !pendingRequest) {
         pendingVerification = { requestId: null, retries: 0 };
+        if (attemptHandle) {
+          input.cancelFrame(attemptHandle);
+          attemptHandle = null;
+        }
+        runAttempt(false);
+        return;
       }
       if (shouldRestick || pendingRequest) {
         evaluate(false, "content_size_change");
@@ -656,11 +662,7 @@ export const __private__ = {
     previousContentHeight: number;
     contentHeight: number;
   }): boolean {
-    return (
-      input.mode === "sticky-bottom" &&
-      input.previousContentHeight > 0 &&
-      input.contentHeight > input.previousContentHeight
-    );
+    return input.mode === "sticky-bottom" && input.contentHeight > input.previousContentHeight;
   },
   shouldDetachFromScrollAway(input: {
     mode: BottomAnchorMode;
