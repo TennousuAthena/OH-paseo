@@ -608,6 +608,47 @@ describe("bottom anchor controller driver", () => {
 
     expect(harness.driver.getSnapshot().mode).toBe("sticky-bottom");
   });
+
+  it("keeps native sticky content changes anchored when measured height is unchanged", () => {
+    const harness = createDriverHarness({
+      transportBehavior: {
+        verificationDelayFrames: 2,
+        verificationRetryMode: "recheck",
+      },
+      measurementState: createMeasurementState({
+        containerKey: "native-virtualized",
+        viewportWidth: 390,
+        viewportHeight: 546,
+        contentHeight: 546,
+        offsetY: 0,
+        viewportMeasuredForKey: "native-virtualized",
+        contentMeasuredForKey: "native-virtualized",
+      }),
+    });
+    harness.scrollToBottom.mockImplementation(() => {
+      harness.context.measurementState.offsetY = 0;
+      harness.context.nearBottom = true;
+    });
+
+    harness.driver.prepareForStickyContentChange();
+
+    expect(harness.scrollToBottom).toHaveBeenCalledTimes(1);
+    expect(harness.driver.getSnapshot()).toMatchObject({
+      mode: "sticky-bottom",
+      pendingVerification: {
+        requestId: null,
+      },
+    });
+
+    harness.context.measurementState.offsetY = 50;
+    harness.context.nearBottom = false;
+    harness.driver.handleScrollNearBottomChange({
+      nextIsNearBottom: false,
+      scrollDelta: 50,
+    });
+
+    expect(harness.driver.getSnapshot().mode).toBe("sticky-bottom");
+  });
 });
 
 describe("controller helper predicates", () => {
