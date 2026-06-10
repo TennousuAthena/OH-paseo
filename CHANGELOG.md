@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.93 - 2026-06-10
+
+### Added
+
+- **Claude Fable 5 is available in the Claude model picker** ([#1443](https://github.com/getpaseo/paseo/pull/1443) by [@0-Captain](https://github.com/0-Captain))
+
 ## 0.1.92 - 2026-06-10
 
 ### Added
