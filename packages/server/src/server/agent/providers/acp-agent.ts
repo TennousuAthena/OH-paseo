@@ -78,14 +78,17 @@ import {
   type AgentStreamEvent,
   type AgentTimelineItem,
   type AgentUsage,
+  type ImportableProviderSession,
+  type ImportProviderSessionContext,
+  type ImportProviderSessionInput,
+  type ListImportableSessionsOptions,
   type ListModesOptions,
   type ListModelsOptions,
-  type ListPersistedAgentsOptions,
   type McpServerConfig,
-  type PersistedAgentDescriptor,
   type ToolCallDetail,
   type ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
+import { importSessionFromPersistence } from "../provider-session-import.js";
 import {
   checkProviderLaunchAvailable,
   createProviderEnvSpec,
@@ -742,16 +745,16 @@ export class ACPAgentClient implements AgentClient {
     }
   }
 
-  async listPersistedAgents(
-    options?: ListPersistedAgentsOptions,
-  ): Promise<PersistedAgentDescriptor[]> {
+  async listImportableSessions(
+    options?: ListImportableSessionsOptions,
+  ): Promise<ImportableProviderSession[]> {
     const probe = await this.spawnProcess(PROBE_ENV);
     try {
       if (!probe.initialize.agentCapabilities?.sessionCapabilities?.list) {
         return [];
       }
 
-      const sessions: PersistedAgentDescriptor[] = [];
+      const sessions: ImportableProviderSession[] = [];
       let cursor: string | null | undefined;
       for (;;) {
         const page: ListSessionsResponse = await this.runACPRequest(() =>
@@ -759,22 +762,12 @@ export class ACPAgentClient implements AgentClient {
         );
         for (const session of page.sessions) {
           sessions.push({
-            provider: this.provider,
-            sessionId: session.sessionId,
+            providerHandleId: session.sessionId,
             cwd: session.cwd,
             title: session.title ?? null,
+            firstPromptPreview: null,
+            lastPromptPreview: null,
             lastActivityAt: session.updatedAt ? new Date(session.updatedAt) : new Date(0),
-            persistence: {
-              provider: this.provider,
-              sessionId: session.sessionId,
-              nativeHandle: session.sessionId,
-              metadata: {
-                provider: this.provider,
-                cwd: session.cwd,
-                title: session.title ?? null,
-              },
-            },
-            timeline: [],
           });
         }
         cursor = page.nextCursor ?? null;
@@ -786,6 +779,15 @@ export class ACPAgentClient implements AgentClient {
     } finally {
       await this.closeProbe(probe);
     }
+  }
+
+  async importSession(input: ImportProviderSessionInput, context: ImportProviderSessionContext) {
+    return importSessionFromPersistence({
+      provider: this.provider,
+      request: input,
+      context,
+      resumeSession: this.resumeSession.bind(this),
+    });
   }
 
   async isAvailable(): Promise<boolean> {
