@@ -74,6 +74,15 @@ const CATALOG_DATA = [
     command: ["npx", "-y", "@tencent-ai/codebuddy-code@2.103.4", "--acp"],
   },
   {
+    id: "codewhale",
+    title: "CodeWhale",
+    description: "Terminal coding agent for DeepSeek V4 and open models",
+    version: "0.8.55",
+    iconId: "codewhale",
+    installLink: "https://codewhale.net/",
+    command: ["codewhale", "serve", "--acp"],
+  },
+  {
     id: "cortex-code",
     title: "Cortex Code",
     description: "Snowflake's Cortex Code coding agent",
@@ -117,15 +126,6 @@ const CATALOG_DATA = [
     iconId: "deepagents",
     installLink: "https://docs.langchain.com/oss/javascript/deepagents/overview",
     command: ["npx", "-y", "deepagents-acp@0.1.12"],
-  },
-  {
-    id: "deepseek-tui",
-    title: "DeepSeek TUI",
-    description: "Terminal coding agent for DeepSeek V4",
-    version: "0.8.39",
-    iconId: "deepseek-tui",
-    installLink: "https://github.com/Hmbown/DeepSeek-TUI",
-    command: ["deepseek", "serve", "--acp"],
   },
   {
     id: "devin",
