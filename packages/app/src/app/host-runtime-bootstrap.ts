@@ -1,7 +1,11 @@
 import type { ActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import type { DaemonStartResult } from "@/runtime/daemon-start-service";
 import type { Href } from "expo-router";
-import { buildHostRootRoute } from "@/utils/host-routes";
+import {
+  buildHostOpenProjectRoute,
+  buildHostRootRoute,
+  buildHostWorkspaceRoute,
+} from "@/utils/host-routes";
 
 export interface HostRuntimeBootstrapStore {
   boot: () => void;
@@ -56,7 +60,7 @@ export function startDaemonIfGateAllows(input: {
     });
 }
 
-export const WELCOME_ROUTE: Href = "/welcome";
+const WELCOME_ROUTE: Href = "/welcome";
 
 export type StartupBlocker =
   | { kind: "none" }
@@ -108,51 +112,123 @@ export function shouldRunStartupGiveUpTimer(input: {
   return input.startupBlocker.kind === "none";
 }
 
-export interface ResolveStartupRedirectInput {
+export type StartupRegistryStatus = "loading" | "ready";
+
+export interface IndexStartupRouteTarget {
+  kind: "index";
   pathname: string;
+}
+
+export interface HostStartupRouteTarget {
+  kind: "host";
+  serverId: string | null;
+}
+
+export type StartupRouteTarget = IndexStartupRouteTarget | HostStartupRouteTarget;
+
+interface ResolveStartupRouteBaseInput {
+  startupBlocker: StartupBlocker;
+  hostRegistryStatus: StartupRegistryStatus;
+  hosts: readonly { serverId: string }[];
+}
+
+export interface ResolveIndexStartupRouteInput extends ResolveStartupRouteBaseInput {
+  route: IndexStartupRouteTarget;
   anyOnlineHostServerId: string | null;
   workspaceSelection: ActiveWorkspaceSelection | null;
   isWorkspaceSelectionLoaded: boolean;
   hasGivenUpWaitingForHost: boolean;
 }
 
+export interface ResolveHostStartupRouteInput extends ResolveStartupRouteBaseInput {
+  route: HostStartupRouteTarget;
+}
+
+export type ResolveStartupRouteInput = ResolveIndexStartupRouteInput | ResolveHostStartupRouteInput;
+
+export type StartupRouteDecision =
+  | { kind: "render" }
+  | { kind: "splash" }
+  | { kind: "redirect"; href: Href };
+
 function isIndexPathname(pathname: string) {
   return pathname === "/" || pathname === "";
 }
 
-export function resolveStartupWorkspaceSelection(
-  input: ResolveStartupRedirectInput,
-): ActiveWorkspaceSelection | null {
-  if (!isIndexPathname(input.pathname)) {
-    return null;
+function hostExists(hosts: readonly { serverId: string }[], serverId: string | null): boolean {
+  if (!serverId) {
+    return false;
   }
-  if (!input.isWorkspaceSelectionLoaded) {
-    return null;
-  }
-  if (!input.workspaceSelection) {
-    return null;
-  }
-  return input.workspaceSelection;
+  return hosts.some((host) => host.serverId === serverId);
 }
 
-export function resolveStartupRedirectRoute(input: ResolveStartupRedirectInput): Href | null {
-  if (!isIndexPathname(input.pathname)) {
-    return null;
+function resolveReadyIndexStartupRoute(input: ResolveIndexStartupRouteInput): StartupRouteDecision {
+  if (!isIndexPathname(input.route.pathname)) {
+    return { kind: "render" };
   }
+
   if (!input.isWorkspaceSelectionLoaded) {
-    return null;
+    return { kind: "splash" };
+  }
+
+  const workspaceSelection = input.workspaceSelection;
+  if (workspaceSelection && hostExists(input.hosts, workspaceSelection.serverId)) {
+    return {
+      kind: "redirect",
+      href: buildHostWorkspaceRoute(workspaceSelection.serverId, workspaceSelection.workspaceId),
+    };
   }
 
   if (input.anyOnlineHostServerId) {
-    if (resolveStartupWorkspaceSelection(input)) {
-      return null;
-    }
-    return buildHostRootRoute(input.anyOnlineHostServerId);
+    return { kind: "redirect", href: buildHostRootRoute(input.anyOnlineHostServerId) };
+  }
+
+  const savedHostServerId = input.hosts[0]?.serverId ?? null;
+  if (savedHostServerId) {
+    return { kind: "redirect", href: buildHostRootRoute(savedHostServerId) };
   }
 
   if (input.hasGivenUpWaitingForHost) {
-    return WELCOME_ROUTE;
+    return { kind: "redirect", href: WELCOME_ROUTE };
   }
 
-  return null;
+  return { kind: "splash" };
+}
+
+function resolveReadyHostStartupRoute(input: ResolveHostStartupRouteInput): StartupRouteDecision {
+  if (hostExists(input.hosts, input.route.serverId)) {
+    return { kind: "render" };
+  }
+
+  const fallbackServerId = input.hosts[0]?.serverId ?? null;
+  if (fallbackServerId) {
+    return { kind: "redirect", href: buildHostOpenProjectRoute(fallbackServerId) };
+  }
+
+  return { kind: "redirect", href: WELCOME_ROUTE };
+}
+
+function isHostStartupRouteInput(
+  input: ResolveStartupRouteInput,
+): input is ResolveHostStartupRouteInput {
+  return input.route.kind === "host";
+}
+
+export function resolveStartupRoute(input: ResolveStartupRouteInput): StartupRouteDecision {
+  if (isHostStartupRouteInput(input)) {
+    if (input.startupBlocker.kind !== "none" || input.hostRegistryStatus === "loading") {
+      return { kind: "render" };
+    }
+    return resolveReadyHostStartupRoute(input);
+  }
+
+  if (input.startupBlocker.kind !== "none") {
+    return { kind: "splash" };
+  }
+
+  if (input.hostRegistryStatus === "loading") {
+    return { kind: "splash" };
+  }
+
+  return resolveReadyIndexStartupRoute(input);
 }
