@@ -6,6 +6,7 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { queryClient as singletonQueryClient } from "@/query/query-client";
+import { agentCommandsQueryRoot } from "@/hooks/agent-commands-query";
 import {
   isProvidersSnapshotHomeScope,
   normalizeProvidersSnapshotCwd,
@@ -52,6 +53,10 @@ export async function refreshAndApplyProvidersSnapshot(input: {
   );
   const snapshot = await fetchProvidersSnapshot({ client: input.client, cwd: input.cwd });
   input.queryClient.setQueryData(providersSnapshotQueryKey(input.serverId, input.cwd), snapshot);
+  void input.queryClient.invalidateQueries({
+    queryKey: agentCommandsQueryRoot(input.serverId),
+    exact: false,
+  });
   if (isProvidersSnapshotHomeScope(input.cwd)) {
     void input.queryClient.invalidateQueries({
       queryKey: providersSnapshotQueryRoot(input.serverId),
@@ -74,6 +79,10 @@ export function applyProvidersSnapshotUpdate(input: {
     entries: input.message.payload.entries,
     generatedAt: input.message.payload.generatedAt,
     requestId: "providers_snapshot_update",
+  });
+  void input.queryClient.invalidateQueries({
+    queryKey: agentCommandsQueryRoot(input.serverId),
+    exact: false,
   });
 }
 
