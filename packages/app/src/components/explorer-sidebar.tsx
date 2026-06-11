@@ -23,11 +23,8 @@ import {
   type ExplorerTab,
 } from "@/stores/panel-store";
 import { useExplorerSidebarAnimation } from "@/contexts/explorer-sidebar-animation-context";
-import {
-  MOBILE_VISUAL_PANEL_AGENT,
-  MOBILE_VISUAL_PANEL_FILE_EXPLORER,
-  useSidebarAnimation,
-} from "@/contexts/sidebar-animation-context";
+import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
+import { canCloseRightSidebarGesture } from "@/utils/sidebar-animation-state";
 import { HEADER_INNER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
 import { GitDiffPane } from "@/git/diff-pane";
 import { FileExplorerPane } from "./file-explorer-pane";
@@ -68,7 +65,7 @@ export function ExplorerSidebar({
   const { width: viewportWidth } = useWindowDimensions();
   const closeTouchStartX = useSharedValue(0);
   const closeTouchStartY = useSharedValue(0);
-  const { mobileVisualPanel, gestureAnimatingRef: mobilePanelGestureAnimatingRef } =
+  const { mobilePanelState, gestureAnimatingRef: mobilePanelGestureAnimatingRef } =
     useSidebarAnimation();
 
   const { style: mobileKeyboardInsetStyle } = useKeyboardShiftStyle({
@@ -166,7 +163,7 @@ export function ExplorerSidebar({
           const absDeltaX = Math.abs(deltaX);
           const absDeltaY = Math.abs(deltaY);
 
-          if (mobileVisualPanel.value !== MOBILE_VISUAL_PANEL_FILE_EXPLORER) {
+          if (!canCloseRightSidebarGesture(mobilePanelState.value)) {
             stateManager.fail();
             return;
           }
@@ -206,11 +203,9 @@ export function ExplorerSidebar({
             windowWidth,
           });
           if (shouldClose) {
-            mobileVisualPanel.value = MOBILE_VISUAL_PANEL_AGENT;
             animateToClose();
             runOnJS(handleCloseFromGesture)();
           } else {
-            mobileVisualPanel.value = MOBILE_VISUAL_PANEL_FILE_EXPLORER;
             animateToOpen();
           }
         })
@@ -222,7 +217,7 @@ export function ExplorerSidebar({
       windowWidth,
       translateX,
       backdropOpacity,
-      mobileVisualPanel,
+      mobilePanelState,
       animateToOpen,
       animateToClose,
       handleCloseFromGesture,

@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  resolveStartupBlocker,
+  resolveStartupNavigationReady,
   resolveStartupRedirectRoute,
   resolveStartupWorkspaceSelection,
+  shouldRunStartupGiveUpTimer,
   startHostRuntimeBootstrap,
   WELCOME_ROUTE,
 } from "./host-runtime-bootstrap";
@@ -114,6 +117,80 @@ describe("startHostRuntimeBootstrap", () => {
     expect(daemonStartService.start).toHaveBeenCalledTimes(1);
 
     resolveStart?.({ ok: true });
+  });
+});
+
+describe("startup blocking policy", () => {
+  const noBlockerInput = {
+    isDesktopRuntime: false,
+    anyOnlineHostServerId: null,
+    daemonStartIsRunning: false,
+    daemonStartError: null,
+  };
+
+  it("runs the give-up timer when no startup blocker is active", () => {
+    const blocker = resolveStartupBlocker(noBlockerInput);
+
+    expect(blocker).toEqual({ kind: "none" });
+    expect(resolveStartupNavigationReady({ startupBlocker: blocker })).toBe(true);
+    expect(
+      shouldRunStartupGiveUpTimer({
+        startupBlocker: blocker,
+        anyOnlineHostServerId: null,
+        hasGivenUpWaitingForHost: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("blocks navigation while desktop is starting the managed daemon", () => {
+    const blocker = resolveStartupBlocker({
+      ...noBlockerInput,
+      isDesktopRuntime: true,
+      daemonStartIsRunning: true,
+    });
+
+    expect(blocker).toEqual({ kind: "managed-daemon-starting" });
+    expect(resolveStartupNavigationReady({ startupBlocker: blocker })).toBe(false);
+    expect(
+      shouldRunStartupGiveUpTimer({
+        startupBlocker: blocker,
+        anyOnlineHostServerId: null,
+        hasGivenUpWaitingForHost: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("unblocks navigation when any host is online", () => {
+    const blocker = resolveStartupBlocker({
+      ...noBlockerInput,
+      isDesktopRuntime: true,
+      anyOnlineHostServerId: "srv_desktop",
+      daemonStartIsRunning: true,
+    });
+
+    expect(blocker).toEqual({ kind: "none" });
+    expect(resolveStartupNavigationReady({ startupBlocker: blocker })).toBe(true);
+  });
+
+  it("keeps desktop daemon startup errors on the startup error surface", () => {
+    const blocker = resolveStartupBlocker({
+      ...noBlockerInput,
+      isDesktopRuntime: true,
+      daemonStartError: "daemon failed to start",
+    });
+
+    expect(blocker).toEqual({
+      kind: "managed-daemon-error",
+      message: "daemon failed to start",
+    });
+    expect(resolveStartupNavigationReady({ startupBlocker: blocker })).toBe(true);
+    expect(
+      shouldRunStartupGiveUpTimer({
+        startupBlocker: blocker,
+        anyOnlineHostServerId: null,
+        hasGivenUpWaitingForHost: false,
+      }),
+    ).toBe(false);
   });
 });
 

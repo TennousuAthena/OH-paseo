@@ -655,21 +655,6 @@ function buildComposerConfig(input: {
   };
 }
 
-function computeWorkspaceTitle(
-  workspace: ReturnType<typeof normalizeWorkspaceDescriptor> | null,
-  displayName: string,
-  sourceDirectory: string | null,
-): string {
-  const fallbackDirectoryName = sourceDirectory?.split(/[\\/]/).findLast(Boolean) ?? null;
-  return (
-    workspace?.name ||
-    workspace?.projectDisplayName ||
-    displayName ||
-    fallbackDirectoryName ||
-    "Choose project"
-  );
-}
-
 function collectAttachedPrNumbers(attachments: ReadonlyArray<UserComposerAttachment>): Set<number> {
   const numbers = new Set<number>();
   for (const attachment of attachments) {
@@ -801,7 +786,6 @@ export function NewWorkspaceScreen({
     projects,
     selectedProject,
     selectedSourceDirectory,
-    selectedDisplayName,
     projectPickerOptions,
     projectByOptionId,
     selectedProjectOptionId,
@@ -1091,12 +1075,6 @@ export function NewWorkspaceScreen({
     [composerState, draftKey, ensureWorkspace, serverId, toast],
   );
 
-  const workspaceTitle = computeWorkspaceTitle(
-    workspace,
-    selectedDisplayName,
-    selectedSourceDirectory,
-  );
-
   const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
   const handleAddImagesCallback = useCallback((addImages: (images: ImageAttachment[]) => void) => {
     addImagesRef.current = addImages;
@@ -1308,30 +1286,18 @@ export function NewWorkspaceScreen({
       triggerLabel,
     ],
   );
+  const screenHeaderLeft = useMemo(() => <SidebarMenuToggle />, []);
 
   return (
     <FileDropZone onFilesDropped={handleFilesDropped}>
       <View style={styles.container}>
-        <ScreenHeader
-          left={
-            <>
-              <SidebarMenuToggle />
-              <View style={styles.headerTitleContainer}>
-                <Text style={styles.headerTitle} numberOfLines={1}>
-                  New workspace
-                </Text>
-                <Text style={styles.headerProjectTitle} numberOfLines={1}>
-                  {workspaceTitle}
-                </Text>
-              </View>
-            </>
-          }
-          leftStyle={styles.headerLeft}
-          borderless
-        />
+        <ScreenHeader left={screenHeaderLeft} borderless />
         <View style={contentStyle}>
           <TitlebarDragRegion />
           <View style={styles.centered}>
+            <View style={styles.composerTitleContainer}>
+              <Text style={styles.composerTitle}>New workspace</Text>
+            </View>
             <Composer
               agentId={draftKey}
               serverId={serverId}
@@ -1385,29 +1351,15 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
   },
-  headerLeft: {
-    gap: theme.spacing[2],
+  composerTitleContainer: {
+    marginBottom: theme.spacing[8],
+    paddingLeft: theme.spacing[6],
+    paddingRight: theme.spacing[4],
   },
-  headerTitleContainer: {
-    flexShrink: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-  },
-  headerTitle: {
-    fontSize: theme.fontSize.base,
-    fontWeight: {
-      xs: "400",
-      md: "300",
-    },
+  composerTitle: {
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
-    flexShrink: 0,
-  },
-  headerProjectTitle: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.base,
-    flexShrink: 1,
   },
   errorText: {
     fontSize: theme.fontSize.sm,

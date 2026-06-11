@@ -58,6 +58,56 @@ export function startDaemonIfGateAllows(input: {
 
 export const WELCOME_ROUTE: Href = "/welcome";
 
+export type StartupBlocker =
+  | { kind: "none" }
+  | { kind: "managed-daemon-starting" }
+  | { kind: "managed-daemon-error"; message: string };
+
+export interface ResolveStartupBlockerInput {
+  isDesktopRuntime: boolean;
+  anyOnlineHostServerId: string | null;
+  daemonStartIsRunning: boolean;
+  daemonStartError: string | null;
+}
+
+export function resolveStartupBlocker(input: ResolveStartupBlockerInput): StartupBlocker {
+  if (!input.isDesktopRuntime) {
+    return { kind: "none" };
+  }
+
+  if (input.anyOnlineHostServerId) {
+    return { kind: "none" };
+  }
+
+  if (input.daemonStartError) {
+    return { kind: "managed-daemon-error", message: input.daemonStartError };
+  }
+
+  if (input.daemonStartIsRunning) {
+    return { kind: "managed-daemon-starting" };
+  }
+
+  return { kind: "none" };
+}
+
+export function resolveStartupNavigationReady(input: { startupBlocker: StartupBlocker }): boolean {
+  return input.startupBlocker.kind !== "managed-daemon-starting";
+}
+
+export function shouldRunStartupGiveUpTimer(input: {
+  startupBlocker: StartupBlocker;
+  anyOnlineHostServerId: string | null;
+  hasGivenUpWaitingForHost: boolean;
+}): boolean {
+  if (input.anyOnlineHostServerId) {
+    return false;
+  }
+  if (input.hasGivenUpWaitingForHost) {
+    return false;
+  }
+  return input.startupBlocker.kind === "none";
+}
+
 export interface ResolveStartupRedirectInput {
   pathname: string;
   anyOnlineHostServerId: string | null;

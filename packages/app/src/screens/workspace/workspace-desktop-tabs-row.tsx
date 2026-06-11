@@ -26,6 +26,7 @@ import {
   RotateCw,
   Rows2,
   Globe,
+  Plus,
   SquarePen,
   SquareTerminal,
   X,
@@ -48,6 +49,7 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
+import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
 import {
   WorkspaceTabPresentationResolver,
@@ -66,6 +68,7 @@ import { RenderProfile } from "@/utils/render-profiler";
 
 const DROPDOWN_WIDTH = 220;
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
+const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedX = withUnistyles(X);
@@ -80,12 +83,58 @@ const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedRows2 = withUnistyles(Rows2);
+const ThemedPlus = withUnistyles(Plus);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 function newTabActionButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
   return [styles.newTabActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
+}
+
+function inlineAddActionButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
+  return [styles.inlineAddActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
+}
+
+function updateMeasuredWidth(setWidth: Dispatch<SetStateAction<number>>, event: LayoutChangeEvent) {
+  const nextWidth = Math.round(event.nativeEvent.layout.width);
+  setWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+}
+
+interface WorkspaceInlineAddTabButtonProps {
+  shortcutKeys: ShortcutKey[][] | null;
+  onPress: () => void;
+  onLayout: (event: LayoutChangeEvent) => void;
+}
+
+function WorkspaceInlineAddTabButton({
+  shortcutKeys,
+  onPress,
+  onLayout,
+}: WorkspaceInlineAddTabButtonProps) {
+  return (
+    <View style={styles.inlineAddButton} onLayout={onLayout}>
+      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger
+          testID="workspace-new-agent-tab-inline"
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel="New agent tab"
+          style={inlineAddActionButtonStyle}
+        >
+          <ThemedPlus size={16} uniProps={mutedColorMapping} />
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center" offset={8}>
+          <View style={styles.newTabTooltipRow}>
+            <Text style={styles.newTabTooltipText}>New agent tab</Text>
+            {shortcutKeys ? (
+              <Shortcut chord={shortcutKeys} style={styles.newTabTooltipShortcut} />
+            ) : null}
+          </View>
+        </TooltipContent>
+      </Tooltip>
+    </View>
+  );
 }
 
 function TabContextMenuItem({
@@ -490,21 +539,27 @@ export function WorkspaceDesktopTabsRow({
   const splitDownKeys = useShortcutKeys("workspace-pane-split-down");
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
   const [tabsActionsWidth, setTabsActionsWidth] = useState<number>(0);
+  const [inlineAddButtonWidth, setInlineAddButtonWidth] = useState<number>(0);
 
   const handleTabsContainerLayout = useCallback((event: LayoutChangeEvent) => {
-    const nextWidth = Math.round(event.nativeEvent.layout.width);
-    setTabsContainerWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+    updateMeasuredWidth(setTabsContainerWidth, event);
   }, []);
 
   const handleTabsActionsLayout = useCallback((event: LayoutChangeEvent) => {
-    const nextWidth = Math.round(event.nativeEvent.layout.width);
-    setTabsActionsWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+    updateMeasuredWidth(setTabsActionsWidth, event);
+  }, []);
+
+  const handleInlineAddButtonLayout = useCallback((event: LayoutChangeEvent) => {
+    updateMeasuredWidth(setInlineAddButtonWidth, event);
   }, []);
 
   const layoutMetrics = useMemo(
     () => ({
       rowHorizontalInset: 0,
-      actionsReservedWidth: Math.max(0, tabsActionsWidth),
+      actionsReservedWidth: Math.max(
+        0,
+        tabsActionsWidth + (inlineAddButtonWidth || DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH),
+      ),
       rowPaddingHorizontal: 0,
       tabGap: 0,
       maxTabWidth: 200,
@@ -513,7 +568,7 @@ export function WorkspaceDesktopTabsRow({
       estimatedCharWidth: 7,
       closeButtonWidth: 22,
     }),
-    [tabsActionsWidth],
+    [inlineAddButtonWidth, tabsActionsWidth],
   );
 
   const tabLabelLengths = useMemo(
@@ -671,6 +726,11 @@ export function WorkspaceDesktopTabsRow({
           activeId={activeDragTabId}
           getItemData={getTabDragData}
           renderItem={renderTab}
+        />
+        <WorkspaceInlineAddTabButton
+          shortcutKeys={newTabKeys}
+          onPress={handleCreateAgentTab}
+          onLayout={handleInlineAddButtonLayout}
         />
       </ScrollView>
       <View style={styles.tabsActions} onLayout={handleTabsActionsLayout}>
@@ -928,6 +988,11 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingHorizontal: theme.spacing[2],
   },
+  inlineAddButton: {
+    paddingHorizontal: theme.spacing[1],
+    alignItems: "center",
+    justifyContent: "center",
+  },
   tab: {
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
@@ -1024,6 +1089,13 @@ const styles = StyleSheet.create((theme) => ({
   newTabActionButton: {
     width: 22,
     height: 22,
+    borderRadius: theme.borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inlineAddActionButton: {
+    width: 28,
+    height: 28,
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
