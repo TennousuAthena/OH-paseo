@@ -10,6 +10,7 @@ import {
   ViewStyle,
   type TextStyle,
 } from "react-native";
+import { useTranslation } from "react-i18next";
 import { MarkdownParagraphView, MarkdownTextSpan } from "@/components/markdown-text";
 import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import * as React from "react";
@@ -448,18 +449,23 @@ function UserMessageAttachmentThumbnail({ image }: { image: UserMessageImageAtta
   return <Image source={imageSource} style={userMessageStylesheet.imageThumbnail} />;
 }
 
-function getUserMessageAttachmentLabel(attachment: AgentAttachment): string {
+function getUserMessageAttachmentLabel(
+  attachment: AgentAttachment,
+  t: ReturnType<typeof useTranslation>["t"],
+): string {
   switch (attachment.type) {
     case "review": {
       const count = attachment.comments.length;
-      return count === 1 ? "Review · 1 comment" : `Review · ${count} comments`;
+      return count === 1
+        ? t("message.attachments.reviewOne")
+        : t("message.attachments.reviewMany", { count });
     }
     case "github_pr":
       return `PR #${attachment.number}`;
     case "github_issue":
       return `Issue #${attachment.number}`;
     case "text":
-      return attachment.title ?? "Text attachment";
+      return attachment.title ?? t("message.attachments.textAttachment");
     default:
       return "";
   }
@@ -480,6 +486,7 @@ export const UserMessage = memo(function UserMessage({
   disableOuterSpacing,
 }: UserMessageProps) {
   const isCompact = useIsCompactFormFactor();
+  const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const hasText = message.trim().length > 0;
@@ -562,7 +569,7 @@ export const UserMessage = memo(function UserMessage({
                   style={userMessageStylesheet.structuredAttachmentPill}
                 >
                   <Text style={userMessageStylesheet.structuredAttachmentText} numberOfLines={1}>
-                    {getUserMessageAttachmentLabel(attachment)}
+                    {getUserMessageAttachmentLabel(attachment, t)}
                   </Text>
                 </View>
               ))}
@@ -588,7 +595,7 @@ export const UserMessage = memo(function UserMessage({
             <TurnCopyButton
               getContent={getMessageContent}
               containerStyle={userMessageStylesheet.copyButton}
-              accessibilityLabel="Copy message"
+              accessibilityLabel={t("message.actions.copyMessage")}
             />
           </View>
         ) : null}
@@ -862,6 +869,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
   const handleImageError = useCallback(() => {
     setLoadState({ status: "error" });
   }, []);
+  const { t } = useTranslation();
   const surfaceStyle = useMemo<StyleProp<ViewStyle>>(
     () => [
       assistantMessageStylesheet.imageSurface,
@@ -887,7 +895,9 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
         <View style={stateSurfaceStyle}>
           {loadState.status === "loading" ? <ActivityIndicator size="small" /> : null}
           {loadState.status === "error" ? (
-            <Text style={assistantMessageStylesheet.imageErrorText}>Image unavailable</Text>
+            <Text style={assistantMessageStylesheet.imageErrorText}>
+              {t("message.attachments.imageUnavailable")}
+            </Text>
           ) : null}
         </View>
       </View>
@@ -924,6 +934,7 @@ function AssistantMarkdownImage({
   workspaceRoot?: string;
   serverId?: string;
 }) {
+  const { t } = useTranslation();
   const resolution = useMemo(
     () => resolveAssistantImageSource({ source, workspaceRoot }),
     [source, workspaceRoot],
@@ -953,7 +964,7 @@ function AssistantMarkdownImage({
 
       const file = await client.readFile(resolution.cwd, resolution.path);
       if (file.kind !== "image") {
-        throw new Error("Image preview unavailable.");
+        throw new Error(t("message.attachments.imagePreviewUnavailable"));
       }
 
       return await persistAttachmentFromBytes({
@@ -1026,7 +1037,11 @@ function AssistantMarkdownImage({
     );
   }
 
-  const errorText = resolveAssistantImageErrorText(query.error, dataImageQuery.error);
+  const errorText = resolveAssistantImageErrorText(
+    query.error,
+    dataImageQuery.error,
+    t("message.attachments.imagePreviewLoadFailed"),
+  );
 
   return (
     <View style={stateFrameStyle}>
@@ -1035,10 +1050,14 @@ function AssistantMarkdownImage({
   );
 }
 
-function resolveAssistantImageErrorText(fileError: unknown, dataError: unknown): string {
+function resolveAssistantImageErrorText(
+  fileError: unknown,
+  dataError: unknown,
+  fallbackText: string,
+): string {
   if (fileError instanceof Error) return fileError.message;
   if (dataError instanceof Error) return dataError.message;
-  return "Unable to load image preview.";
+  return fallbackText;
 }
 
 function getInlineCodeAutoLinkUrl(
@@ -1144,6 +1163,7 @@ export const TurnCopyButton = memo(function TurnCopyButton({
   accessibilityLabel,
   copiedAccessibilityLabel,
 }: TurnCopyButtonProps) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1185,7 +1205,9 @@ export const TurnCopyButton = memo(function TurnCopyButton({
       style={pressableStyle}
       accessibilityRole="button"
       accessibilityLabel={
-        copied ? (copiedAccessibilityLabel ?? "Copied") : (accessibilityLabel ?? "Copy turn")
+        copied
+          ? (copiedAccessibilityLabel ?? t("message.actions.copied"))
+          : (accessibilityLabel ?? t("message.actions.copyTurn"))
       }
     >
       {({ hovered }) => {
@@ -1966,6 +1988,7 @@ export const SpeakMessage = memo(function SpeakMessage({
   timestamp: _timestamp,
   disableOuterSpacing,
 }: SpeakMessageProps) {
+  const { t } = useTranslation();
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const containerStyle = useMemo(
     () => [
@@ -1979,7 +2002,7 @@ export const SpeakMessage = memo(function SpeakMessage({
     <View testID="speak-message" style={containerStyle}>
       <View style={speakMessageStylesheet.header}>
         <ThemedMicVocal size={12} uniProps={foregroundMutedColorMapping} />
-        <Text style={speakMessageStylesheet.headerLabel}>Spoke</Text>
+        <Text style={speakMessageStylesheet.headerLabel}>{t("message.speak.header")}</Text>
       </View>
       <Text style={speakMessageStylesheet.text}>{message}</Text>
     </View>
@@ -2080,6 +2103,7 @@ export const ActivityLog = memo(function ActivityLog({
   onArtifactClick,
   disableOuterSpacing,
 }: ActivityLogProps) {
+  const { t } = useTranslation();
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -2149,7 +2173,9 @@ export const ActivityLog = memo(function ActivityLog({
             </Text>
             {metadata && (
               <View style={activityLogStylesheet.detailsRow}>
-                <Text style={activityLogStylesheet.detailsText}>Details</Text>
+                <Text style={activityLogStylesheet.detailsText}>
+                  {t("message.activity.details")}
+                </Text>
                 {isExpanded ? (
                   <ChevronDown size={12} color="#71717a" />
                 ) : (
@@ -2306,6 +2332,7 @@ export const TodoListCard = memo(function TodoListCard({
   items,
   disableOuterSpacing,
 }: TodoListCardProps) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const nextTask = useMemo(() => items.find((item) => !item.completed)?.text, [items]);
@@ -2319,7 +2346,7 @@ export const TodoListCard = memo(function TodoListCard({
       <View style={todoListCardStylesheet.detailsWrapper}>
         <View style={todoListCardStylesheet.list}>
           {items.length === 0 ? (
-            <Text style={todoListCardStylesheet.emptyText}>No tasks yet.</Text>
+            <Text style={todoListCardStylesheet.emptyText}>{t("message.todo.empty")}</Text>
           ) : (
             items.map((item) => (
               <TodoListItemRow key={item.text} text={item.text} completed={item.completed} />
@@ -2328,11 +2355,11 @@ export const TodoListCard = memo(function TodoListCard({
         </View>
       </View>
     );
-  }, [items]);
+  }, [items, t]);
 
   return (
     <ExpandableBadge
-      label="Tasks"
+      label={t("message.todo.title")}
       secondaryLabel={nextTask}
       icon={CheckSquare}
       isExpanded={isExpanded}
@@ -2475,6 +2502,7 @@ function ExpandableBadgeLabelRow({
   onOpenFileHoverIn,
   onOpenFileHoverOut,
 }: ExpandableBadgeLabelRowProps) {
+  const { t } = useTranslation();
   return (
     <View
       style={expandableBadgeStylesheet.labelRow}
@@ -2499,7 +2527,7 @@ function ExpandableBadgeLabelRow({
           onHoverIn={onOpenFileHoverIn}
           onHoverOut={onOpenFileHoverOut}
           accessibilityRole="button"
-          accessibilityLabel="Open file"
+          accessibilityLabel={t("message.actions.openFile")}
           testID="tool-call-open-file"
           style={expandableBadgeStylesheet.openFileButton}
           hitSlop={6}
@@ -3169,7 +3197,6 @@ export const ToolCall = memo(function ToolCall({
   if (presentation.isPlan && effectiveDetail?.type === "plan") {
     return (
       <PlanCard
-        title="Plan"
         text={effectiveDetail.text}
         testID="timeline-plan-card"
         disableOuterSpacing={disableOuterSpacing}
