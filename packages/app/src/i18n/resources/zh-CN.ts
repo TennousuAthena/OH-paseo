@@ -1345,7 +1345,10 @@ export const zhCN: TranslationResources = {
       title: "通用",
       defaultSend: {
         label: "默认发送",
-        description: "Agent 运行时按 Enter 的行为",
+        descriptions: {
+          interrupt: "Agent 运行时，Enter 会中断。Command/Ctrl+Enter 会排队。",
+          queue: "Agent 运行时，Enter 会排队。Command/Ctrl+Enter 会提交。",
+        },
         options: {
           interrupt: "中断",
           queue: "排队",

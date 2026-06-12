@@ -1362,7 +1362,11 @@ export const ar: TranslationResources = {
       title: "عام",
       defaultSend: {
         label: "إرسال افتراضي",
-        description: "ماذا يحدث عند الضغط على Enter أثناء تشغيل الوكيل",
+        descriptions: {
+          interrupt:
+            "عند تشغيل الوكيل، يوقف Enter التشغيل. Command/Ctrl+Enter يضيف إلى قائمة الانتظار.",
+          queue: "عند تشغيل الوكيل، يضيف Enter إلى قائمة الانتظار. Command/Ctrl+Enter يرسل.",
+        },
         options: {
           interrupt: "مقاطعة",
           queue: "طابور",

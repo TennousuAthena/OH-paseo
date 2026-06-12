@@ -1368,7 +1368,10 @@ export const en = {
       title: "General",
       defaultSend: {
         label: "Default send",
-        description: "What happens when you press Enter while the agent is running",
+        descriptions: {
+          interrupt: "When the agent is running, Enter interrupts. Command/Ctrl+Enter queues.",
+          queue: "When the agent is running, Enter queues. Command/Ctrl+Enter submits.",
+        },
         options: {
           interrupt: "Interrupt",
           queue: "Queue",

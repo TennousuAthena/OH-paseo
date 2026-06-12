@@ -1400,8 +1400,12 @@ export const fr: TranslationResources = {
       title: "Général",
       defaultSend: {
         label: "Envoi par défaut",
-        description:
-          "Que se passe-t-il lorsque vous appuyez sur Entrée alors que l'agent est en cours d'exécution?",
+        descriptions: {
+          interrupt:
+            "Lorsque l'agent est en cours d'exécution, Entrée interrompt. Commande/Ctrl+Entrée met en file d'attente.",
+          queue:
+            "Lorsque l'agent est en cours d'exécution, Entrée met en file d'attente. Commande/Ctrl+Entrée envoie.",
+        },
         options: {
           interrupt: "Interrompre",
           queue: "File d'attente",

@@ -1397,7 +1397,12 @@ export const es: TranslationResources = {
       title: "General",
       defaultSend: {
         label: "Envío predeterminado",
-        description: "¿Qué sucede cuando presiona Enter mientras el agente se está ejecutando?",
+        descriptions: {
+          interrupt:
+            "Cuando el agente se está ejecutando, Enter interrumpe. Command/Ctrl+Enter pone en cola.",
+          queue:
+            "Cuando el agente se está ejecutando, Enter pone en cola. Command/Ctrl+Enter envía.",
+        },
         options: {
           interrupt: "Interrumpir",
           queue: "Cola",

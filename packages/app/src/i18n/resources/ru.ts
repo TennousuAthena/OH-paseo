@@ -1389,7 +1389,10 @@ export const ru: TranslationResources = {
       title: "Общий",
       defaultSend: {
         label: "Отправка по умолчанию",
-        description: "Что произойдет, если вы нажмете Enter во время работы агента",
+        descriptions: {
+          interrupt: "Когда агент работает, Enter прерывает. Command/Ctrl+Enter ставит в очередь.",
+          queue: "Когда агент работает, Enter ставит в очередь. Command/Ctrl+Enter отправляет.",
+        },
         options: {
           interrupt: "Прерывать",
           queue: "Очередь",
