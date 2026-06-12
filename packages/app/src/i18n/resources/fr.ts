@@ -1332,7 +1332,7 @@ export const fr: TranslationResources = {
   },
   renameModal: {
     rename: "Rebaptiser",
-    saving: "Économie...",
+    saving: "Sauvegarde...",
   },
   sidebarCallout: {
     dismiss: "Rejeter",
@@ -1654,6 +1654,10 @@ export const fr: TranslationResources = {
           sheetTitle: "Ajouter une invite système",
           accessibilityLabel: "Ajouter une invite système",
           placeholder: "Gardez toujours des réponses concises.",
+          edit: "Modifier",
+          reset: "Réinitialiser",
+          save: "Sauvegarder",
+          saving: "Sauvegarde...",
         },
       },
       agents: {
@@ -1667,10 +1671,12 @@ export const fr: TranslationResources = {
           editLabel: "Modifier l'étiquette",
           title: "Renommer l'hôte",
           placeholder: "MonHost",
+          submit: "Renommer",
         },
         restart: {
           title: "Redémarrer le démon",
           hint: "Redémarre le processus démon. L'application se reconnectera automatiquement",
+          confirm: "Redémarrer",
           confirmTitle: "Redémarrer{{name}}",
           confirmMessage:
             "Cela redémarrera le démon. Les agents qui s'y exécutent continueront à fonctionner; l'application se reconnectera automatiquement.",
@@ -1844,7 +1850,7 @@ export const fr: TranslationResources = {
         tryAgain: "Essayer à nouveau",
         save: "Sauvegarder",
         saved: "Projet enregistré",
-        saving: "Économie...",
+        saving: "Sauvegarde...",
         cancel: "Annuler",
       },
     },

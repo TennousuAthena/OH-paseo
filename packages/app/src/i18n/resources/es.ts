@@ -1329,7 +1329,7 @@ export const es: TranslationResources = {
   },
   renameModal: {
     rename: "Rebautizar",
-    saving: "Ahorro...",
+    saving: "Guardando...",
   },
   sidebarCallout: {
     dismiss: "Despedir",
@@ -1648,6 +1648,10 @@ export const es: TranslationResources = {
           sheetTitle: "Agregar mensaje del sistema",
           accessibilityLabel: "Agregar mensaje del sistema",
           placeholder: "Mantenga siempre respuestas concisas.",
+          edit: "Editar",
+          reset: "Restablecer",
+          save: "Guardar",
+          saving: "Guardando...",
         },
       },
       agents: {
@@ -1661,10 +1665,12 @@ export const es: TranslationResources = {
           editLabel: "Editar etiqueta",
           title: "Cambiar nombre de host",
           placeholder: "MiHost",
+          submit: "Cambiar nombre",
         },
         restart: {
           title: "Reiniciar demonio",
           hint: "Reinicia el proceso del demonio. La aplicación se volverá a conectar automáticamente",
+          confirm: "Reiniciar",
           confirmTitle: "Reiniciar{{name}}",
           confirmMessage:
             "Esto reiniciará el demonio. Los agentes que se ejecutan en él seguirán funcionando; la aplicación se volverá a conectar automáticamente.",
@@ -1834,9 +1840,9 @@ export const es: TranslationResources = {
       actions: {
         reload: "Recargar",
         tryAgain: "Intentar otra vez",
-        save: "Ahorrar",
+        save: "Guardar",
         saved: "Proyecto guardado",
-        saving: "Ahorro...",
+        saving: "Guardando...",
         cancel: "Cancelar",
       },
     },
