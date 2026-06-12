@@ -1103,31 +1103,6 @@ function WorkspaceHeaderMenu({
         >
           {t("workspace.header.actions.newAgent")}
         </DropdownMenuItem>
-        <DropdownMenuLabel>{t("workspace.tabs.actions.terminalProfilesMenu")}</DropdownMenuLabel>
-        <DropdownMenuItem
-          testID="workspace-header-new-terminal"
-          leading={menuNewTerminalIcon}
-          disabled={createTerminalDisabled}
-          onSelect={onCreateTerminal}
-        >
-          {t("workspace.header.actions.newTerminal")}
-        </DropdownMenuItem>
-        {profiles.map((profile) => (
-          <HeaderMenuProfileItem
-            key={profile.id}
-            profile={profile}
-            disabled={createTerminalDisabled}
-            onCreateTerminalWithProfile={onCreateTerminalWithProfile}
-          />
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          testID="workspace-header-edit-terminal-profiles"
-          onSelect={handleEditProfiles}
-        >
-          {t("workspace.tabs.actions.editTerminalProfiles")}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
         {showCreateBrowserTab ? (
           <DropdownMenuItem
             testID="workspace-header-new-browser"
@@ -1174,6 +1149,31 @@ function WorkspaceHeaderMenu({
             </DropdownMenuItem>
           </>
         ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>{t("workspace.tabs.actions.terminalProfilesMenu")}</DropdownMenuLabel>
+        <DropdownMenuItem
+          testID="workspace-header-new-terminal"
+          leading={menuNewTerminalIcon}
+          disabled={createTerminalDisabled}
+          onSelect={onCreateTerminal}
+        >
+          {t("workspace.header.actions.newTerminal")}
+        </DropdownMenuItem>
+        {profiles.map((profile) => (
+          <HeaderMenuProfileItem
+            key={profile.id}
+            profile={profile}
+            disabled={createTerminalDisabled}
+            onCreateTerminalWithProfile={onCreateTerminalWithProfile}
+          />
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          testID="workspace-header-edit-terminal-profiles"
+          onSelect={handleEditProfiles}
+        >
+          {t("workspace.tabs.actions.editTerminalProfiles")}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
