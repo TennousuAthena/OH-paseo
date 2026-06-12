@@ -1030,6 +1030,11 @@ export const en = {
     placeholder: "Type a directory path...",
     opening: "Opening project...",
     empty: "Start typing a path",
+    errors: {
+      directory_not_found: "Directory not found.",
+      open_failed: "Could not open project.",
+    },
+    openPath: "Open path",
   },
   branchSwitcher: {
     currentBranch: "Current branch: {{branchName}}. Press to switch branch.",

@@ -1025,6 +1025,11 @@ export const ar: TranslationResources = {
     placeholder: "اكتب مسار الدليل...",
     opening: "افتتاح المشروع...",
     empty: "ابدأ بكتابة المسار",
+    errors: {
+      directory_not_found: "لم يتم العثور على الدليل.",
+      open_failed: "تعذر فتح المشروع.",
+    },
+    openPath: "فتح المسار",
   },
   branchSwitcher: {
     currentBranch: "الفرع الحالي:{{branchName}}. اضغط لتبديل الفرع.",
