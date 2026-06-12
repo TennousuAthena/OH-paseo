@@ -5,7 +5,7 @@
 ### Added
 
 - **Attach pull request comments, reviews, threads, and failed check logs to chat from the PR panel** ([#1400](https://github.com/getpaseo/paseo/pull/1400))
-- **Use Paseo in Arabic, Chinese, English, French, Russian, and Spanish** ([#1478](https://github.com/getpaseo/paseo/pull/1478) by [@dwyanewang](https://github.com/dwyanewang))
+- **Use Paseo in Arabic, Chinese, English, French, Russian, and Spanish** ([#1282](https://github.com/getpaseo/paseo/pull/1282), [#1478](https://github.com/getpaseo/paseo/pull/1478) by [@chyendongnhanh338](https://github.com/chyendongnhanh338), [@dwyanewang](https://github.com/dwyanewang))
 - **Create reusable terminal profiles from Host settings**
 - **Open workspaces in Antigravity** ([#1424](https://github.com/getpaseo/paseo/pull/1424) by [@krumpyzoid](https://github.com/krumpyzoid))
 
@@ -15,7 +15,6 @@
 - Copy file paths directly from file preview tab menus ([#1473](https://github.com/getpaseo/paseo/pull/1473))
 - PR status stays current after an agent merges a branch ([#1455](https://github.com/getpaseo/paseo/pull/1455))
 - Workspace tabs stay fast by retaining only the active workspace screens ([#1472](https://github.com/getpaseo/paseo/pull/1472))
-- iOS simulator previews can be launched from worktrees
 
 ### Fixed
 
