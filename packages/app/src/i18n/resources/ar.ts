@@ -433,6 +433,7 @@ export const ar: TranslationResources = {
         openFor: "فتح القائمة لـ{{label}}",
         copyResumeCommand: "نسخ أمر السيرة الذاتية",
         copyAgentId: "نسخ معرف الوكيل",
+        copyFilePath: "Copy file path",
         rename: "إعادة تسمية",
         closeAbove: "إغلاق علامات التبويب أعلاه",
         closeBelow: "إغلاق علامات التبويب أدناه",
@@ -467,6 +468,7 @@ export const ar: TranslationResources = {
         copyFailed: "فشل النسخ",
         agentIdCopiedLabel: "AgentID",
         resumeCommandCopiedLabel: "أمر الاستئناف",
+        filePathCopiedLabel: "File path",
         resumeIdUnavailable: "السيرة الذاتية ID غير متوفرة",
         resumeCommandUnavailable: "أمر الاستئناف غير متوفر",
         reloadingAgent: "وكيل إعادة التحميل...",
@@ -1294,7 +1296,7 @@ export const ar: TranslationResources = {
   },
   renameModal: {
     rename: "إعادة تسمية",
-    saving: "توفير...",
+    saving: "جارٍ الحفظ...",
   },
   sidebarCallout: {
     dismiss: "رفض",
@@ -1612,6 +1614,10 @@ export const ar: TranslationResources = {
           sheetTitle: "إلحاق موجه النظام",
           accessibilityLabel: "إلحاق موجه النظام",
           placeholder: "اجعل الردود موجزة دائمًا.",
+          edit: "تحرير",
+          reset: "إعادة ضبط",
+          save: "حفظ",
+          saving: "جارٍ الحفظ...",
         },
       },
       agents: {
@@ -1646,10 +1652,12 @@ export const ar: TranslationResources = {
           editLabel: "تحرير التسمية",
           title: "إعادة تسمية المضيف",
           placeholder: "بلدي Host",
+          submit: "إعادة تسمية",
         },
         restart: {
           title: "إعادة تشغيل البرنامج الخفي",
           hint: "إعادة تشغيل عملية البرنامج الخفي. سيتم إعادة الاتصال بالتطبيق تلقائيًا",
+          confirm: "إعادة التشغيل",
           confirmTitle: "أعد تشغيل{{name}}",
           confirmMessage:
             "سيؤدي هذا إلى إعادة تشغيل البرنامج الخفي. سيستمر العملاء الذين يعملون عليه؛ سيتم إعادة الاتصال بالتطبيق تلقائيًا.",
@@ -1815,9 +1823,9 @@ export const ar: TranslationResources = {
       actions: {
         reload: "إعادة تحميل",
         tryAgain: "حاول ثانية",
-        save: "يحفظ",
+        save: "حفظ",
         saved: "تم حفظ المشروع",
-        saving: "توفير...",
+        saving: "جارٍ الحفظ...",
         cancel: "يلغي",
       },
     },
