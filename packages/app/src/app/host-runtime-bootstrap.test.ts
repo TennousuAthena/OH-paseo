@@ -279,23 +279,14 @@ describe("resolveStartupRoute", () => {
     ).toEqual({ kind: "redirect", href: "/h/srv-desktop" });
   });
 
-  it("keeps root startup on the splash while a saved host reconnects", () => {
-    expect(
-      resolveStartupRoute({
-        ...baseIndexInput,
-        hosts: [{ serverId: "server-saved" }],
-      }),
-    ).toEqual({ kind: "splash" });
-  });
-
-  it("shows welcome after root startup gives up waiting for a saved offline host", () => {
+  it("keeps a known connecting host in app-owned routing instead of showing welcome", () => {
     expect(
       resolveStartupRoute({
         ...baseIndexInput,
         hosts: [{ serverId: "server-saved" }],
         hasGivenUpWaitingForHost: true,
       }),
-    ).toEqual({ kind: "redirect", href: "/welcome" });
+    ).toEqual({ kind: "redirect", href: "/h/server-saved" });
   });
 
   it("shows welcome after root startup gives up and no host exists", () => {
