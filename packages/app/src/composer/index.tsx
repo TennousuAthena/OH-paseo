@@ -30,6 +30,7 @@ import {
   FileText,
   GitPullRequest,
   Github,
+  Image as ImageIcon,
   Paperclip,
 } from "lucide-react-native";
 import Animated from "react-native-reanimated";
@@ -1691,7 +1692,7 @@ export function Composer({
       {
         id: "image",
         label: t("composer.attachments.addImage"),
-        icon: <ThemedPaperclip size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
+        icon: <ThemedImageIcon size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
         onSelect: () => {
           void handlePickImage();
         },
@@ -1709,7 +1710,7 @@ export function Composer({
             {
               id: "file",
               label: t("composer.attachments.addFile"),
-              icon: <ThemedFileText size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
+              icon: <ThemedPaperclip size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
               onSelect: () => {
                 void handlePickFile();
               },
@@ -2165,6 +2166,7 @@ const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedAudioLines = withUnistyles(AudioLines);
 const ThemedPaperclip = withUnistyles(Paperclip);
+const ThemedImageIcon = withUnistyles(ImageIcon);
 const ThemedFileText = withUnistyles(FileText);
 const ThemedGithub = withUnistyles(Github);
 
