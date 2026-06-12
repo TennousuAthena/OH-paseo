@@ -5,10 +5,17 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import { Keyboard, useWindowDimensions } from "react-native";
-import { useSharedValue, withTiming, Easing, type SharedValue } from "react-native-reanimated";
+import {
+  runOnJS,
+  useSharedValue,
+  withTiming,
+  Easing,
+  type SharedValue,
+} from "react-native-reanimated";
 import { type GestureType } from "react-native-gesture-handler";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
@@ -43,6 +50,7 @@ interface SidebarAnimationContextValue {
   animateToClose: () => void;
   startMobilePanelTransition: (mobileView: "agent" | "agent-list" | "file-explorer") => void;
   settleMobilePanel: (mobileView: "agent" | "agent-list" | "file-explorer") => void;
+  settledGeneration: number;
   isGesturing: SharedValue<boolean>;
   mobileVisualPanel: SharedValue<number>;
   mobilePanelState: SharedValue<number>;
@@ -92,6 +100,17 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
   const gestureAnimatingRef = useRef(false);
   const openGestureRef = useRef<GestureType | undefined>(undefined);
   const closeGestureRef = useRef<GestureType | undefined>(undefined);
+
+  // After an open/close settles, a heavy Fabric commit can re-apply React's
+  // stale committed props onto the native view, reverting the UI-thread
+  // transform (reanimated#9635 — sidebar reappears "ghost-open"). Bumping this
+  // counter after every settle re-renders the consumers so the animated styles
+  // refresh React's committed props from the settled shared values. It must
+  // never write a shared value — it only triggers a React re-commit.
+  const [settledGeneration, setSettledGeneration] = useState(0);
+  const bumpSettledGeneration = useCallback(() => {
+    setSettledGeneration((generation) => generation + 1);
+  }, []);
 
   // Track previous isOpen to detect changes
   const prevIsOpen = useRef(isOpen);
@@ -219,6 +238,7 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
             if (isCompactLayout) {
               settleMobilePanel("agent-list");
             }
+            runOnJS(bumpSettledGeneration)();
           },
         );
         backdropOpacity.value = withTiming(targets.backdropOpacity, {
@@ -242,6 +262,7 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
           if (isCompactLayout && mobileView === "agent") {
             settleMobilePanel("agent");
           }
+          runOnJS(bumpSettledGeneration)();
         },
       );
       backdropOpacity.value = withTiming(targets.backdropOpacity, {
@@ -256,6 +277,7 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
     if (isCompactLayout && ownsMobileViewChange) {
       settleMobilePanel(mobileView);
     }
+    bumpSettledGeneration();
   }, [
     isOpen,
     mobileView,
@@ -268,6 +290,7 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
     mobilePanelState,
     startMobilePanelTransition,
     settleMobilePanel,
+    bumpSettledGeneration,
   ]);
 
   const animateToOpen = useCallback(() => {
@@ -282,13 +305,20 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
       (finished) => {
         if (!finished) return;
         settleMobilePanel("agent-list");
+        runOnJS(bumpSettledGeneration)();
       },
     );
     backdropOpacity.value = withTiming(1, {
       duration: ANIMATION_DURATION,
       easing: ANIMATION_EASING,
     });
-  }, [translateX, backdropOpacity, startMobilePanelTransition, settleMobilePanel]);
+  }, [
+    translateX,
+    backdropOpacity,
+    startMobilePanelTransition,
+    settleMobilePanel,
+    bumpSettledGeneration,
+  ]);
 
   const animateToClose = useCallback(() => {
     "worklet";
@@ -302,13 +332,21 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
       (finished) => {
         if (!finished) return;
         settleMobilePanel("agent");
+        runOnJS(bumpSettledGeneration)();
       },
     );
     backdropOpacity.value = withTiming(0, {
       duration: ANIMATION_DURATION,
       easing: ANIMATION_EASING,
     });
-  }, [translateX, backdropOpacity, windowWidth, startMobilePanelTransition, settleMobilePanel]);
+  }, [
+    translateX,
+    backdropOpacity,
+    windowWidth,
+    startMobilePanelTransition,
+    settleMobilePanel,
+    bumpSettledGeneration,
+  ]);
 
   const value = useMemo<SidebarAnimationContextValue>(
     () => ({
@@ -319,6 +357,7 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
       animateToClose,
       startMobilePanelTransition,
       settleMobilePanel,
+      settledGeneration,
       isGesturing,
       mobileVisualPanel,
       mobilePanelState,
@@ -334,6 +373,7 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
       animateToClose,
       startMobilePanelTransition,
       settleMobilePanel,
+      settledGeneration,
       isGesturing,
       mobileVisualPanel,
       mobilePanelState,

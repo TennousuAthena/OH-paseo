@@ -615,6 +615,7 @@ function MobileSidebar({
     windowWidth,
     animateToOpen,
     animateToClose,
+    settledGeneration,
     isGesturing,
     mobilePanelState,
     gestureAnimatingRef,
@@ -748,14 +749,25 @@ function MobileSidebar({
     [activeHostStatusColor],
   );
 
-  const sidebarAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
+  // settledGeneration as deps: after each settle the updater is rebuilt so the
+  // shared values are re-applied to the view, protecting against a heavy Fabric
+  // commit reverting the transform to stale React-committed props (#9635).
+  const sidebarAnimatedStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateX: translateX.value }],
+    }),
+    [settledGeneration],
+  );
 
-  const backdropAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: backdropOpacity.value,
-    pointerEvents: backdropOpacity.value > 0.01 ? "auto" : "none",
-  }));
+  // pointerEvents comes from React state, not the worklet: the Fabric revert
+  // protection above does not cover pointerEvents, so a worklet-driven value
+  // can wedge an invisible tap-eating backdrop after a heavy commit.
+  const backdropAnimatedStyle = useAnimatedStyle(
+    () => ({
+      opacity: backdropOpacity.value,
+    }),
+    [settledGeneration],
+  );
 
   let overlayPointerEvents: "auto" | "none" | "box-none";
   if (!isWeb) overlayPointerEvents = "box-none";
@@ -763,8 +775,12 @@ function MobileSidebar({
   else overlayPointerEvents = "none";
 
   const backdropStyle = useMemo(
-    () => [staticStyles.backdrop, backdropAnimatedStyle],
-    [backdropAnimatedStyle],
+    () => [
+      staticStyles.backdrop,
+      backdropAnimatedStyle,
+      { pointerEvents: isOpen ? ("auto" as const) : ("none" as const) },
+    ],
+    [backdropAnimatedStyle, isOpen],
   );
   const mobileSidebarStyle = useMemo(
     () => [
