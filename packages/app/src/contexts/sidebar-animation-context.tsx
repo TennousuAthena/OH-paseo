@@ -50,7 +50,6 @@ interface SidebarAnimationContextValue {
   animateToClose: () => void;
   startMobilePanelTransition: (mobileView: "agent" | "agent-list" | "file-explorer") => void;
   settleMobilePanel: (mobileView: "agent" | "agent-list" | "file-explorer") => void;
-  settledGeneration: number;
   isGesturing: SharedValue<boolean>;
   mobileVisualPanel: SharedValue<number>;
   mobilePanelState: SharedValue<number>;
@@ -60,6 +59,10 @@ interface SidebarAnimationContextValue {
 }
 
 const SidebarAnimationContext = createContext<SidebarAnimationContextValue | null>(null);
+
+// Separate context so that settle-driven re-renders only reach MobileSidebar,
+// not every other useSidebarAnimation() consumer.
+const SidebarSettledGenerationContext = createContext<number>(0);
 
 function getMobileVisualPanel(mobileView: "agent" | "agent-list" | "file-explorer"): number {
   if (mobileView === "agent-list") {
@@ -357,7 +360,6 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
       animateToClose,
       startMobilePanelTransition,
       settleMobilePanel,
-      settledGeneration,
       isGesturing,
       mobileVisualPanel,
       mobilePanelState,
@@ -373,7 +375,6 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
       animateToClose,
       startMobilePanelTransition,
       settleMobilePanel,
-      settledGeneration,
       isGesturing,
       mobileVisualPanel,
       mobilePanelState,
@@ -384,7 +385,11 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
   );
 
   return (
-    <SidebarAnimationContext.Provider value={value}>{children}</SidebarAnimationContext.Provider>
+    <SidebarAnimationContext.Provider value={value}>
+      <SidebarSettledGenerationContext.Provider value={settledGeneration}>
+        {children}
+      </SidebarSettledGenerationContext.Provider>
+    </SidebarAnimationContext.Provider>
   );
 }
 
@@ -394,4 +399,8 @@ export function useSidebarAnimation() {
     throw new Error("useSidebarAnimation must be used within SidebarAnimationProvider");
   }
   return context;
+}
+
+export function useSidebarSettledGeneration() {
+  return useContext(SidebarSettledGenerationContext);
 }

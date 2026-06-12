@@ -41,7 +41,10 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
-import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
+import {
+  useSidebarAnimation,
+  useSidebarSettledGeneration,
+} from "@/contexts/sidebar-animation-context";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useSidebarShortcutModel } from "@/hooks/use-sidebar-shortcut-model";
@@ -615,12 +618,12 @@ function MobileSidebar({
     windowWidth,
     animateToOpen,
     animateToClose,
-    settledGeneration,
     isGesturing,
     mobilePanelState,
     gestureAnimatingRef,
     closeGestureRef,
   } = useSidebarAnimation();
+  const settledGeneration = useSidebarSettledGeneration();
   const closeTouchStartX = useSharedValue(0);
   const closeTouchStartY = useSharedValue(0);
 
