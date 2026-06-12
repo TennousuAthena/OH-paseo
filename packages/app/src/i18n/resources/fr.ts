@@ -419,7 +419,7 @@ export const fr: TranslationResources = {
       loadingAgentTitle: "Titre d'agent de chargement",
       emptyPane: "Aucun onglet dans ce volet.",
       fallback: {
-        newAgent: "NouveauAgent",
+        newAgent: "Nouvel agent",
         setup: "Installation",
         workspaceSetup: "ConfigurationWorkspace",
         terminal: "Terminal",
@@ -450,13 +450,15 @@ export const fr: TranslationResources = {
         renameAgent: "Renommer l'agent",
       },
       actions: {
-        newAgent: "Nouvel onglet agent",
-        newTerminal: "Nouvel onglet de terminal",
+        newAgent: "Nouvel agent",
+        newTerminal: "Nouveau terminal",
         preparingTerminal: "Préparation de l'onglet du terminal",
         preparingTerminalTooltip: "Préparation du terminal...",
-        newBrowser: "Nouvel onglet du navigateur",
+        newBrowser: "Nouveau navigateur",
         splitRight: "Volet divisé à droite",
         splitDown: "Diviser le volet vers le bas",
+        terminalProfilesMenu: "Terminal profiles",
+        editTerminalProfiles: "Edit profiles…",
       },
       explorer: {
         open: "Ouvrir l'explorateur",
@@ -1309,7 +1311,7 @@ export const fr: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "NouveauAgent",
+      newAgent: "Nouvel agent",
       creatingAgent: "Agent créateur",
     },
     file: {
@@ -1389,6 +1391,7 @@ export const fr: TranslationResources = {
       agents: "Agents",
       workspaces: "Workspaces",
       providers: "Fournisseurs",
+      terminals: "Terminals",
       host: "Host",
     },
     general: {
@@ -1659,6 +1662,27 @@ export const fr: TranslationResources = {
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",
+      },
+      terminalProfiles: {
+        unavailable: "Connect to this host to manage terminal profiles",
+        sectionTitle: "Terminal profiles",
+        editProfile: "Edit profile",
+        addProfileTitle: "Add terminal profile",
+        editProfileTitle: "Edit terminal profile",
+        namePlaceholder: "Claude Code",
+        commandPlaceholder: "claude",
+        argsPlaceholder: "--dangerously-skip-permissions",
+        nameLabel: "Name",
+        commandLabel: "Command",
+        argsLabel: "Arguments",
+        argsHint: "Space-separated arguments passed to the command",
+        remove: "Remove",
+        removeConfirmTitle: "Remove profile?",
+        removeConfirmMessage: 'Remove "{{name}}"?',
+        moveUp: "Move up",
+        moveDown: "Move down",
+        save: "Save",
+        emptyState: "No profiles yet. Add one to launch terminals with a specific command.",
       },
       daemon: {
         rename: {

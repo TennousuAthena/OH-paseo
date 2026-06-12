@@ -121,6 +121,7 @@ import type { PushNotificationSender } from "./push/notifications.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
+import type { TerminalProfile } from "@getpaseo/protocol/messages";
 import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
@@ -235,6 +236,7 @@ export interface PaseoDaemonConfig {
   mcpInjectIntoAgents?: boolean;
   autoArchiveAfterMerge?: boolean;
   appendSystemPrompt?: string;
+  terminalProfiles?: TerminalProfile[];
   staticDir: string;
   mcpDebug: boolean;
   isDev?: boolean;
@@ -310,6 +312,9 @@ export async function createPaseoDaemon(
       },
       autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
       appendSystemPrompt: config.appendSystemPrompt ?? "",
+      ...(config.terminalProfiles !== undefined
+        ? { terminalProfiles: config.terminalProfiles }
+        : {}),
     },
     logger,
   );

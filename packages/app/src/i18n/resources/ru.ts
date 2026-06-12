@@ -419,7 +419,7 @@ export const ru: TranslationResources = {
       loadingAgentTitle: "Название агента загрузки",
       emptyPane: "На этой панели нет вкладок.",
       fallback: {
-        newAgent: "Новый Agent",
+        newAgent: "Новый агент",
         setup: "Настраивать",
         workspaceSetup: "Настройка Workspace",
         terminal: "Terminal",
@@ -449,13 +449,15 @@ export const ru: TranslationResources = {
         renameAgent: "Переименовать агента",
       },
       actions: {
-        newAgent: "Новая вкладка агента",
-        newTerminal: "Новая вкладка терминала",
+        newAgent: "Новый агент",
+        newTerminal: "Новый терминал",
         preparingTerminal: "Подготовка вкладки терминала",
         preparingTerminalTooltip: "Подготовка терминала...",
-        newBrowser: "Новая вкладка браузера",
+        newBrowser: "Новый браузер",
         splitRight: "Разделить панель справа",
         splitDown: "Разделить панель вниз",
+        terminalProfilesMenu: "Terminal profiles",
+        editTerminalProfiles: "Edit profiles…",
       },
       explorer: {
         open: "Открыть проводник",
@@ -1298,7 +1300,7 @@ export const ru: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "Новый Agent",
+      newAgent: "Новый агент",
       creatingAgent: "Создание агента",
     },
     file: {
@@ -1378,6 +1380,7 @@ export const ru: TranslationResources = {
       agents: "Agents",
       workspaces: "Workspaces",
       providers: "Провайдеры",
+      terminals: "Terminals",
       host: "Host",
     },
     general: {
@@ -1647,6 +1650,27 @@ export const ru: TranslationResources = {
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",
+      },
+      terminalProfiles: {
+        unavailable: "Connect to this host to manage terminal profiles",
+        sectionTitle: "Terminal profiles",
+        editProfile: "Edit profile",
+        addProfileTitle: "Add terminal profile",
+        editProfileTitle: "Edit terminal profile",
+        namePlaceholder: "Claude Code",
+        commandPlaceholder: "claude",
+        argsPlaceholder: "--dangerously-skip-permissions",
+        nameLabel: "Name",
+        commandLabel: "Command",
+        argsLabel: "Arguments",
+        argsHint: "Space-separated arguments passed to the command",
+        remove: "Remove",
+        removeConfirmTitle: "Remove profile?",
+        removeConfirmMessage: 'Remove "{{name}}"?',
+        moveUp: "Move up",
+        moveDown: "Move down",
+        save: "Save",
+        emptyState: "No profiles yet. Add one to launch terminals with a specific command.",
       },
       daemon: {
         rename: {

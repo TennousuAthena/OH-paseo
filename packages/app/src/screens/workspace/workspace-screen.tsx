@@ -50,6 +50,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -172,9 +173,22 @@ import { isAbsolutePath } from "@/utils/path";
 import { useIsCompactFormFactor, supportsDesktopPaneSplits } from "@/constants/layout";
 import { getIsElectron, isNative, isWeb } from "@/constants/platform";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
-import { buildHostRootRoute, buildSettingsHostRoute } from "@/utils/host-routes";
+import {
+  buildHostRootRoute,
+  buildSettingsHostRoute,
+  buildSettingsHostSectionRoute,
+} from "@/utils/host-routes";
 import { canCreateWorkspaceTerminal } from "@/screens/workspace/terminals/state";
-import { useWorkspaceTerminals } from "@/screens/workspace/terminals/use-workspace-terminals";
+import {
+  useWorkspaceTerminals,
+  type TerminalProfileInput,
+} from "@/screens/workspace/terminals/use-workspace-terminals";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import {
+  getTerminalProfileIcon,
+  resolveTerminalProfiles,
+} from "@getpaseo/protocol/terminal-profiles";
+import { getProviderIcon } from "@/components/provider-icons";
 import {
   createWorkspaceFileTabTarget,
   normalizeWorkspaceFileLocation,
@@ -240,6 +254,19 @@ const ThemedImport = withUnistyles(ImportIcon);
 const ThemedSettings = withUnistyles(Settings);
 const ThemedPanelRight = withUnistyles(PanelRight);
 const ThemedSourceControlPanelIcon = withUnistyles(SourceControlPanelIcon);
+
+interface DynamicProviderIconProps {
+  iconKey: string;
+  size: number;
+  color?: string;
+}
+
+function DynamicProviderIcon({ iconKey, size, color = "" }: DynamicProviderIconProps) {
+  const Icon = getProviderIcon(iconKey);
+  return <Icon size={size} color={color} />;
+}
+
+const ThemedDynamicProviderIcon = withUnistyles(DynamicProviderIcon);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -927,6 +954,7 @@ function useCloseTabs(): UseCloseTabsResult {
 }
 
 interface WorkspaceHeaderMenuProps {
+  normalizedServerId: string;
   normalizedWorkspaceId: string;
   currentBranchName: string | null;
   showWorkspaceSetup: boolean;
@@ -942,11 +970,54 @@ interface WorkspaceHeaderMenuProps {
   menuSettingsIcon: ReactElement;
   onCreateDraftTab: () => void;
   onCreateTerminal: () => void;
+  onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
   onCreateBrowser: () => void;
   onOpenImportSheet: () => void;
   onCopyWorkspacePath: () => void;
   onCopyBranchName: () => void;
   onOpenSetupTab: () => void;
+}
+interface HeaderMenuProfileItemProps {
+  profile: { id: string; name: string; command: string; args?: string[]; icon?: string };
+  disabled: boolean;
+  onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
+}
+
+function HeaderMenuProfileItem({
+  profile,
+  disabled,
+  onCreateTerminalWithProfile,
+}: HeaderMenuProfileItemProps) {
+  const handleSelect = useCallback(() => {
+    onCreateTerminalWithProfile({
+      name: profile.name,
+      command: profile.command,
+      args: profile.args,
+    });
+  }, [onCreateTerminalWithProfile, profile]);
+
+  const icon = getTerminalProfileIcon(profile);
+
+  const leading = useMemo(() => {
+    if (!icon) {
+      return (
+        <View style={styles.headerMenuProfileIconWrapper}>
+          <ThemedSquareTerminal size={16} uniProps={mutedColorMapping} />
+        </View>
+      );
+    }
+    return (
+      <View style={styles.headerMenuProfileIconWrapper}>
+        <ThemedDynamicProviderIcon iconKey={icon} size={16} uniProps={mutedColorMapping} />
+      </View>
+    );
+  }, [icon]);
+
+  return (
+    <DropdownMenuItem leading={leading} disabled={disabled} onSelect={handleSelect}>
+      {profile.name}
+    </DropdownMenuItem>
+  );
 }
 
 function WorkspaceHeaderMenuTriggerIcon({
@@ -964,6 +1035,7 @@ function WorkspaceHeaderMenuTriggerIcon({
 }
 
 function WorkspaceHeaderMenu({
+  normalizedServerId,
   normalizedWorkspaceId,
   currentBranchName,
   showWorkspaceSetup,
@@ -979,6 +1051,7 @@ function WorkspaceHeaderMenu({
   menuSettingsIcon,
   onCreateDraftTab,
   onCreateTerminal,
+  onCreateTerminalWithProfile,
   onCreateBrowser,
   onOpenImportSheet,
   onCopyWorkspacePath,
@@ -986,6 +1059,17 @@ function WorkspaceHeaderMenu({
   onOpenSetupTab,
 }: WorkspaceHeaderMenuProps) {
   const { t } = useTranslation();
+  const router = useRouter();
+  const { config } = useDaemonConfig(normalizedServerId);
+  const profiles = useMemo(
+    () => resolveTerminalProfiles(config?.terminalProfiles),
+    [config?.terminalProfiles],
+  );
+
+  const handleEditProfiles = useCallback(() => {
+    router.push(buildSettingsHostSectionRoute(normalizedServerId, "terminals") as Href);
+  }, [normalizedServerId, router]);
+
   const renderTriggerIcon = useCallback(
     ({ hovered, open }: { hovered: boolean; open: boolean }) => (
       <WorkspaceHeaderMenuTriggerIcon hovered={hovered} open={open} isMobile={isMobile} />
@@ -1011,6 +1095,7 @@ function WorkspaceHeaderMenu({
         >
           {t("workspace.header.actions.newAgent")}
         </DropdownMenuItem>
+        <DropdownMenuLabel>{t("workspace.tabs.actions.terminalProfilesMenu")}</DropdownMenuLabel>
         <DropdownMenuItem
           testID="workspace-header-new-terminal"
           leading={menuNewTerminalIcon}
@@ -1019,6 +1104,22 @@ function WorkspaceHeaderMenu({
         >
           {t("workspace.header.actions.newTerminal")}
         </DropdownMenuItem>
+        {profiles.map((profile) => (
+          <HeaderMenuProfileItem
+            key={profile.id}
+            profile={profile}
+            disabled={createTerminalDisabled}
+            onCreateTerminalWithProfile={onCreateTerminalWithProfile}
+          />
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          testID="workspace-header-edit-terminal-profiles"
+          onSelect={handleEditProfiles}
+        >
+          {t("workspace.tabs.actions.editTerminalProfiles")}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         {showCreateBrowserTab ? (
           <DropdownMenuItem
             testID="workspace-header-new-browser"
@@ -1094,6 +1195,7 @@ interface WorkspaceHeaderTitleBarProps {
   menuSettingsIcon: ReactElement;
   onCreateDraftTab: () => void;
   onCreateTerminal: () => void;
+  onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
   onCreateBrowser: () => void;
   onOpenImportSheet: () => void;
   onCopyWorkspacePath: () => void;
@@ -1128,6 +1230,7 @@ function WorkspaceHeaderTitleBar({
   menuSettingsIcon,
   onCreateDraftTab,
   onCreateTerminal,
+  onCreateTerminalWithProfile,
   onCreateBrowser,
   onOpenImportSheet,
   onCopyWorkspacePath,
@@ -1165,6 +1268,7 @@ function WorkspaceHeaderTitleBar({
       )}
       <View style={styles.compactHeaderMenuCluster}>
         <WorkspaceHeaderMenu
+          normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
           currentBranchName={currentBranchName}
           showWorkspaceSetup={showWorkspaceSetup}
@@ -1180,6 +1284,7 @@ function WorkspaceHeaderTitleBar({
           menuSettingsIcon={menuSettingsIcon}
           onCreateDraftTab={onCreateDraftTab}
           onCreateTerminal={onCreateTerminal}
+          onCreateTerminalWithProfile={onCreateTerminalWithProfile}
           onCreateBrowser={onCreateBrowser}
           onOpenImportSheet={onOpenImportSheet}
           onCopyWorkspacePath={onCopyWorkspacePath}
@@ -2416,6 +2521,13 @@ function WorkspaceScreenContent({
 
   const handleCreateTerminal = useStableEvent(createTerminal);
 
+  const handleCreateTerminalWithProfile = useCallback(
+    (profile: TerminalProfileInput) => {
+      createTerminal({ profile });
+    },
+    [createTerminal],
+  );
+
   const handleCreateBrowserTab = useCallback(
     (input?: { paneId?: string }) => {
       if (!persistenceKey || !getIsElectron()) {
@@ -3508,6 +3620,7 @@ function WorkspaceScreenContent({
                 menuSettingsIcon={menuSettingsIcon}
                 onCreateDraftTab={handleCreateDraftTab}
                 onCreateTerminal={handleCreateTerminal}
+                onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
                 onCreateBrowser={handleCreateBrowserTab}
                 onOpenImportSheet={openImportSheet}
                 onCopyWorkspacePath={handleCopyWorkspacePath}
@@ -3844,6 +3957,10 @@ const styles = StyleSheet.create((theme) => ({
   menuItemHint: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
+  },
+  headerMenuProfileIconWrapper: {
+    width: 16,
+    height: 16,
   },
   tabsContainer: {
     borderBottomWidth: 1,

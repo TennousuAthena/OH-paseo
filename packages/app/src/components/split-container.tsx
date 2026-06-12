@@ -56,6 +56,7 @@ import {
   WorkspaceDesktopTabsRow,
   type WorkspaceDesktopTabRowItem,
 } from "@/screens/workspace/workspace-desktop-tabs-row";
+import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
 import {
   WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
@@ -92,7 +93,7 @@ interface SplitContainerProps {
   onCloseTabsToRight: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onCreateDraftTab: (input: { paneId?: string }) => void;
-  onCreateTerminalTab: (input: { paneId?: string }) => void;
+  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfileInput }) => void;
   onCreateBrowserTab: (input: { paneId?: string }) => void;
   showCreateBrowserTab?: boolean;
   buildPaneContentModel: (input: {

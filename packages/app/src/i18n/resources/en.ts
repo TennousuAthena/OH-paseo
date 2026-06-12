@@ -415,7 +415,7 @@ export const en = {
       loadingAgentTitle: "Loading agent title",
       emptyPane: "No tabs in this pane.",
       fallback: {
-        newAgent: "New Agent",
+        newAgent: "New agent",
         setup: "Setup",
         workspaceSetup: "Workspace setup",
         terminal: "Terminal",
@@ -445,13 +445,15 @@ export const en = {
         renameAgent: "Rename agent",
       },
       actions: {
-        newAgent: "New agent tab",
-        newTerminal: "New terminal tab",
+        newAgent: "New agent",
+        newTerminal: "New terminal",
         preparingTerminal: "Preparing terminal tab",
         preparingTerminalTooltip: "Preparing terminal...",
-        newBrowser: "New browser tab",
+        newBrowser: "New browser",
         splitRight: "Split pane right",
         splitDown: "Split pane down",
+        terminalProfilesMenu: "Terminal profiles",
+        editTerminalProfiles: "Edit profiles…",
       },
       explorer: {
         open: "Open explorer",
@@ -1357,6 +1359,7 @@ export const en = {
       agents: "Agents",
       workspaces: "Workspaces",
       providers: "Providers",
+      terminals: "Terminals",
       host: "Host",
     },
     general: {
@@ -1623,6 +1626,27 @@ export const en = {
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",
+      },
+      terminalProfiles: {
+        unavailable: "Connect to this host to manage terminal profiles",
+        sectionTitle: "Terminal profiles",
+        editProfile: "Edit profile",
+        addProfileTitle: "Add terminal profile",
+        editProfileTitle: "Edit terminal profile",
+        namePlaceholder: "Claude Code",
+        commandPlaceholder: "claude",
+        argsPlaceholder: "--dangerously-skip-permissions",
+        nameLabel: "Name",
+        commandLabel: "Command",
+        argsLabel: "Arguments",
+        argsHint: "Space-separated arguments passed to the command",
+        remove: "Remove",
+        removeConfirmTitle: "Remove profile?",
+        removeConfirmMessage: 'Remove "{{name}}"?',
+        moveUp: "Move up",
+        moveDown: "Move down",
+        save: "Save",
+        emptyState: "No profiles yet. Add one to launch terminals with a specific command.",
       },
       daemon: {
         rename: {

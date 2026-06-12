@@ -116,6 +116,18 @@ const MutableMetadataGenerationConfigSchema = z
   })
   .passthrough();
 
+export const TerminalProfileSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    command: z.string(),
+    args: z.array(z.string()).optional(),
+    icon: z.string().optional(),
+  })
+  .passthrough();
+
+export type TerminalProfile = z.infer<typeof TerminalProfileSchema>;
+
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -127,6 +139,7 @@ export const MutableDaemonConfigSchema = z
     metadataGeneration: MutableMetadataGenerationConfigSchema.default({ providers: [] }),
     autoArchiveAfterMerge: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
+    terminalProfiles: z.array(TerminalProfileSchema).optional(),
   })
   .passthrough();
 
@@ -139,6 +152,7 @@ export const MutableDaemonConfigPatchSchema = z
     metadataGeneration: MutableMetadataGenerationConfigSchema.partial().optional(),
     autoArchiveAfterMerge: z.boolean().optional(),
     appendSystemPrompt: z.string().optional(),
+    terminalProfiles: z.array(TerminalProfileSchema).optional(),
   })
   .partial()
   .passthrough();
