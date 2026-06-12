@@ -183,9 +183,11 @@ function resolveReadyIndexStartupRoute(input: ResolveIndexStartupRouteInput): St
     return { kind: "redirect", href: buildHostRootRoute(input.anyOnlineHostServerId) };
   }
 
-  const savedHostServerId = input.hosts[0]?.serverId ?? null;
-  if (savedHostServerId) {
-    return { kind: "redirect", href: buildHostRootRoute(savedHostServerId) };
+  if (workspaceSelection) {
+    const fallbackServerId = input.hosts[0]?.serverId ?? null;
+    if (fallbackServerId) {
+      return { kind: "redirect", href: buildHostRootRoute(fallbackServerId) };
+    }
   }
 
   if (input.hasGivenUpWaitingForHost) {

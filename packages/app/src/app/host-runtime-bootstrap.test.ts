@@ -259,12 +259,13 @@ describe("resolveStartupRoute", () => {
     ).toEqual({ kind: "redirect", href: "/h/server-1/workspace/workspace-a" });
   });
 
-  it("does not restore a workspace whose host is no longer saved", () => {
+  it("falls back to a saved host when the restored workspace host is no longer saved", () => {
     expect(
       resolveStartupRoute({
         ...baseIndexInput,
         workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
         hosts: [{ serverId: "server-next" }],
+        hasGivenUpWaitingForHost: true,
       }),
     ).toEqual({ kind: "redirect", href: "/h/server-next" });
   });
@@ -278,17 +279,26 @@ describe("resolveStartupRoute", () => {
     ).toEqual({ kind: "redirect", href: "/h/srv-desktop" });
   });
 
-  it("keeps a known connecting host in app-owned routing instead of showing welcome", () => {
+  it("keeps root startup on the splash while a saved host reconnects", () => {
+    expect(
+      resolveStartupRoute({
+        ...baseIndexInput,
+        hosts: [{ serverId: "server-saved" }],
+      }),
+    ).toEqual({ kind: "splash" });
+  });
+
+  it("shows welcome after root startup gives up waiting for a saved offline host", () => {
     expect(
       resolveStartupRoute({
         ...baseIndexInput,
         hosts: [{ serverId: "server-saved" }],
         hasGivenUpWaitingForHost: true,
       }),
-    ).toEqual({ kind: "redirect", href: "/h/server-saved" });
+    ).toEqual({ kind: "redirect", href: "/welcome" });
   });
 
-  it("shows welcome only after the host registry is ready and no host exists", () => {
+  it("shows welcome after root startup gives up and no host exists", () => {
     expect(
       resolveStartupRoute({
         ...baseIndexInput,
