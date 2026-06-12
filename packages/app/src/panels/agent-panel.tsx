@@ -16,7 +16,12 @@ import { Composer } from "@/composer";
 import { AgentModeControl } from "@/composer/agent-controls/mode-control";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { uploadFileAttachments } from "@/composer/actions";
-import { readDesktopFileBytes, getMimeTypeFromPath } from "@/hooks/use-file-picker";
+import {
+  getMimeTypeFromPath,
+  isRasterImageFile,
+  isRasterImagePath,
+} from "@/attachments/file-types";
+import { readDesktopFileBytes } from "@/hooks/use-file-picker";
 import type { DroppedItem } from "@/hooks/use-file-drop-zone";
 import type { UserComposerAttachment } from "@/attachments/types";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
@@ -719,8 +724,8 @@ function ChatAgentContent({
     async (items: DroppedItem[]) => {
       if (!client || !isConnected) return;
       const nonImageItems = items.filter((item) => {
-        if (item.kind === "web-file") return !item.file.type.startsWith("image/");
-        return !isImagePath(item.path);
+        if (item.kind === "web-file") return !isRasterImageFile(item.file);
+        return !isRasterImagePath(item.path);
       });
       if (nonImageItems.length === 0) return;
       try {
@@ -1112,25 +1117,6 @@ function ChatAgentContent({
       onOpenWorkspaceFile={onOpenWorkspaceFile}
     />
   );
-}
-
-function isImagePath(path: string): boolean {
-  const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
-  const imageExts = new Set([
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".webp",
-    ".bmp",
-    ".svg",
-    ".heic",
-    ".heif",
-    ".avif",
-    ".tif",
-    ".tiff",
-  ]);
-  return imageExts.has(ext);
 }
 
 const ChatAgentReadyContent = memo(function ChatAgentReadyContent({

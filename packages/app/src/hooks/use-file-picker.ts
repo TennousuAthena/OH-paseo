@@ -3,67 +3,12 @@ import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
 import { copyDesktopAttachmentFile } from "@/desktop/attachments/desktop-file-commands";
 import { readDesktopFileBase64 } from "@/desktop/attachments/desktop-preview-url";
 import { isWeb } from "@/constants/platform";
+import { getFileExtension, getMimeTypeFromPath } from "@/attachments/file-types";
 
 export interface PickedFile {
   fileName: string;
   mimeType: string;
   bytes: Uint8Array;
-}
-
-const MIME_BY_EXTENSION: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".bmp": "image/bmp",
-  ".svg": "image/svg+xml",
-  ".heic": "image/heic",
-  ".heif": "image/heif",
-  ".avif": "image/avif",
-  ".tif": "image/tiff",
-  ".tiff": "image/tiff",
-  ".pdf": "application/pdf",
-  ".txt": "text/plain",
-  ".md": "text/markdown",
-  ".json": "application/json",
-  ".js": "text/javascript",
-  ".ts": "text/typescript",
-  ".tsx": "text/typescript-jsx",
-  ".jsx": "text/javascript",
-  ".html": "text/html",
-  ".css": "text/css",
-  ".xml": "text/xml",
-  ".csv": "text/csv",
-  ".zip": "application/zip",
-  ".gz": "application/gzip",
-  ".tar": "application/x-tar",
-  ".mp3": "audio/mpeg",
-  ".mp4": "video/mp4",
-  ".mov": "video/quicktime",
-  ".webm": "video/webm",
-  ".wav": "audio/wav",
-  ".ogg": "audio/ogg",
-  ".doc": "application/msword",
-  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".xls": "application/vnd.ms-excel",
-  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  ".ppt": "application/vnd.ms-powerpoint",
-  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-};
-
-function getFileExtension(path: string): string {
-  const normalizedPath = path.split("#", 1)[0]?.split("?", 1)[0] ?? path;
-  const extensionIndex = normalizedPath.lastIndexOf(".");
-  if (extensionIndex < 0) {
-    return "";
-  }
-  return normalizedPath.slice(extensionIndex).toLowerCase();
-}
-
-export function getMimeTypeFromPath(path: string): string {
-  const ext = getFileExtension(path);
-  return MIME_BY_EXTENSION[ext] ?? "application/octet-stream";
 }
 
 function base64ToUint8Array(base64: string): Uint8Array {
