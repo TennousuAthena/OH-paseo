@@ -19,10 +19,6 @@ export function tabRowPin(page: Page, target: PinnedTabTarget) {
   return page.getByTestId(`workspace-pinned-target-${pinnedTargetKey(target)}`);
 }
 
-export function sidebarPin(page: Page, target: PinnedTabTarget) {
-  return page.getByTestId(`sidebar-pinned-target-${pinnedTargetKey(target)}`);
-}
-
 export async function openNewTabMenu(page: Page): Promise<void> {
   const trigger = page
     .getByTestId("workspace-new-tab-menu-trigger")

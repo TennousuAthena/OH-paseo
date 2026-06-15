@@ -70,11 +70,6 @@ import {
   type SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
-import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store/state";
-import { usePinnedLaunchers } from "@/workspace-pins/launch";
-import { useLaunchIntentStore } from "@/workspace-pins/launch-intent-store";
-import { PinnedTargetsRow } from "@/workspace-pins/pinned-targets-row";
-import type { PinnedTabTarget } from "@/workspace-pins/target";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { ContextMenuTrigger, useContextMenu } from "@/components/ui/context-menu";
 import {
@@ -667,39 +662,15 @@ function WorkspaceRowRightGroup({
   onRename?: () => void;
 }) {
   const { t } = useTranslation();
-  const isMobileBreakpoint = useIsCompactFormFactor();
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
   const showKebabInSlot = showKebab && !showShortcut;
   const shouldRenderActionSlot = Boolean(onArchive || workspace.diffStat);
-  const showPinnedTargets = (isHovered || platformIsNative || isMobileBreakpoint) && !showShortcut;
-
-  const onLaunch = useCallback(
-    (target: PinnedTabTarget) => {
-      const workspaceKey = buildWorkspaceTabPersistenceKey({
-        serverId: workspace.serverId,
-        workspaceId: workspace.workspaceId,
-      });
-      if (!workspaceKey) return;
-      navigateToWorkspace(workspace.serverId, workspace.workspaceId);
-      useLaunchIntentStore.getState().request({ workspaceKey, target });
-    },
-    [workspace.serverId, workspace.workspaceId],
-  );
-  const launchers = usePinnedLaunchers({ serverId: workspace.serverId, onLaunch });
 
   return (
     <>
       {isCreating ? (
         <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
-      ) : null}
-      {launchers.length > 0 ? (
-        <View
-          style={showPinnedTargets ? undefined : styles.pinnedTargetsHidden}
-          pointerEvents={showPinnedTargets ? "auto" : "none"}
-        >
-          <PinnedTargetsRow launchers={launchers} testIdPrefix="sidebar-pinned-target" />
-        </View>
       ) : null}
       {shouldRenderActionSlot ? (
         <SidebarWorkspaceTrailingActionSlot>
@@ -2718,9 +2689,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     flexShrink: 0,
-  },
-  pinnedTargetsHidden: {
-    opacity: 0,
   },
   kebabButton: {
     padding: 2,
