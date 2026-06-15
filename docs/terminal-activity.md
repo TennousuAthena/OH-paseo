@@ -27,7 +27,7 @@ TerminalSession
 
 Each `onChange` delivers both the new snapshot and the `previous` one (`{ state, changedAt }`). The transition flows unchanged up through `TerminalSession.onActivityChange` (as `{ activity, previous }`), the worker protocol's `terminalActivityChange` event, and the manager-level `subscribeTerminalActivity(listener)` stream (`{ terminalId, name, cwd, activity, previous }`).
 
-The daemon's notification policy consumes these transitions, not snapshots. When a transition moves from `working` to `idle`, the websocket layer fires a "Terminal finished" attention notification. It keeps no per-terminal timing state of its own — the previous snapshot carried in the transition is the entire history it needs. A terminal that exits while still working emits no turn-end notification.
+The daemon consumes these transitions, not snapshots. When a transition moves from `working` to `idle`, the tracker records finished attention, so the terminal shows the same green finished dot as an idle agent that needs review. The websocket layer also fires a "Terminal finished" attention notification. A terminal that exits while still working emits no turn-end notification.
 
 Terminal workspace membership is path-prefix based: a terminal opened in a workspace subdirectory rolls up to the deepest active parent workspace for status buckets and notification routing.
 
@@ -62,11 +62,11 @@ OpenCode uses a server plugin instead of command hooks. The plugin listens to Op
 - `permission.asked` → `needs-input`
 - `permission.replied` → `running`
 
-The daemon maps hook states onto internal terminal activity states: `running` → `working`, `idle` → `idle`, and `needs-input` → `attention`.
+The daemon maps hook states onto terminal activity like an agent lifecycle plus unread attention: `running` → `state: working`, `idle` → `state: idle`, and `needs-input` → `state: idle` with `attentionReason: needs_input`. A `working` → `idle` transition records `state: idle` with `attentionReason: finished` until the user focuses that terminal; plain idle terminals still contribute no workspace status.
 
 ## Focus clearing
 
-Client heartbeats include the focused terminal id. When a visible client focuses a terminal that is in `attention`, the daemon clears that terminal back to `idle`. `idle` terminal activity does not contribute to workspace status, so a workspace whose only attention source was that terminal rolls up from `needs_input` back to `done`.
+Client heartbeats include the focused terminal id. When a visible client focuses a terminal with an `attentionReason`, the daemon clears the attention and leaves the terminal idle. Plain idle terminal activity does not contribute to workspace status, so a workspace whose only attention source was that terminal rolls up from `needs_input` or `attention` back to `done`.
 
 ### Agent hook installation
 
