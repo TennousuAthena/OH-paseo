@@ -258,6 +258,8 @@ interface CheckoutGitActionsStoreState {
     serverId: string;
     cwd: string;
     worktreePath: string;
+    workspaceId?: string;
+    deleteWorktreeFromDisk?: boolean;
   }) => Promise<void>;
 }
 
@@ -497,7 +499,7 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  archiveWorktree: async ({ serverId, cwd, worktreePath }) => {
+  archiveWorktree: async ({ serverId, cwd, worktreePath, workspaceId, deleteWorktreeFromDisk }) => {
     await runCheckoutAction({
       serverId,
       cwd,
@@ -519,7 +521,11 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
         }
         removeWorktreeFromCachedLists({ serverId, worktreePath });
         try {
-          const payload = await client.archivePaseoWorktree({ worktreePath });
+          const payload = await client.archivePaseoWorktree({
+            worktreePath,
+            ...(workspaceId !== undefined ? { workspaceId } : {}),
+            deleteWorktreeFromDisk,
+          });
           if (payload.error) {
             throw new Error(payload.error.message);
           }

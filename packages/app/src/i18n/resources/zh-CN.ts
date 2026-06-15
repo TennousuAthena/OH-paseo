@@ -206,7 +206,7 @@ export const zhCN: TranslationResources = {
     },
   },
   sessions: {
-    title: "会话",
+    title: "Agent 历史",
     empty: "还没有会话",
     actions: {
       loadMore: "加载更多",
@@ -740,12 +740,13 @@ export const zhCN: TranslationResources = {
     },
     actions: {
       addProject: "添加 project",
+      newWorkspace: "新建工作区",
       home: "首页",
       settings: "设置",
       closeSidebar: "关闭侧边栏",
     },
     sections: {
-      sessions: "会话",
+      sessions: "历史",
     },
     worktreeSetup: {
       title: "设置 worktree scripts",
@@ -800,6 +801,12 @@ export const zhCN: TranslationResources = {
         hideConfirm: "隐藏",
         cancel: "取消",
       },
+      deleteWorktreePrompt: {
+        title: "归档 workspace",
+        message: "同时从磁盘删除 worktree？",
+        keep: "保留在磁盘上",
+        delete: "删除",
+      },
       rename: {
         title: "重命名 workspace",
         submit: "重命名",
@@ -818,6 +825,17 @@ export const zhCN: TranslationResources = {
   newWorkspace: {
     title: "新建 workspace",
     create: "创建",
+    backing: {
+      local: "本地",
+      worktree: "新建 worktree",
+      label: "隔离",
+    },
+    fields: {
+      project: "项目",
+      base: "基线",
+      baseNotApplicable: "不适用",
+    },
+    titlePlaceholder: "标题（可选）",
     errors: {
       hostDisconnected: "Host 未连接",
       createWorktreeFailed: "创建 worktree 失败",

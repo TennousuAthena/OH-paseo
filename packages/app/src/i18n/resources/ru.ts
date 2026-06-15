@@ -208,7 +208,7 @@ export const ru: TranslationResources = {
     },
   },
   sessions: {
-    title: "Сессии",
+    title: "История агентов",
     empty: "Сеансов пока нет",
     actions: {
       loadMore: "Загрузить больше",
@@ -764,12 +764,13 @@ export const ru: TranslationResources = {
     },
     actions: {
       addProject: "Добавить проект",
+      newWorkspace: "Новое рабочее пространство",
       home: "Дом",
       settings: "Настройки",
       closeSidebar: "Закрыть боковую панель",
     },
     sections: {
-      sessions: "Сессии",
+      sessions: "История",
     },
     worktreeSetup: {
       title: "Настройка сценариев рабочего дерева",
@@ -827,6 +828,12 @@ export const ru: TranslationResources = {
         hideConfirm: "Скрывать",
         cancel: "Отмена",
       },
+      deleteWorktreePrompt: {
+        title: "Архивировать рабочее пространство",
+        message: "Также удалить рабочее дерево с диска?",
+        keep: "Оставить на диске",
+        delete: "Удалить",
+      },
       rename: {
         title: "Переименовать рабочую область",
         submit: "Переименовать",
@@ -845,6 +852,17 @@ export const ru: TranslationResources = {
   newWorkspace: {
     title: "Новое рабочее пространство",
     create: "Создавать",
+    backing: {
+      local: "Локально",
+      worktree: "Новый worktree",
+      label: "Изоляция",
+    },
+    fields: {
+      project: "Проект",
+      base: "База",
+      baseNotApplicable: "Неприменимо",
+    },
+    titlePlaceholder: "Название (необязательно)",
     errors: {
       hostDisconnected: "Host не подключен",
       createWorktreeFailed: "Не удалось создать рабочее дерево.",

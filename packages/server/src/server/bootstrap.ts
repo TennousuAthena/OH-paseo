@@ -113,6 +113,7 @@ import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
 import { resolveRegisteredWorkspaceIdForCwd } from "./workspace-directory.js";
 import { archivePersistedWorkspaceRecord } from "./workspace-archive-service.js";
 import { setupAutoArchiveOnMerge } from "./auto-archive-on-merge/index.js";
+import type { ActiveWorkspaceRef } from "./paseo-worktree-archive-service.js";
 import { wrapSessionMessage, type SessionOutboundMessage } from "./messages.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { createConfiguredTerminalManager } from "../terminal/terminal-manager-factory.js";
@@ -745,11 +746,20 @@ export async function createPaseoDaemon(
     await archivePersistedWorkspaceRecord({
       workspaceId,
       workspaceRegistry,
-      projectRegistry,
     });
   };
   const resolveWorkspaceIdForCwdExternal = async (cwd: string): Promise<string | null> => {
     return resolveRegisteredWorkspaceIdForCwd(cwd, await workspaceRegistry.list());
+  };
+  const listActiveWorkspacesExternal = async (): Promise<ActiveWorkspaceRef[]> => {
+    const workspaces = await workspaceRegistry.list();
+    return workspaces
+      .filter((workspace) => !workspace.archivedAt)
+      .map((workspace) => ({
+        workspaceId: workspace.workspaceId,
+        cwd: workspace.cwd,
+        kind: workspace.kind,
+      }));
   };
   const markWorkspaceArchivingExternal = (workspaceIds: Iterable<string>, archivingAt: string) => {
     const workspaceIdList = Array.from(workspaceIds);
@@ -786,6 +796,7 @@ export async function createPaseoDaemon(
     terminalManager,
     logger,
     resolveWorkspaceIdForCwd: resolveWorkspaceIdForCwdExternal,
+    listActiveWorkspaces: listActiveWorkspacesExternal,
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     markWorkspaceArchiving: markWorkspaceArchivingExternal,
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
@@ -809,6 +820,7 @@ export async function createPaseoDaemon(
         github,
         workspaceGitService,
         resolveWorkspaceIdForCwd: resolveWorkspaceIdForCwdExternal,
+        listActiveWorkspaces: listActiveWorkspacesExternal,
         archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
         emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
         markWorkspaceArchiving: markWorkspaceArchivingExternal,

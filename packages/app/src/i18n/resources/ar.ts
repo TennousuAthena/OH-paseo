@@ -206,7 +206,7 @@ export const ar: TranslationResources = {
     },
   },
   sessions: {
-    title: "الجلسات",
+    title: "سجل الوكلاء",
     empty: "لا توجد جلسات بعد",
     actions: {
       loadMore: "تحميل المزيد",
@@ -746,12 +746,13 @@ export const ar: TranslationResources = {
     },
     actions: {
       addProject: "إضافة مشروع",
+      newWorkspace: "مساحة عمل جديدة",
       home: "بيت",
       settings: "إعدادات",
       closeSidebar: "إغلاق الشريط الجانبي",
     },
     sections: {
-      sessions: "الجلسات",
+      sessions: "السجل",
     },
     worktreeSetup: {
       title: "إعداد البرامج النصية لشجرة العمل",
@@ -809,6 +810,12 @@ export const ar: TranslationResources = {
         hideConfirm: "يخفي",
         cancel: "يلغي",
       },
+      deleteWorktreePrompt: {
+        title: "أرشفة مساحة العمل",
+        message: "هل تريد أيضًا إزالة شجرة العمل من القرص؟",
+        keep: "الاحتفاظ على القرص",
+        delete: "حذف",
+      },
       rename: {
         title: "إعادة تسمية مساحة العمل",
         submit: "إعادة تسمية",
@@ -827,6 +834,17 @@ export const ar: TranslationResources = {
   newWorkspace: {
     title: "مساحة عمل جديدة",
     create: "يخلق",
+    backing: {
+      local: "محلي",
+      worktree: "شجرة عمل جديدة",
+      label: "العزل",
+    },
+    fields: {
+      project: "المشروع",
+      base: "الأساس",
+      baseNotApplicable: "غير قابل للتطبيق",
+    },
+    titlePlaceholder: "العنوان (اختياري)",
     errors: {
       hostDisconnected: "Host غير متصل",
       createWorktreeFailed: "فشل في إنشاء شجرة العمل",

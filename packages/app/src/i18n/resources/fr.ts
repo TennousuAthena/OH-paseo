@@ -209,7 +209,7 @@ export const fr: TranslationResources = {
     },
   },
   sessions: {
-    title: "Séances",
+    title: "Historique des agents",
     empty: "Aucune séance pour l'instant",
     actions: {
       loadMore: "Charger plus",
@@ -771,12 +771,13 @@ export const fr: TranslationResources = {
     },
     actions: {
       addProject: "Ajouter un projet",
+      newWorkspace: "Nouvel espace de travail",
       home: "Maison",
       settings: "Paramètres",
       closeSidebar: "Fermer la barre latérale",
     },
     sections: {
-      sessions: "Séances",
+      sessions: "Historique",
     },
     worktreeSetup: {
       title: "Configurer les scripts d'arbre de travail",
@@ -834,6 +835,12 @@ export const fr: TranslationResources = {
         hideConfirm: "Cacher",
         cancel: "Annuler",
       },
+      deleteWorktreePrompt: {
+        title: "Archiver l'espace de travail",
+        message: "Supprimer aussi le worktree du disque?",
+        keep: "Conserver sur le disque",
+        delete: "Supprimer",
+      },
       rename: {
         title: "Renommer l'espace de travail",
         submit: "Rebaptiser",
@@ -852,6 +859,17 @@ export const fr: TranslationResources = {
   newWorkspace: {
     title: "Nouvel espace de travail",
     create: "Créer",
+    backing: {
+      local: "Local",
+      worktree: "Nouveau worktree",
+      label: "Isolation",
+    },
+    fields: {
+      project: "Projet",
+      base: "Base",
+      baseNotApplicable: "Non applicable",
+    },
+    titlePlaceholder: "Titre (facultatif)",
     errors: {
       hostDisconnected: "Hostn'est pas connecté",
       createWorktreeFailed: "Échec de la création de l'arbre de travail",
