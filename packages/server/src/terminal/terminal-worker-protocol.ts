@@ -55,6 +55,11 @@ export type TerminalWorkerRequest =
       state: TerminalActivityState;
     }
   | {
+      type: "clearAttention";
+      requestId: string;
+      terminalId: string;
+    }
+  | {
       type: "killTerminal";
       requestId: string;
       terminalId: string;

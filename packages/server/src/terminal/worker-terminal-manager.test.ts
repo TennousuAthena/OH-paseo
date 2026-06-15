@@ -665,7 +665,7 @@ it("sets terminal activity through a worker request", async () => {
   await expect(result).resolves.toBe(true);
 });
 
-it("clears terminal attention through a worker activity update", async () => {
+it("clears terminal attention through a worker request", async () => {
   const worker = new FakeTerminalWorker();
   manager = createWorkerTerminalManager({
     requestTimeoutMs: 50,
@@ -677,19 +677,16 @@ it("clears terminal attention through a worker activity update", async () => {
       id: "terminal-a",
       name: "Shell",
       cwd: "/workspace",
-      activity: { state: "attention", changedAt: 1000 },
+      activity: { state: "idle", attentionReason: "finished", changedAt: 1000 },
     },
     state: createTerminalState(),
   });
 
   const result = manager.clearTerminalAttention("terminal-a");
-  const request = worker.sentMessages.find(
-    (message) => message.type === "setActivity" && message.state === "idle",
-  );
+  const request = worker.sentMessages.find((message) => message.type === "clearAttention");
   expect(request).toMatchObject({
-    type: "setActivity",
+    type: "clearAttention",
     terminalId: "terminal-a",
-    state: "idle",
   });
   if (!request) {
     throw new Error("attention clear request not sent");
@@ -697,6 +694,41 @@ it("clears terminal attention through a worker activity update", async () => {
   worker.emitWorkerMessage({ type: "response", requestId: request.requestId, ok: true });
 
   await expect(result).resolves.toBe(true);
+});
+
+it("clears finished attention on a real terminal", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-attention-"));
+  temporaryDirs.push(cwd);
+  manager = createWorkerTerminalManager();
+  const session = trackTerminal(
+    await manager.createTerminal({
+      cwd,
+      ...nodeTerminalCommand("setInterval(() => {}, 1000);"),
+    }),
+  );
+
+  // A working -> idle transition is how the real tracker records a "finished"
+  // attention: { state: "idle", attentionReason: "finished" }. The state is
+  // never literally "attention", so a clear that checks state === "attention"
+  // would never fire — the bug this reproduces.
+  await manager.setTerminalActivity(session.id, "working");
+  await manager.setTerminalActivity(session.id, "idle");
+  await waitForCondition(
+    () => manager?.getTerminal(session.id)?.getActivity()?.attentionReason === "finished",
+    5000,
+  );
+
+  const cleared = await manager.clearTerminalAttention(session.id);
+
+  expect(cleared).toBe(true);
+  await waitForCondition(
+    () => manager?.getTerminal(session.id)?.getActivity()?.attentionReason == null,
+    5000,
+  );
+  expect(manager.getTerminal(session.id)?.getActivity()).toEqual({
+    state: "idle",
+    changedAt: expect.any(Number),
+  });
 });
 
 it("removes worker terminals after killAndWait", async () => {

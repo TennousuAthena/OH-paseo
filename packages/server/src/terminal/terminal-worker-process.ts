@@ -258,6 +258,12 @@ async function handleRequest(message: TerminalWorkerRequest): Promise<void> {
       return;
     }
 
+    case "clearAttention": {
+      await manager.clearTerminalAttention(message.terminalId);
+      sendToParent({ type: "response", requestId: message.requestId, ok: true });
+      return;
+    }
+
     case "killTerminal": {
       const session = manager.getTerminal(message.terminalId);
       const cwd = session?.cwd;

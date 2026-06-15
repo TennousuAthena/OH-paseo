@@ -294,11 +294,11 @@ export function createWorkerTerminalManager(
         sendBestEffortRequest({ type: "setActivity", terminalId: record.info.id, state });
       },
       clearActivityAttention(): boolean {
-        if (record.activity?.state !== "attention") {
+        if (record.activity?.attentionReason == null) {
           return false;
         }
-        record.activity = { state: "idle", changedAt: Date.now() };
-        sendBestEffortRequest({ type: "setActivity", terminalId: record.info.id, state: "idle" });
+        record.activity = { state: record.activity.state, changedAt: Date.now() };
+        sendBestEffortRequest({ type: "clearAttention", terminalId: record.info.id });
         return true;
       },
       getSize(): { rows: number; cols: number } {
@@ -753,10 +753,10 @@ export function createWorkerTerminalManager(
 
     async clearTerminalAttention(id: string): Promise<boolean> {
       const record = recordsById.get(id);
-      if (!record || record.activity?.state !== "attention") {
+      if (!record || record.activity?.attentionReason == null) {
         return false;
       }
-      await sendRequest({ type: "setActivity", terminalId: id, state: "idle" });
+      await sendRequest({ type: "clearAttention", terminalId: id });
       return true;
     },
 
