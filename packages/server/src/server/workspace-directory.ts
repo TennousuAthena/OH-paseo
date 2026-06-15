@@ -338,19 +338,21 @@ export class WorkspaceDirectory {
         });
       }
 
-      const workspaceId = resolveWorkspaceIdForRecord(workspaceAgent, activeRecords);
-      if (workspaceId === null || !activeWorkspaceIds.has(workspaceId)) {
-        continue;
-      }
-      const existing = descriptorsByWorkspaceId.get(workspaceId);
-      if (!existing) {
-        continue;
-      }
+      const workspaceIds = resolveWorkspaceIdsForStatusContribution(workspaceAgent, activeRecords);
+      for (const workspaceId of workspaceIds) {
+        if (!activeWorkspaceIds.has(workspaceId)) {
+          continue;
+        }
+        const existing = descriptorsByWorkspaceId.get(workspaceId);
+        if (!existing) {
+          continue;
+        }
 
-      if (
-        getWorkspaceStateBucketPriority(bucket) < getWorkspaceStateBucketPriority(existing.status)
-      ) {
-        existing.status = bucket;
+        if (
+          getWorkspaceStateBucketPriority(bucket) < getWorkspaceStateBucketPriority(existing.status)
+        ) {
+          existing.status = bucket;
+        }
       }
     }
   }
@@ -377,24 +379,29 @@ export class WorkspaceDirectory {
       }
       const bucket = deriveTerminalActivityStatusBucket(activity);
       if (!bucket) continue;
-      const workspaceId =
-        resolveWorkspaceIdForRecord({ workspaceId: contributedWorkspaceId, cwd }, activeRecords) ??
-        resolveWorkspaceIdForCwd(cwd);
-      if (workspaceId == null) {
-        continue;
+      const resolvedWorkspaceId = contributedWorkspaceId
+        ? resolveWorkspaceIdForRecord({ workspaceId: contributedWorkspaceId, cwd }, activeRecords)
+        : resolveWorkspaceIdForCwd(cwd);
+      const workspaceIds = resolvedWorkspaceId
+        ? resolveWorkspaceIdsForStatusContribution(
+            { workspaceId: resolvedWorkspaceId, cwd },
+            activeRecords,
+          )
+        : resolveWorkspaceIdsForStatusContribution({ cwd }, activeRecords);
+      for (const workspaceId of workspaceIds) {
+        const existing = descriptorsByWorkspaceId.get(workspaceId);
+        if (!existing) {
+          continue;
+        }
+        if (
+          getWorkspaceStateBucketPriority(bucket) < getWorkspaceStateBucketPriority(existing.status)
+        ) {
+          existing.status = bucket;
+        }
+        const entries = terminalEntriesByWorkspaceId.get(workspaceId) ?? [];
+        entries.push({ bucket, changedAtIso: new Date(activity.changedAt).toISOString() });
+        terminalEntriesByWorkspaceId.set(workspaceId, entries);
       }
-      const existing = descriptorsByWorkspaceId.get(workspaceId);
-      if (!existing) {
-        continue;
-      }
-      if (
-        getWorkspaceStateBucketPriority(bucket) < getWorkspaceStateBucketPriority(existing.status)
-      ) {
-        existing.status = bucket;
-      }
-      const entries = terminalEntriesByWorkspaceId.get(workspaceId) ?? [];
-      entries.push({ bucket, changedAtIso: new Date(activity.changedAt).toISOString() });
-      terminalEntriesByWorkspaceId.set(workspaceId, entries);
     }
     return terminalEntriesByWorkspaceId;
   }
@@ -649,15 +656,42 @@ function groupAgentsByWorkspaceId(
 ): Map<string, AgentSnapshotPayload[]> {
   const byWorkspaceId = new Map<string, AgentSnapshotPayload[]>();
   for (const agent of agents) {
-    const workspaceId = resolveWorkspaceIdForRecord(agent, activeRecords);
-    if (workspaceId === null || !activeWorkspaceIds.has(workspaceId)) {
-      continue;
+    const workspaceIds = resolveWorkspaceIdsForStatusContribution(agent, activeRecords);
+    for (const workspaceId of workspaceIds) {
+      if (!activeWorkspaceIds.has(workspaceId)) {
+        continue;
+      }
+      const entries = byWorkspaceId.get(workspaceId) ?? [];
+      entries.push(agent);
+      byWorkspaceId.set(workspaceId, entries);
     }
-    const entries = byWorkspaceId.get(workspaceId) ?? [];
-    entries.push(agent);
-    byWorkspaceId.set(workspaceId, entries);
   }
   return byWorkspaceId;
+}
+
+function resolveWorkspaceIdsForStatusContribution(
+  record: { workspaceId?: string; cwd: string },
+  activeWorkspaces: PersistedWorkspaceRecord[],
+): string[] {
+  const owningWorkspaceId = resolveWorkspaceIdForRecord(record, activeWorkspaces);
+  if (!owningWorkspaceId) {
+    const recordCwd = resolve(record.cwd);
+    return activeWorkspaces
+      .filter((workspace) => !workspace.archivedAt && resolve(workspace.cwd) === recordCwd)
+      .map((workspace) => workspace.workspaceId);
+  }
+
+  const owningWorkspace = activeWorkspaces.find(
+    (workspace) => workspace.workspaceId === owningWorkspaceId && !workspace.archivedAt,
+  );
+  if (!owningWorkspace) {
+    return [];
+  }
+
+  const owningCwd = resolve(owningWorkspace.cwd);
+  return activeWorkspaces
+    .filter((workspace) => !workspace.archivedAt && resolve(workspace.cwd) === owningCwd)
+    .map((workspace) => workspace.workspaceId);
 }
 
 function resolveDelegationRootAgent(

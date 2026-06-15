@@ -110,6 +110,20 @@ it("lists subdirectory terminals when querying the workspace root", async () => 
   expect(rootTerminals.map((terminal) => terminal.id)).toEqual([created.id]);
 });
 
+it("includes only stamped terminals in workspace-scoped queries", async () => {
+  manager = createTerminalManager();
+  const cwd = realpathSync(tmpdir());
+  const legacy = await manager.createTerminal({ cwd });
+  const owned = await manager.createTerminal({ cwd, workspaceId: "ws-owned" });
+  const sibling = await manager.createTerminal({ cwd, workspaceId: "ws-sibling" });
+
+  const scoped = await manager.getTerminals(cwd, { workspaceId: "ws-owned" });
+  const unscoped = await manager.getTerminals(cwd);
+
+  expect(scoped.map((terminal) => terminal.id)).toEqual([owned.id]);
+  expect(unscoped.map((terminal) => terminal.id)).toEqual([legacy.id, owned.id, sibling.id]);
+});
+
 it("creates additional terminal with auto-incrementing name", async () => {
   manager = createTerminalManager();
   const cwd = realpathSync(tmpdir());

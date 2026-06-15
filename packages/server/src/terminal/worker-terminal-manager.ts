@@ -653,14 +653,10 @@ export function createWorkerTerminalManager(
       }
 
       // When the query carries a workspaceId, two workspaces sharing a cwd must
-      // not see each other's terminals. Exclude sessions owned by a different
-      // workspace; keep sessions without an owner (COMPAT: created by clients
-      // that predate terminal workspace ownership).
+      // not see each other's terminals. A missing owner is not workspace
+      // membership; unscoped callers can still list those legacy terminals.
       if (options?.workspaceId !== undefined) {
-        return sessions.filter(
-          (session) =>
-            session.workspaceId === undefined || session.workspaceId === options.workspaceId,
-        );
+        return sessions.filter((session) => session.workspaceId === options.workspaceId);
       }
       return sessions;
     },

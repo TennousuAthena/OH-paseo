@@ -253,6 +253,10 @@ import {
   type CreatePaseoWorktreeResult,
 } from "./paseo-worktree-service.js";
 import {
+  migrateLegacyAgentWorkspaceOwnership,
+  resolveLegacyWorkspaceOwnerForCwd,
+} from "./workspace-registry-bootstrap.js";
+import {
   generateBranchNameFromFirstAgentContext,
   type GeneratedWorkspaceName,
 } from "./worktree-branch-name-generator.js";
@@ -3282,6 +3286,10 @@ export class Session {
       const createAgentConfig: AgentSessionConfig = createdWorktree
         ? { ...config, cwd: createdWorktree.worktree.worktreePath }
         : config;
+      const workspaceId =
+        createdWorktree?.workspace.workspaceId ??
+        msg.workspaceId ??
+        (await this.resolveLegacyWorkspaceOwnerForAgentCreate(createAgentConfig.cwd));
 
       const { snapshot, liveSnapshot } = await createAgentCommand(
         {
@@ -3297,7 +3305,7 @@ export class Session {
         {
           kind: "session",
           config: createAgentConfig,
-          workspaceId: createdWorktree ? createdWorktree.workspace.workspaceId : msg.workspaceId,
+          workspaceId,
           worktreeName,
           initialPrompt,
           clientMessageId,
@@ -3321,7 +3329,13 @@ export class Session {
         agentId: snapshot.id,
         createdWorktree,
       });
-
+      if (!createdWorktree && trimmedPrompt) {
+        await this.scheduleAutoNameLocalWorkspaceTitleForFirstAgent({
+          workspaceId,
+          cwd: createAgentConfig.cwd,
+          firstAgentContext,
+        });
+      }
       if (requestId) {
         const agentPayload = await this.buildAgentPayload(liveSnapshot);
         this.emit({
@@ -3799,6 +3813,26 @@ export class Session {
     // Directory workspaces have no branch — write only the title.
     await this.applyGeneratedWorkspaceTitle(input.workspaceId, { title });
     await this.emitWorkspaceUpdateForCwd(input.cwd);
+  }
+
+  private async scheduleAutoNameLocalWorkspaceTitleForFirstAgent(input: {
+    workspaceId?: string;
+    cwd: string;
+    firstAgentContext: FirstAgentContext;
+  }): Promise<void> {
+    const workspaceId = input.workspaceId ?? (await this.resolveWorkspaceIdForCwd(input.cwd));
+    if (!workspaceId) {
+      return;
+    }
+    this.scheduleWorkspaceNaming(
+      () =>
+        this.maybeAutoNameDirectoryWorkspaceTitle({
+          workspaceId,
+          cwd: input.cwd,
+          firstAgentContext: input.firstAgentContext,
+        }),
+      { cwd: input.cwd, message: "Failed to auto-name local workspace title" },
+    );
   }
 
   private emitProviderDisabledResponse(
@@ -7296,12 +7330,22 @@ export class Session {
         { workspaceId: event.workspaceId, cwd: event.cwd },
         workspaces,
       );
-      if (workspaceId) {
-        await this.emitWorkspaceUpdatesForWorkspaceIds([workspaceId], {
-          skipReconcile: true,
-        });
+      const owningWorkspace = workspaceId
+        ? workspaces.find(
+            (workspace) => workspace.workspaceId === workspaceId && !workspace.archivedAt,
+          )
+        : null;
+      if (!owningWorkspace) {
         return;
       }
+      const workspaceIds = this.workspaceDirectory.resolveRegisteredWorkspaceIdsForCwd(
+        owningWorkspace.cwd,
+        workspaces,
+      );
+      await this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds, {
+        skipReconcile: true,
+      });
+      return;
     }
     await this.emitWorkspaceUpdateForCwd(event.cwd, { skipReconcile: true });
   }
@@ -7614,6 +7658,13 @@ export class Session {
       return;
     }
 
+    await migrateLegacyAgentWorkspaceOwnership({
+      agentStorage: this.agentStorage,
+      workspaceRegistry: this.workspaceRegistry,
+      logger: this.sessionLogger,
+      cwds: [cwd],
+    });
+
     const workspace = await createLocalCheckoutWorkspace(
       { cwd, title: request.title ?? null },
       {
@@ -7654,6 +7705,12 @@ export class Session {
         { cwd: workspace.cwd, message: "Failed to auto-name directory workspace title" },
       );
     }
+  }
+
+  private async resolveLegacyWorkspaceOwnerForAgentCreate(
+    cwd: string,
+  ): Promise<string | undefined> {
+    return resolveLegacyWorkspaceOwnerForCwd(cwd, await this.workspaceRegistry.list()) ?? undefined;
   }
 
   // Schedules a background workspace-naming write off the request path and

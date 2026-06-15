@@ -14,9 +14,9 @@ import {
 const WORKSPACE_A = "wks_same_cwd_a";
 const WORKSPACE_B = "wks_same_cwd_b";
 
-// Seed two active workspaces that share one cwd, so we can prove Phase 1
-// attributes agents, terminals, and status by workspaceId rather than by
-// directory. Both registry files must exist on disk before the daemon starts:
+// Seed two active workspaces that share one cwd, so we can prove ownership
+// stays workspaceId-scoped while aggregate status is cwd-scoped. Both
+// registry files must exist on disk before the daemon starts:
 // bootstrapWorkspaceRegistries skips materialization when both files are
 // present, leaving these seeded records untouched.
 function seedSameCwdWorkspaces(): { paseoHomeRoot: string; cwd: string } {
@@ -68,7 +68,7 @@ async function statusByWorkspaceId(client: DaemonClient): Promise<Map<string, st
   return new Map(workspaces.entries.map((entry) => [entry.id, entry.status]));
 }
 
-test("two workspaces sharing one cwd stay isolated by workspaceId", async () => {
+test("two workspaces sharing one cwd share agent status without leaking ownership", async () => {
   const { paseoHomeRoot, cwd } = seedSameCwdWorkspaces();
   const daemon = await createTestPaseoDaemon({ paseoHomeRoot });
   const client = new DaemonClient({
@@ -87,9 +87,10 @@ test("two workspaces sharing one cwd stay isolated by workspaceId", async () => 
       ]),
     );
 
-    // 1. Agent created in workspace A carries workspaceId A and only moves A's
-    //    status. Ask mode + a write parks the agent on a pending permission,
-    //    which is the deterministic "needs_input" signal for A.
+    // 1. Agent created in workspace A carries workspaceId A. Ask mode + a
+    //    write parks the agent on a pending permission, which contributes the
+    //    deterministic "needs_input" aggregate signal to all same-cwd
+    //    workspaces.
     const agentA = await client.createAgent({
       ...getAskModeConfig("codex"),
       cwd,
@@ -111,7 +112,7 @@ test("two workspaces sharing one cwd stay isolated by workspaceId", async () => 
     expect(await statusByWorkspaceId(client)).toEqual(
       new Map([
         [WORKSPACE_A, "needs_input"],
-        [WORKSPACE_B, "done"],
+        [WORKSPACE_B, "needs_input"],
       ]),
     );
 
@@ -159,8 +160,8 @@ test("two workspaces sharing one cwd stay isolated by workspaceId", async () => 
     const listForB = await client.listTerminals(cwd, undefined, { workspaceId: WORKSPACE_B });
     expect(listForB.terminals.some((terminal) => terminal.id === terminalId)).toBe(false);
 
-    // 3. Agent created in workspace B carries workspaceId B and moves only B's
-    //    status. A keeps its own pending-permission state independently.
+    // 3. Agent created in workspace B carries workspaceId B while the aggregate
+    //    needs_input status stays shared across both same-cwd workspace rows.
     const agentB = await client.createAgent({
       ...getAskModeConfig("codex"),
       cwd,

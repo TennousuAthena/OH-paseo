@@ -4716,7 +4716,7 @@ test("buildWorkspaceDescriptorMap computes statusEnteredAt from runtime agent fi
   }
 });
 
-test("same-cwd workspace descriptors scope agent status by workspace id", async () => {
+test("same-cwd workspace descriptors share agent status by cwd", async () => {
   const session = createSessionForWorkspaceTests();
   const project = createPersistedProjectRecord({
     projectId: "proj-same-cwd-status",
@@ -4758,7 +4758,7 @@ test("same-cwd workspace descriptors scope agent status by workspace id", async 
   ];
   const runningDescriptors = await session.buildWorkspaceDescriptorMap({ includeGitData: false });
   expect(runningDescriptors.get(workspaceA.workspaceId)?.status).toBe("running");
-  expect(runningDescriptors.get(workspaceB.workspaceId)?.status).toBe("done");
+  expect(runningDescriptors.get(workspaceB.workspaceId)?.status).toBe("running");
 
   session.listAgentPayloads = async () => [
     makeAgent({
@@ -4773,7 +4773,7 @@ test("same-cwd workspace descriptors scope agent status by workspace id", async 
     }),
   ];
   const attentionDescriptors = await session.buildWorkspaceDescriptorMap({ includeGitData: false });
-  expect(attentionDescriptors.get(workspaceA.workspaceId)?.status).toBe("done");
+  expect(attentionDescriptors.get(workspaceA.workspaceId)?.status).toBe("attention");
   expect(attentionDescriptors.get(workspaceB.workspaceId)?.status).toBe("attention");
 });
 
@@ -5770,7 +5770,7 @@ test("terminal activity contribution change updates the correct workspace", asyn
   });
 });
 
-test("same-cwd workspace attribution targets the terminal's workspace", async () => {
+test("same-cwd terminal activity updates every workspace status bucket for that cwd", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const cwd = mkdtempSync(path.join(tmpdir(), "paseo-session-same-cwd-"));
   const workspaceA = createPersistedWorkspaceRecord({
@@ -5816,21 +5816,22 @@ test("same-cwd workspace attribution targets the terminal's workspace", async ()
       message.payload.kind === "upsert" &&
       message.payload.workspace.id === workspaceB.workspaceId &&
       message.payload.workspace.status === "running",
-    "same-cwd terminal activity targets the stamped workspace",
+    "same-cwd terminal activity updates the stamped workspace",
+  );
+  await waitForWorkspaceUpdate(
+    emitted,
+    (message) =>
+      message.payload.kind === "upsert" &&
+      message.payload.workspace.id === workspaceA.workspaceId &&
+      message.payload.workspace.status === "running",
+    "same-cwd terminal activity updates the sibling workspace status bucket",
   );
 
   const updates = filterByType(emitted, "workspace_update");
   const upserts = updates.filter((update) => update.payload.kind === "upsert");
   const targetIds = new Set(upserts.map((update) => update.payload.workspace.id));
   expect(targetIds.has(workspaceB.workspaceId)).toBe(true);
-  expect(targetIds.has(workspaceA.workspaceId)).toBe(false);
-  expect(upserts[upserts.length - 1]?.payload).toMatchObject({
-    kind: "upsert",
-    workspace: {
-      id: workspaceB.workspaceId,
-      status: "running",
-    },
-  });
+  expect(targetIds.has(workspaceA.workspaceId)).toBe(true);
 });
 
 test("nested worktree attribution targets the deepest active workspace", async () => {

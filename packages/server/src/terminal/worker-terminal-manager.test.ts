@@ -566,6 +566,57 @@ it("lists terminals locally without waiting on the worker", async () => {
   expect(worker.sentMessages.some((message) => message.type === "getTerminals")).toBe(false);
 });
 
+it("includes only stamped terminals in workspace-scoped local reads", async () => {
+  const worker = new FakeTerminalWorker();
+  manager = createWorkerTerminalManager({
+    requestTimeoutMs: 5,
+    forkWorker: () => worker,
+  });
+
+  worker.emitWorkerMessage({
+    type: "terminalCreated",
+    terminal: {
+      id: "terminal-legacy",
+      name: "Legacy",
+      cwd: "/workspace",
+      activity: null,
+    },
+    state: createTerminalState(),
+  });
+  worker.emitWorkerMessage({
+    type: "terminalCreated",
+    terminal: {
+      id: "terminal-owned",
+      name: "Owned",
+      cwd: "/workspace",
+      workspaceId: "ws-owned",
+      activity: null,
+    },
+    state: createTerminalState(),
+  });
+  worker.emitWorkerMessage({
+    type: "terminalCreated",
+    terminal: {
+      id: "terminal-sibling",
+      name: "Sibling",
+      cwd: "/workspace",
+      workspaceId: "ws-sibling",
+      activity: null,
+    },
+    state: createTerminalState(),
+  });
+
+  const scoped = await manager.getTerminals("/workspace", { workspaceId: "ws-owned" });
+  const unscoped = await manager.getTerminals("/workspace");
+
+  expect(scoped.map((terminal) => terminal.id)).toEqual(["terminal-owned"]);
+  expect(unscoped.map((terminal) => terminal.id)).toEqual([
+    "terminal-legacy",
+    "terminal-owned",
+    "terminal-sibling",
+  ]);
+});
+
 it("rejects non-absolute cwd in getTerminals", async () => {
   const worker = new FakeTerminalWorker();
   manager = createWorkerTerminalManager({

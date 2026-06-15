@@ -34,12 +34,12 @@ export function generateWorkspaceId(): string {
   return `wks_${randomBytes(8).toString("hex")}`;
 }
 
-// COMPAT(workspaceOwnership): added in v0.1.97, drop the gate when floor >= v0.1.97.
+// COMPAT(workspaceOwnership): added in v0.1.97, drop after 2026-12-15 once floor >= v0.1.97.
 // Resolves the owning workspace for a record (agent/terminal) that may predate
 // workspaceId stamping. New records always carry workspaceId and hit the first
-// branch; legacy records fall back to cwd matching. When several active
-// workspaces share the same cwd, duplicate-cwd disambiguation is impossible from
-// cwd alone, so we pick the deterministic oldest one.
+// branch; legacy records fall back only when cwd has a single active owner.
+// Duplicate-cwd records must be stamped by migration before runtime projection;
+// otherwise cwd-only membership leaks into every same-directory workspace.
 export function resolveWorkspaceIdForRecord(
   record: { workspaceId?: string; cwd: string },
   activeWorkspaces: Iterable<PersistedWorkspaceRecord>,
@@ -52,6 +52,7 @@ export function resolveWorkspaceIdForRecord(
     if (exact) {
       return exact.workspaceId;
     }
+    return null;
   }
 
   const resolvedCwd = resolve(record.cwd);
@@ -60,11 +61,6 @@ export function resolveWorkspaceIdForRecord(
   );
   if (cwdMatches.length === 1) {
     return cwdMatches[0].workspaceId;
-  }
-  if (cwdMatches.length > 1) {
-    return cwdMatches.reduce((oldest, candidate) =>
-      candidate.createdAt < oldest.createdAt ? candidate : oldest,
-    ).workspaceId;
   }
 
   return null;

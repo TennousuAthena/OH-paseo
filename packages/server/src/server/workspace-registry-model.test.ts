@@ -259,7 +259,7 @@ describe("resolveWorkspaceIdForRecord", () => {
     expect(resolved).toBe("ws-only");
   });
 
-  test("resolves a legacy record with multiple cwd matches to the deterministic oldest", () => {
+  test("does not resolve an unstamped legacy record with multiple cwd matches", () => {
     const workspaces = [
       createWorkspaceRecord("/tmp/repo", "ws-newer", { createdAt: "2026-03-02T00:00:00.000Z" }),
       createWorkspaceRecord("/tmp/repo", "ws-older", { createdAt: "2026-03-01T00:00:00.000Z" }),
@@ -267,7 +267,7 @@ describe("resolveWorkspaceIdForRecord", () => {
 
     const resolved = resolveWorkspaceIdForRecord({ cwd: "/tmp/repo" }, workspaces);
 
-    expect(resolved).toBe("ws-older");
+    expect(resolved).toBeNull();
   });
 
   test("returns null for a legacy record with no cwd match", () => {
@@ -278,7 +278,7 @@ describe("resolveWorkspaceIdForRecord", () => {
     expect(resolved).toBeNull();
   });
 
-  test("falls back to cwd when the stamped workspaceId points at an archived workspace", () => {
+  test("does not move a stamped record to another workspace when its owner is archived", () => {
     const workspaces = [
       createWorkspaceRecord("/tmp/repo", "ws-archived", {
         archivedAt: "2026-03-05T00:00:00.000Z",
@@ -291,6 +291,6 @@ describe("resolveWorkspaceIdForRecord", () => {
       workspaces,
     );
 
-    expect(resolved).toBe("ws-live");
+    expect(resolved).toBeNull();
   });
 });

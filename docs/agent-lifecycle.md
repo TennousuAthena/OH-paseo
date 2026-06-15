@@ -58,7 +58,7 @@ The asymmetry is intentional: a subagent's home is the parent's track, not the t
 
 Agent lifecycle status stays literal: a parent agent is `idle` when its own turn is idle, even if a child is running.
 
-Workspace status is an aggregate activity signal. Root agents contribute their normal state bucket to their own workspace. Running subagents contribute `running` to their root parent's workspace, not to the subagent's current `cwd` or worktree. Non-running subagent attention, permission, and error states stay in the parent's subagents track and do not escalate the workspace bucket.
+Workspace status is an aggregate activity signal. Root agents contribute their normal state bucket to every active workspace with the same `cwd` as their owning workspace; tab and agent visibility still stays scoped to the agent's `workspaceId`. Running subagents contribute `running` to workspaces with the same `cwd` as their root parent's owning workspace, not to the subagent's current `cwd` or worktree. Non-running subagent attention, permission, and error states stay in the parent's subagents track and do not escalate the workspace bucket.
 
 ## The subagents track
 

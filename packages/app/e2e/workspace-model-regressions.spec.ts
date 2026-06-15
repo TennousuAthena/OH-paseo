@@ -1,15 +1,25 @@
 import { test, expect } from "./fixtures";
-import {
-  expectComposerEditable,
-  expectComposerVisible,
-  fillComposerDraft,
-} from "./helpers/composer";
+import { expectComposerEditable, expectComposerVisible, submitMessage } from "./helpers/composer";
 import { clickNewChat, gotoWorkspace } from "./helpers/launcher";
 import { connectNewWorkspaceDaemonClient } from "./helpers/new-workspace";
+import { captureWsSessionFrames } from "./helpers/rename";
 import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
 import { getVisibleWorkspaceAgentTabIds } from "./helpers/workspace-tabs";
 
 type NewWorkspaceDaemonClient = Awaited<ReturnType<typeof connectNewWorkspaceDaemonClient>>;
+
+interface CreateAgentFrame extends Record<string, unknown> {
+  initialPrompt: string | null;
+  workspaceId: string | null;
+  provider: string | null;
+  cwd: string | null;
+  modeId: string | null;
+  model: string | null;
+}
+
+function createFrameForPrompt(frames: CreateAgentFrame[], prompt: string): CreateAgentFrame | null {
+  return frames.find((frame) => frame.initialPrompt === prompt) ?? null;
+}
 
 test.describe("Workspace model regressions", () => {
   let client: NewWorkspaceDaemonClient;
@@ -64,6 +74,21 @@ test.describe("Workspace model regressions", () => {
     const seeded: SeededWorkspace = await seedWorkspace({
       repoPrefix: "workspace-new-agent-model-",
     });
+    const createFrames = captureWsSessionFrames<CreateAgentFrame>(
+      page,
+      "create_agent_request",
+      (inner) => {
+        const config = (inner.config ?? {}) as Record<string, unknown>;
+        return {
+          initialPrompt: typeof inner.initialPrompt === "string" ? inner.initialPrompt : null,
+          workspaceId: typeof inner.workspaceId === "string" ? inner.workspaceId : null,
+          provider: typeof config.provider === "string" ? config.provider : null,
+          cwd: typeof config.cwd === "string" ? config.cwd : null,
+          modeId: typeof config.modeId === "string" ? config.modeId : null,
+          model: typeof config.model === "string" ? config.model : null,
+        };
+      },
+    );
 
     try {
       const secondWorkspace = await seeded.client.createWorkspace({
@@ -78,9 +103,9 @@ test.describe("Workspace model regressions", () => {
         localStorage.setItem(
           "@paseo:create-agent-preferences",
           JSON.stringify({
-            provider: "codex",
+            provider: "mock",
             providerPreferences: {
-              codex: { mode: "full-access" },
+              mock: { mode: "load-test" },
             },
           }),
         );
@@ -90,10 +115,23 @@ test.describe("Workspace model regressions", () => {
 
       await expectComposerVisible(page);
       await expectComposerEditable(page);
-      await fillComposerDraft(page, "d");
+      const prompt = `Create agent default model ${Date.now()}`;
+      await submitMessage(page, prompt);
       await expect(page.getByText("No model is available for the selected provider")).toHaveCount(
         0,
       );
+      await expect
+        .poll(() => createFrameForPrompt(createFrames, prompt), {
+          timeout: 10_000,
+        })
+        .toEqual({
+          initialPrompt: prompt,
+          workspaceId: secondWorkspace.workspace.id,
+          provider: "mock",
+          cwd: seeded.repoPath,
+          modeId: "load-test",
+          model: "five-minute-stream",
+        });
     } finally {
       await seeded.cleanup();
     }
