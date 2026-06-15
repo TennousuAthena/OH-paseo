@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { fork } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
+import { assertAbsolutePath, isSameOrDescendantPath } from "../server/path-utils.js";
 import type { TerminalState } from "@getpaseo/protocol/messages";
 import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
 import type {
@@ -624,23 +625,41 @@ export function createWorkerTerminalManager(
     });
   }
 
-  function toSessions(terminals: WorkerTerminalInfo[]): TerminalSession[] {
-    return terminals
-      .map((terminal) => recordsById.get(terminal.id)?.session)
-      .filter((session): session is TerminalSession => Boolean(session));
-  }
-
   return {
     async getTerminals(
       cwd: string,
       options?: { workspaceId?: string },
     ): Promise<TerminalSession[]> {
-      const result = (await sendRequest({
-        type: "getTerminals",
-        cwd,
-        ...(options?.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
-      })) as WorkerTerminalInfo[];
-      return toSessions(result);
+      assertAbsolutePath(cwd);
+
+      // Served from the local mirror, exactly like every other parent read.
+      // Terminals are bucketed by exact cwd, but an agent can open a terminal in
+      // a subdirectory of the workspace. A query for the workspace root must
+      // surface those too, so aggregate every bucket at or below `cwd`.
+      const sessions: TerminalSession[] = [];
+      for (const [bucketCwd, terminalIds] of terminalIdsByCwd) {
+        if (!isSameOrDescendantPath(cwd, bucketCwd)) {
+          continue;
+        }
+        for (const terminalId of terminalIds) {
+          const session = recordsById.get(terminalId)?.session;
+          if (session) {
+            sessions.push(session);
+          }
+        }
+      }
+
+      // When the query carries a workspaceId, two workspaces sharing a cwd must
+      // not see each other's terminals. Exclude sessions owned by a different
+      // workspace; keep sessions without an owner (COMPAT: created by clients
+      // that predate terminal workspace ownership).
+      if (options?.workspaceId !== undefined) {
+        return sessions.filter(
+          (session) =>
+            session.workspaceId === undefined || session.workspaceId === options.workspaceId,
+        );
+      }
+      return sessions;
     },
 
     async createTerminal(options: WorkerCreateTerminalOptions): Promise<TerminalSession> {

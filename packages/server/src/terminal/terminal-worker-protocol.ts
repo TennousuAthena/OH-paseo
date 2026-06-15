@@ -38,12 +38,6 @@ export interface WorkerKillAndWaitOptions {
 
 export type TerminalWorkerRequest =
   | {
-      type: "getTerminals";
-      requestId: string;
-      cwd: string;
-      workspaceId?: string;
-    }
-  | {
       type: "createTerminal";
       requestId: string;
       options: WorkerCreateTerminalOptions;

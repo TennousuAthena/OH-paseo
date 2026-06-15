@@ -523,6 +523,55 @@ it("lists subdirectory terminals when querying the workspace root", async () => 
   expect(rootTerminals.map((terminal) => terminal.id)).toEqual([created.id]);
 });
 
+it("lists terminals locally without waiting on the worker", async () => {
+  const worker = new FakeTerminalWorker();
+  manager = createWorkerTerminalManager({
+    requestTimeoutMs: 5,
+    forkWorker: () => worker,
+  });
+
+  worker.emitWorkerMessage({
+    type: "terminalCreated",
+    terminal: {
+      id: "terminal-root",
+      name: "Shell",
+      cwd: "/workspace",
+      activity: { state: "idle", changedAt: 0 },
+    },
+    state: createTerminalState(),
+  });
+  worker.emitWorkerMessage({
+    type: "terminalCreated",
+    terminal: {
+      id: "terminal-subdir",
+      name: "Shell",
+      cwd: "/workspace/apps/mobile",
+      activity: { state: "idle", changedAt: 0 },
+    },
+    state: createTerminalState(),
+  });
+
+  // The fake worker never answers requests, so a round-trip would reject at the
+  // 5ms timeout. A local mirror read must resolve regardless.
+  const terminals = await manager.getTerminals("/workspace");
+
+  expect(terminals.map((terminal) => terminal.id).sort()).toEqual([
+    "terminal-root",
+    "terminal-subdir",
+  ]);
+  expect(worker.sentMessages.some((message) => message.type === "getTerminals")).toBe(false);
+});
+
+it("rejects non-absolute cwd in getTerminals", async () => {
+  const worker = new FakeTerminalWorker();
+  manager = createWorkerTerminalManager({
+    requestTimeoutMs: 5,
+    forkWorker: () => worker,
+  });
+
+  await expect(manager.getTerminals("relative/path")).rejects.toThrow("cwd must be absolute path");
+});
+
 it("surfaces worker activity changes via getActivity, onActivityChange, and terminalsChanged", async () => {
   const worker = new FakeTerminalWorker();
   manager = createWorkerTerminalManager({

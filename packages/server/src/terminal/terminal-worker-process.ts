@@ -241,19 +241,6 @@ async function handleCreateTerminalRequest(message: TerminalCreateRequest): Prom
 
 async function handleRequest(message: TerminalWorkerRequest): Promise<void> {
   switch (message.type) {
-    case "getTerminals": {
-      const terminals = await manager.getTerminals(message.cwd, {
-        workspaceId: message.workspaceId,
-      });
-      sendToParent({
-        type: "response",
-        requestId: message.requestId,
-        ok: true,
-        result: terminals.map(toTerminalInfo),
-      });
-      return;
-    }
-
     case "createTerminal": {
       await enqueueCreateTerminalRequest(message);
       return;

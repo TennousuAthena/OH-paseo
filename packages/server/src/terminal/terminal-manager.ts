@@ -7,8 +7,8 @@ import {
 } from "./terminal.js";
 import { captureTerminalLines, type CaptureTerminalLinesResult } from "./terminal-capture.js";
 import { randomBytes, randomUUID } from "node:crypto";
-import { resolve, sep, win32, posix } from "node:path";
-import { isSameOrDescendantPath } from "../server/path-utils.js";
+import { resolve, sep } from "node:path";
+import { assertAbsolutePath, isSameOrDescendantPath } from "../server/path-utils.js";
 import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
 
 export interface TerminalListItem {
@@ -96,12 +96,6 @@ export function createTerminalManager(
   const terminalsChangedListeners = new Set<TerminalsChangedListener>();
   const terminalActivityListeners = new Set<TerminalActivityListener>();
   const defaultEnvByRootCwd = new Map<string, Record<string, string>>();
-
-  function assertAbsolutePath(cwd: string): void {
-    if (!posix.isAbsolute(cwd) && !win32.isAbsolute(cwd)) {
-      throw new Error("cwd must be absolute path");
-    }
-  }
 
   function removeSessionById(id: string, options: { kill: boolean }): void {
     const session = terminalsById.get(id);

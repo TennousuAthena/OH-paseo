@@ -1297,7 +1297,12 @@ export class Session {
     if (this.terminalManager) {
       this.unsubscribeTerminalActivityEvents = this.terminalManager.subscribeTerminalsChanged(
         (event) => {
-          void this.emitWorkspaceUpdateForCwd(event.cwd);
+          void this.emitWorkspaceUpdateForCwd(event.cwd).catch((error) => {
+            this.sessionLogger.warn(
+              { err: error, cwd: event.cwd },
+              "Failed to emit workspace update after terminals changed",
+            );
+          });
         },
       );
     }
@@ -5082,7 +5087,12 @@ export class Session {
       { cwd: normalizedCwd },
       (snapshot) => {
         this.handleWorkspaceGitBranchSnapshot(normalizedCwd, snapshot.git.currentBranch ?? null);
-        void this.emitWorkspaceUpdateForCwd(normalizedCwd);
+        void this.emitWorkspaceUpdateForCwd(normalizedCwd).catch((error) => {
+          this.sessionLogger.warn(
+            { err: error, cwd: normalizedCwd },
+            "Failed to emit workspace update after git branch snapshot",
+          );
+        });
         this.emitCheckoutStatusUpdate(normalizedCwd, snapshot);
       },
     );
