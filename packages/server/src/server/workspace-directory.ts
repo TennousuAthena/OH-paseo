@@ -67,14 +67,23 @@ export function resolveRegisteredWorkspaceIdForCwd(
   cwd: string,
   workspaces: PersistedWorkspaceRecord[],
 ): string | null {
+  const ids = resolveRegisteredWorkspaceIdsForCwd(cwd, workspaces);
+  return ids[0] ?? null;
+}
+
+export function resolveRegisteredWorkspaceIdsForCwd(
+  cwd: string,
+  workspaces: PersistedWorkspaceRecord[],
+): string[] {
   const resolvedCwd = resolve(cwd);
-  const exact = workspaces.find((workspace) => workspace.cwd === resolvedCwd);
-  if (exact) {
-    return exact.workspaceId;
+  const exactMatches = workspaces.filter((workspace) => workspace.cwd === resolvedCwd);
+  if (exactMatches.length > 0) {
+    return exactMatches.map((workspace) => workspace.workspaceId);
   }
 
   const userHome = homedir();
-  let bestMatch: PersistedWorkspaceRecord | null = null;
+  let bestMatchLength = 0;
+  const prefixMatches: PersistedWorkspaceRecord[] = [];
   for (const workspace of workspaces) {
     if (workspace.cwd === userHome) continue;
     if (workspace.archivedAt) continue;
@@ -82,12 +91,16 @@ export function resolveRegisteredWorkspaceIdForCwd(
     if (!resolvedCwd.startsWith(prefix)) {
       continue;
     }
-    if (!bestMatch || workspace.cwd.length > bestMatch.cwd.length) {
-      bestMatch = workspace;
+    if (workspace.cwd.length > bestMatchLength) {
+      bestMatchLength = workspace.cwd.length;
+      prefixMatches.length = 0;
+      prefixMatches.push(workspace);
+    } else if (workspace.cwd.length === bestMatchLength) {
+      prefixMatches.push(workspace);
     }
   }
 
-  return bestMatch?.workspaceId ?? null;
+  return prefixMatches.map((workspace) => workspace.workspaceId);
 }
 
 export interface WorkspaceDirectoryDeps {
@@ -493,6 +506,13 @@ export class WorkspaceDirectory {
     workspaces: PersistedWorkspaceRecord[],
   ): string | null {
     return resolveRegisteredWorkspaceIdForCwd(cwd, workspaces);
+  }
+
+  resolveRegisteredWorkspaceIdsForCwd(
+    cwd: string,
+    workspaces: PersistedWorkspaceRecord[],
+  ): string[] {
+    return resolveRegisteredWorkspaceIdsForCwd(cwd, workspaces);
   }
 
   // Project parents that have no active workspaces. These persist as first-class

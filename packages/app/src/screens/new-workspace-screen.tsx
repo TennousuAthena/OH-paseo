@@ -791,11 +791,19 @@ async function createMultiplicityWorkspace(input: {
     ? (resolveCheckoutRequest(input.selectedItem, input.currentBranch)?.refName ?? undefined)
     : undefined;
   const payload = await input.client.createWorkspace({
-    backing: input.backing,
-    cwd: input.project.iconWorkingDir,
-    projectId: input.project.projectKey,
-    ...(isWorktree ? { branch: createNameId() } : {}),
-    ...(baseBranch ? { baseBranch } : {}),
+    source: isWorktree
+      ? {
+          kind: "worktree",
+          cwd: input.project.iconWorkingDir,
+          projectId: input.project.projectKey,
+          worktreeSlug: createNameId(),
+          ...(baseBranch ? { baseBranch } : {}),
+        }
+      : {
+          kind: "directory",
+          path: input.project.iconWorkingDir,
+          projectId: input.project.projectKey,
+        },
   });
   if (payload.error || !payload.workspace) {
     throw new Error(payload.error ?? input.createFailedMessage);

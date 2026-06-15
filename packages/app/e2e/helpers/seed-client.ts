@@ -25,11 +25,18 @@ export interface SeedDaemonClient {
     error: string | null;
   }>;
   createWorkspace(input: {
-    backing: "local" | "worktree";
-    cwd?: string;
-    projectId?: string;
-    branch?: string;
-    baseBranch?: string;
+    source:
+      | { kind: "directory"; path: string; projectId?: string }
+      | {
+          kind: "worktree";
+          cwd?: string;
+          projectId?: string;
+          action?: "branch-off" | "checkout";
+          refName?: string;
+          baseBranch?: string;
+          githubPrNumber?: number;
+          worktreeSlug?: string;
+        };
     title?: string;
   }): Promise<{
     workspace: { id: string; name: string } | null;
@@ -64,6 +71,7 @@ export interface SeedDaemonClient {
   createAgent(options: {
     provider: string;
     cwd: string;
+    workspaceId?: string;
     title?: string;
     modeId?: string;
     model?: string;

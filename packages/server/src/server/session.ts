@@ -207,7 +207,7 @@ import {
   pullCurrentBranch,
   pushCurrentBranch,
   createPullRequest,
-  renameCurrentBranch,
+  renameCurrentBranch as renameCurrentBranchDefault,
 } from "../utils/checkout-git.js";
 import { validateBranchSlug } from "@getpaseo/protocol/branch-slug";
 import { getProjectIcon } from "../utils/project-icon.js";
@@ -252,7 +252,10 @@ import {
   type CreatePaseoWorktreeInput,
   type CreatePaseoWorktreeResult,
 } from "./paseo-worktree-service.js";
-import { generateBranchNameFromFirstAgentContext } from "./worktree-branch-name-generator.js";
+import {
+  generateBranchNameFromFirstAgentContext,
+  type GeneratedWorkspaceName,
+} from "./worktree-branch-name-generator.js";
 import {
   assertSafeGitRef as assertWorktreeSafeGitRef,
   buildAgentSessionConfig as buildWorktreeAgentSessionConfig,
@@ -375,6 +378,11 @@ function diffChangeTypeFor(file: { isNew?: boolean; isDeleted?: boolean }): "A" 
 function buildWorkspaceCheckout(
   workspace: PersistedWorkspaceRecord,
   project: PersistedProjectRecord,
+  // The persisted `branch` field is the source of truth, but it is null for
+  // records created before branch was lifted to its own field (no migrations,
+  // per data-model.md) and for any path that didn't backfill it. Fall back to
+  // the live git branch so checkout.currentBranch never regresses to null.
+  fallbackBranch?: string | null,
 ): ProjectPlacementPayload["checkout"] {
   if (project.kind !== "git") {
     return {
@@ -387,11 +395,12 @@ function buildWorkspaceCheckout(
       mainRepoRoot: null,
     };
   }
+  const currentBranch = workspace.branch ?? fallbackBranch ?? null;
   if (workspace.kind === "worktree") {
     return {
       cwd: workspace.cwd,
       isGit: true,
-      currentBranch: workspace.displayName,
+      currentBranch,
       remoteUrl: null,
       worktreeRoot: workspace.cwd,
       isPaseoOwnedWorktree: true,
@@ -401,7 +410,7 @@ function buildWorkspaceCheckout(
   return {
     cwd: workspace.cwd,
     isGit: true,
-    currentBranch: workspace.displayName,
+    currentBranch,
     remoteUrl: null,
     worktreeRoot: workspace.cwd,
     isPaseoOwnedWorktree: false,
@@ -597,6 +606,12 @@ export interface SessionOptions {
   checkoutDiffManager: CheckoutDiffManager;
   github?: GitHubService;
   createAgentMcpTransport?: AgentMcpTransportFactory;
+  // Injected so tests can substitute the git branch rename without module mocks;
+  // defaults to the real checkout-git implementation.
+  renameCurrentBranch?: typeof renameCurrentBranchDefault;
+  // Injected so tests can substitute workspace title/branch generation without
+  // calling the LLM; defaults to the real first-agent-context generator.
+  generateWorkspaceName?: typeof generateBranchNameFromFirstAgentContext;
   workspaceGitService: WorkspaceGitService;
   daemonConfigStore: DaemonConfigStore;
   mcpBaseUrl?: string | null;
@@ -818,6 +833,11 @@ export class Session {
   private readonly loopService: LoopService;
   private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly github: GitHubService;
+  private readonly renameCurrentBranch: typeof renameCurrentBranchDefault;
+  private readonly generateWorkspaceName: typeof generateBranchNameFromFirstAgentContext;
+  // Resolves when the most recently scheduled background workspace-naming write
+  // completes. Tests await this (via the getter below) instead of sleeping.
+  private pendingWorkspaceNaming: Promise<void> = Promise.resolve();
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly mcpBaseUrl: string | null;
@@ -896,6 +916,8 @@ export class Session {
       loopService,
       checkoutDiffManager,
       github,
+      renameCurrentBranch,
+      generateWorkspaceName,
       workspaceGitService,
       daemonConfigStore,
       mcpBaseUrl,
@@ -947,6 +969,8 @@ export class Session {
     this.loopService = loopService;
     this.checkoutDiffManager = checkoutDiffManager;
     this.github = github ?? createGitHubService();
+    this.renameCurrentBranch = renameCurrentBranch ?? renameCurrentBranchDefault;
+    this.generateWorkspaceName = generateWorkspaceName ?? generateBranchNameFromFirstAgentContext;
     this.workspaceGitService = workspaceGitService;
     this.daemonConfigStore = daemonConfigStore;
     this.mcpBaseUrl = mcpBaseUrl ?? null;
@@ -1674,7 +1698,9 @@ export class Session {
     if (!project) {
       throw new Error(`Project not found for workspace ${workspace.workspaceId}`);
     }
-    const checkout = buildWorkspaceCheckout(workspace, project);
+    const liveBranch =
+      this.workspaceGitService.peekSnapshot(workspace.cwd)?.git.currentBranch ?? null;
+    const checkout = buildWorkspaceCheckout(workspace, project, liveBranch);
     return {
       projectKey: project.projectId,
       projectName: resolveProjectDisplayName(project),
@@ -3667,25 +3693,24 @@ export class Session {
     workspace: PersistedWorkspaceRecord;
     firstAgentContext: FirstAgentContext;
   }): void {
-    setTimeout(() => {
-      void this.maybeAutoNameWorkspaceBranchForFirstAgent(input).catch((error) => {
-        this.sessionLogger.warn(
-          { err: error, cwd: input.workspace.cwd },
-          "Failed to auto-name worktree branch",
-        );
-      });
-    }, 0);
+    this.scheduleWorkspaceNaming(() => this.maybeAutoNameWorkspaceBranchForFirstAgent(input), {
+      cwd: input.workspace.cwd,
+      message: "Failed to auto-name worktree branch",
+    });
   }
 
   private async maybeAutoNameWorkspaceBranchForFirstAgent(input: {
     workspace: PersistedWorkspaceRecord;
     firstAgentContext: FirstAgentContext;
-  }): Promise<PersistedWorkspaceRecord> {
+  }): Promise<void> {
+    // Capture the generated title from the generator callback so we can write
+    // displayName := title after the branch rename completes.
+    let generatedTitle: string | null = null;
     const result = await attemptFirstAgentBranchAutoName({
       cwd: input.workspace.cwd,
       firstAgentContext: input.firstAgentContext,
       generateBranchNameFromContext: ({ cwd, firstAgentContext }) => {
-        return generateBranchNameFromFirstAgentContext({
+        return this.generateWorkspaceName({
           agentManager: this.agentManager,
           cwd,
           workspaceGitService: this.workspaceGitService,
@@ -3694,22 +3719,86 @@ export class Session {
           currentSelection: this.getFocusedAgentSelectionForCwd(cwd),
           firstAgentContext,
           logger: this.sessionLogger,
+        }).then((r) => {
+          generatedTitle = r?.title ?? null;
+          return r?.branch ?? null;
         });
       },
     });
-    if (!result.renamed || !result.branchName) {
-      return input.workspace;
+    if (!result.renamed || !generatedTitle) {
+      return;
     }
 
-    const updatedWorkspace: PersistedWorkspaceRecord = {
-      ...input.workspace,
-      displayName: result.branchName,
-      updatedAt: new Date().toISOString(),
-    };
-    await this.workspaceRegistry.upsert(updatedWorkspace);
+    // K4: re-read from the registry before writing so any concurrent upsert
+    // that happened between workspace creation and this async path is not clobbered.
+    // The first-agent rename renamed the git branch too, so persist the new branch
+    // alongside the title — both are this path's own fields.
+    await this.applyGeneratedWorkspaceTitle(input.workspace.workspaceId, {
+      title: generatedTitle,
+      branch: result.branchName,
+    });
     await this.notifyGitMutation(input.workspace.cwd, "rename-branch");
     await this.emitWorkspaceUpdateForCwd(input.workspace.cwd);
-    return updatedWorkspace;
+  }
+
+  // applyGeneratedWorkspaceTitle writes displayName := title (and, for a worktree
+  // rename, the new branch) for a workspace. It re-reads the current record from
+  // the registry so concurrent upserts that happened after workspace creation are
+  // not clobbered, and writes only its own fields (K4 fix).
+  private async applyGeneratedWorkspaceTitle(
+    workspaceId: string,
+    input: { title: string; branch?: string | null },
+  ): Promise<void> {
+    const current = await this.workspaceRegistry.get(workspaceId);
+    if (!current) {
+      return;
+    }
+    await this.workspaceRegistry.upsert({
+      ...current,
+      displayName: input.title,
+      ...(input.branch ? { branch: input.branch } : {}),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  // Wraps the injected workspace-name generator for a directory workspace.
+  private async generateWorkspaceTitleFromContext(input: {
+    cwd: string;
+    firstAgentContext: FirstAgentContext;
+  }): Promise<GeneratedWorkspaceName | null> {
+    return this.generateWorkspaceName({
+      agentManager: this.agentManager,
+      cwd: input.cwd,
+      workspaceGitService: this.workspaceGitService,
+      providerSnapshotManager: this.providerSnapshotManager,
+      daemonConfig: this.readStructuredGenerationDaemonConfig(),
+      currentSelection: this.getFocusedAgentSelectionForCwd(input.cwd),
+      firstAgentContext: input.firstAgentContext,
+      logger: this.sessionLogger,
+    });
+  }
+
+  // Generates a human title for a directory workspace from the firstAgentContext
+  // prompt and writes it as displayName. No branch rename — directory workspaces
+  // have no worktree git state.
+  // TODO(K7): same-dir directory-workspace display disambiguation not yet implemented.
+  private async maybeAutoNameDirectoryWorkspaceTitle(input: {
+    workspaceId: string;
+    cwd: string;
+    firstAgentContext: FirstAgentContext;
+  }): Promise<void> {
+    const generated = await this.generateWorkspaceTitleFromContext({
+      cwd: input.cwd,
+      firstAgentContext: input.firstAgentContext,
+    });
+    const title = generated?.title ?? null;
+    if (!title) {
+      return;
+    }
+    // K4: applyGeneratedWorkspaceTitle re-reads from the registry before writing.
+    // Directory workspaces have no branch — write only the title.
+    await this.applyGeneratedWorkspaceTitle(input.workspaceId, { title });
+    await this.emitWorkspaceUpdateForCwd(input.cwd);
   }
 
   private emitProviderDisabledResponse(
@@ -5220,10 +5309,34 @@ export class Session {
     }
 
     try {
-      const result = await renameCurrentBranch(cwd, branch);
+      const result = await this.renameCurrentBranch(cwd, branch);
       await this.notifyGitMutation(cwd, "rename-branch", { invalidateGithub: true });
       this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
       this.handleWorkspaceGitBranchSnapshot(cwd, result.currentBranch);
+
+      // K3: persist the new git branch for all workspaces at this cwd. We write
+      // only branch+updatedAt — displayName holds the human title and title is the
+      // user override; a branch rename must touch neither (name and branch are
+      // decoupled fields by construction).
+      // TODO(K10): PR-binding on branch rename is deferred — see plan K10.
+      if (result.currentBranch) {
+        const allWorkspaces = await this.workspaceRegistry.list();
+        const workspaceIds = this.workspaceDirectory.resolveRegisteredWorkspaceIdsForCwd(
+          cwd,
+          allWorkspaces,
+        );
+        await Promise.all(
+          workspaceIds.map(async (workspaceId) => {
+            const current = await this.workspaceRegistry.get(workspaceId);
+            if (!current) return;
+            await this.workspaceRegistry.upsert({
+              ...current,
+              branch: result.currentBranch as string,
+              updatedAt: new Date().toISOString(),
+            });
+          }),
+        );
+      }
 
       // Push a workspace_update immediately so the sidebar/header reflect
       // the new branch name without waiting for the background git watcher.
@@ -7201,11 +7314,14 @@ export class Session {
     },
   ): Promise<void> {
     const workspaces = await this.workspaceRegistry.list();
-    const workspaceId = this.resolveRegisteredWorkspaceIdForCwd(cwd, workspaces);
-    if (!workspaceId) {
+    const workspaceIds = this.workspaceDirectory.resolveRegisteredWorkspaceIdsForCwd(
+      cwd,
+      workspaces,
+    );
+    if (workspaceIds.length === 0) {
       return;
     }
-    await this.emitWorkspaceUpdatesForWorkspaceIds([workspaceId], options);
+    await this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds, options);
   }
 
   private async handleFetchAgents(
@@ -7452,7 +7568,7 @@ export class Session {
     request: Extract<SessionInboundMessage, { type: "workspace.create.request" }>,
   ): Promise<void> {
     try {
-      if (request.backing === "local") {
+      if (request.source.kind === "directory") {
         await this.handleWorkspaceCreateLocal(request);
         return;
       }
@@ -7460,7 +7576,7 @@ export class Session {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to create workspace";
       this.sessionLogger.error(
-        { err: error, backing: request.backing, requestId: request.requestId },
+        { err: error, sourceKind: request.source.kind, requestId: request.requestId },
         "Failed to create workspace",
       );
       this.emit({
@@ -7478,21 +7594,11 @@ export class Session {
   private async handleWorkspaceCreateLocal(
     request: Extract<SessionInboundMessage, { type: "workspace.create.request" }>,
   ): Promise<void> {
-    if (!request.cwd) {
-      this.emit({
-        type: "workspace.create.response",
-        payload: {
-          requestId: request.requestId,
-          workspace: null,
-          setupTerminalId: null,
-          error: "cwd is required for a local-backed workspace",
-          errorCode: "cwd_required",
-        },
-      });
+    if (request.source.kind !== "directory") {
       return;
     }
 
-    const cwd = expandTilde(request.cwd);
+    const cwd = expandTilde(request.source.path);
     const directoryExists = await this.filesystem.isDirectory(cwd).catch(() => false);
     if (!directoryExists) {
       this.emit({
@@ -7536,12 +7642,54 @@ export class Session {
           "Background snapshot refresh failed after workspace.create",
         );
       });
+    if (request.firstAgentContext?.prompt) {
+      const firstAgentContext = request.firstAgentContext;
+      this.scheduleWorkspaceNaming(
+        () =>
+          this.maybeAutoNameDirectoryWorkspaceTitle({
+            workspaceId: workspace.workspaceId,
+            cwd: workspace.cwd,
+            firstAgentContext,
+          }),
+        { cwd: workspace.cwd, message: "Failed to auto-name directory workspace title" },
+      );
+    }
+  }
+
+  // Schedules a background workspace-naming write off the request path and
+  // records the resulting promise so tests can await completion deterministically
+  // (no wall-clock sleeps). The setTimeout(0) keeps the LLM call off the hot path.
+  private scheduleWorkspaceNaming(
+    run: () => Promise<void>,
+    context: { cwd: string; message: string },
+  ): void {
+    this.pendingWorkspaceNaming = new Promise<void>((resolveNaming) => {
+      setTimeout(() => {
+        void run()
+          .catch((error) => {
+            this.sessionLogger.warn({ err: error, cwd: context.cwd }, context.message);
+          })
+          .finally(resolveNaming);
+      }, 0);
+    });
+  }
+
+  // Test-only handle: resolves when the most recent scheduled workspace-naming
+  // write finishes, so tests await real completion instead of a wall-clock sleep.
+  get pendingWorkspaceNamingForTests(): Promise<void> {
+    return this.pendingWorkspaceNaming;
   }
 
   private async handleWorkspaceCreateWorktree(
     request: Extract<SessionInboundMessage, { type: "workspace.create.request" }>,
   ): Promise<void> {
-    if (!request.cwd && !request.projectId) {
+    if (request.source.kind !== "worktree") {
+      return;
+    }
+
+    const source = request.source;
+
+    if (!source.cwd && !source.projectId) {
       this.emit({
         type: "workspace.create.response",
         payload: {
@@ -7556,18 +7704,22 @@ export class Session {
     }
 
     const sourceCwd = await this.resolveWorktreeSourceCwd({
-      cwd: request.cwd,
-      projectId: request.projectId,
+      cwd: source.cwd,
+      projectId: source.projectId,
     });
 
     const result = await this.createPaseoWorktreeWorkflow(
       {
         cwd: sourceCwd,
-        projectId: request.projectId,
-        worktreeSlug: request.branch,
+        projectId: source.projectId,
+        worktreeSlug: source.worktreeSlug,
+        action: source.action,
+        refName: source.refName,
+        githubPrNumber: source.githubPrNumber,
+        firstAgentContext: request.firstAgentContext,
       },
-      request.baseBranch
-        ? { resolveDefaultBranch: async () => request.baseBranch as string }
+      source.baseBranch
+        ? { resolveDefaultBranch: async () => source.baseBranch as string }
         : undefined,
     );
 

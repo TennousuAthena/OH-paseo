@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import { createTestLogger } from "../test-utils/test-logger.js";
 import type { AgentSnapshotPayload, WorkspaceDescriptorPayload } from "./messages.js";
-import { WorkspaceDirectory } from "./workspace-directory.js";
+import { WorkspaceDirectory, resolveRegisteredWorkspaceIdsForCwd } from "./workspace-directory.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "./workspace-registry.js";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 
@@ -503,5 +503,73 @@ describe("WorkspaceDirectory empty projects", () => {
     });
 
     expect(result.emptyProjects.map((p) => p.projectId)).toEqual(["empty"]);
+  });
+});
+
+describe("resolveRegisteredWorkspaceIdsForCwd", () => {
+  const sharedCwd = "/workspace/project";
+
+  const workspace1: PersistedWorkspaceRecord = {
+    workspaceId: "ws-1",
+    projectId: "proj-1",
+    cwd: sharedCwd,
+    kind: "local_checkout",
+    displayName: "main",
+    createdAt: NOW,
+    updatedAt: NOW,
+    archivedAt: null,
+  };
+
+  const workspace2: PersistedWorkspaceRecord = {
+    workspaceId: "ws-2",
+    projectId: "proj-1",
+    cwd: sharedCwd,
+    kind: "local_checkout",
+    displayName: "main-2",
+    createdAt: NOW,
+    updatedAt: NOW,
+    archivedAt: null,
+  };
+
+  const workspace3: PersistedWorkspaceRecord = {
+    workspaceId: "ws-3",
+    projectId: "proj-2",
+    cwd: "/workspace/other",
+    kind: "local_checkout",
+    displayName: "other",
+    createdAt: NOW,
+    updatedAt: NOW,
+    archivedAt: null,
+  };
+
+  test("returns both ids when two workspaces share the same cwd", () => {
+    const result = resolveRegisteredWorkspaceIdsForCwd(sharedCwd, [
+      workspace1,
+      workspace2,
+      workspace3,
+    ]);
+    expect(result.sort()).toEqual(["ws-1", "ws-2"]);
+  });
+
+  test("returns a single id when only one workspace matches the cwd", () => {
+    const result = resolveRegisteredWorkspaceIdsForCwd("/workspace/other", [
+      workspace1,
+      workspace2,
+      workspace3,
+    ]);
+    expect(result).toEqual(["ws-3"]);
+  });
+
+  test("returns prefix-matched id when no exact cwd match exists", () => {
+    const subdir = `${sharedCwd}/packages/app`;
+    // workspace1 and workspace2 both have sharedCwd as a prefix; the plural
+    // resolver must return both when multiple workspaces share the best prefix.
+    const result = resolveRegisteredWorkspaceIdsForCwd(subdir, [workspace1, workspace2]);
+    expect(result.sort()).toEqual(["ws-1", "ws-2"]);
+  });
+
+  test("returns empty array when no workspace matches", () => {
+    const result = resolveRegisteredWorkspaceIdsForCwd("/unrelated/path", [workspace1, workspace2]);
+    expect(result).toEqual([]);
   });
 });
