@@ -467,6 +467,8 @@ export const zhCN: TranslationResources = {
         splitDown: "向下拆分窗格",
         terminalProfilesMenu: "Terminal profiles",
         editTerminalProfiles: "Edit profiles…",
+        pinTarget: "固定",
+        unpinTarget: "取消固定",
       },
       explorer: {
         open: "打开 explorer",

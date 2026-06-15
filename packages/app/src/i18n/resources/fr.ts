@@ -471,6 +471,8 @@ export const fr: TranslationResources = {
         splitDown: "Diviser le volet vers le bas",
         terminalProfilesMenu: "Terminal profiles",
         editTerminalProfiles: "Edit profiles…",
+        pinTarget: "Épingler",
+        unpinTarget: "Détacher",
       },
       explorer: {
         open: "Ouvrir l'explorateur",
