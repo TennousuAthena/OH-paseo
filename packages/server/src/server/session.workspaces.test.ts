@@ -117,7 +117,7 @@ interface SessionTestAccess {
   listFetchAgentsEntries(params: unknown): Promise<ListFetchResult>;
   resolveAgentIdentifier(identifier: string): Promise<unknown>;
   getAgentPayloadById(agentId: string): Promise<unknown>;
-  buildProjectPlacementForCwd(cwd: string): Promise<unknown>;
+  buildProjectPlacementForWorkspaceId(workspaceId: string): Promise<unknown>;
   buildProjectPlacement(cwd: string): Promise<unknown>;
   buildWorkspaceDescriptorMap(...args: unknown[]): Promise<Map<string, unknown>>;
   describeWorkspaceRecord(...args: unknown[]): Promise<unknown>;
@@ -250,6 +250,7 @@ function makeStoredAgent(input: {
 function makeManagedAgent(input: {
   id: string;
   cwd: string;
+  workspaceId?: string;
   lifecycle: AgentSnapshotPayload["status"];
   updatedAt: string;
 }) {
@@ -257,6 +258,7 @@ function makeManagedAgent(input: {
   const snapshot = makeAgent({
     id: input.id,
     cwd: input.cwd,
+    workspaceId: input.workspaceId,
     status: input.lifecycle,
     updatedAt: input.updatedAt,
   });
@@ -765,9 +767,11 @@ test("create_agent_request keeps requested child cwd when grouped under an exist
 
     const [createdAgent] = agentManager.listAgents();
     expect(createdAgent?.cwd).toBe(child);
-    await expect(session.buildProjectPlacementForCwd(createdAgent.cwd)).resolves.toMatchObject({
-      projectKey: "proj-parent",
-      checkout: { cwd: parent },
+    await expect(
+      session.buildProjectPlacementForWorkspaceId(createdAgent!.workspaceId!),
+    ).resolves.toMatchObject({
+      projectKey: parent,
+      checkout: { cwd: child },
     });
     expect(findByType(emitted, "status")?.payload).toMatchObject({
       status: "agent_created",
@@ -930,6 +934,8 @@ test("agent_update placement does not refresh git snapshots", async () => {
 
   session.projectRegistry.get = async (id: string) => (id === project.projectId ? project : null);
   session.workspaceRegistry.list = async () => [workspace];
+  session.workspaceRegistry.get = async (id: string) =>
+    id === workspace.workspaceId ? workspace : null;
   session.agentUpdatesSubscription = {
     subscriptionId: "sub-agents",
     filter: {},
@@ -941,6 +947,7 @@ test("agent_update placement does not refresh git snapshots", async () => {
     makeManagedAgent({
       id: "agent-1",
       cwd: REPO_CWD,
+      workspaceId: workspace.workspaceId,
       lifecycle: "running",
       updatedAt: "2026-03-30T15:00:00.000Z",
     }),
@@ -960,7 +967,7 @@ test("agent_update placement does not refresh git snapshots", async () => {
   });
 });
 
-test("agent_update emits a directory-scoped placement when no workspace is registered", async () => {
+test("agent_update emits remove when the agent has no workspaceId", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const getSnapshot = vi.fn(async () => {
     throw new Error("getSnapshot should not be called for unregistered agent_update placement");
@@ -993,15 +1000,11 @@ test("agent_update emits a directory-scoped placement when no workspace is regis
   );
 
   expect(getSnapshot).not.toHaveBeenCalled();
-  // An agent in a directory with no registered workspace must still emit an
-  // upsert (live model/thinking switches depend on this). It gets a directory-
-  // scoped placement keyed by the path — a project key, not a workspace id.
   const update = emitted.find((message) => message.type === "agent_update");
-  if (update?.type !== "agent_update" || update.payload.kind !== "upsert") {
-    throw new Error("expected an agent_update upsert");
-  }
-  expect(update.payload.agent.id).toBe("agent-1");
-  expect(update.payload.project?.checkout.isGit).toBe(false);
+  expect(update?.payload).toMatchObject({
+    kind: "remove",
+    agentId: "agent-1",
+  });
 });
 
 test("archive emits an authoritative agent_update upsert for subscribed clients", async () => {
@@ -1010,6 +1013,7 @@ test("archive emits an authoritative agent_update upsert for subscribed clients"
     id: "agent-1",
     provider: "codex",
     cwd: REPO_CWD,
+    workspaceId: "ws-1",
     createdAt: "2026-03-30T15:00:00.000Z",
     updatedAt: "2026-03-30T15:00:00.000Z",
     lastActivityAt: "2026-03-30T15:00:00.000Z",
@@ -1379,6 +1383,7 @@ test("close_items_request archives agents and kills terminals in one batch", asy
     id: "agent-1",
     provider: "codex",
     cwd: REPO_CWD,
+    workspaceId: "ws-close",
     model: null,
     thinkingOptionId: null,
     effectiveThinkingOptionId: null,
@@ -1738,6 +1743,7 @@ test("close_items_request continues after an archive failure", async () => {
     ...makeAgent({
       id: "agent-good",
       cwd: REPO_CWD,
+      workspaceId: "ws-err",
       status: "idle",
       updatedAt: "2026-03-01T12:00:00.000Z",
     }),
@@ -1912,7 +1918,7 @@ test("non-git workspace uses deterministic directory name and no unknown branch 
   expect(result.entries[0]?.name).not.toBe("Unknown branch");
 });
 
-test("active-scoped fetch_agents includes only unarchived agents in active exact workspaces", async () => {
+test("active-scoped fetch_agents includes only unarchived agents in active workspaces", async () => {
   const session = createSessionForWorkspaceTests();
   const archivedAt = "2026-03-02T12:00:00.000Z";
   const activeProject = createPersistedProjectRecord({
@@ -1973,24 +1979,28 @@ test("active-scoped fetch_agents includes only unarchived agents in active exact
     makeAgent({
       id: "agent-active",
       cwd: "/tmp/active",
+      workspaceId: "ws-active",
       status: "idle",
       updatedAt: "2026-03-01T12:04:00.000Z",
     }),
     makeAgent({
       id: "agent-subdir",
       cwd: "/tmp/active/packages/app",
+      workspaceId: "ws-active",
       status: "idle",
       updatedAt: "2026-03-01T12:03:00.000Z",
     }),
     makeAgent({
       id: "agent-archived-workspace",
       cwd: "/tmp/archived-workspace",
+      workspaceId: "ws-archived",
       status: "idle",
       updatedAt: "2026-03-01T12:02:00.000Z",
     }),
     makeAgent({
       id: "agent-archived-project",
       cwd: "/tmp/archived-project",
+      workspaceId: "ws-archived-project",
       status: "idle",
       updatedAt: "2026-03-01T12:01:00.000Z",
     }),
@@ -1998,6 +2008,7 @@ test("active-scoped fetch_agents includes only unarchived agents in active exact
       ...makeAgent({
         id: "agent-archived",
         cwd: "/tmp/active",
+        workspaceId: "ws-active",
         status: "idle",
         updatedAt: "2026-03-01T12:00:00.000Z",
       }),
@@ -2012,7 +2023,7 @@ test("active-scoped fetch_agents includes only unarchived agents in active exact
     filter: { includeArchived: true },
   });
 
-  expect(agentIdsFromEntries(result.entries)).toEqual(["agent-active"]);
+  expect(agentIdsFromEntries(result.entries)).toEqual(["agent-active", "agent-subdir"]);
   expect(result.pageInfo.hasMore).toBe(false);
 });
 
@@ -2062,18 +2073,21 @@ test("active-scoped fetch_agents pages within active scope instead of global his
     makeAgent({
       id: "active-one",
       cwd: "/tmp/pages/one",
+      workspaceId: "ws-active-one",
       status: "idle",
       updatedAt: "2026-03-01T12:03:00.000Z",
     }),
     makeAgent({
       id: "stale-between",
       cwd: "/tmp/pages/stale",
+      workspaceId: "ws-stale",
       status: "idle",
       updatedAt: "2026-03-01T12:02:00.000Z",
     }),
     makeAgent({
       id: "active-two",
       cwd: "/tmp/pages/two",
+      workspaceId: "ws-active-two",
       status: "idle",
       updatedAt: "2026-03-01T12:01:00.000Z",
     }),
@@ -2133,16 +2147,22 @@ test("legacy unscoped fetch_agents keeps global workspace behavior", async () =>
 
   session.projectRegistry.get = async () => project;
   session.workspaceRegistry.list = async () => [activeWorkspace, archivedWorkspace];
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    [activeWorkspace, archivedWorkspace].find(
+      (workspace) => workspace.workspaceId === workspaceId,
+    ) ?? null;
   session.listAgentPayloads = async () => [
     makeAgent({
       id: "legacy-active",
       cwd: activeCwd,
+      workspaceId: "ws-legacy-active",
       status: "idle",
       updatedAt: "2026-03-01T12:01:00.000Z",
     }),
     makeAgent({
       id: "legacy-archived-workspace",
       cwd: archivedCwd,
+      workspaceId: "ws-legacy-archived",
       status: "idle",
       updatedAt: "2026-03-01T12:00:00.000Z",
     }),
@@ -2187,11 +2207,13 @@ test("fetch_agent_history_request pages archived historical rows separately", as
   };
   session.projectRegistry.get = async () => project;
   session.workspaceRegistry.list = async () => [workspace];
+  session.workspaceRegistry.get = async () => workspace;
   session.listAgentPayloads = async () => [
     {
       ...makeAgent({
         id: "history-archived",
         cwd: historyCwd,
+        workspaceId: "ws-history",
         status: "idle",
         updatedAt: "2026-03-01T12:00:00.000Z",
       }),
@@ -2467,6 +2489,7 @@ test("fetch_agent_request still resolves archived historical agents", async () =
     ...makeAgent({
       id: "archived-history-agent",
       cwd: path.resolve("/tmp/history-detail"),
+      workspaceId: "ws-history-detail",
       status: "idle",
       updatedAt: "2026-03-01T12:00:00.000Z",
     }),
@@ -2481,11 +2504,11 @@ test("fetch_agent_request still resolves archived historical agents", async () =
       ? { ok: true, agentId: agent.id }
       : { ok: false, error: `Agent not found: ${identifier}` };
   session.getAgentPayloadById = async (agentId: string) => (agentId === agent.id ? agent : null);
-  session.buildProjectPlacementForCwd = async (cwd: string) => ({
+  session.buildProjectPlacementForWorkspaceId = async () => ({
     projectKey: "proj-history-detail",
     projectName: "history detail",
     checkout: {
-      cwd,
+      cwd: agent.cwd,
       isGit: false,
       currentBranch: null,
       remoteUrl: null,

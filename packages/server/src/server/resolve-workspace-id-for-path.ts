@@ -5,12 +5,12 @@ import type { PersistedWorkspaceRecord } from "./workspace-registry.js";
 
 // external path→workspace adapter, not ownership.
 //
-// Resolves a raw filesystem path to a single workspace id for the two flows that
-// receive a path rather than an id: archive-by-path (an old client / CLI passes a
-// worktree path) and agent project-placement display (an agent's cwd, which may
-// be a subdirectory of its workspace). This is NEVER used to attribute a record's
-// status to a workspace — status is per `workspaceId`, and git facts derive from a
-// workspace's OWN cwd (id → cwd).
+// Resolves a raw filesystem path to a single workspace id ONLY at the boundary
+// where a client hands the daemon a bare worktree path with no id:
+// archive-by-path (old client / CLI), auto-archive-after-merge, and the MCP
+// `archive_worktree` tool. It is NEVER used to attribute agent status or place
+// agents under a workspace — those are keyed by `workspaceId`, and git facts
+// derive from a workspace's OWN cwd (id → cwd).
 //
 // Resolution: an exact directory match wins; otherwise the deepest enclosing
 // workspace directory, never the home directory; null when nothing encloses it.

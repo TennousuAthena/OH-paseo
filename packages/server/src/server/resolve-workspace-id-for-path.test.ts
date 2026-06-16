@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { createPersistedWorkspaceRecord } from "./workspace-registry.js";
-import { resolveWorkspaceIdForPath } from "./workspace-ownership.js";
+import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
 
 function createWorkspaceRecord(
   cwd: string,
@@ -23,9 +23,8 @@ function createWorkspaceRecord(
 }
 
 // resolveWorkspaceIdForPath is the external path→workspace adapter for
-// archive-by-path and agent project-placement display. It is NOT ownership: a
-// record's owner is its workspaceId. The per-id status law is exercised in
-// workspace-directory.test.ts.
+// archive-by-path. It is NOT ownership: a record's owner is its workspaceId.
+// The per-id status law is exercised in workspace-directory.test.ts.
 
 describe("resolveWorkspaceIdForPath", () => {
   test("returns a single id when multiple workspaces share the exact cwd", () => {

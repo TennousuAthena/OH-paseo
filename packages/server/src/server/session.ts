@@ -159,11 +159,10 @@ import {
 import {
   checkoutLiteFromGitSnapshot,
   classifyDirectoryForProjectMembership,
-  deriveProjectGroupingName,
   deriveWorkspaceDisplayName,
   generateWorkspaceId,
 } from "./workspace-registry-model.js";
-import { resolveWorkspaceIdForPath } from "./workspace-ownership.js";
+import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
 import {
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
@@ -1648,19 +1647,6 @@ export class Session {
     }
   }
 
-  private async findWorkspaceByDirectory(
-    cwd: string,
-    options?: { refreshGit?: boolean },
-  ): Promise<PersistedWorkspaceRecord | null> {
-    const normalizedCwd = await this.resolveWorkspaceDirectory(cwd, options);
-    const workspaces = await this.workspaceRegistry.list();
-    const workspaceId = resolveWorkspaceIdForPath(normalizedCwd, workspaces);
-    if (!workspaceId) {
-      return null;
-    }
-    return workspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null;
-  }
-
   private async findExactWorkspaceByDirectory(
     cwd: string,
     options?: { refreshGit?: boolean },
@@ -1702,37 +1688,11 @@ export class Session {
     };
   }
 
-  private async buildProjectPlacementForCwd(
-    cwd: string,
-    options?: { refreshGit?: boolean; fallback?: boolean },
+  private async buildProjectPlacementForWorkspaceId(
+    workspaceId: string,
   ): Promise<ProjectPlacementPayload | null> {
-    const workspace = await this.findWorkspaceByDirectory(cwd, {
-      refreshGit: options?.refreshGit,
-    });
-    if (!workspace) {
-      if (!options?.fallback) {
-        return null;
-      }
-
-      // An agent can run in a directory that has no registered workspace yet
-      // (e.g. a fresh non-git folder). Synthesize a directory-scoped placement so
-      // the agent still emits updates. projectKey/cwd are paths here — a project
-      // grouping key, not a workspace id — so this stays opaque-id-safe.
-      const resolvedCwd = resolve(cwd);
-      return {
-        projectKey: resolvedCwd,
-        projectName: deriveProjectGroupingName(resolvedCwd),
-        checkout: {
-          cwd: resolvedCwd,
-          isGit: false,
-          currentBranch: null,
-          remoteUrl: null,
-          worktreeRoot: null,
-          isPaseoOwnedWorktree: false,
-          mainRepoRoot: null,
-        },
-      };
-    }
+    const workspace = await this.workspaceRegistry.get(workspaceId);
+    if (!workspace) return null;
     return this.buildProjectPlacementForWorkspace(workspace);
   }
 
@@ -1741,30 +1701,33 @@ export class Session {
       const subscription = this.agentUpdatesSubscription;
       const payload = await this.buildAgentPayload(agent);
       if (subscription) {
-        const project = await this.buildProjectPlacementForCwd(payload.cwd, {
-          refreshGit: false,
-          fallback: true,
-        });
+        const project = payload.workspaceId
+          ? await this.buildProjectPlacementForWorkspaceId(payload.workspaceId)
+          : null;
         if (!project) {
-          throw new Error(`Workspace not found for agent ${payload.id}`);
-        }
-        const matches = this.matchesAgentFilter({
-          agent: payload,
-          project,
-          filter: subscription.filter,
-        });
-
-        if (matches) {
-          this.bufferOrEmitAgentUpdate(subscription, {
-            kind: "upsert",
-            agent: payload,
-            project,
-          });
-        } else {
           this.bufferOrEmitAgentUpdate(subscription, {
             kind: "remove",
             agentId: payload.id,
           });
+        } else {
+          const matches = this.matchesAgentFilter({
+            agent: payload,
+            project,
+            filter: subscription.filter,
+          });
+
+          if (matches) {
+            this.bufferOrEmitAgentUpdate(subscription, {
+              kind: "upsert",
+              agent: payload,
+              project,
+            });
+          } else {
+            this.bufferOrEmitAgentUpdate(subscription, {
+              kind: "remove",
+              agentId: payload.id,
+            });
+          }
         }
       }
 
@@ -2474,7 +2437,9 @@ export class Session {
 
     if (this.agentUpdatesSubscription) {
       const payload = this.buildStoredAgentPayload(archivedRecord);
-      const project = await this.buildProjectPlacementForCwd(payload.cwd);
+      const project = payload.workspaceId
+        ? await this.buildProjectPlacementForWorkspaceId(payload.workspaceId)
+        : null;
       if (project) {
         const matches = this.matchesAgentFilter({
           agent: payload,
@@ -6450,7 +6415,7 @@ export class Session {
     return this.isProviderVisibleToClient(payload.provider) ? payload : null;
   }
 
-  private async buildActiveProjectPlacementsByWorkspaceCwd(): Promise<
+  private async buildActiveProjectPlacementsByWorkspaceId(): Promise<
     Map<string, ProjectPlacementPayload>
   > {
     const [persistedWorkspaces, persistedProjects] = await Promise.all([
@@ -6462,7 +6427,7 @@ export class Session {
         .filter((project) => !project.archivedAt)
         .map((project) => [project.projectId, project] as const),
     );
-    const placementsByCwd = new Map<string, ProjectPlacementPayload>();
+    const placementsByWorkspaceId = new Map<string, ProjectPlacementPayload>();
 
     const pairs = persistedWorkspaces.flatMap((workspace) => {
       if (workspace.archivedAt) return [];
@@ -6476,16 +6441,16 @@ export class Session {
       ),
     );
     for (let i = 0; i < pairs.length; i += 1) {
-      placementsByCwd.set(resolve(pairs[i].workspace.cwd), placements[i]);
+      placementsByWorkspaceId.set(pairs[i].workspace.workspaceId, placements[i]);
     }
 
-    return placementsByCwd;
+    return placementsByWorkspaceId;
   }
 
   private async collectFetchAgentsEntries(params: {
     candidates: AgentSnapshotPayload[];
     limit: number;
-    getPlacement: (cwd: string) => Promise<ProjectPlacementPayload | null>;
+    getPlacement: (workspaceId: string | undefined) => Promise<ProjectPlacementPayload | null>;
     filter: AgentUpdatesFilter | undefined;
   }): Promise<FetchAgentsResponseEntry[]> {
     const { candidates, limit, getPlacement, filter } = params;
@@ -6499,7 +6464,7 @@ export class Session {
       const batch = candidates.slice(start, start + batchSize);
       const batchEntries = await Promise.all(
         batch.map(async (agent) => {
-          const project = await getPlacement(agent.cwd);
+          const project = await getPlacement(agent.workspaceId);
           return project ? { agent, project } : null;
         }),
       );
@@ -6542,25 +6507,33 @@ export class Session {
       includeArchived: filter?.includeArchived,
       includeUnavailablePersisted: request.type === "fetch_agent_history_request",
     });
-    const activePlacementsByCwd =
-      scope === "active" ? await this.buildActiveProjectPlacementsByWorkspaceCwd() : null;
-    if (activePlacementsByCwd) {
+    const activePlacementsByWorkspaceId =
+      scope === "active" ? await this.buildActiveProjectPlacementsByWorkspaceId() : null;
+    if (activePlacementsByWorkspaceId) {
       agents = agents.filter(
-        (agent) => !agent.archivedAt && activePlacementsByCwd.has(resolve(agent.cwd)),
+        (agent) =>
+          !agent.archivedAt &&
+          agent.workspaceId != null &&
+          activePlacementsByWorkspaceId.has(agent.workspaceId),
       );
     }
 
-    const placementByCwd = new Map<string, Promise<ProjectPlacementPayload | null>>();
-    const getPlacement = (cwd: string): Promise<ProjectPlacementPayload | null> => {
-      if (activePlacementsByCwd) {
-        return Promise.resolve(activePlacementsByCwd.get(resolve(cwd)) ?? null);
+    const placementByWorkspaceId = new Map<string, Promise<ProjectPlacementPayload | null>>();
+    const getPlacement = (
+      workspaceId: string | undefined,
+    ): Promise<ProjectPlacementPayload | null> => {
+      if (!workspaceId) {
+        return Promise.resolve(null);
       }
-      const existing = placementByCwd.get(cwd);
+      if (activePlacementsByWorkspaceId) {
+        return Promise.resolve(activePlacementsByWorkspaceId.get(workspaceId) ?? null);
+      }
+      const existing = placementByWorkspaceId.get(workspaceId);
       if (existing) {
         return existing;
       }
-      const placementPromise = this.buildProjectPlacementForCwd(cwd);
-      placementByCwd.set(cwd, placementPromise);
+      const placementPromise = this.buildProjectPlacementForWorkspaceId(workspaceId);
+      placementByWorkspaceId.set(workspaceId, placementPromise);
       return placementPromise;
     };
 
@@ -8197,7 +8170,7 @@ export class Session {
           };
           await this.agentStorage.upsert(nextRecord);
           const agent = this.buildStoredAgentPayload(nextRecord);
-          const project = await this.buildProjectPlacementForCwd(agent.cwd);
+          const project = await this.buildProjectPlacementForWorkspace(workspace);
           this.emit({
             type: "agent_update",
             payload: {
@@ -8276,7 +8249,9 @@ export class Session {
       return;
     }
 
-    const project = await this.buildProjectPlacementForCwd(agent.cwd);
+    const project = agent.workspaceId
+      ? await this.buildProjectPlacementForWorkspaceId(agent.workspaceId)
+      : null;
     this.emit({
       type: "fetch_agent_response",
       payload: { requestId, agent, project, error: null },
