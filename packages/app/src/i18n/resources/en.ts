@@ -1533,6 +1533,7 @@ export const en = {
       },
       help: {
         openProject: "Open project",
+        newWorkspace: "New workspace",
         newWorktree: "New worktree",
         archiveWorktree: "Archive worktree",
         newTab: "New tab",

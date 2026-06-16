@@ -1509,6 +1509,7 @@ export const zhCN: TranslationResources = {
       },
       help: {
         openProject: "打开项目",
+        newWorkspace: "新建 workspace",
         newWorktree: "新建 worktree",
         archiveWorktree: "归档 worktree",
         newTab: "新建标签",

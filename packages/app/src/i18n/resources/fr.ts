@@ -1569,6 +1569,7 @@ export const fr: TranslationResources = {
       },
       help: {
         openProject: "Projet ouvert",
+        newWorkspace: "Nouvel espace de travail",
         newWorktree: "Nouvel arbre de travail",
         archiveWorktree: "Arbre de travail d'archivage",
         newTab: "Nouvel onglet",
