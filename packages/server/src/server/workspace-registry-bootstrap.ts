@@ -8,11 +8,11 @@ import {
   classifyDirectoryForProjectMembership,
   generateWorkspaceId,
 } from "./workspace-registry-model.js";
+import { backfillWorkspaceIdForLegacyAgents } from "./migrations/backfill-workspace-id.migration.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import {
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
-  type PersistedWorkspaceRecord,
   type ProjectRegistry,
   type WorkspaceRegistry,
 } from "./workspace-registry.js";
@@ -45,71 +45,6 @@ function resolveAgentUpdatedAt(record: StoredAgentRecord): string {
   return record.lastActivityAt || record.updatedAt || record.createdAt || new Date(0).toISOString();
 }
 
-export function resolveLegacyWorkspaceOwnerForCwd(
-  cwd: string,
-  workspaces: Iterable<PersistedWorkspaceRecord>,
-): string | null {
-  const normalizedCwd = path.resolve(cwd);
-  const activeWorkspaces = Array.from(workspaces).filter((workspace) => !workspace.archivedAt);
-  const exactMatches = activeWorkspaces.filter(
-    (workspace) => path.resolve(workspace.cwd) === normalizedCwd,
-  );
-  if (exactMatches.length > 0) {
-    return oldestWorkspace(exactMatches).workspaceId;
-  }
-
-  const prefixMatches = activeWorkspaces.filter((workspace) => {
-    const workspaceCwd = path.resolve(workspace.cwd);
-    return normalizedCwd === workspaceCwd || normalizedCwd.startsWith(`${workspaceCwd}${path.sep}`);
-  });
-  if (prefixMatches.length === 0) {
-    return null;
-  }
-
-  const longestPrefixLength = Math.max(
-    ...prefixMatches.map((workspace) => path.resolve(workspace.cwd).length),
-  );
-  return oldestWorkspace(
-    prefixMatches.filter((workspace) => path.resolve(workspace.cwd).length === longestPrefixLength),
-  ).workspaceId;
-}
-
-export async function migrateLegacyAgentWorkspaceOwnership(options: {
-  agentStorage: AgentStorage;
-  workspaceRegistry: WorkspaceRegistry;
-  logger: Logger;
-  cwds?: Iterable<string>;
-}): Promise<number> {
-  const workspaceRecords = await options.workspaceRegistry.list();
-  const cwdFilter = options.cwds
-    ? new Set(Array.from(options.cwds, (cwd) => path.resolve(cwd)))
-    : null;
-  const records = await options.agentStorage.list();
-  let migrated = 0;
-
-  for (const record of records) {
-    if (record.workspaceId) {
-      continue;
-    }
-    if (cwdFilter && !cwdFilter.has(path.resolve(record.cwd))) {
-      continue;
-    }
-
-    const workspaceId = resolveLegacyWorkspaceOwnerForCwd(record.cwd, workspaceRecords);
-    if (!workspaceId) {
-      continue;
-    }
-
-    await options.agentStorage.upsert({ ...record, workspaceId });
-    migrated += 1;
-  }
-
-  if (migrated > 0) {
-    options.logger.info({ migrated }, "Migrated legacy agent workspace ownership");
-  }
-  return migrated;
-}
-
 export async function bootstrapWorkspaceRegistries(options: {
   paseoHome: string;
   agentStorage: AgentStorage;
@@ -126,7 +61,7 @@ export async function bootstrapWorkspaceRegistries(options: {
   await Promise.all([options.projectRegistry.initialize(), options.workspaceRegistry.initialize()]);
 
   if (projectsExists && workspacesExists) {
-    await migrateLegacyAgentWorkspaceOwnership(options);
+    await backfillWorkspaceIdForLegacyAgents(options);
     return;
   }
 
@@ -235,7 +170,7 @@ export async function bootstrapWorkspaceRegistries(options: {
     ),
   );
 
-  await migrateLegacyAgentWorkspaceOwnership(options);
+  await backfillWorkspaceIdForLegacyAgents(options);
 
   options.logger.info(
     {
@@ -245,11 +180,5 @@ export async function bootstrapWorkspaceRegistries(options: {
       materializedWorkspaces: recordsByDirectoryKey.size,
     },
     "Workspace registries bootstrapped from existing agent storage",
-  );
-}
-
-function oldestWorkspace(workspaces: PersistedWorkspaceRecord[]): PersistedWorkspaceRecord {
-  return workspaces.reduce((oldest, candidate) =>
-    candidate.createdAt < oldest.createdAt ? candidate : oldest,
   );
 }

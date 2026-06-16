@@ -162,8 +162,8 @@ import {
   deriveProjectGroupingName,
   deriveWorkspaceDisplayName,
   generateWorkspaceId,
-  resolveWorkspaceIdForRecord,
 } from "./workspace-registry-model.js";
+import { resolveWorkspaceIdForPath } from "./workspace-ownership.js";
 import {
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
@@ -241,6 +241,7 @@ import {
 } from "../services/github-service.js";
 import {
   summarizeFetchWorkspacesEntries,
+  workspaceIdsOnCheckout,
   WorkspaceDirectory,
   type WorkspaceUpdatesFilter,
 } from "./workspace-directory.js";
@@ -252,10 +253,6 @@ import {
   type CreatePaseoWorktreeInput,
   type CreatePaseoWorktreeResult,
 } from "./paseo-worktree-service.js";
-import {
-  migrateLegacyAgentWorkspaceOwnership,
-  resolveLegacyWorkspaceOwnerForCwd,
-} from "./workspace-registry-bootstrap.js";
 import {
   generateBranchNameFromFirstAgentContext,
   type GeneratedWorkspaceName,
@@ -839,9 +836,6 @@ export class Session {
   private readonly github: GitHubService;
   private readonly renameCurrentBranch: typeof renameCurrentBranchDefault;
   private readonly generateWorkspaceName: typeof generateBranchNameFromFirstAgentContext;
-  // Resolves when the most recently scheduled background workspace-naming write
-  // completes. Tests await this (via the getter below) instead of sleeping.
-  private pendingWorkspaceNaming: Promise<void> = Promise.resolve();
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly mcpBaseUrl: string | null;
@@ -1006,7 +1000,7 @@ export class Session {
       createPaseoWorktreeWorkflow: (input, workflowOptions) =>
         this.createPaseoWorktreeWorkflow(input, workflowOptions),
       archiveAgentForClose: (agentId) => this.archiveAgentForClose(agentId),
-      resolveWorkspaceIdForCwd: (cwd) => this.resolveWorkspaceIdForCwd(cwd),
+      findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
       listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
       archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
       emit: (message) => this.emit(message),
@@ -1121,10 +1115,6 @@ export class Session {
 
   async emitWorkspaceUpdatesForExternalWorkspaceIds(workspaceIds: Iterable<string>): Promise<void> {
     await this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds);
-  }
-
-  async emitWorkspaceUpdatesForExternalCwds(cwds: Iterable<string>): Promise<void> {
-    await Promise.all(Array.from(cwds, (cwd) => this.emitWorkspaceUpdateForCwd(cwd)));
   }
 
   async warmWorkspaceGitDataForWorkspace(workspace: PersistedWorkspaceRecord): Promise<void> {
@@ -1664,7 +1654,7 @@ export class Session {
   ): Promise<PersistedWorkspaceRecord | null> {
     const normalizedCwd = await this.resolveWorkspaceDirectory(cwd, options);
     const workspaces = await this.workspaceRegistry.list();
-    const workspaceId = this.resolveRegisteredWorkspaceIdForCwd(normalizedCwd, workspaces);
+    const workspaceId = resolveWorkspaceIdForPath(normalizedCwd, workspaces);
     if (!workspaceId) {
       return null;
     }
@@ -1778,7 +1768,11 @@ export class Session {
         }
       }
 
-      await this.emitWorkspaceUpdateForCwd(payload.cwd);
+      // A lifecycle change updates exactly the agent's owning workspace, never
+      // every workspace sharing its cwd. Ownership is the agent's workspaceId.
+      if (payload.workspaceId) {
+        await this.emitWorkspaceUpdateForWorkspaceId(payload.workspaceId);
+      }
     } catch (error) {
       this.sessionLogger.error({ err: error }, "Failed to emit agent update");
     }
@@ -2403,9 +2397,9 @@ export class Session {
   private async handleDeleteAgentRequest(agentId: string, requestId: string): Promise<void> {
     this.sessionLogger.info({ agentId }, `Deleting agent ${agentId} from registry`);
 
-    const knownCwd =
-      this.agentManager.getAgent(agentId)?.cwd ??
-      (await this.agentStorage.get(agentId))?.cwd ??
+    const knownWorkspaceId =
+      this.agentManager.getAgent(agentId)?.workspaceId ??
+      (await this.agentStorage.get(agentId))?.workspaceId ??
       null;
 
     // File-backed storage still needs an early delete fence before closeAgent().
@@ -2446,8 +2440,8 @@ export class Session {
       });
     }
 
-    if (knownCwd) {
-      await this.emitWorkspaceUpdateForCwd(knownCwd);
+    if (knownWorkspaceId) {
+      await this.emitWorkspaceUpdateForWorkspaceId(knownWorkspaceId);
     }
   }
 
@@ -2506,7 +2500,9 @@ export class Session {
           agentId,
         });
       }
-      await this.emitWorkspaceUpdateForCwd(payload.cwd);
+      if (payload.workspaceId) {
+        await this.emitWorkspaceUpdateForWorkspaceId(payload.workspaceId);
+      }
     }
 
     return { agentId, archivedAt };
@@ -3286,10 +3282,13 @@ export class Session {
       const createAgentConfig: AgentSessionConfig = createdWorktree
         ? { ...config, cwd: createdWorktree.worktree.worktreePath }
         : config;
+      // Ownership comes from an explicit id (worktree or request). An agent
+      // created with no explicit workspace mints a fresh one — we never resolve
+      // an existing workspace by cwd, because many workspaces may share a cwd.
       const workspaceId =
         createdWorktree?.workspace.workspaceId ??
         msg.workspaceId ??
-        (await this.resolveLegacyWorkspaceOwnerForAgentCreate(createAgentConfig.cwd));
+        (await this.createWorkspaceForDirectory(createAgentConfig.cwd)).workspaceId;
 
       const { snapshot, liveSnapshot } = await createAgentCommand(
         {
@@ -3324,11 +3323,6 @@ export class Session {
       );
       createdAgentId = snapshot.id;
       await this.forwardAgentUpdate(snapshot);
-      this.createAgentLifecycleDispatch.registerAutoArchiveIfRequested({
-        autoArchive,
-        agentId: snapshot.id,
-        createdWorktree,
-      });
       if (!createdWorktree && trimmedPrompt) {
         await this.scheduleAutoNameLocalWorkspaceTitleForFirstAgent({
           workspaceId,
@@ -3336,6 +3330,11 @@ export class Session {
           firstAgentContext,
         });
       }
+      this.createAgentLifecycleDispatch.registerAutoArchiveIfRequested({
+        autoArchive,
+        agentId: snapshot.id,
+        createdWorktree,
+      });
       if (requestId) {
         const agentPayload = await this.buildAgentPayload(liveSnapshot);
         this.emit({
@@ -3483,8 +3482,15 @@ export class Session {
     );
 
     try {
+      if (!normalized.cwd) {
+        throw new Error("Import requires cwd from the selected provider session");
+      }
+      // An imported agent mints its own workspace; ownership is its workspaceId,
+      // never an existing same-cwd workspace resolved by path.
+      const workspace = await this.createWorkspaceForDirectory(normalized.cwd);
       const { snapshot, timelineSize } = await importProviderSession({
         request: normalized,
+        workspaceId: workspace.workspaceId,
         agentManager: this.agentManager,
         agentStorage: this.agentStorage,
         workspaceGitService: this.workspaceGitService,
@@ -3493,7 +3499,7 @@ export class Session {
         paseoHome: this.paseoHome,
         logger: this.sessionLogger,
       });
-      await this.registerWorkspaceForImportedAgent(snapshot.cwd);
+      await this.registerWorkspaceForImportedAgent(workspace);
       const agentPayload = await this.buildAgentPayload(snapshot);
       this.emit({
         type: "status",
@@ -3718,7 +3724,7 @@ export class Session {
     firstAgentContext: FirstAgentContext;
   }): Promise<void> {
     // Capture the generated title from the generator callback so we can write
-    // displayName := title after the branch rename completes.
+    // title := generated title after the branch rename completes.
     let generatedTitle: string | null = null;
     const result = await attemptFirstAgentBranchAutoName({
       cwd: input.workspace.cwd,
@@ -3755,10 +3761,10 @@ export class Session {
     await this.emitWorkspaceUpdateForCwd(input.workspace.cwd);
   }
 
-  // applyGeneratedWorkspaceTitle writes displayName := title (and, for a worktree
-  // rename, the new branch) for a workspace. It re-reads the current record from
-  // the registry so concurrent upserts that happened after workspace creation are
-  // not clobbered, and writes only its own fields (K4 fix).
+  // applyGeneratedWorkspaceTitle fills the generated title only while the
+  // workspace is still untitled. It re-reads the current record from the
+  // registry so concurrent upserts that happened after workspace creation are
+  // not clobbered, while still persisting branch metadata from the rename path.
   private async applyGeneratedWorkspaceTitle(
     workspaceId: string,
     input: { title: string; branch?: string | null },
@@ -3769,7 +3775,7 @@ export class Session {
     }
     await this.workspaceRegistry.upsert({
       ...current,
-      displayName: input.title,
+      title: current.title || input.title,
       ...(input.branch ? { branch: input.branch } : {}),
       updatedAt: new Date().toISOString(),
     });
@@ -3812,18 +3818,15 @@ export class Session {
     // K4: applyGeneratedWorkspaceTitle re-reads from the registry before writing.
     // Directory workspaces have no branch — write only the title.
     await this.applyGeneratedWorkspaceTitle(input.workspaceId, { title });
-    await this.emitWorkspaceUpdateForCwd(input.cwd);
+    await this.emitWorkspaceUpdateForWorkspaceId(input.workspaceId);
   }
 
   private async scheduleAutoNameLocalWorkspaceTitleForFirstAgent(input: {
-    workspaceId?: string;
+    workspaceId: string;
     cwd: string;
     firstAgentContext: FirstAgentContext;
   }): Promise<void> {
-    const workspaceId = input.workspaceId ?? (await this.resolveWorkspaceIdForCwd(input.cwd));
-    if (!workspaceId) {
-      return;
-    }
+    const workspaceId = input.workspaceId;
     this.scheduleWorkspaceNaming(
       () =>
         this.maybeAutoNameDirectoryWorkspaceTitle({
@@ -5348,29 +5351,10 @@ export class Session {
       this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
       this.handleWorkspaceGitBranchSnapshot(cwd, result.currentBranch);
 
-      // K3: persist the new git branch for all workspaces at this cwd. We write
-      // only branch+updatedAt — displayName holds the human title and title is the
-      // user override; a branch rename must touch neither (name and branch are
-      // decoupled fields by construction).
+      // Branch is a git fact derived per-descriptor from each workspace's own
+      // live git snapshot (id → cwd); the reconciliation pass re-persists the
+      // `branch` field per workspace from its own cwd. No cwd → ids fan-out here.
       // TODO(K10): PR-binding on branch rename is deferred — see plan K10.
-      if (result.currentBranch) {
-        const allWorkspaces = await this.workspaceRegistry.list();
-        const workspaceIds = this.workspaceDirectory.resolveRegisteredWorkspaceIdsForCwd(
-          cwd,
-          allWorkspaces,
-        );
-        await Promise.all(
-          workspaceIds.map(async (workspaceId) => {
-            const current = await this.workspaceRegistry.get(workspaceId);
-            if (!current) return;
-            await this.workspaceRegistry.upsert({
-              ...current,
-              branch: result.currentBranch as string,
-              updatedAt: new Date().toISOString(),
-            });
-          }),
-        );
-      }
 
       // Push a workspace_update immediately so the sidebar/header reflect
       // the new branch name without waiting for the background git watcher.
@@ -6074,7 +6058,7 @@ export class Session {
         workspaceGitService: this.workspaceGitService,
         agentManager: this.agentManager,
         agentStorage: this.agentStorage,
-        resolveWorkspaceIdForCwd: (cwd) => this.resolveWorkspaceIdForCwd(cwd),
+        findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
         listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
         archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
         emit: (message) => this.emit(message),
@@ -6822,16 +6806,13 @@ export class Session {
     return this.workspaceDirectory.buildDescriptorMap(options);
   }
 
-  private resolveRegisteredWorkspaceIdForCwd(
-    cwd: string,
-    workspaces: PersistedWorkspaceRecord[],
-  ): string | null {
-    return this.workspaceDirectory.resolveRegisteredWorkspaceIdForCwd(cwd, workspaces);
-  }
-
-  private async resolveWorkspaceIdForCwd(cwd: string): Promise<string | null> {
+  // external path→workspace adapter, not ownership. Used by archive-by-path flows
+  // where the request carries a worktree path (unique to one workspace) rather
+  // than a workspaceId. This is a directory lookup for an archive target, not a
+  // status/ownership attribution.
+  private async findWorkspaceIdForCwd(cwd: string): Promise<string | null> {
     const workspaces = await this.workspaceRegistry.list();
-    return this.resolveRegisteredWorkspaceIdForCwd(cwd, workspaces);
+    return resolveWorkspaceIdForPath(cwd, workspaces);
   }
 
   private matchesWorkspaceFilter(input: {
@@ -7324,32 +7305,21 @@ export class Session {
   private async emitWorkspaceUpdateForTerminalContribution(
     event: TerminalWorkspaceContributionChangedEvent,
   ): Promise<void> {
-    if (event.workspaceId) {
-      const workspaces = await this.workspaceRegistry.list();
-      const workspaceId = resolveWorkspaceIdForRecord(
-        { workspaceId: event.workspaceId, cwd: event.cwd },
-        workspaces,
-      );
-      const owningWorkspace = workspaceId
-        ? workspaces.find(
-            (workspace) => workspace.workspaceId === workspaceId && !workspace.archivedAt,
-          )
-        : null;
-      if (!owningWorkspace) {
-        return;
-      }
-      const workspaceIds = this.workspaceDirectory.resolveRegisteredWorkspaceIdsForCwd(
-        owningWorkspace.cwd,
-        workspaces,
-      );
-      await this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds, {
-        skipReconcile: true,
-      });
+    // A terminal's activity contributes only to the workspace it carries. A
+    // terminal with no workspaceId attributes to nothing — status is per-id.
+    if (!event.workspaceId) {
       return;
     }
-    await this.emitWorkspaceUpdateForCwd(event.cwd, { skipReconcile: true });
+    await this.emitWorkspaceUpdatesForWorkspaceIds([event.workspaceId], {
+      skipReconcile: true,
+    });
   }
 
+  // A git fact (branch, diff, dirty, PR) changed at `cwd`. Every workspace whose
+  // OWN cwd is this folder re-derives its git facts from that folder (id → cwd)
+  // and emits its own per-id descriptor. This is a deliberate same-folder fan,
+  // not a cwd → id ownership lookup: git never resolves which workspace owns a
+  // path. See `workspaceIdsOnCheckout`.
   private async emitWorkspaceUpdateForCwd(
     cwd: string,
     options?: {
@@ -7357,11 +7327,7 @@ export class Session {
       dedupeGitState?: boolean;
     },
   ): Promise<void> {
-    const workspaces = await this.workspaceRegistry.list();
-    const workspaceIds = this.workspaceDirectory.resolveRegisteredWorkspaceIdsForCwd(
-      cwd,
-      workspaces,
-    );
+    const workspaceIds = workspaceIdsOnCheckout(await this.workspaceRegistry.list(), cwd);
     if (workspaceIds.length === 0) {
       return;
     }
@@ -7594,15 +7560,16 @@ export class Session {
     return { snapshotByWorkspaceId };
   }
 
-  private async registerWorkspaceForImportedAgent(cwd: string): Promise<void> {
+  private async registerWorkspaceForImportedAgent(
+    workspace: PersistedWorkspaceRecord,
+  ): Promise<void> {
     try {
-      const workspace = await this.findOrCreateWorkspaceForDirectory(cwd);
       await this.syncWorkspaceGitObserverForWorkspace(workspace);
       await this.describeWorkspaceRecord(workspace);
-      await this.emitWorkspaceUpdateForCwd(workspace.cwd);
+      await this.emitWorkspaceUpdateForWorkspaceId(workspace.workspaceId);
     } catch (error) {
       this.sessionLogger.warn(
-        { err: error, cwd },
+        { err: error, workspaceId: workspace.workspaceId, cwd: workspace.cwd },
         "Failed to register workspace for imported agent",
       );
     }
@@ -7658,13 +7625,6 @@ export class Session {
       return;
     }
 
-    await migrateLegacyAgentWorkspaceOwnership({
-      agentStorage: this.agentStorage,
-      workspaceRegistry: this.workspaceRegistry,
-      logger: this.sessionLogger,
-      cwds: [cwd],
-    });
-
     const workspace = await createLocalCheckoutWorkspace(
       { cwd, title: request.title ?? null },
       {
@@ -7684,7 +7644,7 @@ export class Session {
         error: null,
       },
     });
-    await this.emitWorkspaceUpdateForCwd(workspace.cwd);
+    await this.emitWorkspaceUpdateForWorkspaceId(workspace.workspaceId);
     void this.workspaceGitService
       .getSnapshot(workspace.cwd, { force: true, includeGitHub: true, reason: "open_project" })
       .catch((error) => {
@@ -7693,7 +7653,7 @@ export class Session {
           "Background snapshot refresh failed after workspace.create",
         );
       });
-    if (request.firstAgentContext?.prompt) {
+    if (request.firstAgentContext) {
       const firstAgentContext = request.firstAgentContext;
       this.scheduleWorkspaceNaming(
         () =>
@@ -7707,34 +7667,17 @@ export class Session {
     }
   }
 
-  private async resolveLegacyWorkspaceOwnerForAgentCreate(
-    cwd: string,
-  ): Promise<string | undefined> {
-    return resolveLegacyWorkspaceOwnerForCwd(cwd, await this.workspaceRegistry.list()) ?? undefined;
-  }
-
-  // Schedules a background workspace-naming write off the request path and
-  // records the resulting promise so tests can await completion deterministically
-  // (no wall-clock sleeps). The setTimeout(0) keeps the LLM call off the hot path.
+  // Schedules a background workspace-naming write off the request path. The
+  // setTimeout(0) keeps the LLM call off the hot path.
   private scheduleWorkspaceNaming(
     run: () => Promise<void>,
     context: { cwd: string; message: string },
   ): void {
-    this.pendingWorkspaceNaming = new Promise<void>((resolveNaming) => {
-      setTimeout(() => {
-        void run()
-          .catch((error) => {
-            this.sessionLogger.warn({ err: error, cwd: context.cwd }, context.message);
-          })
-          .finally(resolveNaming);
-      }, 0);
-    });
-  }
-
-  // Test-only handle: resolves when the most recent scheduled workspace-naming
-  // write finishes, so tests await real completion instead of a wall-clock sleep.
-  get pendingWorkspaceNamingForTests(): Promise<void> {
-    return this.pendingWorkspaceNaming;
+    setTimeout(() => {
+      void run().catch((error) => {
+        this.sessionLogger.warn({ err: error, cwd: context.cwd }, context.message);
+      });
+    }, 0);
   }
 
   private async handleWorkspaceCreateWorktree(
@@ -7855,7 +7798,7 @@ export class Session {
       const project = await this.projectRegistry.get(workspace.projectId);
       await this.syncWorkspaceGitObserverForWorkspace(workspace);
       const descriptor = await this.describeWorkspaceRecord(workspace);
-      await this.emitWorkspaceUpdateForCwd(workspace.cwd);
+      await this.emitWorkspaceUpdateForWorkspaceId(workspace.workspaceId);
       this.sessionLogger.info(
         {
           requestedCwd,
@@ -8078,8 +8021,8 @@ export class Session {
         warmWorkspaceGitData: (workspace) => this.warmWorkspaceGitDataForWorkspace(workspace),
         autoNameWorkspaceBranchForFirstAgent: (autoNameInput) =>
           this.scheduleAutoNameWorkspaceBranchForFirstAgent(autoNameInput),
-        emitWorkspaceUpdateForCwd: (cwd, emitOptions) =>
-          this.emitWorkspaceUpdateForCwd(cwd, emitOptions),
+        emitWorkspaceUpdateForWorkspaceId: (workspaceId) =>
+          this.emitWorkspaceUpdateForWorkspaceId(workspaceId),
         cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) => {
           this.workspaceSetupSnapshots.set(workspaceId, snapshot);
         },
@@ -8145,7 +8088,7 @@ export class Session {
       } finally {
         this.clearWorkspaceArchiving([existing.workspaceId]);
       }
-      await this.emitWorkspaceUpdateForCwd(existing.cwd);
+      await this.emitWorkspaceUpdateForWorkspaceId(existing.workspaceId);
       this.emit({
         type: "archive_workspace_response",
         payload: {
@@ -8217,10 +8160,12 @@ export class Session {
           throw new Error(`Workspace not found: ${requestedWorkspaceId}`);
         }
 
-        const workspaceCwd = resolve(workspace.cwd);
+        // Clearing attention is scoped to the workspace that OWNS the agent, by
+        // workspaceId — never by comparing cwd strings. A sibling workspace
+        // sharing the same directory keeps its own agents' attention.
         const clearableAgentIds = agents
           .filter((agent) => !agent.archivedAt)
-          .filter((agent) => resolve(agent.cwd) === workspaceCwd)
+          .filter((agent) => agent.workspaceId === workspace.workspaceId)
           .filter((agent) => agent.requiresAttention === true)
           .filter((agent) => (agent.pendingPermissions?.length ?? 0) === 0)
           .filter((agent) => agent.attentionReason !== "permission")

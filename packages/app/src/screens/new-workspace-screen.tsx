@@ -75,6 +75,21 @@ function resolveCheckoutRequest(
   };
 }
 
+function buildFirstAgentContext(input: {
+  prompt: string;
+  attachments: AgentAttachment[];
+}): { prompt?: string; attachments?: AgentAttachment[] } | undefined {
+  const trimmedPrompt = input.prompt.trim();
+  if (!trimmedPrompt && input.attachments.length === 0) {
+    return undefined;
+  }
+
+  return {
+    ...(trimmedPrompt ? { prompt: trimmedPrompt } : {}),
+    attachments: input.attachments,
+  };
+}
+
 interface NewWorkspaceScreenProps {
   serverId: string;
   sourceDirectory?: string;
@@ -779,6 +794,8 @@ async function createMultiplicityWorkspace(input: {
   selectedItem: PickerItem | null;
   currentBranch: string | null;
   withInitialAgent: boolean;
+  prompt: string;
+  attachments: AgentAttachment[];
   mergeWorkspaces: (
     serverId: string,
     workspaces: ReturnType<typeof normalizeWorkspaceDescriptor>[],
@@ -790,6 +807,10 @@ async function createMultiplicityWorkspace(input: {
   const baseBranch = isWorktree
     ? (resolveCheckoutRequest(input.selectedItem, input.currentBranch)?.refName ?? undefined)
     : undefined;
+  const firstAgentContext = buildFirstAgentContext({
+    prompt: input.prompt,
+    attachments: input.attachments,
+  });
   const payload = await input.client.createWorkspace({
     source: isWorktree
       ? {
@@ -804,6 +825,7 @@ async function createMultiplicityWorkspace(input: {
           path: input.project.iconWorkingDir,
           projectId: input.project.projectKey,
         },
+    ...(firstAgentContext ? { firstAgentContext } : {}),
   });
   if (payload.error || !payload.workspace) {
     throw new Error(payload.error ?? input.createFailedMessage);
@@ -1292,21 +1314,13 @@ export function NewWorkspaceScreen({
         throw new Error("Choose a project");
       }
       const checkoutRequest = resolveCheckoutRequest(selectedItem, currentBranch);
-      const trimmedPrompt = input.prompt.trim();
-      const hasFirstAgentContext = trimmedPrompt.length > 0 || input.attachments.length > 0;
+      const firstAgentContext = buildFirstAgentContext(input);
 
       return {
         cwd: selectedProject.iconWorkingDir,
         projectId: selectedProject.projectKey,
         worktreeSlug: createNameId(),
-        ...(hasFirstAgentContext
-          ? {
-              firstAgentContext: {
-                ...(trimmedPrompt ? { prompt: trimmedPrompt } : {}),
-                ...(input.attachments.length > 0 ? { attachments: input.attachments } : {}),
-              },
-            }
-          : {}),
+        ...(firstAgentContext ? { firstAgentContext } : {}),
         ...checkoutRequest,
       };
     },
@@ -1334,6 +1348,8 @@ export function NewWorkspaceScreen({
             selectedItem,
             currentBranch,
             withInitialAgent: input.withInitialAgent,
+            prompt: input.prompt,
+            attachments: input.attachments,
             mergeWorkspaces,
             serverId,
             createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),

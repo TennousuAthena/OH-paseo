@@ -16,7 +16,7 @@ export interface TerminalListItem {
   id: string;
   name: string;
   cwd: string;
-  workspaceId?: string;
+  workspaceId: string;
   title?: string;
   activity: TerminalActivity | null;
 }
@@ -32,6 +32,7 @@ export interface TerminalActivityTransitionEvent {
   terminalId: string;
   name: string;
   cwd: string;
+  workspaceId: string;
   activity: TerminalActivity | null;
   previous: TerminalActivity | null;
 }
@@ -41,7 +42,7 @@ export type TerminalActivityListener = (event: TerminalActivityTransitionEvent) 
 export interface TerminalWorkspaceContributionChangedEvent {
   terminalId: string;
   cwd: string;
-  workspaceId?: string;
+  workspaceId: string;
 }
 
 export type TerminalWorkspaceContributionChangedListener = (
@@ -53,7 +54,7 @@ export interface TerminalManager {
   createTerminal(options: {
     id?: string;
     cwd: string;
-    workspaceId?: string;
+    workspaceId: string;
     name?: string;
     title?: string;
     env?: Record<string, string>;
@@ -159,7 +160,7 @@ export function createTerminalManager(
       emitTerminalWorkspaceContributionChanged({
         terminalId: session.id,
         cwd: session.cwd,
-        ...(session.workspaceId ? { workspaceId: session.workspaceId } : {}),
+        workspaceId: session.workspaceId,
       });
     }
 
@@ -200,7 +201,7 @@ export function createTerminalManager(
         emitTerminalWorkspaceContributionChanged({
           terminalId: session.id,
           cwd: session.cwd,
-          ...(session.workspaceId ? { workspaceId: session.workspaceId } : {}),
+          workspaceId: session.workspaceId,
         });
       }
     });
@@ -215,7 +216,7 @@ export function createTerminalManager(
       id: input.session.id,
       name: input.session.name,
       cwd: input.session.cwd,
-      ...(input.session.workspaceId ? { workspaceId: input.session.workspaceId } : {}),
+      workspaceId: input.session.workspaceId,
       title: input.session.getTitle(),
       activity: input.session.getActivity(),
     };
@@ -254,6 +255,7 @@ export function createTerminalManager(
       terminalId: input.session.id,
       name: input.session.name,
       cwd: input.session.cwd,
+      workspaceId: input.session.workspaceId,
       activity: input.transition.activity,
       previous: input.transition.previous,
     };
@@ -307,7 +309,7 @@ export function createTerminalManager(
     async createTerminal(options: {
       id?: string;
       cwd: string;
-      workspaceId?: string;
+      workspaceId: string;
       name?: string;
       title?: string;
       env?: Record<string, string>;
@@ -341,7 +343,7 @@ export function createTerminalManager(
           await createTerminal({
             id: terminalId,
             cwd: options.cwd,
-            ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
+            workspaceId: options.workspaceId,
             name: options.name ?? defaultName,
             ...(options.title ? { title: options.title } : {}),
             ...(options.command ? { command: options.command } : {}),

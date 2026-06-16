@@ -58,7 +58,11 @@ export interface SeedDaemonClient {
     terminal: { id: string; name: string; cwd: string; activity?: TerminalActivity | null } | null;
     error: string | null;
   }>;
-  listTerminals(cwd?: string): Promise<{
+  listTerminals(
+    cwd?: string,
+    requestId?: string,
+    options?: { workspaceId?: string },
+  ): Promise<{
     terminals: Array<{
       id: string;
       name: string;
@@ -80,7 +84,18 @@ export interface SeedDaemonClient {
     initialPrompt?: string;
   }): Promise<{ id: string; status: string }>;
   fetchAgents(options?: { scope?: "active" }): Promise<{
-    entries: Array<{ agent: { id: string; cwd: string; title?: string | null } }>;
+    entries: Array<{
+      agent: {
+        id: string;
+        provider: string;
+        cwd: string;
+        workspaceId?: string;
+        model: string | null;
+        currentModeId: string | null;
+        status: string;
+        title?: string | null;
+      };
+    }>;
   }>;
   fetchRecentProviderSessions(options: {
     cwd: string;
