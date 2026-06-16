@@ -337,6 +337,9 @@ export const ar: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "البرامج النصية Workspace",
+      copyPath: "نسخ المسار",
+      copyBranchName: "نسخ اسم الفرع",
+      copied: "تم النسخ",
     },
     fileExplorer: {
       sort: {

@@ -340,6 +340,9 @@ export const es: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "GuionesWorkspace",
+      copyPath: "Copiar ruta",
+      copyBranchName: "Copiar nombre de rama",
+      copied: "Copiado",
     },
     fileExplorer: {
       sort: {

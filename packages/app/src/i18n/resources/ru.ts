@@ -339,6 +339,9 @@ export const ru: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "Скрипты Workspace",
+      copyPath: "Копировать путь",
+      copyBranchName: "Копировать имя ветки",
+      copied: "Скопировано",
     },
     fileExplorer: {
       sort: {

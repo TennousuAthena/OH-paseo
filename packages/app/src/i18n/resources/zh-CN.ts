@@ -337,6 +337,9 @@ export const zhCN: TranslationResources = {
     },
     hoverCard: {
       scriptsAccessibility: "Workspace scripts",
+      copyPath: "复制路径",
+      copyBranchName: "复制分支名称",
+      copied: "已复制",
     },
     fileExplorer: {
       sort: {
