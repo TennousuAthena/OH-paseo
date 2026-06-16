@@ -8,7 +8,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { createNameId } from "mnemonic-id";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronDown, Folder, GitBranch, GitPullRequest, X } from "lucide-react-native";
+import { Check, Folder, GitBranch, GitPullRequest, X } from "lucide-react-native";
 import { Composer } from "@/composer";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
@@ -16,6 +16,7 @@ import { FileDropZone } from "@/components/file-drop-zone";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import type { ComboboxOption as ComboboxOptionType } from "@/components/ui/combobox";
+import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
@@ -166,7 +167,6 @@ function RefPickerBadgeContent({
       <Text style={styles.badgeText} numberOfLines={1}>
         {triggerLabel}
       </Text>
-      <ChevronDown size={iconSize} color={iconColor} />
     </>
   );
 }
@@ -197,7 +197,7 @@ function RefPickerTrigger({
   return (
     <Tooltip>
       <TooltipTrigger asChild triggerRefProp="ref">
-        <Pressable
+        <ComboboxTrigger
           ref={pickerAnchorRef}
           testID="new-workspace-ref-picker-trigger"
           onPress={onPress}
@@ -212,7 +212,7 @@ function RefPickerTrigger({
             iconColor={iconColor}
             iconSize={iconSize}
           />
-        </Pressable>
+        </ComboboxTrigger>
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <Text style={styles.tooltipText}>{tooltipLabel}</Text>
@@ -247,7 +247,7 @@ function ProjectPickerTrigger({
   return (
     <Tooltip>
       <TooltipTrigger asChild triggerRefProp="ref">
-        <Pressable
+        <ComboboxTrigger
           ref={pickerAnchorRef}
           testID="new-workspace-project-picker-trigger"
           onPress={onPress}
@@ -273,8 +273,7 @@ function ProjectPickerTrigger({
           <Text style={styles.badgeText} numberOfLines={1}>
             {label}
           </Text>
-          <ChevronDown size={iconSize} color={iconColor} />
-        </Pressable>
+        </ComboboxTrigger>
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <Text style={styles.tooltipText}>Choose project</Text>
@@ -652,7 +651,7 @@ function IsolationPickerTrigger({
   iconSize: number;
 }) {
   return (
-    <Pressable
+    <ComboboxTrigger
       ref={pickerAnchorRef}
       testID="workspace-create-backing-trigger"
       onPress={onPress}
@@ -671,21 +670,14 @@ function IsolationPickerTrigger({
       <Text style={styles.badgeText} numberOfLines={1}>
         {label}
       </Text>
-      <ChevronDown size={iconSize} color={iconColor} />
-    </Pressable>
+    </ComboboxTrigger>
   );
 }
 
-// Each row aligns its label glyph with the screen heading glyph and lets the
-// label's natural width push the control. The label and control sit side by
-// side with no held horizontal space.
-function LabeledRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      {children}
-    </View>
-  );
+// Wraps a single argument control in the mobile vertical stack. On desktop the
+// controls are laid out in one horizontal row, so no per-control wrapper is used.
+function FormRow({ children }: { children: React.ReactNode }) {
+  return <View style={styles.row}>{children}</View>;
 }
 
 interface WorkspaceBackingState {
@@ -1533,155 +1525,167 @@ export function NewWorkspaceScreen({
 
   const backingTriggerLabel = backingLabel(t, effectiveBacking);
 
-  const formStack = useMemo(
-    () => (
-      <View testID="new-workspace-ref-picker-row" style={styles.formStack}>
-        <LabeledRow label={t("newWorkspace.fields.project")}>
-          <View>
-            <ProjectPickerTrigger
-              pickerAnchorRef={projectPickerAnchorRef}
-              onPress={openProjectPicker}
-              disabled={isPending || projectPickerOptions.length === 0}
-              badgePressableStyle={badgePressableStyle}
-              label={projectTriggerLabel}
-              projectKey={selectedProject?.projectKey ?? null}
-              iconDataUri={
-                selectedProject
-                  ? (projectIconDataByProjectKey.get(selectedProject.projectKey) ?? null)
-                  : null
-              }
-              iconColor={theme.colors.foregroundMuted}
-              iconSize={theme.iconSize.sm}
-            />
-            <Combobox
-              options={projectPickerOptions}
-              value={selectedProjectOptionId}
-              onSelect={handleSelectProjectOption}
-              searchable
-              searchPlaceholder="Search projects"
-              title="Project"
-              open={projectPickerOpen}
-              onOpenChange={handleProjectPickerOpenChange}
-              desktopPlacement="bottom-start"
-              anchorRef={projectPickerAnchorRef}
-              emptyText="No projects available."
-              renderOption={renderProjectOption}
-            />
-          </View>
-        </LabeledRow>
-        {/* The Isolation row keeps its height for non-git projects so switching
-            projects never shifts the form; worktree backing is git-only, so a
-            non-git project renders an invisible spacer matching the trigger
-            height exactly. */}
-        {canCreateWorktree ? (
-          <LabeledRow label={t("newWorkspace.backing.label")}>
-            <View>
-              <IsolationPickerTrigger
-                pickerAnchorRef={backingPickerAnchorRef}
-                onPress={openBackingPicker}
-                disabled={isPending}
-                badgePressableStyle={badgePressableStyle}
-                backing={effectiveBacking}
-                label={backingTriggerLabel}
-                iconColor={theme.colors.foregroundMuted}
-                iconSize={theme.iconSize.sm}
-              />
-              <Combobox
-                options={backingOptions}
-                value={effectiveBacking}
-                onSelect={handleSelectBackingOption}
-                title={t("newWorkspace.backing.label")}
-                open={backingPickerOpen}
-                onOpenChange={handleBackingPickerOpenChange}
-                desktopPlacement="bottom-start"
-                anchorRef={backingPickerAnchorRef}
-                renderOption={renderBackingOption}
-              />
-            </View>
-          </LabeledRow>
-        ) : (
-          <View style={styles.baseSpacer} />
-        )}
-        {/* The Base row keeps its height so toggling Isolation never shifts the
-            form; on Local backing it renders an invisible spacer with no label
-            or control, matching the trigger height exactly. */}
-        {showRefPicker ? (
-          <LabeledRow label={t("newWorkspace.fields.base")}>
-            <View>
-              <RefPickerTrigger
-                pickerAnchorRef={pickerAnchorRef}
-                onPress={openPicker}
-                disabled={isPending || !selectedSourceDirectory}
-                badgePressableStyle={badgePressableStyle}
-                selectedItem={selectedItem}
-                triggerLabel={triggerLabel}
-                accessibilityLabel={t("newWorkspace.refPicker.startingRef")}
-                tooltipLabel={t("newWorkspace.refPicker.chooseStart")}
-                iconColor={theme.colors.foregroundMuted}
-                iconSize={theme.iconSize.sm}
-              />
-              <Combobox
-                options={options}
-                value={selectedOptionId}
-                onSelect={handleSelectOption}
-                searchable
-                searchPlaceholder={t("newWorkspace.refPicker.searchPlaceholder")}
-                title={t("newWorkspace.refPicker.title")}
-                open={pickerOpen}
-                onOpenChange={handlePickerOpenChange}
-                onSearchQueryChange={setPickerSearchQuery}
-                desktopPlacement="bottom-start"
-                anchorRef={pickerAnchorRef}
-                emptyText={pickerEmptyText}
-                renderOption={renderPickerOption}
-              />
-            </View>
-          </LabeledRow>
-        ) : (
-          <View style={styles.baseSpacer} />
-        )}
+  const formStack = useMemo(() => {
+    const projectControl = (
+      <View>
+        <ProjectPickerTrigger
+          pickerAnchorRef={projectPickerAnchorRef}
+          onPress={openProjectPicker}
+          disabled={isPending || projectPickerOptions.length === 0}
+          badgePressableStyle={badgePressableStyle}
+          label={projectTriggerLabel}
+          projectKey={selectedProject?.projectKey ?? null}
+          iconDataUri={
+            selectedProject
+              ? (projectIconDataByProjectKey.get(selectedProject.projectKey) ?? null)
+              : null
+          }
+          iconColor={theme.colors.foregroundMuted}
+          iconSize={theme.iconSize.sm}
+        />
+        <Combobox
+          options={projectPickerOptions}
+          value={selectedProjectOptionId}
+          onSelect={handleSelectProjectOption}
+          searchable
+          searchPlaceholder="Search projects"
+          title="Project"
+          open={projectPickerOpen}
+          onOpenChange={handleProjectPickerOpenChange}
+          desktopPlacement="bottom-start"
+          anchorRef={projectPickerAnchorRef}
+          emptyText="No projects available."
+          renderOption={renderProjectOption}
+        />
       </View>
-    ),
-    [
-      backingOptions,
-      backingPickerOpen,
-      backingTriggerLabel,
-      badgePressableStyle,
-      canCreateWorktree,
-      effectiveBacking,
-      handleBackingPickerOpenChange,
-      handlePickerOpenChange,
-      handleProjectPickerOpenChange,
-      handleSelectBackingOption,
-      handleSelectOption,
-      handleSelectProjectOption,
-      isPending,
-      openBackingPicker,
-      openPicker,
-      openProjectPicker,
-      options,
-      pickerEmptyText,
-      pickerOpen,
-      projectPickerOpen,
-      projectPickerOptions,
-      projectTriggerLabel,
-      projectIconDataByProjectKey,
-      renderBackingOption,
-      renderPickerOption,
-      renderProjectOption,
-      selectedItem,
-      selectedOptionId,
-      selectedProject,
-      selectedProjectOptionId,
-      selectedSourceDirectory,
-      setPickerSearchQuery,
-      showRefPicker,
-      t,
-      theme.colors.foregroundMuted,
-      theme.iconSize.sm,
-      triggerLabel,
-    ],
-  );
+    );
+
+    const isolationControl = canCreateWorktree ? (
+      <View>
+        <IsolationPickerTrigger
+          pickerAnchorRef={backingPickerAnchorRef}
+          onPress={openBackingPicker}
+          disabled={isPending}
+          badgePressableStyle={badgePressableStyle}
+          backing={effectiveBacking}
+          label={backingTriggerLabel}
+          iconColor={theme.colors.foregroundMuted}
+          iconSize={theme.iconSize.sm}
+        />
+        <Combobox
+          options={backingOptions}
+          value={effectiveBacking}
+          onSelect={handleSelectBackingOption}
+          title={t("newWorkspace.backing.label")}
+          open={backingPickerOpen}
+          onOpenChange={handleBackingPickerOpenChange}
+          desktopPlacement="bottom-start"
+          anchorRef={backingPickerAnchorRef}
+          renderOption={renderBackingOption}
+        />
+      </View>
+    ) : null;
+
+    const baseControl = showRefPicker ? (
+      <View>
+        <RefPickerTrigger
+          pickerAnchorRef={pickerAnchorRef}
+          onPress={openPicker}
+          disabled={isPending || !selectedSourceDirectory}
+          badgePressableStyle={badgePressableStyle}
+          selectedItem={selectedItem}
+          triggerLabel={triggerLabel}
+          accessibilityLabel={t("newWorkspace.refPicker.startingRef")}
+          tooltipLabel={t("newWorkspace.refPicker.chooseStart")}
+          iconColor={theme.colors.foregroundMuted}
+          iconSize={theme.iconSize.sm}
+        />
+        <Combobox
+          options={options}
+          value={selectedOptionId}
+          onSelect={handleSelectOption}
+          searchable
+          searchPlaceholder={t("newWorkspace.refPicker.searchPlaceholder")}
+          title={t("newWorkspace.refPicker.title")}
+          open={pickerOpen}
+          onOpenChange={handlePickerOpenChange}
+          onSearchQueryChange={setPickerSearchQuery}
+          desktopPlacement="bottom-start"
+          anchorRef={pickerAnchorRef}
+          emptyText={pickerEmptyText}
+          renderOption={renderPickerOption}
+        />
+      </View>
+    ) : null;
+
+    if (isCompact) {
+      return (
+        <View testID="new-workspace-ref-picker-row" style={styles.formStack}>
+          <FormRow>{projectControl}</FormRow>
+          {/* The Isolation row keeps its height for non-git projects so switching
+              projects never shifts the form; worktree backing is git-only, so a
+              non-git project renders an invisible spacer matching the trigger
+              height exactly. */}
+          {isolationControl ? (
+            <FormRow>{isolationControl}</FormRow>
+          ) : (
+            <View style={styles.baseSpacer} />
+          )}
+          {/* The Base row keeps its height so toggling Isolation never shifts the
+              form; on Local backing it renders an invisible spacer with no label
+              or control, matching the trigger height exactly. */}
+          {baseControl ? <FormRow>{baseControl}</FormRow> : <View style={styles.baseSpacer} />}
+        </View>
+      );
+    }
+
+    return (
+      <View testID="new-workspace-ref-picker-row" style={styles.formStackDesktop}>
+        {projectControl}
+        {isolationControl}
+        {baseControl}
+      </View>
+    );
+  }, [
+    backingOptions,
+    backingPickerOpen,
+    backingTriggerLabel,
+    badgePressableStyle,
+    canCreateWorktree,
+    effectiveBacking,
+    handleBackingPickerOpenChange,
+    handlePickerOpenChange,
+    handleProjectPickerOpenChange,
+    handleSelectBackingOption,
+    handleSelectOption,
+    handleSelectProjectOption,
+    isCompact,
+    isPending,
+    openBackingPicker,
+    openPicker,
+    openProjectPicker,
+    options,
+    pickerEmptyText,
+    pickerOpen,
+    projectIconDataByProjectKey,
+    projectPickerOpen,
+    projectPickerOptions,
+    projectTriggerLabel,
+    renderBackingOption,
+    renderPickerOption,
+    renderProjectOption,
+    selectedItem,
+    selectedOptionId,
+    selectedProject,
+    selectedProjectOptionId,
+    selectedSourceDirectory,
+    setPickerSearchQuery,
+    showRefPicker,
+    t,
+    theme.colors.foregroundMuted,
+    theme.iconSize.sm,
+    triggerLabel,
+  ]);
 
   const composerFooter = useMemo(
     () => (
@@ -1804,18 +1808,23 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[8],
     gap: theme.spacing[2],
   },
+  formStackDesktop: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: theme.spacing[8],
+    // The badge adds its own left padding; offset it so the project icon's left
+    // edge lands exactly on the "New workspace" title's left edge.
+    paddingLeft: theme.spacing[4],
+    gap: theme.spacing[2],
+  },
   // The row's left inset matches the heading's text x (composerTitleContainer
-  // paddingLeft) so each label glyph aligns with the "New workspace" glyph. The
-  // label keeps its natural width and the control sits immediately beside it.
+  // paddingLeft) so the control aligns with the "New workspace" glyph. The badge
+  // adds its own left padding, so the row inset is reduced by that amount.
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingLeft: theme.spacing[6],
+    paddingLeft: theme.spacing[4],
     gap: theme.spacing[1],
-  },
-  rowLabel: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foregroundMuted,
   },
   baseSpacer: {
     height: BADGE_HEIGHT,
