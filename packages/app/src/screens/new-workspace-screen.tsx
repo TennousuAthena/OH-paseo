@@ -37,6 +37,7 @@ import { useDraftStore } from "@/stores/draft-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
+import { useFormPreferences } from "@/hooks/use-form-preferences";
 import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
@@ -375,7 +376,7 @@ function PickerOptionItem({
   );
 }
 
-function BackingOptionItem({
+function IsolationOptionItem({
   optionId,
   label,
   selected,
@@ -408,7 +409,7 @@ function BackingOptionItem({
   );
   return (
     <ComboboxItem
-      testID={`workspace-create-backing-${optionId}`}
+      testID={`workspace-create-isolation-${optionId}`}
       label={label}
       selected={selected}
       active={active}
@@ -636,7 +637,7 @@ function IsolationPickerTrigger({
   onPress,
   disabled,
   badgePressableStyle,
-  backing,
+  isolation,
   label,
   iconColor,
   iconSize,
@@ -645,7 +646,7 @@ function IsolationPickerTrigger({
   onPress: () => void;
   disabled: boolean;
   badgePressableStyle: React.ComponentProps<typeof Pressable>["style"];
-  backing: "local" | "worktree";
+  isolation: "local" | "worktree";
   label: string;
   iconColor: string;
   iconSize: number;
@@ -653,7 +654,7 @@ function IsolationPickerTrigger({
   return (
     <ComboboxTrigger
       ref={pickerAnchorRef}
-      testID="workspace-create-backing-trigger"
+      testID="workspace-create-isolation-trigger"
       onPress={onPress}
       disabled={disabled}
       style={badgePressableStyle}
@@ -661,7 +662,7 @@ function IsolationPickerTrigger({
       accessibilityLabel="Workspace isolation"
     >
       <View style={styles.badgeIconBox}>
-        {backing === "worktree" ? (
+        {isolation === "worktree" ? (
           <GitBranch size={iconSize} color={iconColor} />
         ) : (
           <Folder size={iconSize} color={iconColor} />
@@ -680,45 +681,52 @@ function FormRow({ children }: { children: React.ReactNode }) {
   return <View style={styles.row}>{children}</View>;
 }
 
-interface WorkspaceBackingState {
-  backing: "local" | "worktree";
-  setBacking: (value: "local" | "worktree") => void;
-  effectiveBacking: "local" | "worktree";
+interface WorkspaceIsolationState {
+  isolation: "local" | "worktree";
+  setIsolation: (value: "local" | "worktree") => void;
+  effectiveIsolation: "local" | "worktree";
   canCreateWorktree: boolean;
   showRefPicker: boolean;
 }
 
-// Worktree backing only makes sense for a git checkout. The effective backing
+// Worktree isolation only makes sense for a git checkout. The effective isolation
 // falls back to local whenever the selected directory isn't git so the flow
 // never submits an impossible request.
-function useWorkspaceBacking(input: {
+function useWorkspaceIsolation(input: {
   supportsMultiplicity: boolean;
   selectedIsGit: boolean;
-}): WorkspaceBackingState {
+}): WorkspaceIsolationState {
   const { supportsMultiplicity, selectedIsGit } = input;
-  const [backing, setBacking] = useState<"local" | "worktree">("local");
+  // The last isolation choice is remembered alongside the other New Workspace
+  // form preferences (provider, model, mode). A manual in-screen pick overrides
+  // the remembered default until the screen remounts.
+  const { preferences, updatePreferences } = useFormPreferences();
+  const [manualIsolation, setManualIsolation] = useState<"local" | "worktree" | null>(null);
+  const isolation = manualIsolation ?? preferences.isolation ?? "local";
   const canCreateWorktree = supportsMultiplicity && selectedIsGit;
-  const isWorktree = backing === "worktree" && canCreateWorktree;
+  const isWorktree = isolation === "worktree" && canCreateWorktree;
 
-  useEffect(() => {
-    if (backing === "worktree" && !canCreateWorktree) {
-      setBacking("local");
-    }
-  }, [backing, canCreateWorktree]);
+  const setIsolation = useCallback(
+    (value: "local" | "worktree") => {
+      setManualIsolation(value);
+      void updatePreferences({ isolation: value });
+    },
+    [updatePreferences],
+  );
 
   return {
-    backing,
-    setBacking,
-    effectiveBacking: isWorktree ? "worktree" : "local",
+    isolation,
+    setIsolation,
+    effectiveIsolation: isWorktree ? "worktree" : "local",
     canCreateWorktree,
     showRefPicker: !supportsMultiplicity || isWorktree,
   };
 }
 
-function backingLabel(t: TFunction, backing: "local" | "worktree"): string {
-  return backing === "worktree"
-    ? t("newWorkspace.backing.worktree")
-    : t("newWorkspace.backing.local");
+function isolationLabel(t: TFunction, isolation: "local" | "worktree"): string {
+  return isolation === "worktree"
+    ? t("newWorkspace.isolation.worktree")
+    : t("newWorkspace.isolation.local");
 }
 
 function getContentStyle(input: { isCompact: boolean; insetBottom: number }) {
@@ -781,7 +789,7 @@ async function createAndMergeWorkspace(input: {
 
 async function createMultiplicityWorkspace(input: {
   client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
-  backing: "local" | "worktree";
+  isolation: "local" | "worktree";
   project: HostProjectListItem;
   selectedItem: PickerItem | null;
   currentBranch: string | null;
@@ -795,7 +803,7 @@ async function createMultiplicityWorkspace(input: {
   serverId: string;
   createFailedMessage: string;
 }): Promise<ReturnType<typeof normalizeWorkspaceDescriptor>> {
-  const isWorktree = input.backing === "worktree";
+  const isWorktree = input.isolation === "worktree";
   const baseBranch = isWorktree
     ? (resolveCheckoutRequest(input.selectedItem, input.currentBranch)?.refName ?? undefined)
     : undefined;
@@ -1010,12 +1018,12 @@ export function NewWorkspaceScreen({
   const [manualPickerSelection, setManualPickerSelection] = useState<PickerSelection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
-  const [backingPickerOpen, setBackingPickerOpen] = useState(false);
+  const [isolationPickerOpen, setIsolationPickerOpen] = useState(false);
   const [pickerSearchQuery, setPickerSearchQuery] = useState("");
   const [debouncedPickerSearchQuery, setDebouncedPickerSearchQuery] = useState("");
   const pickerAnchorRef = useRef<View>(null);
   const projectPickerAnchorRef = useRef<View>(null);
-  const backingPickerAnchorRef = useRef<View>(null);
+  const isolationPickerAnchorRef = useRef<View>(null);
 
   useEffect(() => {
     const trimmed = pickerSearchQuery.trim();
@@ -1088,10 +1096,11 @@ export function NewWorkspaceScreen({
   });
 
   const currentBranch = checkoutStatusQuery.data?.currentBranch ?? null;
-  const { effectiveBacking, setBacking, canCreateWorktree, showRefPicker } = useWorkspaceBacking({
-    supportsMultiplicity: supportsWorkspaceMultiplicity,
-    selectedIsGit: checkoutStatusQuery.data?.isGit === true,
-  });
+  const { effectiveIsolation, setIsolation, canCreateWorktree, showRefPicker } =
+    useWorkspaceIsolation({
+      supportsMultiplicity: supportsWorkspaceMultiplicity,
+      selectedIsGit: checkoutStatusQuery.data?.isGit === true,
+    });
 
   const branchSuggestionsQuery = useQuery({
     queryKey: ["branch-suggestions", serverId, selectedSourceDirectory, debouncedPickerSearchQuery],
@@ -1219,31 +1228,31 @@ export function NewWorkspaceScreen({
     setProjectPickerOpen(true);
   }, []);
 
-  const openBackingPicker = useCallback(() => {
-    setBackingPickerOpen(true);
+  const openIsolationPicker = useCallback(() => {
+    setIsolationPickerOpen(true);
   }, []);
 
-  const handleBackingPickerOpenChange = useCallback((nextOpen: boolean) => {
-    setBackingPickerOpen(nextOpen);
+  const handleIsolationPickerOpenChange = useCallback((nextOpen: boolean) => {
+    setIsolationPickerOpen(nextOpen);
   }, []);
 
   // "New worktree" is omitted entirely (not disabled) when the project isn't a
-  // git checkout, since worktree backing is impossible there.
-  const backingOptions = useMemo<ComboboxOptionType[]>(() => {
-    const localOption = { id: "local", label: backingLabel(t, "local") };
+  // git checkout, since worktree isolation is impossible there.
+  const isolationOptions = useMemo<ComboboxOptionType[]>(() => {
+    const localOption = { id: "local", label: isolationLabel(t, "local") };
     if (!canCreateWorktree) return [localOption];
-    return [localOption, { id: "worktree", label: backingLabel(t, "worktree") }];
+    return [localOption, { id: "worktree", label: isolationLabel(t, "worktree") }];
   }, [canCreateWorktree, t]);
 
-  const handleSelectBackingOption = useCallback(
+  const handleSelectIsolationOption = useCallback(
     (id: string) => {
-      setBacking(id === "worktree" ? "worktree" : "local");
-      setBackingPickerOpen(false);
+      setIsolation(id === "worktree" ? "worktree" : "local");
+      setIsolationPickerOpen(false);
     },
-    [setBacking],
+    [setIsolation],
   );
 
-  const renderBackingOption = useCallback(
+  const renderIsolationOption = useCallback(
     ({
       option,
       selected,
@@ -1256,7 +1265,7 @@ export function NewWorkspaceScreen({
       onPress: () => void;
     }) => {
       return (
-        <BackingOptionItem
+        <IsolationOptionItem
           optionId={option.id}
           label={option.label}
           selected={selected}
@@ -1335,7 +1344,7 @@ export function NewWorkspaceScreen({
       const normalizedWorkspace = supportsWorkspaceMultiplicity
         ? await createMultiplicityWorkspace({
             client: withConnectedClient(),
-            backing: effectiveBacking,
+            isolation: effectiveIsolation,
             project: selectedProject,
             selectedItem,
             currentBranch,
@@ -1360,7 +1369,7 @@ export function NewWorkspaceScreen({
       buildCreateWorktreeInput,
       createdWorkspace,
       currentBranch,
-      effectiveBacking,
+      effectiveIsolation,
       mergeWorkspaces,
       selectedItem,
       selectedProject,
@@ -1523,7 +1532,7 @@ export function NewWorkspaceScreen({
       ? t("newWorkspace.refPicker.searching")
       : t("newWorkspace.refPicker.noMatchingRefs");
 
-  const backingTriggerLabel = backingLabel(t, effectiveBacking);
+  const isolationTriggerLabel = isolationLabel(t, effectiveIsolation);
 
   const formStack = useMemo(() => {
     const projectControl = (
@@ -1563,25 +1572,25 @@ export function NewWorkspaceScreen({
     const isolationControl = canCreateWorktree ? (
       <View>
         <IsolationPickerTrigger
-          pickerAnchorRef={backingPickerAnchorRef}
-          onPress={openBackingPicker}
+          pickerAnchorRef={isolationPickerAnchorRef}
+          onPress={openIsolationPicker}
           disabled={isPending}
           badgePressableStyle={badgePressableStyle}
-          backing={effectiveBacking}
-          label={backingTriggerLabel}
+          isolation={effectiveIsolation}
+          label={isolationTriggerLabel}
           iconColor={theme.colors.foregroundMuted}
           iconSize={theme.iconSize.sm}
         />
         <Combobox
-          options={backingOptions}
-          value={effectiveBacking}
-          onSelect={handleSelectBackingOption}
-          title={t("newWorkspace.backing.label")}
-          open={backingPickerOpen}
-          onOpenChange={handleBackingPickerOpenChange}
+          options={isolationOptions}
+          value={effectiveIsolation}
+          onSelect={handleSelectIsolationOption}
+          title={t("newWorkspace.isolation.label")}
+          open={isolationPickerOpen}
+          onOpenChange={handleIsolationPickerOpenChange}
           desktopPlacement="bottom-start"
-          anchorRef={backingPickerAnchorRef}
-          renderOption={renderBackingOption}
+          anchorRef={isolationPickerAnchorRef}
+          renderOption={renderIsolationOption}
         />
       </View>
     ) : null;
@@ -1623,7 +1632,7 @@ export function NewWorkspaceScreen({
         <View testID="new-workspace-ref-picker-row" style={styles.formStack}>
           <FormRow>{projectControl}</FormRow>
           {/* The Isolation row keeps its height for non-git projects so switching
-              projects never shifts the form; worktree backing is git-only, so a
+              projects never shifts the form; worktree isolation is git-only, so a
               non-git project renders an invisible spacer matching the trigger
               height exactly. */}
           {isolationControl ? (
@@ -1632,7 +1641,7 @@ export function NewWorkspaceScreen({
             <View style={styles.baseSpacer} />
           )}
           {/* The Base row keeps its height so toggling Isolation never shifts the
-              form; on Local backing it renders an invisible spacer with no label
+              form; on Local isolation it renders an invisible spacer with no label
               or control, matching the trigger height exactly. */}
           {baseControl ? <FormRow>{baseControl}</FormRow> : <View style={styles.baseSpacer} />}
         </View>
@@ -1647,21 +1656,21 @@ export function NewWorkspaceScreen({
       </View>
     );
   }, [
-    backingOptions,
-    backingPickerOpen,
-    backingTriggerLabel,
+    isolationOptions,
+    isolationPickerOpen,
+    isolationTriggerLabel,
     badgePressableStyle,
     canCreateWorktree,
-    effectiveBacking,
-    handleBackingPickerOpenChange,
+    effectiveIsolation,
+    handleIsolationPickerOpenChange,
     handlePickerOpenChange,
     handleProjectPickerOpenChange,
-    handleSelectBackingOption,
+    handleSelectIsolationOption,
     handleSelectOption,
     handleSelectProjectOption,
     isCompact,
     isPending,
-    openBackingPicker,
+    openIsolationPicker,
     openPicker,
     openProjectPicker,
     options,
@@ -1671,7 +1680,7 @@ export function NewWorkspaceScreen({
     projectPickerOpen,
     projectPickerOptions,
     projectTriggerLabel,
-    renderBackingOption,
+    renderIsolationOption,
     renderPickerOption,
     renderProjectOption,
     selectedItem,

@@ -851,7 +851,7 @@ export const ru: TranslationResources = {
   newWorkspace: {
     title: "Новое рабочее пространство",
     create: "Создавать",
-    backing: {
+    isolation: {
       local: "Локально",
       worktree: "Новый worktree",
       label: "Изоляция",

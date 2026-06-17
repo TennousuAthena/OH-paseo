@@ -839,7 +839,7 @@ export const en = {
   newWorkspace: {
     title: "New workspace",
     create: "Create",
-    backing: {
+    isolation: {
       local: "Local",
       worktree: "New worktree",
       label: "Isolation",

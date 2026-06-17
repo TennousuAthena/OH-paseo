@@ -858,7 +858,7 @@ export const fr: TranslationResources = {
   newWorkspace: {
     title: "Nouvel espace de travail",
     create: "Créer",
-    backing: {
+    isolation: {
       local: "Local",
       worktree: "Nouveau worktree",
       label: "Isolation",
