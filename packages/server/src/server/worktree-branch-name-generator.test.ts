@@ -18,7 +18,12 @@ import {
 
 const cleanupPaths: string[] = [];
 const BRANCH_PROMPT_BASELINE = `Generate a git branch name for a coding agent based on the user prompt and attachments.
-Title: a short human-readable sentence-case label for the task (no slug rules, max 80 characters).
+Title: a terse, task-shaped label naming what the task is about (sentence case, max 80 characters).
+Aim for about 4 words. Go longer only when the task genuinely needs it; most titles must stay short.
+Do not start with a generic 'do' verb (Fix, Add, Implement, Diagnose, Update, Change, Create, Set, Make) — every task is implicitly one of these, so the verb is noise. Name the thing instead.
+Keep a verb only when it states the specific operation (Swap, Split, Extract, Rename, Merge, Inline).
+Good titles: "Swap sidebar history icon", "Composer keyboard shift", "Agent auto-titling", "Worktree selection memory", "Split browser pane".
+Bad titles: "Fix composer pushed up by keyboard in workspace", "Diagnose auto-titling still happening for agents", "Change sidebar history icon from clock to history icon".
 Branch: concise lowercase slug using letters, numbers, hyphens, and slashes only.
 No spaces, no uppercase, no leading or trailing hyphen, no consecutive hyphens.
 The branch is generated directly from the prompt — it is NEVER derived from or slugified from the title.
