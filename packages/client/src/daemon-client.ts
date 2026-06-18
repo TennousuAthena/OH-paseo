@@ -2153,6 +2153,24 @@ export class DaemonClient {
     return { customName: payload.customName };
   }
 
+  async removeProject(
+    projectId: string,
+    requestId?: string,
+  ): Promise<{ removedWorkspaceIds: string[] }> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"project.remove.response">({
+      requestId,
+      message: {
+        type: "project.remove.request",
+        projectId,
+      },
+      timeout: 10000,
+    });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "removeProject rejected");
+    }
+    return { removedWorkspaceIds: payload.removedWorkspaceIds };
+  }
+
   async setWorkspaceTitle(
     workspaceId: string,
     title: string | null,

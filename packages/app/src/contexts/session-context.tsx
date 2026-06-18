@@ -531,6 +531,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const setWorkspaces = useSessionStore((state) => state.setWorkspaces);
   const setEmptyProjects = useSessionStore((state) => state.setEmptyProjects);
   const addEmptyProject = useSessionStore((state) => state.addEmptyProject);
+  const removeEmptyProject = useSessionStore((state) => state.removeEmptyProject);
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const removeWorkspace = useSessionStore((state) => state.removeWorkspace);
   const setAgentLastActivity = useSessionStore((state) => state.setAgentLastActivity);
@@ -1348,6 +1349,9 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         if (message.payload.emptyProject) {
           addEmptyProject(serverId, normalizeEmptyProjectDescriptor(message.payload.emptyProject));
         }
+        if (message.payload.removedProjectId) {
+          removeEmptyProject(serverId, message.payload.removedProjectId);
+        }
         return;
       }
       const workspace = normalizeWorkspaceDescriptor(message.payload.workspace);
@@ -1771,6 +1775,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     removeWorkspace,
     removeWorkspaceSetup,
     addEmptyProject,
+    removeEmptyProject,
     setAgentLastActivity,
     setPendingPermissions,
     setHasHydratedAgents,

@@ -787,6 +787,7 @@ export const ar: TranslationResources = {
       toasts: {
         hostDisconnected: "Host غير متصل",
         removeFailed: "فشل في إزالة بعض مساحات العمل",
+        updateHostToRemove: "قم بتحديث Host لإزالة المشاريع.",
       },
       empty: {
         title: "لا توجد مشاريع حتى الآن",

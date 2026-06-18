@@ -814,6 +814,7 @@ export const es: TranslationResources = {
       toasts: {
         hostDisconnected: "Hostno está conectado",
         removeFailed: "No se pudieron eliminar algunos espacios de trabajo",
+        updateHostToRemove: "Actualiza el host para eliminar proyectos.",
       },
       empty: {
         title: "Aún no hay proyectos",

@@ -1521,6 +1521,47 @@ test("sends first-agent prompt context with workspace.create.request", async () 
   });
 });
 
+test("sends project.remove.request", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const removePromise = client.removeProject("remote:github.com/acme/app", "req-remove-project");
+
+  expect(parseSentFrame(mock.sent[0])).toEqual({
+    type: "project.remove.request",
+    requestId: "req-remove-project",
+    projectId: "remote:github.com/acme/app",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "project.remove.response",
+      payload: {
+        requestId: "req-remove-project",
+        projectId: "remote:github.com/acme/app",
+        accepted: true,
+        removedWorkspaceIds: ["ws-main"],
+        error: null,
+      },
+    }),
+  );
+
+  await expect(removePromise).resolves.toEqual({ removedWorkspaceIds: ["ws-main"] });
+});
+
 test("sends worktree base-ref fields in create_paseo_worktree_request", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

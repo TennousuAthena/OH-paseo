@@ -460,6 +460,7 @@ interface SessionStoreActions {
   removeWorkspace: (serverId: string, workspaceId: string) => void;
   setEmptyProjects: (serverId: string, emptyProjects: Iterable<EmptyProjectDescriptor>) => void;
   addEmptyProject: (serverId: string, emptyProject: EmptyProjectDescriptor) => void;
+  removeEmptyProject: (serverId: string, projectId: string) => void;
   setWorkspaceRestoreStatus: (
     serverId: string,
     workspaceId: string,
@@ -1255,6 +1256,24 @@ export const useSessionStore = create<SessionStore>()(
           }
           const next = new Map(session.emptyProjects);
           next.set(emptyProject.projectId, emptyProject);
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, emptyProjects: next },
+            },
+          };
+        });
+      },
+
+      removeEmptyProject: (serverId, projectId) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session?.emptyProjects.has(projectId)) {
+            return prev;
+          }
+          const next = new Map(session.emptyProjects);
+          next.delete(projectId);
           return {
             ...prev,
             sessions: {

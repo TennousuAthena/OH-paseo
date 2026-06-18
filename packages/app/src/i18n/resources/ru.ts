@@ -806,6 +806,7 @@ export const ru: TranslationResources = {
       toasts: {
         hostDisconnected: "Host не подключен",
         removeFailed: "Не удалось удалить некоторые рабочие области.",
+        updateHostToRemove: "Обновите host, чтобы удалять проекты.",
       },
       empty: {
         title: "Пока нет проектов",
