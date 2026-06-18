@@ -45,7 +45,6 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
-  FolderPlus,
   GitPullRequest,
   Settings,
   MoreVertical,
@@ -139,7 +138,7 @@ const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
-const ThemedFolderPlus = withUnistyles(FolderPlus);
+const ThemedPlus = withUnistyles(Plus);
 const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedSettings = withUnistyles(Settings);
@@ -948,7 +947,7 @@ function NewWorktreeButton({
               loading ? (
                 <ThemedActivityIndicator size={14} uniProps={foregroundMutedColorMapping} />
               ) : (
-                <ThemedFolderPlus
+                <ThemedPlus
                   size={15}
                   uniProps={
                     hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping
