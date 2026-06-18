@@ -988,12 +988,7 @@ export class Session {
       hasBinaryChannel: () => this.onBinaryMessage !== null,
       isPathWithinRoot: (rootPath, candidatePath) => this.isPathWithinRoot(rootPath, candidatePath),
       sessionLogger: this.sessionLogger,
-      listTerminalWorkspaceRoots: async () => {
-        const workspaces = await this.workspaceRegistry.list();
-        return workspaces
-          .filter((workspace) => !workspace.archivedAt)
-          .map((workspace) => workspace.cwd);
-      },
+      listTerminalWorkspaceRefs: () => this.listActiveWorkspaceRefs(),
       clientSupportsWrapReflow: () =>
         this.clientCapabilities.has(CLIENT_CAPS.terminalReflowableSnapshot),
       getClientBufferedAmount: () => this.getTransportBufferedAmount(),
