@@ -194,7 +194,7 @@ jobs:
 
       - name: Install Playwright browsers
         timeout-minutes: 10
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Build app dependencies
         run: npm run build:app-deps
@@ -246,7 +246,7 @@ jobs:
 
       - name: Install Playwright browsers
         timeout-minutes: 10
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Build app dependencies
         run: npm run build:app-deps
