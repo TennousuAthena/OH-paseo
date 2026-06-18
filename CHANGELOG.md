@@ -33,6 +33,9 @@
 - Imported session previews show clean prompts ([#1502](https://github.com/getpaseo/paseo/pull/1502))
 - Local pairing offers use the correct app URL ([#1187](https://github.com/getpaseo/paseo/pull/1187) by [@aibaiiqpl](https://github.com/aibaiiqpl))
 - The app no longer freezes from repeated provider re-probes
+- Removing a project from the sidebar now removes the project itself instead of leaving it behind
+- Workspace shortcut numbers no longer appear for the wrong key ([#1580](https://github.com/getpaseo/paseo/pull/1580) by [@cleiter](https://github.com/cleiter))
+- Chats no longer hang when a message contains unmatched backticks ([#1585](https://github.com/getpaseo/paseo/pull/1585) by [@thaning0](https://github.com/thaning0))
 
 ## 0.1.96 - 2026-06-13
 
