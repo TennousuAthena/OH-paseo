@@ -1121,6 +1121,41 @@ const x = 1;
     expect(diff.diff).not.toContain("x".repeat(10_000));
   });
 
+  it("keeps small tracked files displayable when another tracked file has a massive diff", async () => {
+    writeFileSync(join(repoDir, "generated.js"), `const data = "old";\n`);
+    writeFileSync(join(repoDir, "small.ts"), `export const value = "old";\n`);
+    execFileSync("git", ["add", "generated.js", "small.ts"], { cwd: repoDir });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add tracked files"], {
+      cwd: repoDir,
+    });
+
+    writeFileSync(join(repoDir, "generated.js"), `const data = "${"x".repeat(2_100_000)}";\n`);
+    writeFileSync(join(repoDir, "small.ts"), `export const value = "new";\n`);
+
+    startGitCommandMetrics();
+    const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
+    const metrics = stopGitCommandMetrics();
+    const commands = metrics.commands.map((command) => command.args.join(" "));
+
+    expect(
+      diff.structured?.map((file) => ({
+        path: file.path,
+        status: file.status,
+        hunks: file.hunks.length,
+      })),
+    ).toEqual([
+      { path: "generated.js", status: "too_large", hunks: 0 },
+      { path: "small.ts", status: "ok", hunks: 1 },
+    ]);
+    expect(diff.diff).toContain("# generated.js: diff too large omitted");
+    expect(diff.diff).toContain(`-export const value = "old";`);
+    expect(diff.diff).toContain(`+export const value = "new";`);
+    expect(commands).toContain("diff --numstat HEAD");
+    expect(commands).toContain("diff HEAD -- generated.js");
+    expect(commands).toContain("diff HEAD -- small.ts");
+    expect(metrics.maxConcurrent).toBeLessThanOrEqual(8);
+  });
+
   it("short-circuits tracked binary files", async () => {
     const trackedBinaryPath = join(repoDir, "tracked-blob.bin");
     writeFileSync(trackedBinaryPath, Buffer.from([0x00, 0xff, 0x10, 0x80, 0x00]));
