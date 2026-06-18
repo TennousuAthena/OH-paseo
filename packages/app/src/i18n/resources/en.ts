@@ -205,7 +205,7 @@ export const en = {
     },
   },
   sessions: {
-    title: "Agent history",
+    title: "History",
     empty: "No sessions yet",
     actions: {
       loadMore: "Load more",

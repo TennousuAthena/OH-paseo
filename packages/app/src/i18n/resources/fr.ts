@@ -209,7 +209,7 @@ export const fr: TranslationResources = {
     },
   },
   sessions: {
-    title: "Historique des agents",
+    title: "Historique",
     empty: "Aucune séance pour l'instant",
     actions: {
       loadMore: "Charger plus",

@@ -208,7 +208,7 @@ export const ru: TranslationResources = {
     },
   },
   sessions: {
-    title: "История агентов",
+    title: "История",
     empty: "Сеансов пока нет",
     actions: {
       loadMore: "Загрузить больше",

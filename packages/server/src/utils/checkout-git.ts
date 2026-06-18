@@ -2194,6 +2194,10 @@ async function processTrackedChanges(
       }
       const diffBytes = Buffer.byteLength(fileDiff.text, "utf8");
       if (trackedDiffBytes + diffBytes > TOTAL_DIFF_MAX_BYTES) {
+        trackedPlaceholderByPath.set(fileDiff.path, {
+          status: "too_large",
+          stat: trackedNumstatByPath.get(fileDiff.path) ?? null,
+        });
         continue;
       }
       trackedDiffBytes += diffBytes;

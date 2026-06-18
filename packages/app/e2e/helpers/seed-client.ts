@@ -121,6 +121,12 @@ export interface SeedDaemonClient {
     timeout?: number,
   ): Promise<{ status: string; final?: { lastError?: string | null } | null }>;
   archiveAgent(agentId: string): Promise<{ archivedAt: string }>;
+  fetchAgent(
+    agentId: string,
+  ): Promise<{ agent: { id: string; archivedAt?: string | null } } | null>;
+  getLastServerInfoMessage(): {
+    features?: { worktreeRestore?: boolean } | null;
+  } | null;
   fetchAgentHistory(options?: {
     page?: { limit: number };
   }): Promise<{ entries: Array<{ id: string }> }>;

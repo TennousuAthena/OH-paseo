@@ -206,7 +206,7 @@ export const ar: TranslationResources = {
     },
   },
   sessions: {
-    title: "سجل الوكلاء",
+    title: "السجل",
     empty: "لا توجد جلسات بعد",
     actions: {
       loadMore: "تحميل المزيد",

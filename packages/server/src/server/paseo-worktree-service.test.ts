@@ -561,6 +561,76 @@ test.skipIf(isPlatform("win32"))(
   },
 );
 
+// The default archive path (scope "workspace", worktreePath only) resolves
+// repoRoot=null, so deletePaseoWorktree's `git worktree remove`/`prune` is
+// skipped: the directory is rm-ed but the admin registration survives, pinning
+// the branch as "already checked out". Restore must self-heal by pruning the
+// stale registration before recreating, regardless of how it was archived.
+test.skipIf(isPlatform("win32"))(
+  "recreates a worktree whose dir was rm-ed without git worktree remove (stale registration)",
+  async () => {
+    const { repoDir, tempDir } = createGitRepo();
+    cleanupPaths.push(tempDir);
+    const paseoHome = path.join(tempDir, ".paseo");
+
+    execFileSync("git", ["branch", "restore-me"], { cwd: repoDir, stdio: "pipe" });
+
+    const created = await createWorktree({
+      cwd: repoDir,
+      worktreeSlug: "restore-me",
+      source: { kind: "checkout-branch", branchName: "restore-me" },
+      runSetup: false,
+      paseoHome,
+    });
+    expect(existsSync(created.worktreePath)).toBe(true);
+
+    // Simulate the default-archive teardown: remove the working directory but
+    // leave the git worktree registration intact.
+    rmSync(created.worktreePath, { recursive: true, force: true });
+    expect(existsSync(created.worktreePath)).toBe(false);
+
+    const worktreeList = execFileSync("git", ["worktree", "list", "--porcelain"], {
+      cwd: repoDir,
+      stdio: "pipe",
+    }).toString();
+    expect(worktreeList).toContain(created.worktreePath);
+
+    // Recreating without pruning fails with the stale registration pinning the
+    // branch — this is the case restore must heal.
+    await expect(
+      createWorktree({
+        cwd: repoDir,
+        worktreeSlug: "restore-me",
+        source: { kind: "checkout-branch", branchName: "restore-me" },
+        runSetup: false,
+        paseoHome,
+      }),
+    ).rejects.toMatchObject({ name: "BranchAlreadyCheckedOutError" });
+
+    // The restore-side prune frees the stale registration; recreate then succeeds.
+    execFileSync("git", ["worktree", "prune"], { cwd: repoDir, stdio: "pipe" });
+
+    const recreated = await createWorktree({
+      cwd: repoDir,
+      worktreeSlug: "restore-me",
+      source: { kind: "checkout-branch", branchName: "restore-me" },
+      runSetup: false,
+      paseoHome,
+    });
+
+    expect(recreated.worktreePath).toBe(created.worktreePath);
+    expect(existsSync(recreated.worktreePath)).toBe(true);
+    expect(
+      execFileSync("git", ["branch", "--show-current"], {
+        cwd: recreated.worktreePath,
+        stdio: "pipe",
+      })
+        .toString()
+        .trim(),
+    ).toBe("restore-me");
+  },
+);
+
 test.skipIf(isPlatform("win32"))(
   "rejects with UnknownBranchError when the kept branch no longer exists",
   async () => {

@@ -277,6 +277,7 @@ import {
   toWorktreeWireError,
 } from "./worktree-errors.js";
 import { type WorktreeConfig, createWorktree } from "../utils/worktree.js";
+import { runGitCommand } from "../utils/run-git-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
 
 const WORKSPACE_GIT_WATCH_REMOVED_STATE_KEY = "__removed__";
@@ -1689,6 +1690,7 @@ export class Session {
     return {
       projectKey: project.projectId,
       projectName: resolveProjectDisplayName(project),
+      workspaceName: resolveWorkspaceDisplayName(workspace),
       checkout,
     };
   }
@@ -7116,6 +7118,18 @@ export class Session {
         code: "unknown",
         message: `Project root is missing for ${workspace.projectId}: ${project.rootPath}`,
       });
+    }
+
+    // Archiving through the default path (scope "workspace", worktreePath only)
+    // resolves repoRoot=null, so deletePaseoWorktree's `git worktree remove`/
+    // `prune` is skipped and the admin registration survives — pinning the
+    // branch as "already checked out". Prune here frees any stale registration
+    // whose working dir is missing (a no-op for live worktrees) so the recreate
+    // below succeeds regardless of how the worktree was archived.
+    try {
+      await runGitCommand(["worktree", "prune"], { cwd: project.rootPath, timeout: 30_000 });
+    } catch {
+      // not critical; git will prune lazily
     }
 
     let result: WorktreeConfig;

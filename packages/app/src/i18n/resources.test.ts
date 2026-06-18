@@ -291,7 +291,7 @@ describe("translation resources", () => {
   });
 
   it("includes sessions and agent list keys for the Batch 4H migration", () => {
-    expect(en.sessions.title).toBe("Agent history");
+    expect(en.sessions.title).toBe("History");
     expect(en.sessions.empty).toBe("No sessions yet");
     expect(en.sessions.actions.loadMore).toBe("Load more");
     expect(en.agentList.fallbackTitle).toBe("New session");

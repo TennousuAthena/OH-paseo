@@ -1156,6 +1156,40 @@ const x = 1;
     expect(metrics.maxConcurrent).toBeLessThanOrEqual(8);
   });
 
+  it("marks tracked files omitted by the total diff budget as too_large", async () => {
+    for (let i = 1; i <= 4; i += 1) {
+      writeFileSync(join(repoDir, `budget-${i}.txt`), "old\n");
+    }
+    execFileSync("git", ["add", "."], { cwd: repoDir });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add budget files"], {
+      cwd: repoDir,
+    });
+
+    const largeLine = "x".repeat(700_000);
+    for (let i = 1; i <= 4; i += 1) {
+      writeFileSync(join(repoDir, `budget-${i}.txt`), `${largeLine}-${i}\n`);
+    }
+
+    const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
+
+    expect(
+      diff.structured?.map((file) => ({
+        path: file.path,
+        status: file.status,
+        hunks: file.hunks.length,
+      })),
+    ).toEqual([
+      { path: "budget-1.txt", status: "ok", hunks: 1 },
+      { path: "budget-2.txt", status: "ok", hunks: 1 },
+      { path: "budget-3.txt", status: "too_large", hunks: 0 },
+      { path: "budget-4.txt", status: "too_large", hunks: 0 },
+    ]);
+    expect(diff.diff).toContain("budget-1.txt");
+    expect(diff.diff).toContain("budget-2.txt");
+    expect(diff.diff).toContain("# budget-3.txt: diff too large omitted");
+    expect(diff.diff).toContain("# budget-4.txt: diff too large omitted");
+  });
+
   it("short-circuits tracked binary files", async () => {
     const trackedBinaryPath = join(repoDir, "tracked-blob.bin");
     writeFileSync(trackedBinaryPath, Buffer.from([0x00, 0xff, 0x10, 0x80, 0x00]));

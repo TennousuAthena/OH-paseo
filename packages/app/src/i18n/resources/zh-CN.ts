@@ -206,7 +206,7 @@ export const zhCN: TranslationResources = {
     },
   },
   sessions: {
-    title: "Agent 历史",
+    title: "历史",
     empty: "还没有会话",
     actions: {
       loadMore: "加载更多",

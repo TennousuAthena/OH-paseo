@@ -2430,6 +2430,7 @@ export const ProjectCheckoutLitePayloadSchema = z.union([
 export const ProjectPlacementPayloadSchema = z.object({
   projectKey: z.string(),
   projectName: z.string(),
+  workspaceName: z.string().nullable().optional(),
   checkout: ProjectCheckoutLitePayloadSchema,
 });
 
