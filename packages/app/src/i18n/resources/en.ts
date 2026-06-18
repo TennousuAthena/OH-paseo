@@ -327,6 +327,9 @@ export const en = {
   workspace: {
     route: {
       loading: "Loading workspace",
+      restoring: "Restoring workspace",
+      restoreFailed:
+        "Couldn't restore this workspace — the directory may have been moved or deleted",
       connecting: "Connecting",
       hostOffline: "{{hostName}} is offline",
       cannotReachHost: "Cannot reach {{hostName}}",

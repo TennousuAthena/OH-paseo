@@ -328,6 +328,8 @@ export const zhCN: TranslationResources = {
   workspace: {
     route: {
       loading: "正在加载 workspace",
+      restoring: "正在恢复 workspace",
+      restoreFailed: "无法恢复此 workspace — 目录可能已被移动或删除",
       connecting: "正在连接",
       hostOffline: "{{hostName}} 已离线",
       cannotReachHost: "无法连接 {{hostName}}",

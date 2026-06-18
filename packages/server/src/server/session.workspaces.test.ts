@@ -83,6 +83,8 @@ interface SessionTestAccess {
   };
   agentManager: {
     listAgents(): unknown[];
+    getAgent(agentId: string): unknown;
+    reloadAgentSession(agentId: string, overrides?: unknown, options?: unknown): Promise<unknown>;
     listImportableSessions(options?: unknown): Promise<unknown[]>;
     importProviderSession(input: unknown): Promise<unknown>;
     resumeAgentFromPersistence(
@@ -146,6 +148,9 @@ interface SessionTestAccess {
     getSnapshot: (cwd: string, options?: unknown) => Promise<WorkspaceGitRuntimeSnapshot>;
     peekSnapshot: (cwd: string) => WorkspaceGitRuntimeSnapshot | null;
     registerWorkspace: (params: { cwd: string }, listener: unknown) => { unsubscribe: () => void };
+  };
+  filesystem: {
+    isDirectory(cwd: string): Promise<boolean>;
   };
 }
 
@@ -4038,6 +4043,193 @@ test("open_project_request unarchives an existing archived workspace and project
   const response = findByType(emitted, "open_project_response");
   expect(response?.payload.error).toBeNull();
   expect(response?.payload.workspace?.id).toBe(workspaceId);
+});
+
+test("refresh_agent_request unarchives the owning workspace when its directory exists", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => {
+      if (isSessionOutboundMessage(message)) emitted.push(message);
+    },
+  });
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+
+  const cwd = path.resolve("/tmp/paseo-unit2-existing-dir");
+  session.filesystem.isDirectory = async () => true;
+  const workspaceId = "ws-repo-archived";
+  const agentId = "agent-archived";
+  projects.set(
+    cwd,
+    createPersistedProjectRecord({
+      projectId: cwd,
+      rootPath: cwd,
+      kind: "non_git",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+  workspaces.set(
+    workspaceId,
+    createPersistedWorkspaceRecord({
+      workspaceId,
+      projectId: cwd,
+      cwd,
+      kind: "directory",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+
+  const storedAgent: StoredAgentRecord = {
+    ...makeStoredAgent({ id: agentId, cwd, updatedAt: "2026-03-10T00:00:00.000Z" }),
+    workspaceId,
+    archivedAt: "2026-03-10T00:00:00.000Z",
+  };
+
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (lookupWorkspaceId: string) =>
+    workspaces.get(lookupWorkspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+  session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
+  session.agentStorage.upsert = async () => {};
+
+  const managed = makeManagedAgent({
+    id: agentId,
+    cwd,
+    workspaceId,
+    lifecycle: "idle",
+    updatedAt: "2026-03-10T00:00:00.000Z",
+  });
+  session.agentManager.getAgent = () => managed;
+  session.interruptAgentIfRunning = async () => undefined;
+  session.agentManager.reloadAgentSession = async () => managed;
+  session.agentManager.hydrateTimelineFromProvider = async () => undefined;
+  session.agentManager.getTimeline = () => [];
+  session.forwardAgentUpdate = async () => undefined;
+
+  const unarchivedWorkspaceIds: string[][] = [];
+  const realEmit = session.emitWorkspaceUpdatesForWorkspaceIds.bind(session);
+  session.emitWorkspaceUpdatesForWorkspaceIds = async (ids: string[], ...rest: unknown[]) => {
+    unarchivedWorkspaceIds.push(ids);
+    return realEmit(ids, ...rest);
+  };
+
+  await session.handleMessage({
+    type: "refresh_agent_request",
+    agentId,
+    requestId: "req-refresh-unarchive",
+  });
+
+  expect(workspaces.get(workspaceId)?.archivedAt).toBeNull();
+  expect(projects.get(cwd)?.archivedAt).toBeNull();
+  expect(unarchivedWorkspaceIds).toContainEqual([workspaceId]);
+  expect(findByType(emitted, "rpc_error")).toBeUndefined();
+});
+
+test("refresh_agent_request leaves the owning workspace archived when its directory is missing", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => {
+      if (isSessionOutboundMessage(message)) emitted.push(message);
+    },
+  });
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+
+  const cwd = path.resolve("/tmp/paseo-missing-workspace-dir");
+  session.filesystem.isDirectory = async () => false;
+  const workspaceId = "ws-missing-dir";
+  const agentId = "agent-missing-dir";
+  projects.set(
+    cwd,
+    createPersistedProjectRecord({
+      projectId: cwd,
+      rootPath: cwd,
+      kind: "non_git",
+      displayName: "missing",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+  workspaces.set(
+    workspaceId,
+    createPersistedWorkspaceRecord({
+      workspaceId,
+      projectId: cwd,
+      cwd,
+      kind: "directory",
+      displayName: "missing",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+
+  const storedAgent: StoredAgentRecord = {
+    ...makeStoredAgent({ id: agentId, cwd, updatedAt: "2026-03-10T00:00:00.000Z" }),
+    workspaceId,
+    archivedAt: "2026-03-10T00:00:00.000Z",
+  };
+
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (lookupWorkspaceId: string) =>
+    workspaces.get(lookupWorkspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+  session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
+  session.agentStorage.upsert = async () => {};
+
+  const managed = makeManagedAgent({
+    id: agentId,
+    cwd,
+    workspaceId,
+    lifecycle: "idle",
+    updatedAt: "2026-03-10T00:00:00.000Z",
+  });
+  session.agentManager.getAgent = () => managed;
+  session.interruptAgentIfRunning = async () => undefined;
+  session.agentManager.reloadAgentSession = async () => managed;
+  session.agentManager.hydrateTimelineFromProvider = async () => undefined;
+  session.agentManager.getTimeline = () => [];
+  session.forwardAgentUpdate = async () => undefined;
+
+  await session.handleMessage({
+    type: "refresh_agent_request",
+    agentId,
+    requestId: "req-refresh-missing-dir",
+  });
+
+  expect(workspaces.get(workspaceId)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+  expect(projects.get(cwd)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
 });
 
 test.skip("open_project_request collapses a git subdirectory onto the repo root workspace", async () => {

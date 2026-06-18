@@ -16,7 +16,8 @@ export type WorkspaceRouteState =
       lastError: string | null;
     }
   | { kind: "loading"; hostName: string }
-  | { kind: "missing"; hostName: string };
+  | { kind: "restoring"; hostName: string }
+  | { kind: "missing"; hostName: string; restoreFailed: boolean };
 
 export function resolveWorkspaceRouteState(input: {
   hostName: string;
@@ -24,6 +25,7 @@ export function resolveWorkspaceRouteState(input: {
   lastError: string | null;
   workspace: WorkspaceDescriptor | null;
   hasHydratedWorkspaces: boolean;
+  restoreStatus: "restoring" | "failed" | null;
 }): WorkspaceRouteState {
   if (input.workspace) {
     if (input.connectionStatus === "online") {
@@ -39,8 +41,16 @@ export function resolveWorkspaceRouteState(input: {
   }
 
   if (input.connectionStatus === "online") {
+    if (input.restoreStatus === "restoring") {
+      return { kind: "restoring", hostName: input.hostName };
+    }
+
     if (input.hasHydratedWorkspaces) {
-      return { kind: "missing", hostName: input.hostName };
+      return {
+        kind: "missing",
+        hostName: input.hostName,
+        restoreFailed: input.restoreStatus === "failed",
+      };
     }
 
     return { kind: "loading", hostName: input.hostName };

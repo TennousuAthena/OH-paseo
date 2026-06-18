@@ -3503,6 +3503,7 @@ export class Session {
 
     try {
       await unarchiveAgentState(this.agentStorage, this.agentManager, agentId);
+      await this.unarchiveOwningWorkspaceForAgent(agentId);
       let snapshot: ManagedAgent;
       const existing = this.agentManager.getAgent(agentId);
       if (existing) {
@@ -7064,6 +7065,23 @@ export class Session {
       archivedAt: null,
       updatedAt: input.timestamp,
     };
+  }
+
+  private async unarchiveOwningWorkspaceForAgent(agentId: string): Promise<void> {
+    const record = await this.agentStorage.get(agentId);
+    if (!record?.workspaceId) {
+      return;
+    }
+    const directoryExists = await this.filesystem.isDirectory(record.cwd).catch(() => false);
+    if (!directoryExists) {
+      return;
+    }
+    const workspace = await this.workspaceRegistry.get(record.workspaceId);
+    if (!workspace?.archivedAt) {
+      return;
+    }
+    await this.ensureWorkspaceRecordUnarchived(workspace);
+    await this.emitWorkspaceUpdatesForWorkspaceIds([workspace.workspaceId]);
   }
 
   private async ensureWorkspaceRecordUnarchived(

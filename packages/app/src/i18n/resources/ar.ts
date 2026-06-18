@@ -328,6 +328,8 @@ export const ar: TranslationResources = {
   workspace: {
     route: {
       loading: "جارٍ تحميل مساحة العمل",
+      restoring: "جارٍ استعادة مساحة العمل",
+      restoreFailed: "تعذّر استعادة مساحة العمل هذه — ربما تم نقل المجلد أو حذفه",
       connecting: "الاتصال",
       hostOffline: "{{hostName}}غير متواجد حالياً",
       cannotReachHost: "لا يمكن الوصول إلى{{hostName}}",

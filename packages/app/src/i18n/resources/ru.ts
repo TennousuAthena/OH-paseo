@@ -330,6 +330,9 @@ export const ru: TranslationResources = {
   workspace: {
     route: {
       loading: "Загрузка рабочей области",
+      restoring: "Восстановление рабочей области",
+      restoreFailed:
+        "Не удалось восстановить эту рабочую область — каталог мог быть перемещён или удалён",
       connecting: "Подключение",
       hostOffline: "{{hostName}}не в сети",
       cannotReachHost: "Невозможно связаться с{{hostName}}",

@@ -331,6 +331,9 @@ export const es: TranslationResources = {
   workspace: {
     route: {
       loading: "Cargando espacio de trabajo",
+      restoring: "Restaurando espacio de trabajo",
+      restoreFailed:
+        "No se pudo restaurar este espacio de trabajo — es posible que el directorio se haya movido o eliminado",
       connecting: "Conectando",
       hostOffline: "{{hostName}}está desconectado",
       cannotReachHost: "No se puede alcanzar{{hostName}}",

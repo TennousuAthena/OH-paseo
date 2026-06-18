@@ -21,6 +21,8 @@ export function renderWorkspaceRouteGate(input: {
   switch (input.state.kind) {
     case "loading":
       return <WorkspaceConnecting hostName={input.state.hostName} />;
+    case "restoring":
+      return <WorkspaceRestoring hostName={input.state.hostName} />;
     case "unreachable":
       return (
         <WorkspaceUnreachable
@@ -33,6 +35,7 @@ export function renderWorkspaceRouteGate(input: {
       return (
         <WorkspaceMissing
           hostName={input.state.hostName}
+          restoreFailed={input.state.restoreFailed}
           onDismiss={input.actions.onDismissMissingWorkspace}
         />
       );
@@ -64,6 +67,21 @@ function WorkspaceConnecting({ hostName }: { hostName: string }) {
       <LoadingSpinner size="small" color={theme.colors.foregroundMuted} />
       <View style={styles.textStack}>
         <Text style={styles.title}>{t("workspace.route.loading")}</Text>
+        <Text style={styles.description}>{hostName}</Text>
+      </View>
+    </View>
+  );
+}
+
+function WorkspaceRestoring({ hostName }: { hostName: string }) {
+  const { theme } = useUnistyles();
+  const { t } = useTranslation();
+
+  return (
+    <View style={styles.emptyState}>
+      <LoadingSpinner size="small" color={theme.colors.foregroundMuted} />
+      <View style={styles.textStack}>
+        <Text style={styles.title}>{t("workspace.route.restoring")}</Text>
         <Text style={styles.description}>{hostName}</Text>
       </View>
     </View>
@@ -124,13 +142,23 @@ function WorkspaceUnreachable({
   );
 }
 
-function WorkspaceMissing({ hostName, onDismiss }: { hostName: string; onDismiss: () => void }) {
+function WorkspaceMissing({
+  hostName,
+  restoreFailed,
+  onDismiss,
+}: {
+  hostName: string;
+  restoreFailed: boolean;
+  onDismiss: () => void;
+}) {
   const { t } = useTranslation();
 
   return (
     <View style={styles.emptyState}>
       <View style={styles.textStack}>
-        <Text style={styles.title}>{t("workspace.route.missing")}</Text>
+        <Text style={styles.title}>
+          {restoreFailed ? t("workspace.route.restoreFailed") : t("workspace.route.missing")}
+        </Text>
         <Text style={styles.description}>{hostName}</Text>
       </View>
       <View style={styles.actions}>

@@ -65,6 +65,7 @@ test("creates a worktree and registers it in the source workspace project withou
   expect(result.workspace.workspaceId).toMatch(/^wks_[0-9a-f]{16}$/);
   expect(result.workspace.projectId).toBe("remote:github.com/acme/repo");
   expect(result.workspace.displayName).toBe("feature-one");
+  expect(result.workspace.baseBranch).toBe("main");
   expect(deps.workspaceGitService.getSnapshot).not.toHaveBeenCalled();
   expect(events).toEqual([
     "project:remote:github.com/acme/repo",
@@ -425,6 +426,9 @@ test("does not mark checkout branch worktrees as eligible for first-agent rename
     version: 1,
     baseRefName: "dev",
   });
+  // A checkout-branch worktree has no distinct base, so the workspace records a
+  // null baseBranch even though worktree.json's baseRefName is the branch itself.
+  expect(created.workspace.baseBranch).toBe(null);
   await expect(
     attemptFirstAgentBranchAutoName({
       cwd: created.worktree.worktreePath,
