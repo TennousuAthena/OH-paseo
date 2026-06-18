@@ -18,7 +18,9 @@ import {
   type CreatePaseoWorktreeDeps,
 } from "./paseo-worktree-service.js";
 import { readPaseoWorktreeMetadata } from "../utils/worktree-metadata.js";
+import { createWorktree } from "../utils/worktree.js";
 import { isPlatform } from "../test-utils/platform.js";
+import { existsSync } from "node:fs";
 
 const cleanupPaths: string[] = [];
 
@@ -502,6 +504,109 @@ test("does not mutate registries or broadcast when core worktree creation fails"
   expect(deps.projects.size).toBe(0);
   expect(deps.workspaces.size).toBe(0);
 });
+
+// Worktree restore (Unit 3): recreate a deleted Paseo-owned worktree from its
+// kept branch via createWorktree's checkout-branch source.
+test.skipIf(isPlatform("win32"))(
+  "recreates a deleted worktree on the same kept branch without creating a suffixed branch",
+  async () => {
+    const { repoDir, tempDir } = createGitRepo();
+    cleanupPaths.push(tempDir);
+    const paseoHome = path.join(tempDir, ".paseo");
+
+    execFileSync("git", ["branch", "restore-me"], { cwd: repoDir, stdio: "pipe" });
+
+    const created = await createWorktree({
+      cwd: repoDir,
+      worktreeSlug: "restore-me",
+      source: { kind: "checkout-branch", branchName: "restore-me" },
+      runSetup: false,
+      paseoHome,
+    });
+    expect(existsSync(created.worktreePath)).toBe(true);
+
+    execFileSync("git", ["worktree", "remove", created.worktreePath, "--force"], {
+      cwd: repoDir,
+      stdio: "pipe",
+    });
+    expect(existsSync(created.worktreePath)).toBe(false);
+
+    const recreated = await createWorktree({
+      cwd: repoDir,
+      worktreeSlug: "restore-me",
+      source: { kind: "checkout-branch", branchName: "restore-me" },
+      runSetup: false,
+      paseoHome,
+    });
+
+    expect(recreated.worktreePath).toBe(created.worktreePath);
+    expect(existsSync(recreated.worktreePath)).toBe(true);
+    expect(
+      execFileSync("git", ["branch", "--show-current"], {
+        cwd: recreated.worktreePath,
+        stdio: "pipe",
+      })
+        .toString()
+        .trim(),
+    ).toBe("restore-me");
+    const branches = execFileSync("git", ["branch", "--list", "restore-me*"], {
+      cwd: repoDir,
+      stdio: "pipe",
+    })
+      .toString()
+      .split("\n")
+      .map((line) => line.replace(/^[*+ ]+/, "").trim())
+      .filter(Boolean);
+    expect(branches).toEqual(["restore-me"]);
+  },
+);
+
+test.skipIf(isPlatform("win32"))(
+  "rejects with UnknownBranchError when the kept branch no longer exists",
+  async () => {
+    const { repoDir, tempDir } = createGitRepo();
+    cleanupPaths.push(tempDir);
+
+    await expect(
+      createWorktree({
+        cwd: repoDir,
+        worktreeSlug: "gone-branch",
+        source: { kind: "checkout-branch", branchName: "gone-branch" },
+        runSetup: false,
+        paseoHome: path.join(tempDir, ".paseo"),
+      }),
+    ).rejects.toMatchObject({ name: "UnknownBranchError" });
+  },
+);
+
+test.skipIf(isPlatform("win32"))(
+  "rejects with BranchAlreadyCheckedOutError when the kept branch is checked out elsewhere",
+  async () => {
+    const { repoDir, tempDir } = createGitRepo();
+    cleanupPaths.push(tempDir);
+    const paseoHome = path.join(tempDir, ".paseo");
+
+    execFileSync("git", ["branch", "busy-branch"], { cwd: repoDir, stdio: "pipe" });
+    const first = await createWorktree({
+      cwd: repoDir,
+      worktreeSlug: "busy-branch",
+      source: { kind: "checkout-branch", branchName: "busy-branch" },
+      runSetup: false,
+      paseoHome,
+    });
+    expect(existsSync(first.worktreePath)).toBe(true);
+
+    await expect(
+      createWorktree({
+        cwd: repoDir,
+        worktreeSlug: "busy-branch-again",
+        source: { kind: "checkout-branch", branchName: "busy-branch" },
+        runSetup: false,
+        paseoHome,
+      }),
+    ).rejects.toMatchObject({ name: "BranchAlreadyCheckedOutError" });
+  },
+);
 
 interface TestDeps extends CreatePaseoWorktreeDeps {
   projectRegistry: Pick<ProjectRegistry, "get" | "list" | "upsert">;

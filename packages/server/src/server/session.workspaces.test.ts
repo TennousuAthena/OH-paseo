@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -22,7 +30,8 @@ import type {
   AgentSessionConfig,
   AgentStreamEvent,
 } from "./agent/agent-sdk-types.js";
-import { createWorktree } from "../utils/worktree.js";
+import { createWorktree, UnknownBranchError } from "../utils/worktree.js";
+import { WorktreeRequestError, toWorktreeRequestError } from "./worktree-errors.js";
 import type { WorkspaceGitRuntimeSnapshot } from "./workspace-git-service.js";
 import type { GeneratedWorkspaceName } from "./worktree-branch-name-generator.js";
 import type { GitHubService } from "../services/github-service.js";
@@ -106,6 +115,10 @@ interface SessionTestAccess {
   agentUpdatesSubscription: unknown;
   workspaceUpdatesSubscription: unknown;
   interruptAgentIfRunning(agentId: string): unknown;
+  recreateOwningWorktreeForRestore(
+    workspace: PersistedWorkspaceRecord,
+    branch: string,
+  ): Promise<void>;
   reconcileActiveWorkspaceRecords(...args: unknown[]): Promise<Set<string>>;
   reconcileWorkspaceRecord(workspaceId: string): Promise<{
     changed: boolean;
@@ -4230,6 +4243,411 @@ test("refresh_agent_request leaves the owning workspace archived when its direct
 
   expect(workspaces.get(workspaceId)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
   expect(projects.get(cwd)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+});
+
+test("refresh_agent_request recreates a deleted worktree directory and unarchives the same workspace", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => {
+      if (isSessionOutboundMessage(message)) emitted.push(message);
+    },
+  });
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+
+  const cwd = path.resolve("/tmp/paseo-deleted-worktree-dir");
+  session.filesystem.isDirectory = async () => false;
+  const workspaceId = "ws-deleted-worktree";
+  const agentId = "agent-deleted-worktree";
+  projects.set(
+    cwd,
+    createPersistedProjectRecord({
+      projectId: cwd,
+      rootPath: cwd,
+      kind: "git",
+      displayName: "worktree-project",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+  workspaces.set(
+    workspaceId,
+    createPersistedWorkspaceRecord({
+      workspaceId,
+      projectId: cwd,
+      cwd,
+      kind: "worktree",
+      branch: "feature/keep",
+      displayName: "feature/keep",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+
+  const storedAgent: StoredAgentRecord = {
+    ...makeStoredAgent({ id: agentId, cwd, updatedAt: "2026-03-10T00:00:00.000Z" }),
+    workspaceId,
+    archivedAt: "2026-03-10T00:00:00.000Z",
+  };
+
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (lookupWorkspaceId: string) =>
+    workspaces.get(lookupWorkspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+  session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
+  session.agentStorage.upsert = async () => {};
+
+  const recreateCalls: string[] = [];
+  session.recreateOwningWorktreeForRestore = async (
+    workspace: PersistedWorkspaceRecord,
+  ): Promise<void> => {
+    recreateCalls.push(workspace.workspaceId);
+  };
+
+  const managed = makeManagedAgent({
+    id: agentId,
+    cwd,
+    workspaceId,
+    lifecycle: "idle",
+    updatedAt: "2026-03-10T00:00:00.000Z",
+  });
+  session.agentManager.getAgent = () => managed;
+  session.interruptAgentIfRunning = async () => undefined;
+  session.agentManager.reloadAgentSession = async () => managed;
+  session.agentManager.hydrateTimelineFromProvider = async () => undefined;
+  session.agentManager.getTimeline = () => [];
+  session.forwardAgentUpdate = async () => undefined;
+
+  const unarchivedWorkspaceIds: string[][] = [];
+  const realEmit = session.emitWorkspaceUpdatesForWorkspaceIds.bind(session);
+  session.emitWorkspaceUpdatesForWorkspaceIds = async (ids: string[], ...rest: unknown[]) => {
+    unarchivedWorkspaceIds.push(ids);
+    return realEmit(ids, ...rest);
+  };
+
+  await session.handleMessage({
+    type: "refresh_agent_request",
+    agentId,
+    requestId: "req-refresh-recreate-worktree",
+  });
+
+  expect(recreateCalls).toEqual([workspaceId]);
+  expect(workspaces.get(workspaceId)?.archivedAt).toBeNull();
+  expect(workspaces.get(workspaceId)?.workspaceId).toBe(workspaceId);
+  expect(unarchivedWorkspaceIds).toContainEqual([workspaceId]);
+  expect(findByType(emitted, "rpc_error")).toBeUndefined();
+});
+
+test("refresh_agent_request leaves the worktree archived and surfaces a typed error when recreation fails", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => {
+      if (isSessionOutboundMessage(message)) emitted.push(message);
+    },
+  });
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+
+  const cwd = path.resolve("/tmp/paseo-deleted-worktree-fail");
+  session.filesystem.isDirectory = async () => false;
+  const workspaceId = "ws-deleted-worktree-fail";
+  const agentId = "agent-deleted-worktree-fail";
+  projects.set(
+    cwd,
+    createPersistedProjectRecord({
+      projectId: cwd,
+      rootPath: cwd,
+      kind: "git",
+      displayName: "worktree-project",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+  workspaces.set(
+    workspaceId,
+    createPersistedWorkspaceRecord({
+      workspaceId,
+      projectId: cwd,
+      cwd,
+      kind: "worktree",
+      branch: "feature/gone",
+      displayName: "feature/gone",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+
+  const storedAgent: StoredAgentRecord = {
+    ...makeStoredAgent({ id: agentId, cwd, updatedAt: "2026-03-10T00:00:00.000Z" }),
+    workspaceId,
+    archivedAt: "2026-03-10T00:00:00.000Z",
+  };
+
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (lookupWorkspaceId: string) =>
+    workspaces.get(lookupWorkspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+  session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
+  session.agentStorage.upsert = async () => {};
+
+  session.recreateOwningWorktreeForRestore = async (): Promise<void> => {
+    throw toWorktreeRequestError(new UnknownBranchError({ branchName: "feature/gone", cwd }));
+  };
+
+  const managed = makeManagedAgent({
+    id: agentId,
+    cwd,
+    workspaceId,
+    lifecycle: "idle",
+    updatedAt: "2026-03-10T00:00:00.000Z",
+  });
+  session.agentManager.getAgent = () => managed;
+  session.interruptAgentIfRunning = async () => undefined;
+  session.agentManager.reloadAgentSession = async () => managed;
+  session.agentManager.hydrateTimelineFromProvider = async () => undefined;
+  session.agentManager.getTimeline = () => [];
+  session.forwardAgentUpdate = async () => undefined;
+
+  await session.handleMessage({
+    type: "refresh_agent_request",
+    agentId,
+    requestId: "req-refresh-recreate-fail",
+  });
+
+  expect(workspaces.get(workspaceId)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+  const rpcError = findByType(emitted, "rpc_error");
+  expect(rpcError).toBeDefined();
+  expect((rpcError?.payload as { code?: string } | undefined)?.code).toBe("unknown_branch");
+});
+
+function createRecreateWorktreeRepo(): { tempDir: string; repoDir: string } {
+  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "paseo-recreate-worktree-")));
+  const repoDir = path.join(tempDir, "repo");
+  execFileSync("git", ["init", "-b", "main", repoDir], { stdio: "pipe" });
+  execFileSync("git", ["config", "user.email", "test@getpaseo.local"], {
+    cwd: repoDir,
+    stdio: "pipe",
+  });
+  execFileSync("git", ["config", "user.name", "Paseo Test"], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir, stdio: "pipe" });
+  writeFileSync(path.join(repoDir, "README.md"), "main\n");
+  execFileSync("git", ["add", "README.md"], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir, stdio: "pipe" });
+  return { tempDir, repoDir };
+}
+
+test("refresh_agent_request recreates a real deleted worktree against a temp git repo and unarchives the same workspace", async () => {
+  const { tempDir, repoDir } = createRecreateWorktreeRepo();
+  const branch = "feature/keep";
+  execFileSync("git", ["branch", branch], { cwd: repoDir, stdio: "pipe" });
+
+  const worktreesRoot = path.join(tempDir, "worktrees");
+  const paseoHome = path.join(tempDir, "paseo-home");
+  const created = await createWorktree({
+    cwd: repoDir,
+    worktreeSlug: "keep",
+    source: { kind: "checkout-branch", branchName: branch },
+    runSetup: false,
+    paseoHome,
+    worktreesRoot,
+  });
+  const worktreePath = realpathSync(created.worktreePath);
+  // Simulate archive: drop the worktree dir but keep the branch.
+  rmSync(worktreePath, { recursive: true, force: true });
+  execFileSync("git", ["worktree", "prune"], { cwd: repoDir, stdio: "pipe" });
+  expect(existsSync(worktreePath)).toBe(false);
+
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    paseoHome,
+    worktreesRoot,
+    onMessage: (message) => {
+      if (isSessionOutboundMessage(message)) emitted.push(message);
+    },
+  });
+  // Real directory probe so the missing worktree reads as gone and the repo root as present.
+  session.filesystem.isDirectory = async (target: string) =>
+    existsSync(target) && statSync(target).isDirectory();
+
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const workspaceId = "ws-real-recreate";
+  const agentId = "agent-real-recreate";
+  const projectId = repoDir;
+  projects.set(
+    projectId,
+    createPersistedProjectRecord({
+      projectId,
+      rootPath: repoDir,
+      kind: "git",
+      displayName: "worktree-project",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+  workspaces.set(
+    workspaceId,
+    createPersistedWorkspaceRecord({
+      workspaceId,
+      projectId,
+      cwd: worktreePath,
+      kind: "worktree",
+      branch,
+      displayName: branch,
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+
+  const storedAgent: StoredAgentRecord = {
+    ...makeStoredAgent({ id: agentId, cwd: worktreePath, updatedAt: "2026-03-10T00:00:00.000Z" }),
+    workspaceId,
+    archivedAt: "2026-03-10T00:00:00.000Z",
+  };
+
+  session.projectRegistry.get = async (id: string) => projects.get(id) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (id: string) => workspaces.get(id) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
+  session.agentStorage.upsert = async () => {};
+
+  const managed = makeManagedAgent({
+    id: agentId,
+    cwd: worktreePath,
+    workspaceId,
+    lifecycle: "idle",
+    updatedAt: "2026-03-10T00:00:00.000Z",
+  });
+  session.agentManager.getAgent = () => managed;
+  session.interruptAgentIfRunning = async () => undefined;
+  session.agentManager.reloadAgentSession = async () => managed;
+  session.agentManager.hydrateTimelineFromProvider = async () => undefined;
+  session.agentManager.getTimeline = () => [];
+  session.forwardAgentUpdate = async () => undefined;
+
+  await session.handleMessage({
+    type: "refresh_agent_request",
+    agentId,
+    requestId: "req-refresh-real-recreate",
+  });
+
+  expect(findByType(emitted, "rpc_error")).toBeUndefined();
+  expect(existsSync(worktreePath)).toBe(true);
+  const headBranch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+    cwd: worktreePath,
+    stdio: "pipe",
+  })
+    .toString()
+    .trim();
+  expect(headBranch).toBe(branch);
+  expect(workspaces.get(workspaceId)?.workspaceId).toBe(workspaceId);
+  expect(workspaces.get(workspaceId)?.cwd).toBe(worktreePath);
+  expect(workspaces.get(workspaceId)?.archivedAt).toBeNull();
+
+  rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("recreateOwningWorktreeForRestore throws a typed WorktreeRequestError and leaves the workspace archived when the project root is missing", async () => {
+  const { tempDir, repoDir } = createRecreateWorktreeRepo();
+  const branch = "feature/keep";
+  execFileSync("git", ["branch", branch], { cwd: repoDir, stdio: "pipe" });
+
+  const worktreesRoot = path.join(tempDir, "worktrees");
+  const paseoHome = path.join(tempDir, "paseo-home");
+  const created = await createWorktree({
+    cwd: repoDir,
+    worktreeSlug: "keep",
+    source: { kind: "checkout-branch", branchName: branch },
+    runSetup: false,
+    paseoHome,
+    worktreesRoot,
+  });
+  const worktreePath = realpathSync(created.worktreePath);
+
+  const session = createSessionForWorkspaceTests({ paseoHome, worktreesRoot });
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const workspaceId = "ws-missing-root";
+  const projectId = repoDir;
+  const missingRoot = path.join(tempDir, "does-not-exist");
+  projects.set(
+    projectId,
+    createPersistedProjectRecord({
+      projectId,
+      rootPath: missingRoot,
+      kind: "git",
+      displayName: "worktree-project",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+  const workspaceRecord = createPersistedWorkspaceRecord({
+    workspaceId,
+    projectId,
+    cwd: worktreePath,
+    kind: "worktree",
+    branch,
+    displayName: branch,
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-10T00:00:00.000Z",
+    archivedAt: "2026-03-10T00:00:00.000Z",
+  });
+  workspaces.set(workspaceId, workspaceRecord);
+
+  session.projectRegistry.get = async (id: string) => projects.get(id) ?? null;
+  session.workspaceRegistry.get = async (id: string) => workspaces.get(id) ?? null;
+  session.filesystem.isDirectory = async (target: string) =>
+    existsSync(target) && statSync(target).isDirectory();
+
+  await expect(
+    session.recreateOwningWorktreeForRestore(workspaceRecord, branch),
+  ).rejects.toBeInstanceOf(WorktreeRequestError);
+  // Guard fires before createWorktree, so archivedAt is untouched.
+  expect(workspaces.get(workspaceId)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+
+  rmSync(tempDir, { recursive: true, force: true });
 });
 
 test.skip("open_project_request collapses a git subdirectory onto the repo root workspace", async () => {

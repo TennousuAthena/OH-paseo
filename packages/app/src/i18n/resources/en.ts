@@ -335,6 +335,7 @@ export const en = {
       cannotReachHost: "Cannot reach {{hostName}}",
       hostStatus: "Host status: {{status}}",
       missing: "Workspace not found",
+      needsHostUpgrade: "Update your host to restore this workspace",
       manageHost: "Manage host",
     },
     hoverCard: {

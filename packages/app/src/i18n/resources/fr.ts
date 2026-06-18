@@ -339,6 +339,7 @@ export const fr: TranslationResources = {
       cannotReachHost: "Impossible d'atteindre{{hostName}}",
       hostStatus: "StatutHost:{{status}}",
       missing: "Workspaceintrouvable",
+      needsHostUpgrade: "Mettez à jour votre hôte pour restaurer cet espace de travail",
       manageHost: "Gérer l'hôte",
     },
     hoverCard: {

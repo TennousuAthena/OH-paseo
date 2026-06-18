@@ -27,15 +27,21 @@ const SERVER_ID = "server-1";
 const AGENT_ID = "agent-1";
 const WORKSPACE_ID = "workspace-1";
 
-function status(): "restoring" | "failed" | null {
+function status(): "restoring" | "failed" | "needs-host-upgrade" | null {
   return (
     useSessionStore.getState().sessions[SERVER_ID]?.restoringWorkspaces.get(WORKSPACE_ID) ?? null
   );
 }
 
-function seedArchivedAgent(): void {
+function seedArchivedAgent(options?: { worktreeRestore?: boolean }): void {
   const store = useSessionStore.getState();
   store.initializeSession(SERVER_ID, null as unknown as DaemonClient);
+  store.updateSessionServerInfo(SERVER_ID, {
+    serverId: SERVER_ID,
+    hostname: "host",
+    version: "0.1.98",
+    features: { worktreeRestore: options?.worktreeRestore ?? true },
+  } as unknown as Parameters<typeof store.updateSessionServerInfo>[1]);
   store.setAgents(SERVER_ID, (prev) => {
     const next = new Map(prev);
     next.set(AGENT_ID, {
@@ -133,8 +139,19 @@ describe("restoreArchivedWorkspace via navigateToAgent", () => {
     await Promise.resolve();
     expect(status()).toBe("restoring");
 
-    await vi.advanceTimersByTimeAsync(7000);
+    await vi.advanceTimersByTimeAsync(30000);
     expect(status()).toBe("failed");
+  });
+
+  it("marks the workspace needs-host-upgrade without refreshing when the daemon lacks worktreeRestore", () => {
+    useSessionStore.getState().clearSession(SERVER_ID);
+    seedArchivedAgent({ worktreeRestore: false });
+    refreshAgent.mockImplementation(() => new Promise(() => {}));
+
+    trigger();
+
+    expect(refreshAgent).not.toHaveBeenCalled();
+    expect(status()).toBe("needs-host-upgrade");
   });
 
   it("is a no-op when the workspace descriptor is already present", () => {

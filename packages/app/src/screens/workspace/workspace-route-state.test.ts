@@ -127,6 +127,19 @@ describe("resolveWorkspaceRouteState", () => {
     ).toEqual({ kind: "restoring", hostName: "Laptop" });
   });
 
+  it("returns needsHostUpgrade when the daemon lacks the restore capability", () => {
+    expect(
+      resolveWorkspaceRouteState({
+        hostName: "Laptop",
+        connectionStatus: "online",
+        lastError: null,
+        workspace: null,
+        hasHydratedWorkspaces: true,
+        restoreStatus: "needs-host-upgrade",
+      }),
+    ).toEqual({ kind: "needsHostUpgrade", hostName: "Laptop" });
+  });
+
   it("falls back to a restore-failed missing state once the restore times out", () => {
     expect(
       resolveWorkspaceRouteState({

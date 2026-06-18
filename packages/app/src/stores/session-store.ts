@@ -287,7 +287,7 @@ export interface AgentTimelineCursorState {
   endSeq: number;
 }
 
-export type WorkspaceRestoreStatus = "restoring" | "failed";
+export type WorkspaceRestoreStatus = "restoring" | "failed" | "needs-host-upgrade";
 
 // Per-session state
 export interface SessionState {

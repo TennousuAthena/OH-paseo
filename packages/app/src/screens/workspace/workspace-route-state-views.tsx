@@ -23,6 +23,14 @@ export function renderWorkspaceRouteGate(input: {
       return <WorkspaceConnecting hostName={input.state.hostName} />;
     case "restoring":
       return <WorkspaceRestoring hostName={input.state.hostName} />;
+    case "needsHostUpgrade":
+      return (
+        <WorkspaceEmptyState
+          titleKey="workspace.route.needsHostUpgrade"
+          hostName={input.state.hostName}
+          onDismiss={input.actions.onDismissMissingWorkspace}
+        />
+      );
     case "unreachable":
       return (
         <WorkspaceUnreachable
@@ -33,9 +41,11 @@ export function renderWorkspaceRouteGate(input: {
       );
     case "missing":
       return (
-        <WorkspaceMissing
+        <WorkspaceEmptyState
+          titleKey={
+            input.state.restoreFailed ? "workspace.route.restoreFailed" : "workspace.route.missing"
+          }
           hostName={input.state.hostName}
-          restoreFailed={input.state.restoreFailed}
           onDismiss={input.actions.onDismissMissingWorkspace}
         />
       );
@@ -142,13 +152,16 @@ function WorkspaceUnreachable({
   );
 }
 
-function WorkspaceMissing({
+function WorkspaceEmptyState({
+  titleKey,
   hostName,
-  restoreFailed,
   onDismiss,
 }: {
+  titleKey:
+    | "workspace.route.missing"
+    | "workspace.route.restoreFailed"
+    | "workspace.route.needsHostUpgrade";
   hostName: string;
-  restoreFailed: boolean;
   onDismiss: () => void;
 }) {
   const { t } = useTranslation();
@@ -156,9 +169,7 @@ function WorkspaceMissing({
   return (
     <View style={styles.emptyState}>
       <View style={styles.textStack}>
-        <Text style={styles.title}>
-          {restoreFailed ? t("workspace.route.restoreFailed") : t("workspace.route.missing")}
-        </Text>
+        <Text style={styles.title}>{t(titleKey)}</Text>
         <Text style={styles.description}>{hostName}</Text>
       </View>
       <View style={styles.actions}>

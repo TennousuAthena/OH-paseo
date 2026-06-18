@@ -335,6 +335,7 @@ export const ar: TranslationResources = {
       cannotReachHost: "لا يمكن الوصول إلى{{hostName}}",
       hostStatus: "حالة Host:{{status}}",
       missing: "لم يتم العثور على Workspace",
+      needsHostUpgrade: "قم بتحديث مضيفك لاستعادة مساحة العمل هذه",
       manageHost: "إدارة المضيف",
     },
     hoverCard: {

@@ -7,8 +7,10 @@ import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 export type { NavigateToAgentInput } from "./resolve";
 
 // Clears the transient restoring state if the daemon resolves refreshAgent without
-// re-emitting a workspace_update (the directory-gone case), so the gate never spins forever.
-const RESTORE_TIMEOUT_MS = 7000;
+// re-emitting a workspace_update (the directory-gone case), so the gate never spins
+// forever. Recreating a worktree can require a git fetch, so the budget is generous
+// to avoid flashing a false "failed" on a capable daemon doing slow real work.
+const RESTORE_TIMEOUT_MS = 30000;
 
 function restoreArchivedWorkspace(serverId: string, agentId: string, workspaceId: string): void {
   const snapshot = getHostRuntimeStore().getSnapshot(serverId);
@@ -30,6 +32,15 @@ function restoreArchivedWorkspace(serverId: string, agentId: string, workspaceId
     return;
   }
   if (session?.restoringWorkspaces.get(workspaceId) === "restoring") {
+    return;
+  }
+
+  // COMPAT(worktreeRestore): added in v0.1.98, drop the gate when floor >= v0.1.98
+  // Single capability read for restore. An old daemon recreates nothing on
+  // refresh_agent, so a gone directory would spin then flash a misleading
+  // "couldn't restore". Surface an explicit "update your host" state instead.
+  if (session?.serverInfo?.features?.worktreeRestore !== true) {
+    store.setWorkspaceRestoreStatus(serverId, workspaceId, "needs-host-upgrade");
     return;
   }
 

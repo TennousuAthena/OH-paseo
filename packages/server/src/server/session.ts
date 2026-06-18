@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { realpathSync } from "node:fs";
 import type { FSWatcher } from "node:fs";
 import { stat } from "node:fs/promises";
-import { resolve, sep } from "path";
+import { basename, normalize, resolve, sep } from "path";
 import { homedir } from "node:os";
 import { z } from "zod";
 import type { ToolSet } from "ai";
@@ -271,7 +271,12 @@ import {
   handleWorkspaceSetupStatusRequest as handleWorkspaceSetupStatusRequestMessage,
 } from "./worktree-session.js";
 import { archiveByScope, type ActiveWorkspaceRef } from "./workspace-archive-service.js";
-import { toWorktreeWireError } from "./worktree-errors.js";
+import {
+  WorktreeRequestError,
+  toWorktreeRequestError,
+  toWorktreeWireError,
+} from "./worktree-errors.js";
+import { type WorktreeConfig, createWorktree } from "../utils/worktree.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
 
 const WORKSPACE_GIT_WATCH_REMOVED_STATE_KEY = "__removed__";
@@ -3555,7 +3560,7 @@ export class Session {
             requestId,
             requestType: msg.type,
             error: message,
-            code: "agent_refresh_failed",
+            code: error instanceof WorktreeRequestError ? error.code : "agent_refresh_failed",
           },
         });
       }
@@ -7072,16 +7077,67 @@ export class Session {
     if (!record?.workspaceId) {
       return;
     }
-    const directoryExists = await this.filesystem.isDirectory(record.cwd).catch(() => false);
-    if (!directoryExists) {
-      return;
-    }
     const workspace = await this.workspaceRegistry.get(record.workspaceId);
     if (!workspace?.archivedAt) {
       return;
     }
+
+    const directoryExists = await this.filesystem.isDirectory(record.cwd).catch(() => false);
+    if (!directoryExists) {
+      if (workspace.kind !== "worktree" || !workspace.branch) {
+        return;
+      }
+      // Recreate the worktree directory from its kept branch BEFORE clearing
+      // archivedAt — the reconciler re-archives workspaces whose directory is
+      // missing, so the record must point at a real directory first.
+      await this.recreateOwningWorktreeForRestore(workspace, workspace.branch);
+    }
+
     await this.ensureWorkspaceRecordUnarchived(workspace);
     await this.emitWorkspaceUpdatesForWorkspaceIds([workspace.workspaceId]);
+  }
+
+  private async recreateOwningWorktreeForRestore(
+    workspace: PersistedWorkspaceRecord,
+    branch: string,
+  ): Promise<void> {
+    const project = await this.projectRegistry.get(workspace.projectId);
+    if (!project) {
+      throw new WorktreeRequestError({
+        code: "unknown",
+        message: `Project ${workspace.projectId} not found for workspace ${workspace.workspaceId}`,
+      });
+    }
+    const projectRootExists = await this.filesystem
+      .isDirectory(project.rootPath)
+      .catch(() => false);
+    if (!projectRootExists) {
+      throw new WorktreeRequestError({
+        code: "unknown",
+        message: `Project root is missing for ${workspace.projectId}: ${project.rootPath}`,
+      });
+    }
+
+    let result: WorktreeConfig;
+    try {
+      result = await createWorktree({
+        cwd: project.rootPath,
+        worktreeSlug: basename(workspace.cwd),
+        source: { kind: "checkout-branch", branchName: branch },
+        runSetup: false,
+        paseoHome: this.paseoHome,
+        worktreesRoot: this.worktreesRoot,
+      });
+    } catch (error) {
+      throw toWorktreeRequestError(error);
+    }
+
+    if (normalize(result.worktreePath) !== normalize(workspace.cwd)) {
+      throw new WorktreeRequestError({
+        code: "unknown",
+        message: `Recreated worktree diverged from ${workspace.cwd}: ${result.worktreePath}`,
+      });
+    }
   }
 
   private async ensureWorkspaceRecordUnarchived(

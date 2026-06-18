@@ -338,6 +338,7 @@ export const ru: TranslationResources = {
       cannotReachHost: "Невозможно связаться с{{hostName}}",
       hostStatus: "Статус Host:{{status}}",
       missing: "Workspace не найден",
+      needsHostUpgrade: "Обновите хост, чтобы восстановить эту рабочую область",
       manageHost: "Управление хостом",
     },
     hoverCard: {

@@ -335,6 +335,7 @@ export const zhCN: TranslationResources = {
       cannotReachHost: "无法连接 {{hostName}}",
       hostStatus: "Host 状态：{{status}}",
       missing: "Workspace 未找到",
+      needsHostUpgrade: "更新你的 Host 以恢复此 workspace",
       manageHost: "管理 Host",
     },
     hoverCard: {

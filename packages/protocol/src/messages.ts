@@ -2256,6 +2256,8 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutRefresh: z.boolean().optional(),
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: z.boolean().optional(),
+        // COMPAT(worktreeRestore): added in v0.1.98, drop the gate when floor >= v0.1.98
+        worktreeRestore: z.boolean().optional(),
       })
       .optional(),
   })

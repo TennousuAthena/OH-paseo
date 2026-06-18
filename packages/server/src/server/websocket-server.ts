@@ -1157,6 +1157,8 @@ export class VoiceAssistantWebSocketServer {
         checkoutRefresh: true,
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: true,
+        // COMPAT(worktreeRestore): added in v0.1.98, drop the gate when floor >= v0.1.98
+        worktreeRestore: true,
       },
     };
   }
