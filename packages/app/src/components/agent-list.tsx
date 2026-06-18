@@ -17,7 +17,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { formatTimeAgo } from "@/utils/time";
 import { type AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useSessionStore } from "@/stores/session-store";
-import { Archive } from "lucide-react-native";
+import { Archive, ChevronRight } from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
@@ -125,6 +125,33 @@ function SessionBadge({
   );
 }
 
+function WorkspaceTitlePrefix({
+  visible,
+  workspaceName,
+  testID,
+  iconSize,
+  color,
+}: {
+  visible: boolean;
+  workspaceName: string;
+  testID: string;
+  iconSize: number;
+  color: string;
+}) {
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <>
+      <Text style={styles.workspaceTitleText} numberOfLines={1} testID={testID}>
+        {workspaceName}
+      </Text>
+      <ChevronRight size={iconSize} color={color} />
+    </>
+  );
+}
+
 function SessionRow({
   agent,
   isMobile,
@@ -183,6 +210,13 @@ function SessionRow({
     >
       <View style={styles.rowContent}>
         <View style={styles.rowTitleRow}>
+          <WorkspaceTitlePrefix
+            visible={!isMobile && Boolean(workspaceName)}
+            workspaceName={workspaceName}
+            testID={`agent-row-workspace-${agent.serverId}-${agent.id}`}
+            iconSize={theme.iconSize.xs}
+            color={theme.colors.foregroundMuted}
+          />
           <View style={styles.providerIconWrap}>
             <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </View>
@@ -247,13 +281,6 @@ function SessionRow({
             testID={`agent-row-branch-${agent.serverId}-${agent.id}`}
           >
             {branch}
-          </Text>
-          <Text
-            style={styles.columnMeta}
-            numberOfLines={1}
-            testID={`agent-row-workspace-${agent.serverId}-${agent.id}`}
-          >
-            {workspaceName}
           </Text>
           <Text style={styles.columnMetaFixed} numberOfLines={1}>
             {timeAgo}
@@ -547,6 +574,12 @@ const styles = StyleSheet.create((theme) => ({
     width: theme.iconSize.md,
     alignItems: "center",
     justifyContent: "center",
+  },
+  workspaceTitleText: {
+    flexShrink: 0,
+    maxWidth: 220,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
   },
   rowMetaRow: {
     flexDirection: "row",
