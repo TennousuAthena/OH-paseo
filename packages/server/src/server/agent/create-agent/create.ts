@@ -95,6 +95,7 @@ export interface CreateAgentFromMcpInput {
   } | null;
   worktree?: {
     worktreeName?: string;
+    branchName?: string;
     baseBranch?: string;
     refName?: string;
     action?: "branch-off" | "checkout";
@@ -419,6 +420,7 @@ async function resolveMcpCwd(params: {
     input: {
       cwd: params.cwd,
       worktreeSlug: worktree.worktreeName,
+      branchName: worktree.branchName,
       refName: worktree.refName,
       action: worktree.action,
       githubPrNumber: worktree.githubPrNumber,

@@ -636,7 +636,7 @@ describe("create_agent MCP tool", () => {
   const detachedWorktreeWorkspace = (
     cwd: string,
     target:
-      | { kind: "branch-off"; worktreeSlug?: string; baseBranch?: string }
+      | { kind: "branch-off"; worktreeSlug?: string; branchName?: string; baseBranch?: string }
       | { kind: "checkout-branch"; branch: string }
       | { kind: "checkout-pr"; githubPrNumber: number },
   ) => ({
@@ -650,6 +650,10 @@ describe("create_agent MCP tool", () => {
   const detachedCurrentWorkspace = (cwd?: string) => ({
     relationship: { kind: "detached" as const },
     workspace: { kind: "current" as const, ...(cwd ? { cwd } : {}) },
+  });
+  const detachedExistingWorkspace = (workspaceId: string, cwd?: string) => ({
+    relationship: { kind: "detached" as const },
+    workspace: { kind: "existing" as const, workspaceId, ...(cwd ? { cwd } : {}) },
   });
   const ensureWorkspaceForCreate = async () => "workspace-created";
 
@@ -798,6 +802,46 @@ describe("create_agent MCP tool", () => {
         initialPrompt: "Do work",
       }),
     ).rejects.toThrow("Caller agent parent-agent has no current workspace");
+  });
+
+  it("attaches create_agent to an existing workspace id", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.createAgent.mockResolvedValue({
+      id: "existing-workspace-agent",
+      cwd: existingCwd,
+      workspaceId: "wks_existing",
+      lifecycle: "idle",
+      currentModeId: null,
+      availableModes: [],
+      config: { title: "Existing workspace" },
+    } as ManagedAgent);
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      listActiveWorkspaces: async () => [
+        { workspaceId: "wks_existing", cwd: existingCwd, kind: "worktree" },
+      ],
+      logger,
+    });
+    const tool = registeredTool(server, "create_agent");
+
+    const response = await tool.handler({
+      ...detachedExistingWorkspace("wks_existing"),
+      title: "Existing workspace",
+      provider: "codex/gpt-5.4",
+      initialPrompt: "Do work",
+      background: true,
+    });
+
+    expect(response.structuredContent.workspaceId).toBe("wks_existing");
+    expect(spies.agentManager.createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cwd: existingCwd,
+      }),
+      undefined,
+      { workspaceId: "wks_existing" },
+    );
   });
 
   it("accepts provider features and passes them through createAgent", async () => {
@@ -1194,6 +1238,7 @@ describe("create_agent MCP tool", () => {
         ...detachedWorktreeWorkspace(repoDir, {
           kind: "branch-off",
           worktreeSlug: "agent-worktree",
+          branchName: "feature/agent-worktree",
           baseBranch: "main",
         }),
         title: "Worktree agent",
@@ -1207,6 +1252,14 @@ describe("create_agent MCP tool", () => {
       expect(broadcasts[0]).toBe(createdWorkspaceIds[0]);
       expect(setupContinuations).toEqual(["agent"]);
       expect(startedAgentSetupIds).toEqual(["agent-with-worktree"]);
+      const agentCwd = z.string().parse(spies.agentManager.createAgent.mock.calls[0]?.[0].cwd);
+      const branchName = execFileSync("git", ["branch", "--show-current"], {
+        cwd: agentCwd,
+        stdio: "pipe",
+      })
+        .toString()
+        .trim();
+      expect(branchName).toBe("feature/agent-worktree");
       // The agent is stamped with the freshly created worktree's workspaceId so
       // workspaceId-scoped archive can find and tear it down later.
       expect(spies.agentManager.createAgent).toHaveBeenCalledWith(
@@ -1528,11 +1581,17 @@ describe("create_agent MCP tool", () => {
       const tool = registeredTool(server, "create_worktree");
       const response = await tool.handler({
         cwd: repoDir,
-        target: { kind: "branch-off", worktreeSlug: "tool-worktree", baseBranch: "main" },
+        target: {
+          kind: "branch-off",
+          worktreeSlug: "tool-worktree",
+          branchName: "feature/tool-worktree",
+          baseBranch: "main",
+        },
       });
 
-      expect(response.structuredContent.branchName).toBe("tool-worktree");
+      expect(response.structuredContent.branchName).toBe("feature/tool-worktree");
       expect(response.structuredContent.worktreePath).toContain("tool-worktree");
+      expect(response.structuredContent.workspaceId).toBe(broadcasts[0]);
       expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
       expect(workspaceGitService.listWorktrees).toHaveBeenCalledWith(repoDir, {
         force: true,

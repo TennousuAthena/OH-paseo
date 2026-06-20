@@ -764,7 +764,12 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
           .string()
           .min(1)
           .optional()
-          .describe("Optional worktree branch/slug. Omit to let Paseo generate one."),
+          .describe("Optional worktree slug/path label. Omit to let Paseo generate one."),
+        branchName: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Optional git branch name. Defaults to the worktree slug."),
         baseBranch: z
           .string()
           .min(1)
@@ -796,6 +801,17 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       })
       .strict()
       .describe("Use the caller's current workspace."),
+    z
+      .object({
+        kind: z.literal("existing"),
+        workspaceId: z.string().min(1).describe("Existing workspace id to attach the agent to."),
+        cwd: z
+          .string()
+          .optional()
+          .describe("Optional runtime cwd. Defaults to the existing workspace cwd."),
+      })
+      .strict()
+      .describe("Attach the agent to an existing workspace."),
     z
       .object({
         kind: z.literal("create"),
@@ -993,6 +1009,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         type: AgentProviderEnum,
         status: AgentStatusEnum,
         cwd: z.string(),
+        workspaceId: z.string().optional(),
         currentModeId: z.string().nullable(),
         availableModes: z.array(ProviderModeSchema),
         lastMessage: z.string().nullable().optional(),
@@ -1065,6 +1082,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
             type: snapshot.provider,
             status: result.status,
             cwd: liveSnapshot.cwd,
+            ...(liveSnapshot.workspaceId ? { workspaceId: liveSnapshot.workspaceId } : {}),
             currentModeId: liveSnapshot.currentModeId,
             availableModes: liveSnapshot.availableModes,
             lastMessage: result.lastMessage,
@@ -1096,6 +1114,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
           type: snapshot.provider,
           status: currentSnapshot.lifecycle,
           cwd: currentSnapshot.cwd,
+          ...(currentSnapshot.workspaceId ? { workspaceId: currentSnapshot.workspaceId } : {}),
           currentModeId: currentSnapshot.currentModeId,
           availableModes: currentSnapshot.availableModes,
           lastMessage: null,
@@ -1173,6 +1192,30 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       };
     }
 
+    if (workspace.kind === "existing") {
+      if (!options.listActiveWorkspaces) {
+        throw new Error("Workspace lookup is not configured");
+      }
+      const existingWorkspace = (await options.listActiveWorkspaces()).find(
+        (candidate) => candidate.workspaceId === workspace.workspaceId,
+      );
+      if (!existingWorkspace) {
+        throw new Error(`Workspace ${workspace.workspaceId} not found`);
+      }
+      const cwd = workspace.cwd
+        ? resolveScopedCwd(workspace.cwd, { required: true })
+        : existingWorkspace.cwd;
+      const lockedCwd = callerContext?.lockedCwd?.trim();
+      if (lockedCwd && !isSameOrDescendantPath(expandUserPath(lockedCwd), cwd)) {
+        throw new Error(`Workspace ${workspace.workspaceId} is outside the allowed cwd`);
+      }
+      return {
+        cwd,
+        workspaceId: workspace.workspaceId,
+        worktree: undefined,
+      };
+    }
+
     if (workspace.source.kind === "directory") {
       const cwd = resolveScopedCwd(workspace.source.path, { required: true });
       if (!options.ensureWorkspaceForCreate) {
@@ -1201,6 +1244,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         return {
           action: "branch-off",
           worktreeName: target.worktreeSlug,
+          branchName: target.branchName,
           baseBranch: target.baseBranch,
         };
       case "checkout-branch":
@@ -2292,6 +2336,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       outputSchema: {
         branchName: z.string(),
         worktreePath: z.string(),
+        workspaceId: z.string(),
       },
     },
     async ({ cwd, target }) => {
@@ -2307,7 +2352,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       if (!commandResult.ok) {
         throw new WorktreeRequestError(commandResult.error);
       }
-      const { worktree } = commandResult.createdWorktree;
+      const { worktree, workspace } = commandResult.createdWorktree;
       await options.workspaceGitService?.listWorktrees?.(repoRoot, {
         force: true,
         reason: "mcp:create-worktree",
@@ -2318,6 +2363,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         structuredContent: ensureValidJson({
           branchName: worktree.branchName,
           worktreePath: worktree.worktreePath,
+          workspaceId: workspace.workspaceId,
         }),
       };
     },
@@ -2530,7 +2576,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
 }
 
 type McpCreateWorktreeTarget =
-  | { kind: "branch-off"; worktreeSlug?: string; baseBranch?: string }
+  | { kind: "branch-off"; worktreeSlug?: string; branchName?: string; baseBranch?: string }
   | { kind: "checkout-branch"; branch: string }
   | { kind: "checkout-pr"; githubPrNumber: number };
 
@@ -2604,6 +2650,7 @@ function createMcpWorktreeCommandInput(
       return {
         ...base,
         worktreeSlug: target.worktreeSlug,
+        branchName: target.branchName,
         action: "branch-off",
         ...(target.baseBranch ? { refName: target.baseBranch } : {}),
       };

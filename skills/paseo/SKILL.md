@@ -10,10 +10,12 @@ Paseo is a daemon that supervises AI coding agents on your machine. Control it t
 **`create_worktree`** — same target union as `create_agent.workspace.source.worktree.target`:
 
 - From a PR: `{ target: { kind: "checkout-pr", githubPrNumber: 503 } }`.
-- Branch off a base: `{ target: { kind: "branch-off", worktreeSlug: "fix/foo", baseBranch: "main" } }`.
+- Branch off a base: `{ target: { kind: "branch-off", worktreeSlug: "foo", branchName: "fix/foo", baseBranch: "main" } }`.
 - Checkout an existing branch: `{ target: { kind: "checkout-branch", branch: "feat/bar" } }`.
 
-Returns `{ branchName, worktreePath }`. Pass `cwd` to target a specific repo.
+Returns `{ branchName, worktreePath, workspaceId }`. Pass `cwd` to target a specific repo.
+
+In `branch-off`, `worktreeSlug` controls the worktree path slug and `branchName` controls the git branch. If `branchName` is omitted, Paseo defaults it from `worktreeSlug`. The returned `branchName` is authoritative; checkout and PR flows may return a branch name that differs from any requested slug.
 
 **`list_worktrees`** — current repo (or pass `cwd`).
 **`archive_worktree`** — `{ worktreePath }` or `{ worktreeSlug }`. Removes worktree and branch.
@@ -24,7 +26,7 @@ Returns `{ branchName, worktreePath }`. Pass `cwd` to target a specific repo.
 
 Initial runtime settings live under `settings`: `modeId`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }` when creating the agent.
 
-To create a new worktree and launch an agent in it, use `create_agent.workspace.source.kind = "worktree"`. Use `create_worktree` separately only when you need a worktree without launching an agent.
+To create a new worktree and launch an agent in it, use `create_agent.workspace.source.kind = "worktree"`. Use `create_worktree` separately only when you need a worktree without launching an agent, or when you need a split flow; in a split flow, pass the returned `workspaceId` to `create_agent` with `workspace: { kind: "existing", workspaceId }`.
 
 ### Agent relationships
 
@@ -36,8 +38,9 @@ To create a new worktree and launch an agent in it, use `create_agent.workspace.
 `workspace` controls placement only:
 
 - `{ kind: "current" }` — same workspace as the caller, with optional `cwd`.
+- `{ kind: "existing", workspaceId: string, cwd?: string }` — attach to an existing workspace, usually from `create_worktree`.
 - `{ kind: "create", source: { kind: "directory", path?: string } }` — new workspace rooted at a directory.
-- `{ kind: "create", source: { kind: "worktree", cwd?: string, target: { kind: "branch-off", worktreeSlug?: string, baseBranch?: string } } }`
+- `{ kind: "create", source: { kind: "worktree", cwd?: string, target: { kind: "branch-off", worktreeSlug?: string, branchName?: string, baseBranch?: string } } }`
 - `{ kind: "create", source: { kind: "worktree", cwd?: string, target: { kind: "checkout-branch", branch: string } } }`
 - `{ kind: "create", source: { kind: "worktree", cwd?: string, target: { kind: "checkout-pr", githubPrNumber: number } } }`
 
