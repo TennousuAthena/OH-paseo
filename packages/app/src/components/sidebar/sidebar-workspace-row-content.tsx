@@ -29,7 +29,6 @@ import { isEmphasizedStatusDotBucket } from "@/utils/status-dot-color";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 import { openExternalUrl } from "@/utils/open-external-url";
 
-const WORKSPACE_STATUS_DOT_WIDTH = 14;
 const DEFAULT_STATUS_DOT_SIZE = 7;
 const EMPHASIZED_STATUS_DOT_SIZE = 9;
 const DEFAULT_STATUS_DOT_OFFSET = 0;
@@ -220,7 +219,9 @@ function WorkspaceStatusIndicator({
     );
   }
 
-  if (bucket === "done") return null;
+  if (bucket === "done") {
+    return <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-done" />;
+  }
 
   let KindIcon: typeof ThemedMonitor;
   if (workspaceKind === "local_checkout") KindIcon = ThemedMonitor;
@@ -503,7 +504,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspaceStatusDot: {
     position: "relative",
-    width: WORKSPACE_STATUS_DOT_WIDTH,
+    width: theme.iconSize.md,
     height: 20,
     borderRadius: theme.borderRadius.full,
     flexShrink: 0,

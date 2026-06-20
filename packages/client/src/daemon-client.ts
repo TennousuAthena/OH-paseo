@@ -52,6 +52,7 @@ import type {
   PaseoWorktreeListResponse,
   PaseoWorktreeArchiveResponse,
   ProjectIconResponse,
+  ProjectAddResponse,
   OpenProjectResponseMessage,
   ArchiveWorkspaceResponseMessage,
   WorkspaceSetupStatusResponseMessage,
@@ -661,6 +662,7 @@ export interface RenameTerminalInput {
   requestId?: string;
 }
 type OpenProjectPayload = OpenProjectResponseMessage["payload"];
+type ProjectAddPayload = ProjectAddResponse["payload"];
 type ArchiveWorkspacePayload = ArchiveWorkspaceResponseMessage["payload"];
 type WorkspaceSetupStatusPayload = WorkspaceSetupStatusResponseMessage["payload"];
 
@@ -1880,6 +1882,18 @@ export class DaemonClient {
         cwd,
       },
       responseType: "open_project_response",
+      timeout: 10000,
+    });
+  }
+
+  async addProject(cwd: string, requestId?: string): Promise<ProjectAddPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "project.add.request",
+        cwd,
+      },
+      responseType: "project.add.response",
       timeout: 10000,
     });
   }

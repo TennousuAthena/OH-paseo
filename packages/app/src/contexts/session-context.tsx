@@ -153,7 +153,7 @@ async function fetchWorkspaceHydrationSnapshot(input: {
       workspaces.set(workspace.id, workspace);
     }
 
-    // Empty project parents only ride on the first page.
+    // Project parents with no active workspaces only ride on the first page.
     for (const project of payload.emptyProjects ?? []) {
       const descriptor = normalizeEmptyProjectDescriptor(project);
       emptyProjects.set(descriptor.projectId, descriptor);

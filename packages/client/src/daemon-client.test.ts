@@ -1454,6 +1454,62 @@ test("sends structured first-agent context attachments with create_paseo_worktre
   });
 });
 
+test("sends project.add.request without creating a workspace", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const addPromise = client.addProject("/tmp/project", "req-add-project");
+
+  expect(mock.sent).toHaveLength(1);
+  expect(parseSentFrame(mock.sent[0])).toEqual({
+    type: "project.add.request",
+    requestId: "req-add-project",
+    cwd: "/tmp/project",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "project.add.response",
+      payload: {
+        requestId: "req-add-project",
+        project: {
+          projectId: "/tmp/project",
+          projectDisplayName: "project",
+          projectCustomName: null,
+          projectRootPath: "/tmp/project",
+          projectKind: "git",
+        },
+        error: null,
+      },
+    }),
+  );
+
+  await expect(addPromise).resolves.toEqual({
+    requestId: "req-add-project",
+    project: {
+      projectId: "/tmp/project",
+      projectDisplayName: "project",
+      projectCustomName: null,
+      projectRootPath: "/tmp/project",
+      projectKind: "git",
+    },
+    error: null,
+  });
+});
+
 test("sends first-agent prompt context with workspace.create.request", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

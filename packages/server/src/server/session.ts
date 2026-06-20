@@ -2247,6 +2247,8 @@ export class Session {
         return this.handleLegacyOpenInEditorRequest(msg);
       case "open_project_request":
         return this.handleOpenProjectRequest(msg);
+      case "project.add.request":
+        return this.handleProjectAddRequest(msg);
       case "archive_workspace_request":
         return this.handleArchiveWorkspaceRequest(msg);
       case "project.remove.request":
@@ -7248,6 +7250,30 @@ export class Session {
     return workspaceRecord;
   }
 
+  private async findOrCreateProjectForDirectory(cwd: string): Promise<PersistedProjectRecord> {
+    const normalizedCwd = resolve(cwd);
+    const checkout = await this.workspaceGitService.getCheckout(normalizedCwd);
+    const membership = classifyDirectoryForProjectMembership({ cwd: normalizedCwd, checkout });
+    const projectRecord = await this.resolveProjectRecordForPlacement({
+      membership,
+      timestamp: new Date().toISOString(),
+    });
+    await this.projectRegistry.upsert(projectRecord);
+    return projectRecord;
+  }
+
+  private buildProjectDescriptor(
+    project: PersistedProjectRecord,
+  ): WorkspaceProjectDescriptorPayload {
+    return {
+      projectId: project.projectId,
+      projectDisplayName: resolveProjectDisplayName(project),
+      projectCustomName: project.customName ?? null,
+      projectRootPath: project.rootPath,
+      projectKind: project.kind,
+    };
+  }
+
   private async reclassifyOrUnarchiveWorkspaceForDirectory(input: {
     workspace: PersistedWorkspaceRecord;
     project: PersistedProjectRecord | null;
@@ -7662,24 +7688,24 @@ export class Session {
     return {
       kind: "remove",
       id: workspaceId,
-      ...(await this.resolveEmptyProjectForArchivedWorkspace(workspaceId)),
+      ...(await this.resolveProjectWithoutActiveWorkspacesForArchivedWorkspace(workspaceId)),
     };
   }
 
-  // When a workspace is archived its project may become empty. Resolve the
-  // now-empty project parent so the `remove` update can carry it, keeping the
-  // sidebar's empty project row in sync without a full re-hydration.
-  private async resolveEmptyProjectForArchivedWorkspace(
+  // When a workspace is archived its project may have no active workspaces left.
+  // Resolve that project parent so the `remove` update can carry it, keeping the
+  // sidebar in sync without a full re-hydration.
+  private async resolveProjectWithoutActiveWorkspacesForArchivedWorkspace(
     workspaceId: string,
   ): Promise<{ emptyProject: WorkspaceProjectDescriptorPayload } | null> {
     const archivedWorkspace = await this.workspaceRegistry.get(workspaceId);
     if (!archivedWorkspace) {
       return null;
     }
-    const emptyProject = (await this.workspaceDirectory.listEmptyProjects()).find(
+    const projectWithoutActiveWorkspaces = (await this.workspaceDirectory.listEmptyProjects()).find(
       (project) => project.projectId === archivedWorkspace.projectId,
     );
-    return emptyProject ? { emptyProject } : null;
+    return projectWithoutActiveWorkspaces ? { emptyProject: projectWithoutActiveWorkspaces } : null;
   }
 
   private async emitWorkspaceUpdateForTerminalContribution(
@@ -8227,6 +8253,69 @@ export class Session {
         payload: {
           requestId: request.requestId,
           workspace: null,
+          error: message,
+        },
+      });
+    }
+  }
+
+  private async handleProjectAddRequest(
+    request: Extract<SessionInboundMessage, { type: "project.add.request" }>,
+  ): Promise<void> {
+    const requestedCwd = request.cwd;
+    const cwd = expandTilde(requestedCwd);
+    const directoryExists = await this.filesystem.isDirectory(cwd).catch(() => false);
+    if (!directoryExists) {
+      this.sessionLogger.info(
+        { requestedCwd, resolvedCwd: cwd, reason: "directory_not_found" },
+        "Add project rejected",
+      );
+      this.emit({
+        type: "project.add.response",
+        payload: {
+          requestId: request.requestId,
+          project: null,
+          error: `Directory not found: ${cwd}`,
+          errorCode: "directory_not_found",
+        },
+      });
+      return;
+    }
+
+    try {
+      const projectsBefore = new Map<string, PersistedProjectRecord>();
+      for (const project of await this.projectRegistry.list()) {
+        projectsBefore.set(project.projectId, project);
+      }
+      const project = await this.findOrCreateProjectForDirectory(cwd);
+      this.sessionLogger.info(
+        {
+          requestedCwd,
+          resolvedCwd: cwd,
+          projectId: project.projectId,
+          projectKind: project.kind,
+          projectTransition: describeRegistryTransition(
+            projectsBefore.get(project.projectId) ?? null,
+          ),
+        },
+        "Project added",
+      );
+      this.emit({
+        type: "project.add.response",
+        payload: {
+          requestId: request.requestId,
+          project: this.buildProjectDescriptor(project),
+          error: null,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to add project";
+      this.sessionLogger.error({ err: error, cwd }, "Failed to add project");
+      this.emit({
+        type: "project.add.response",
+        payload: {
+          requestId: request.requestId,
+          project: null,
           error: message,
         },
       });

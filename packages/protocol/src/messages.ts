@@ -1714,6 +1714,12 @@ export const OpenProjectRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const ProjectAddRequestSchema = z.object({
+  type: z.literal("project.add.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
 export const ArchiveWorkspaceRequestSchema = z.object({
   type: z.literal("archive_workspace_request"),
   workspaceId: z.string(),
@@ -2080,6 +2086,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LegacyListAvailableEditorsRequestSchema,
   LegacyOpenInEditorRequestSchema,
   OpenProjectRequestSchema,
+  ProjectAddRequestSchema,
   ArchiveWorkspaceRequestSchema,
   WorkspaceCreateRequestSchema,
   WorkspaceClearAttentionRequestSchema,
@@ -2304,6 +2311,8 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceMultiplicity: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: z.boolean().optional(),
+        // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
+        projectAdd: z.boolean().optional(),
         // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
         worktreeRestore: z.boolean().optional(),
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
@@ -2699,8 +2708,9 @@ export const FetchRecentProviderSessionsResponseMessageSchema = z.object({
 });
 
 // COMPAT(workspaceProjects): added in v0.1.97, drop the optional gate when floor >= v0.1.97.
-// A project parent that has zero active workspaces. The sidebar renders it as an
-// empty project row so projects persist after their last workspace is archived.
+// A project parent that has zero active workspaces. The sidebar renders the
+// project row with a new-workspace child so projects persist after their last
+// workspace is archived.
 export const WorkspaceProjectDescriptorPayloadSchema = z.object({
   projectId: z.string(),
   projectDisplayName: z.string(),
@@ -2739,10 +2749,10 @@ export const WorkspaceUpdateMessageSchema = z.object({
       id: z.string(),
       // COMPAT(workspaceProjects): added in v0.1.97, drop the optional gate when floor >= v0.1.97.
       // When archiving this workspace leaves its project with no active
-      // workspaces, the daemon includes the now-empty project parent so the
-      // sidebar keeps rendering it without waiting for a full re-hydration. Old
-      // daemons omit it; old clients ignore it and surface the empty project on
-      // their next workspace fetch instead.
+      // workspaces, the daemon includes the project parent so the sidebar keeps
+      // rendering it without waiting for a full re-hydration. Old daemons omit
+      // it; old clients ignore it and surface the project on their next
+      // workspace fetch instead.
       emptyProject: WorkspaceProjectDescriptorPayloadSchema.optional(),
       // Project removal is represented on the existing workspace update channel
       // so old clients can still parse the message and ignore the extra field.
@@ -2791,6 +2801,16 @@ export const OpenProjectResponseMessageSchema = z.object({
     workspace: WorkspaceDescriptorPayloadSchema.nullable(),
     error: z.string().nullable(),
     // Unknown codes from newer daemons degrade to null; clients fall back to `error`.
+    errorCode: z.enum(["directory_not_found"]).nullish().catch(null),
+  }),
+});
+
+export const ProjectAddResponseSchema = z.object({
+  type: z.literal("project.add.response"),
+  payload: z.object({
+    requestId: z.string(),
+    project: WorkspaceProjectDescriptorPayloadSchema.nullable(),
+    error: z.string().nullable(),
     errorCode: z.enum(["directory_not_found"]).nullish().catch(null),
   }),
 });
@@ -4081,6 +4101,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchAgentHistoryResponseMessageSchema,
   FetchRecentProviderSessionsResponseMessageSchema,
   FetchWorkspacesResponseMessageSchema,
+  ProjectAddResponseSchema,
   OpenProjectResponseMessageSchema,
   StartWorkspaceScriptResponseMessageSchema,
   LegacyListAvailableEditorsResponseMessageSchema,
@@ -4230,6 +4251,7 @@ export type FetchRecentProviderSessionsResponseMessage = z.infer<
   typeof FetchRecentProviderSessionsResponseMessageSchema
 >;
 export type FetchWorkspacesResponseMessage = z.infer<typeof FetchWorkspacesResponseMessageSchema>;
+export type ProjectAddResponse = z.infer<typeof ProjectAddResponseSchema>;
 export type ScriptStatusUpdateMessage = z.infer<typeof ScriptStatusUpdateMessageSchema>;
 export type OpenProjectResponseMessage = z.infer<typeof OpenProjectResponseMessageSchema>;
 export type StartWorkspaceScriptResponseMessage = z.infer<
@@ -4473,6 +4495,7 @@ export type LegacyListAvailableEditorsRequest = z.infer<
 >;
 export type LegacyOpenInEditorRequest = z.infer<typeof LegacyOpenInEditorRequestSchema>;
 export type OpenProjectRequest = z.infer<typeof OpenProjectRequestSchema>;
+export type ProjectAddRequest = z.infer<typeof ProjectAddRequestSchema>;
 export type ArchiveWorkspaceRequest = z.infer<typeof ArchiveWorkspaceRequestSchema>;
 export type WorkspaceClearAttentionRequest = z.infer<typeof WorkspaceClearAttentionRequestSchema>;
 export type FileExplorerRequest = z.infer<typeof FileExplorerRequestSchema>;
