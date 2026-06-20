@@ -1603,6 +1603,23 @@ function extractContextWindowSize(modelUsage: unknown): number | undefined {
   return maxContextWindow;
 }
 
+function resolveInitialContextWindowSize(modelId: string | null | undefined): number | undefined {
+  const normalized = typeof modelId === "string" ? modelId.trim().toLowerCase() : "";
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized.includes("[1m]") || normalized.includes("context-1m")) {
+    return 1_000_000;
+  }
+  if (normalized.includes("claude-fable-5")) {
+    return 1_000_000;
+  }
+  if (/(?:^|[~/_-])(?:claude[-_ ]*)?(opus|sonnet|haiku)(?:$|[-_ ./])/.test(normalized)) {
+    return 200_000;
+  }
+  return undefined;
+}
+
 function readStreamRequestInputTokens(event: Record<string, unknown>): number | undefined {
   const messageUsage = toObjectRecord(toObjectRecord(event.message)?.usage);
   if (!messageUsage) {
@@ -1722,9 +1739,17 @@ class ClaudeContextUsageState {
   private streamRequestOutputTokens: number | undefined;
   private completedResultTurns = 0;
 
+  constructor(initialContextWindowMaxTokens?: number) {
+    this.contextWindowMaxTokens = initialContextWindowMaxTokens;
+  }
+
   beginTurn(): void {
     this.streamRequestInputTokens = undefined;
     this.streamRequestOutputTokens = undefined;
+  }
+
+  setInitialContextWindowMaxTokens(contextWindowMaxTokens: number | undefined): void {
+    this.contextWindowMaxTokens = contextWindowMaxTokens;
   }
 
   recordModelUsage(modelUsage: unknown): number | undefined {
@@ -1879,7 +1904,7 @@ class ClaudeAgentSession implements AgentSession {
   private pendingInterruptAbort = false;
   private foregroundHasVisibleActivity = false;
   private activeTurnHasAssistantText = false;
-  private readonly contextUsage = new ClaudeContextUsageState();
+  private readonly contextUsage: ClaudeContextUsageState;
   private userMessageIds: string[] = [];
   private readonly emittedUserMessageIds = new Set<string>();
   private readonly rewindTurnAnchors: ClaudeRewindTurnAnchor[] = [];
@@ -1897,6 +1922,9 @@ class ClaudeAgentSession implements AgentSession {
     this.logger = options.logger.child({ agentId: this.agentId });
     this.queryFactory = options.queryFactory;
     this.resolveBinary = options.resolveBinary;
+    this.contextUsage = new ClaudeContextUsageState(
+      resolveInitialContextWindowSize(this.config.model),
+    );
     const handle = options.handle;
 
     if (handle) {
@@ -2140,6 +2168,9 @@ class ClaudeAgentSession implements AgentSession {
     if (!claudeModelSupportsFastMode(this.config.model) && this.config.featureValues?.fast_mode) {
       await this.applyFastModeFeature(false, activeQuery);
     }
+    this.contextUsage.setInitialContextWindowMaxTokens(
+      resolveInitialContextWindowSize(this.config.model),
+    );
     this.lastOptionsModel = normalizedModelId ?? this.lastOptionsModel;
     this.lastRuntimeModel = null;
     this.cachedRuntimeInfo = null;
@@ -3455,14 +3486,8 @@ class ClaudeAgentSession implements AgentSession {
   private async queryCurrentContextUsage(
     activeQuery: Query,
   ): Promise<ClaudeCurrentContextUsage | undefined> {
-    const query = activeQuery as Query & {
-      getContextUsage?: () => Promise<SDKControlGetContextUsageResponse>;
-    };
-    if (typeof query.getContextUsage !== "function") {
-      return undefined;
-    }
     try {
-      const usage = await withTimeout(query.getContextUsage(), 3_000, "timeout");
+      const usage = await withTimeout(activeQuery.getContextUsage(), 3_000, "timeout");
       return readCurrentContextUsage(usage);
     } catch (error) {
       this.logger.debug({ err: error }, "Claude context usage query failed");

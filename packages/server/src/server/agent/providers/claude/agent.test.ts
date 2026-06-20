@@ -561,6 +561,7 @@ describe("ClaudeAgentSession features", () => {
       return: queryReturn,
       applyFlagSettings: vi.fn(async () => undefined),
       setModel: vi.fn(async () => undefined),
+      getContextUsage: vi.fn(async () => undefined),
       [Symbol.asyncIterator](): AsyncIterator<SDKMessage, void> {
         return {
           next: async () => {
@@ -1046,6 +1047,7 @@ describe("ClaudeAgentSession context window usage", () => {
 
   interface QueryFactoryForTurnsOptions {
     currentContextUsageByTurn?: Array<Record<string, unknown> | undefined>;
+    model?: string;
   }
 
   async function createSessionForTest(): Promise<TestClaudeSession> {
@@ -1069,6 +1071,7 @@ describe("ClaudeAgentSession context window usage", () => {
     return await client.createSession({
       provider: "claude",
       cwd: process.cwd(),
+      model: options?.model,
     });
   }
 
@@ -1353,6 +1356,7 @@ describe("ClaudeAgentSession context window usage", () => {
         close: () => undefined,
         setPermissionMode: async () => undefined,
         setModel: async () => undefined,
+        getContextUsage: async () => undefined,
         supportedModels: async () => [],
         supportedCommands: async () => [
           {
@@ -1736,6 +1740,30 @@ describe("ClaudeAgentSession context window usage", () => {
           type: "usage_updated",
           provider: "claude",
           usage: {
+            contextWindowUsedTokens: 150,
+          },
+        }),
+      );
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("selected Claude models seed active context window usage with max tokens", async () => {
+    const session = await createSessionForTurns(
+      [[createInitMessage(), createMessageStartEvent(), createSuccessResult()]],
+      { model: "claude-sonnet-4-6" },
+    );
+
+    try {
+      const events = await collectStreamEvents(session);
+
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "usage_updated",
+          provider: "claude",
+          usage: {
+            contextWindowMaxTokens: 200_000,
             contextWindowUsedTokens: 150,
           },
         }),
