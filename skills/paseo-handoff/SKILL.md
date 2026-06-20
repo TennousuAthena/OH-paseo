@@ -54,7 +54,14 @@ The receiving agent has zero context. Include:
 
 ## Launch
 
-Create the agent via Paseo with a `[Handoff] <task>` title, the briefing as initial prompt, `detached: true`, and cwd set to the worktree path if `--worktree`. Leave `notifyOnFinish` omitted unless the user explicitly wants no callback.
+Create the agent via Paseo with a `[Handoff] <task>` title, the briefing as initial prompt, and `relationship: { kind: "detached" }`.
+
+Use `workspace` for placement:
+
+- No worktree: `workspace: { kind: "current" }`.
+- Worktree: `workspace: { kind: "create", source: { kind: "worktree", target: { kind: "branch-off", worktreeSlug: "<short-task-branch>" } } }`.
+
+Leave `notifyOnFinish` omitted unless the user explicitly wants no callback.
 
 Handoff agents are siblings/root agents, not your subagents. They must survive you being archived and must not appear in your subagent track.
 
