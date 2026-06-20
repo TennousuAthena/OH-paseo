@@ -22,12 +22,14 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
 import { SyncedLoader } from "@/components/synced-loader";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
+import { useAppSettings } from "@/hooks/use-settings";
 import type { Theme } from "@/styles/theme";
 import type { PrHint } from "@/git/use-pr-status-query";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { isEmphasizedStatusDotBucket } from "@/utils/status-dot-color";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { resolveSidebarWorkspacePrimaryLabel } from "@/components/sidebar/sidebar-workspace-title";
 
 const DEFAULT_STATUS_DOT_SIZE = 7;
 const EMPHASIZED_STATUS_DOT_SIZE = 9;
@@ -110,6 +112,10 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   showShortcutBadge?: boolean;
   children?: ReactNode;
 }) {
+  const {
+    settings: { workspaceTitleSource },
+  } = useAppSettings();
+  const workspaceLabel = resolveSidebarWorkspacePrimaryLabel({ workspace, workspaceTitleSource });
   const workspaceBranchTextStyle = useMemo(
     () => [
       styles.workspaceBranchText,
@@ -132,7 +138,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
           <View style={styles.workspaceTitleRow}>
             <View style={styles.workspaceTitleLeft}>
               <Text style={workspaceBranchTextStyle} numberOfLines={1}>
-                {workspace.name}
+                {workspaceLabel}
               </Text>
               {scriptIconKind ? <WorkspaceScriptIcon kind={scriptIconKind} /> : null}
             </View>
