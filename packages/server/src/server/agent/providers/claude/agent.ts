@@ -47,6 +47,7 @@ import { claudeQuery, type ClaudeOptions, type ClaudeQueryFactory } from "./quer
 import { realClaudeRewindSdk, revertClaudeConversation, revertClaudeFiles } from "./rewind.js";
 import { normalizeProviderReplayTimestamp } from "../../provider-history-timestamps.js";
 import { claudeProjectDirSync } from "./project-dir.js";
+import { SETTING_APPLIES_NEXT_TURN_NOTICE } from "../../provider-notices.js";
 
 import {
   getAgentStreamEventTurnId,
@@ -64,6 +65,7 @@ import {
   type AgentPermissionResponse,
   type AgentPermissionUpdate,
   type AgentPersistenceHandle,
+  type AgentProviderNotice,
   type AgentPromptInput,
   type AgentRunOptions,
   type AgentRunResult,
@@ -362,6 +364,7 @@ interface ClaudeAgentSessionOptions {
 }
 
 type ClaudeThinkingEffort = "low" | "medium" | "high" | "xhigh" | "max";
+type ClaudeThinkingOption = ClaudeThinkingEffort | "ultracode";
 
 function resolvePathEnvKey(): "Path" | "PATH" | null {
   if (process.env["Path"] !== undefined) return "Path";
@@ -406,6 +409,10 @@ function isClaudeThinkingEffort(value: string | null | undefined): value is Clau
     value === "xhigh" ||
     value === "max"
   );
+}
+
+function isClaudeThinkingOption(value: string | null | undefined): value is ClaudeThinkingOption {
+  return value === "ultracode" || isClaudeThinkingEffort(value);
 }
 
 interface ClaudeOptionsLogSummary {
@@ -1966,7 +1973,7 @@ class ClaudeAgentSession implements AgentSession {
     this.persistence = null;
   }
 
-  async setThinkingOption(thinkingOptionId: string | null): Promise<void> {
+  async setThinkingOption(thinkingOptionId: string | null): Promise<void | AgentProviderNotice> {
     const normalizedThinkingOptionId =
       typeof thinkingOptionId === "string" && thinkingOptionId.trim().length > 0
         ? thinkingOptionId
@@ -1974,12 +1981,15 @@ class ClaudeAgentSession implements AgentSession {
 
     if (!normalizedThinkingOptionId || normalizedThinkingOptionId === "default") {
       this.config.thinkingOptionId = undefined;
-    } else if (isClaudeThinkingEffort(normalizedThinkingOptionId)) {
+    } else if (isClaudeThinkingOption(normalizedThinkingOptionId)) {
       this.config.thinkingOptionId = normalizedThinkingOptionId;
     } else {
       throw new Error(`Unknown thinking option: ${normalizedThinkingOptionId}`);
     }
     this.queryRestartNeeded = true;
+    if (this.activeForegroundTurnId || this.autonomousTurn) {
+      return SETTING_APPLIES_NEXT_TURN_NOTICE;
+    }
   }
 
   async setFeature(featureId: string, value: unknown): Promise<void> {
@@ -2607,15 +2617,19 @@ class ClaudeAgentSession implements AgentSession {
   private resolveThinkingConfig(): {
     thinking: ClaudeOptions["thinking"];
     effort: ClaudeOptions["effort"];
+    ultracode: boolean;
   } {
     const thinkingOptionId =
       this.config.thinkingOptionId && this.config.thinkingOptionId !== "default"
         ? this.config.thinkingOptionId
         : undefined;
-    if (thinkingOptionId && isClaudeThinkingEffort(thinkingOptionId)) {
-      return { thinking: { type: "adaptive" }, effort: thinkingOptionId };
+    if (thinkingOptionId === "ultracode") {
+      return { thinking: { type: "adaptive" }, effort: "xhigh", ultracode: true };
     }
-    return { thinking: undefined, effort: undefined };
+    if (thinkingOptionId && isClaudeThinkingEffort(thinkingOptionId)) {
+      return { thinking: { type: "adaptive" }, effort: thinkingOptionId, ultracode: false };
+    }
+    return { thinking: undefined, effort: undefined, ultracode: false };
   }
 
   private buildAppendedSystemPrompt(): string {
@@ -2641,10 +2655,10 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private async buildOptions(): Promise<ClaudeOptions> {
-    const { thinking, effort } = this.resolveThinkingConfig();
+    const { thinking, effort, ultracode } = this.resolveThinkingConfig();
     const appendedSystemPrompt = this.buildAppendedSystemPrompt();
     const extraClaudeOptions = this.config.extra?.claude;
-    const fastModeOptions = this.buildFastModeOptions(extraClaudeOptions);
+    const settingsOptions = this.buildSettingsOptions(extraClaudeOptions, { ultracode });
     const sdkEnv = this.buildSdkEnv(extraClaudeOptions);
     assertClaudeAutoModeEligible(this.currentMode, sdkEnv);
 
@@ -2697,7 +2711,7 @@ class ClaudeAgentSession implements AgentSession {
       ...(thinking ? { thinking } : {}),
       ...(effort ? { effort } : {}),
       ...extraClaudeOptions,
-      ...fastModeOptions,
+      ...settingsOptions,
       ...(this.persistSession === undefined ? {} : { persistSession: this.persistSession }),
       env: sdkEnv,
     };
@@ -2722,14 +2736,20 @@ class ClaudeAgentSession implements AgentSession {
     return base;
   }
 
-  private buildFastModeOptions(
+  private buildSettingsOptions(
     extraClaudeOptions: Partial<ClaudeOptions> | undefined,
+    input: { ultracode: boolean },
   ): Pick<ClaudeOptions, "settings"> | Record<string, never> {
     const fastMode = this.resolveFastModeSetting();
-    if (fastMode === null) {
+    if (fastMode === null && !input.ultracode) {
       return {};
     }
-    return { settings: mergeClaudeSettings(extraClaudeOptions?.settings, { fastMode }) };
+    return {
+      settings: mergeClaudeSettings(extraClaudeOptions?.settings, {
+        ...(fastMode === null ? {} : { fastMode }),
+        ...(input.ultracode ? { ultracode: true } : {}),
+      }),
+    };
   }
 
   private resolveFastModeSetting(): boolean | null {

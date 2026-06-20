@@ -13,6 +13,7 @@ import {
   type AgentPermissionRequest,
   type AgentPermissionResponse,
   type AgentPermissionResult,
+  type AgentProviderNotice,
   type AgentPromptContentBlock,
   type AgentPromptInput,
   type AgentRunOptions,
@@ -92,6 +93,7 @@ import {
   toDiagnosticErrorMessage,
 } from "./diagnostic-utils.js";
 import { runProviderTurn } from "./provider-runner.js";
+import { SETTING_APPLIES_NEXT_TURN_NOTICE } from "../provider-notices.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 
 function assertChildWithPipes(
@@ -3654,10 +3656,13 @@ export class CodexAppServerAgentSession implements AgentSession {
     return this.currentMode ?? null;
   }
 
-  async setMode(modeId: string): Promise<void> {
+  async setMode(modeId: string): Promise<void | AgentProviderNotice> {
     validateCodexMode(modeId);
     this.currentMode = modeId;
     this.cachedRuntimeInfo = null;
+    if (this.activeForegroundTurnId) {
+      return SETTING_APPLIES_NEXT_TURN_NOTICE;
+    }
   }
 
   async setModel(modelId: string | null): Promise<void> {
@@ -3669,10 +3674,13 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.cachedRuntimeInfo = null;
   }
 
-  async setThinkingOption(thinkingOptionId: string | null): Promise<void> {
+  async setThinkingOption(thinkingOptionId: string | null): Promise<void | AgentProviderNotice> {
     this.config.thinkingOptionId = normalizeCodexThinkingOptionId(thinkingOptionId);
     this.refreshResolvedCollaborationMode();
     this.cachedRuntimeInfo = null;
+    if (this.activeForegroundTurnId) {
+      return SETTING_APPLIES_NEXT_TURN_NOTICE;
+    }
   }
 
   async setFeature(featureId: string, value: unknown): Promise<void> {
