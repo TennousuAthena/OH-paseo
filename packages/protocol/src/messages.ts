@@ -1201,6 +1201,11 @@ export const ProviderDiagnosticRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const ProviderUsageListRequestMessageSchema = z.object({
+  type: z.literal("provider.usage.list.request"),
+  requestId: z.string(),
+});
+
 export const ResumeAgentRequestMessageSchema = z.object({
   type: z.literal("resume_agent_request"),
   handle: AgentPersistenceHandleSchema,
@@ -2029,6 +2034,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   GetProvidersSnapshotRequestMessageSchema,
   RefreshProvidersSnapshotRequestMessageSchema,
   ProviderDiagnosticRequestMessageSchema,
+  ProviderUsageListRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
   RefreshAgentRequestMessageSchema,
@@ -2300,6 +2306,8 @@ export const ServerInfoStatusPayloadSchema = z
         projectRemove: z.boolean().optional(),
         // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
         worktreeRestore: z.boolean().optional(),
+        // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
+        providerUsageList: z.boolean().optional(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: z.boolean().optional(),
       })
@@ -3830,6 +3838,61 @@ export const ProviderDiagnosticResponseMessageSchema = z.object({
   }),
 });
 
+export const ProviderUsageToneSchema = z.enum(["default", "ok", "warning", "danger"]);
+export const ProviderUsageStatusSchema = z.enum(["available", "unavailable", "error"]);
+
+export const ProviderUsageWindowSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  usedPct: z.number().nullable().optional(),
+  remainingPct: z.number().nullable().optional(),
+  resetsAt: z.string().nullable().optional(),
+  runsOutAt: z.string().nullable().optional(),
+  shortfallPct: z.number().nullable().optional(),
+  tone: ProviderUsageToneSchema.optional(),
+});
+
+export const ProviderUsageBalanceSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  used: z.number().nullable().optional(),
+  remaining: z.number().nullable().optional(),
+  limit: z.number().nullable().optional(),
+  unit: z.enum(["usd", "credits", "requests", "tokens"]),
+  resetsAt: z.string().nullable().optional(),
+  tone: ProviderUsageToneSchema.optional(),
+});
+
+export const ProviderUsageDetailSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  value: z.string(),
+  tone: ProviderUsageToneSchema.optional(),
+});
+
+export const ProviderUsageSchema = z.object({
+  providerId: z.string(),
+  displayName: z.string(),
+  status: ProviderUsageStatusSchema,
+  planLabel: z.string().nullable(),
+  sourceLabel: z.string().nullable().optional(),
+  fetchedAt: z.string().nullable().optional(),
+  nextRefreshAt: z.string().nullable().optional(),
+  windows: z.array(ProviderUsageWindowSchema),
+  balances: z.array(ProviderUsageBalanceSchema).optional(),
+  details: z.array(ProviderUsageDetailSchema).optional(),
+  error: z.string().nullable().optional(),
+});
+
+export const ProviderUsageListResponseMessageSchema = z.object({
+  type: z.literal("provider.usage.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    fetchedAt: z.string(),
+    providers: z.array(ProviderUsageSchema),
+  }),
+});
+
 const AgentSlashCommandSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -4093,6 +4156,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProvidersSnapshotUpdateMessageSchema,
   RefreshProvidersSnapshotResponseMessageSchema,
   ProviderDiagnosticResponseMessageSchema,
+  ProviderUsageListResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
   TerminalsChangedSchema,
@@ -4227,6 +4291,15 @@ export type RefreshProvidersSnapshotResponseMessage = z.infer<
 >;
 export type ProviderDiagnosticResponseMessage = z.infer<
   typeof ProviderDiagnosticResponseMessageSchema
+>;
+export type ProviderUsageTone = z.infer<typeof ProviderUsageToneSchema>;
+export type ProviderUsageStatus = z.infer<typeof ProviderUsageStatusSchema>;
+export type ProviderUsage = z.infer<typeof ProviderUsageSchema>;
+export type ProviderUsageWindow = z.infer<typeof ProviderUsageWindowSchema>;
+export type ProviderUsageBalance = z.infer<typeof ProviderUsageBalanceSchema>;
+export type ProviderUsageDetail = z.infer<typeof ProviderUsageDetailSchema>;
+export type ProviderUsageListResponseMessage = z.infer<
+  typeof ProviderUsageListResponseMessageSchema
 >;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
