@@ -160,45 +160,6 @@ describe("shared messages stream parsing", () => {
     }
   });
 
-  it("parses agent_stream usage_updated events", () => {
-    const fixture = {
-      type: "agent_stream",
-      payload: {
-        agentId: "agent_live",
-        timestamp: "2026-02-08T20:10:00.000Z",
-        event: {
-          type: "usage_updated",
-          provider: "claude",
-          turnId: "foreground-turn-1",
-          usage: {
-            contextWindowUsedTokens: 24_074,
-            contextWindowMaxTokens: 200_000,
-          },
-        },
-      },
-    };
-
-    const parsed = AgentStreamMessageSchema.parse(fixture);
-    expect(parsed.payload.event).toEqual({
-      type: "usage_updated",
-      provider: "claude",
-      turnId: "foreground-turn-1",
-      usage: {
-        contextWindowUsedTokens: 24_074,
-        contextWindowMaxTokens: 200_000,
-      },
-    });
-
-    const wrapped = WSOutboundMessageSchema.parse({
-      type: "session",
-      message: fixture,
-    });
-    expect(wrapped.message.type).toBe("agent_stream");
-    if (wrapped.message.type === "agent_stream") {
-      expect(wrapped.message.payload.event.type).toBe("usage_updated");
-    }
-  });
-
   it("parses representative sub_agent tool_call event", () => {
     const parsed = AgentStreamMessageSchema.parse({
       type: "agent_stream",

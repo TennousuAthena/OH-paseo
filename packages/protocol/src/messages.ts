@@ -594,19 +594,11 @@ export const AgentStreamEventPayloadSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("turn_started"),
     provider: AgentProviderSchema,
-    turnId: z.string().optional(),
   }),
   z.object({
     type: z.literal("turn_completed"),
     provider: AgentProviderSchema,
     usage: AgentUsageSchema.optional(),
-    turnId: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("usage_updated"),
-    provider: AgentProviderSchema,
-    usage: AgentUsageSchema,
-    turnId: z.string().optional(),
   }),
   z.object({
     type: z.literal("turn_failed"),
@@ -614,32 +606,27 @@ export const AgentStreamEventPayloadSchema = z.discriminatedUnion("type", [
     error: z.string(),
     code: z.string().optional(),
     diagnostic: z.string().optional(),
-    turnId: z.string().optional(),
   }),
   z.object({
     type: z.literal("turn_canceled"),
     provider: AgentProviderSchema,
     reason: z.string(),
-    turnId: z.string().optional(),
   }),
   z.object({
     type: z.literal("timeline"),
     provider: AgentProviderSchema,
     item: AgentTimelineItemPayloadSchema,
-    turnId: z.string().optional(),
   }),
   z.object({
     type: z.literal("permission_requested"),
     provider: AgentProviderSchema,
     request: AgentPermissionRequestPayloadSchema,
-    turnId: z.string().optional(),
   }),
   z.object({
     type: z.literal("permission_resolved"),
     provider: AgentProviderSchema,
     requestId: z.string(),
     resolution: AgentPermissionResponseSchema,
-    turnId: z.string().optional(),
   }),
   z.object({
     type: z.literal("attention_required"),
