@@ -711,6 +711,9 @@ export const zhCN: TranslationResources = {
         failedOpen: "打开 workspace 失败",
       },
       pr: {
+        actions: {
+          viewPullRequest: "查看",
+        },
         sections: {
           checks: "Checks",
           reviews: "Reviews",

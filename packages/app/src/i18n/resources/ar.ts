@@ -717,6 +717,9 @@ export const ar: TranslationResources = {
         failedOpen: "فشل في فتح مساحة العمل",
       },
       pr: {
+        actions: {
+          viewPullRequest: "عرض",
+        },
         sections: {
           checks: "الشيكات",
           reviews: "التعليقات",

@@ -15,9 +15,13 @@ import { useTranslation } from "react-i18next";
 import {
   formatPrTabLabel,
   PullRequestPane,
+  PullRequestPaneError,
+  PullRequestPaneSkeleton,
   PullRequestTabIcon,
   usePrPaneData,
 } from "@/git/pull-request-panel";
+import { useCheckoutGitActionsStore } from "@/git/actions-store";
+import type { UsePrPaneDataResult } from "@/git/pull-request-panel/use-data";
 import {
   usePanelStore,
   selectIsFileExplorerOpen,
@@ -27,6 +31,7 @@ import {
 } from "@/stores/panel-store";
 import { useExplorerSidebarAnimation } from "@/contexts/explorer-sidebar-animation-context";
 import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
+import { useToast } from "@/contexts/toast-context";
 import { canCloseRightSidebarGesture } from "@/utils/sidebar-animation-state";
 import { HEADER_INNER_HEIGHT } from "@/constants/layout";
 import { GitDiffPane } from "@/git/diff-pane";
@@ -452,6 +457,7 @@ function ExplorerSidebarContent({
 }: SidebarContentProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const toast = useToast();
   const padding = useWindowControlsPadding("explorerSidebar");
   const canQueryPullRequest = isGit && Boolean(workspaceRoot);
   const prPane = usePrPaneData({
@@ -461,11 +467,17 @@ function ExplorerSidebarContent({
     timelineEnabled: activeTab === "pr" && canQueryPullRequest && isOpen,
   });
   const hasPullRequest = prPane.prNumber !== null;
+  const showPrTab = hasPullRequest || (activeTab === "pr" && prPane.isLoading);
   const requestedTab: ExplorerTab =
     !isGit && (activeTab === "changes" || activeTab === "pr") ? "files" : activeTab;
-  const resolvedTab: ExplorerTab =
-    requestedTab === "pr" && !hasPullRequest ? "changes" : requestedTab;
+  const resolvedTab: ExplorerTab = requestedTab === "pr" && !showPrTab ? "changes" : requestedTab;
   const prTabLabel = formatPrTabLabel(prPane.prNumber);
+  const refreshGitActions = useCheckoutGitActionsStore((s) => s.refresh);
+  const handlePrRetry = useCallback(() => {
+    refreshGitActions({ serverId, cwd: workspaceRoot }).catch((error) => {
+      toast.error(error instanceof Error ? error.message : t("workspace.git.diff.failedRefresh"));
+    });
+  }, [refreshGitActions, serverId, t, toast, workspaceRoot]);
   const workspaceAttachmentScopeKey = useMemo(
     () => buildWorkspaceAttachmentScopeKey({ serverId, workspaceId, cwd: workspaceRoot }),
     [serverId, workspaceId, workspaceRoot],
@@ -498,7 +510,7 @@ function ExplorerSidebarContent({
             onTabPress={onTabPress}
             testID="explorer-tab-files"
           />
-          {isGit && hasPullRequest && (
+          {isGit && showPrTab && (
             <ExplorerTabButton
               tab="pr"
               active={resolvedTab === "pr"}
@@ -542,17 +554,50 @@ function ExplorerSidebarContent({
             onOpenFile={onOpenFile}
           />
         )}
-        {resolvedTab === "pr" && prPane.data && (
-          <PullRequestPane
+        {resolvedTab === "pr" && (
+          <PrTabContent
             serverId={serverId}
             cwd={workspaceRoot}
-            data={prPane.data}
+            prPane={prPane}
             workspaceAttachmentScopeKey={workspaceAttachmentScopeKey}
+            onRetry={handlePrRetry}
           />
         )}
       </View>
     </View>
   );
+}
+
+interface PrTabContentProps {
+  serverId: string;
+  cwd: string;
+  prPane: UsePrPaneDataResult;
+  workspaceAttachmentScopeKey: string;
+  onRetry: () => void;
+}
+
+function PrTabContent({
+  serverId,
+  cwd,
+  prPane,
+  workspaceAttachmentScopeKey,
+  onRetry,
+}: PrTabContentProps) {
+  if (prPane.data) {
+    return (
+      <PullRequestPane
+        serverId={serverId}
+        cwd={cwd}
+        data={prPane.data}
+        activityLoading={prPane.activityLoading}
+        workspaceAttachmentScopeKey={workspaceAttachmentScopeKey}
+      />
+    );
+  }
+  if (prPane.error) {
+    return <PullRequestPaneError onRetry={onRetry} />;
+  }
+  return <PullRequestPaneSkeleton />;
 }
 
 // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
