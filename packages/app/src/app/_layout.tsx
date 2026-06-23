@@ -56,7 +56,7 @@ import {
   startDaemonIfGateAllows,
   startHostRuntimeBootstrap,
   type StartupBlocker,
-} from "@/app/host-runtime-bootstrap";
+} from "@/navigation/host-runtime-bootstrap";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { updateDesktopWindowControls } from "@/desktop/electron/window";
@@ -877,8 +877,6 @@ function FaviconStatusSync() {
   return null;
 }
 
-const AGENT_SCREEN_OPTIONS = { gestureEnabled: false };
-
 function RootStack() {
   const storeReady = useStoreReady();
   const { theme } = useUnistyles();
@@ -903,19 +901,7 @@ function RootStack() {
         <Stack.Screen name="settings/projects/[projectKey]" />
         <Stack.Screen name="pair-scan" />
       </Stack.Protected>
-      {/*
-        Do not add getId or dangerouslySingular back to the workspace route.
-        Expo Router maps dangerouslySingular to React Navigation getId, and
-        getId repeatedly breaks Android native-stack/Fabric by reordering an
-        already-mounted workspace screen. Keep workspace identity/retention
-        outside this route-level native-stack API.
-      */}
-      <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
-      <Stack.Screen name="h/[serverId]/agent/[agentId]" options={AGENT_SCREEN_OPTIONS} />
-      <Stack.Screen name="h/[serverId]/index" />
-      <Stack.Screen name="h/[serverId]/sessions" />
-      <Stack.Screen name="h/[serverId]/open-project" />
-      <Stack.Screen name="h/[serverId]/settings" />
+      <Stack.Screen name="h/[serverId]" />
       <Stack.Screen name="settings/hosts/[serverId]/index" />
       <Stack.Screen name="settings/hosts/[serverId]/[hostSection]" />
     </Stack>
