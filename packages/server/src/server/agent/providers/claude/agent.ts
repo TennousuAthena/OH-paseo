@@ -36,10 +36,8 @@ import { buildClaudeFeatures, claudeModelSupportsFastMode } from "./feature-defi
 import {
   buildBinaryDiagnosticRows,
   buildCommandResolutionDiagnosticRows,
-  formatDiagnosticStatus,
   formatProviderDiagnostic,
   formatProviderDiagnosticError,
-  toDiagnosticErrorMessage,
 } from "../diagnostic-utils.js";
 import { appendOrReplaceGrowingAssistantMessage, runProviderTurn } from "../provider-runner.js";
 import { renderPromptAttachmentAsText } from "../../prompt-attachments.js";
@@ -59,7 +57,6 @@ import {
   type AgentLaunchContext,
   type AgentMetadata,
   type AgentMode,
-  type AgentModelDefinition,
   type AgentPermissionRequest,
   type AgentPermissionRequestKind,
   type AgentPermissionResponse,
@@ -76,12 +73,13 @@ import {
   type AgentTimelineItem,
   type AgentUsage,
   type AgentRuntimeInfo,
+  type FetchCatalogOptions,
   type ImportableProviderSession,
   type ImportProviderSessionContext,
   type ImportProviderSessionInput,
   type ListImportableSessionsOptions,
-  type ListModelsOptions,
   type McpServerConfig,
+  type ProviderCatalog,
 } from "../../agent-sdk-types.js";
 import { importSessionFromPersistence } from "../../provider-session-import.js";
 import {
@@ -1421,9 +1419,10 @@ export class ClaudeAgentClient implements AgentClient {
     });
   }
 
-  async listModels(_options: ListModelsOptions): Promise<AgentModelDefinition[]> {
+  async fetchCatalog(_options: FetchCatalogOptions): Promise<ProviderCatalog> {
     // Claude exposes a global catalog here; cwd/force are intentionally irrelevant.
-    return await getClaudeModelsWithSettings(this.logger, this.configDir);
+    const models = await getClaudeModelsWithSettings(this.logger, this.configDir);
+    return { models, modes: DEFAULT_MODES };
   }
 
   async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
@@ -1477,28 +1476,9 @@ export class ClaudeAgentClient implements AgentClient {
         defaultBinary: "claude",
       });
       const availability = await checkProviderLaunchAvailable(launch);
-      const available = availability.available;
-      const auth = available
+      const auth = availability.available
         ? await resolveClaudeAuth(launch, availability, this.runtimeSettings)
         : null;
-      let modelsValue = "Not checked";
-      let status = formatDiagnosticStatus(available);
-
-      if (available) {
-        try {
-          const models = await this.listModels({
-            cwd: os.homedir(),
-            force: false,
-          });
-          modelsValue = String(models.length);
-        } catch (error) {
-          modelsValue = `Error - ${toDiagnosticErrorMessage(error)}`;
-          status = formatDiagnosticStatus(available, {
-            source: "model fetch",
-            cause: error,
-          });
-        }
-      }
 
       return {
         diagnostic: formatProviderDiagnostic("Claude Code", [
@@ -1507,8 +1487,6 @@ export class ClaudeAgentClient implements AgentClient {
           })),
           ...(await buildBinaryDiagnosticRows(launch, availability)),
           ...(auth ? [{ label: "Auth", value: auth }] : []),
-          { label: "Models", value: modelsValue },
-          { label: "Status", value: status },
         ]),
       };
     } catch (error) {
