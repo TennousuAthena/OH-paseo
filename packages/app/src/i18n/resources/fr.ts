@@ -166,7 +166,7 @@ export const fr: TranslationResources = {
     hints: {
       thinking: "Mode réflexion",
       model: "Changer de modèle",
-      mode: "Changer le mode d'autorisation",
+      mode: "Changer de mode",
     },
   },
   agentStream: {
@@ -1609,6 +1609,7 @@ export const fr: TranslationResources = {
         toggleFocusMode: "Basculer le mode de mise au point",
         cycleTheme: "Thème du cycle",
         focusMessageInput: "Saisie du message de focus",
+        cycleAgentMode: "Parcourir les modes de l'agent",
         toggleVoiceMode: "Changer le mode vocal",
         startStopDictation: "Démarrer la dictée/stop",
         interruptAgent: "Agent d'interruption",

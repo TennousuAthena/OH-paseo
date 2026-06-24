@@ -165,7 +165,7 @@ export const es: TranslationResources = {
     hints: {
       thinking: "Modo de pensamiento",
       model: "Cambiar modelo",
-      mode: "Cambiar modo de permiso",
+      mode: "Cambiar modo",
     },
   },
   agentStream: {
@@ -1605,6 +1605,7 @@ export const es: TranslationResources = {
         toggleFocusMode: "Alternar modo de enfoque",
         cycleTheme: "Tema del ciclo",
         focusMessageInput: "Entrada de mensaje de enfoque",
+        cycleAgentMode: "Alternar modo del agente",
         toggleVoiceMode: "Alternar modo de voz",
         startStopDictation: "Iniciar dictado/stop",
         interruptAgent: "agente de interrupción",

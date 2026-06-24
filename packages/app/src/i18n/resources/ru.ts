@@ -165,7 +165,7 @@ export const ru: TranslationResources = {
     hints: {
       thinking: "Режим мышления",
       model: "Изменить модель",
-      mode: "Изменить режим разрешений",
+      mode: "Изменить режим",
     },
   },
   agentStream: {
@@ -1597,6 +1597,7 @@ export const ru: TranslationResources = {
         toggleFocusMode: "Переключить режим фокусировки",
         cycleTheme: "Циклическая тема",
         focusMessageInput: "Фокус ввода сообщения",
+        cycleAgentMode: "Переключить режим агента",
         toggleVoiceMode: "Переключить голосовой режим",
         startStopDictation: "Начать диктовку /stop",
         interruptAgent: "Агент прерываний",
