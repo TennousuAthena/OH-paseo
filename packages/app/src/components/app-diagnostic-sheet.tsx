@@ -1,19 +1,13 @@
 import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-  type PressableStateCallbackType,
-} from "react-native";
+import { Platform, Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { Copy, RotateCw } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { ScrollableCodeSurface, SurfaceCard } from "@/components/ui/scrollable-code-surface";
 import { useToast } from "@/contexts/toast-context";
 import { getDesktopDaemonLogs, getDesktopDaemonStatus } from "@/desktop/daemon/desktop-daemon";
 import {
@@ -24,7 +18,6 @@ import {
   redactAppDiagnosticReport,
 } from "@/diagnostics/app-diagnostic-report";
 import { getHostRuntimeStore, useHosts, type HostRuntimeSnapshot } from "@/runtime/host-runtime";
-import { settingsStyles } from "@/styles/settings";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 
@@ -230,16 +223,12 @@ export function AppDiagnosticSheet({
       scrollable={false}
       testID="app-diagnostic-sheet"
     >
-      <View style={DIAGNOSTIC_CARD_STYLE}>
-        {diagnostic ? (
-          <ScrollView style={styles.codeScroll} contentContainerStyle={styles.codeContent}>
-            <ScrollView horizontal showsHorizontalScrollIndicator>
-              <Text style={styles.codeText} selectable>
-                {diagnostic}
-              </Text>
-            </ScrollView>
-          </ScrollView>
-        ) : (
+      {diagnostic ? (
+        <ScrollableCodeSurface key={visible ? "visible" : "hidden"} maxHeight={520}>
+          {diagnostic}
+        </ScrollableCodeSurface>
+      ) : (
+        <SurfaceCard key={visible ? "visible" : "hidden"}>
           <View style={styles.progressContent}>
             {progress.length === 0 ? (
               <View style={styles.progressRow}>
@@ -256,7 +245,7 @@ export function AppDiagnosticSheet({
                     />
                   ) : (
                     <View
-                      style={row.status === "failed" ? FAILED_STATUS_DOT_STYLE : styles.statusDot}
+                      style={row.status === "failed" ? styles.statusDotFailed : styles.statusDot}
                     />
                   )}
                   <Text
@@ -266,8 +255,8 @@ export function AppDiagnosticSheet({
               ))
             )}
           </View>
-        )}
-      </View>
+        </SurfaceCard>
+      )}
     </AdaptiveModalSheet>
   );
 }
@@ -374,22 +363,6 @@ function formatProgressStatus(status: ProgressStatus): string {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  diagnosticCard: {
-    overflow: "hidden",
-  },
-  codeScroll: {
-    maxHeight: 520,
-  },
-  codeContent: {
-    paddingVertical: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
-  },
-  codeText: {
-    fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.code,
-    color: theme.colors.foreground,
-    lineHeight: 18,
-  },
   progressContent: {
     paddingVertical: theme.spacing[4],
     paddingHorizontal: theme.spacing[4],
@@ -431,9 +404,9 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.success,
   },
   statusDotFailed: {
+    width: 8,
+    height: 8,
+    borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.destructive,
   },
 }));
-
-const DIAGNOSTIC_CARD_STYLE = [settingsStyles.card, styles.diagnosticCard];
-const FAILED_STATUS_DOT_STYLE = [styles.statusDot, styles.statusDotFailed];

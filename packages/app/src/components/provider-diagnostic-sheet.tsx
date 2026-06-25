@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   Pressable,
   type PressableStateCallbackType,
-  ScrollView,
   Text,
   View,
 } from "react-native";
@@ -19,6 +18,7 @@ import {
 } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { ScrollableCodeSurface, SurfaceCard } from "@/components/ui/scrollable-code-surface";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
@@ -363,26 +363,26 @@ function DiagnosticSubSheet({
   let body: React.ReactNode;
   if (loading && !diagnostic) {
     body = (
-      <View style={sheetStyles.codeBlockLoading}>
-        <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-        <Text style={sheetStyles.mutedText}>{t("settings.providers.diagnostic.running")}</Text>
-      </View>
+      <SurfaceCard key={visible ? "visible" : "hidden"}>
+        <View style={sheetStyles.codeBlockLoading}>
+          <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+          <Text style={sheetStyles.mutedText}>{t("settings.providers.diagnostic.running")}</Text>
+        </View>
+      </SurfaceCard>
     );
   } else if (diagnostic) {
     body = (
-      <ScrollView style={sheetStyles.codeScroll} contentContainerStyle={sheetStyles.codeContent}>
-        <ScrollView horizontal showsHorizontalScrollIndicator>
-          <Text style={sheetStyles.codeText} selectable dataSet={CODE_SURFACE_DATASET}>
-            {diagnostic}
-          </Text>
-        </ScrollView>
-      </ScrollView>
+      <ScrollableCodeSurface key={visible ? "visible" : "hidden"} maxHeight={480}>
+        {diagnostic}
+      </ScrollableCodeSurface>
     );
   } else {
     body = (
-      <View style={sheetStyles.codeBlockLoading}>
-        <Text style={sheetStyles.mutedText}>{t("settings.providers.diagnostic.none")}</Text>
-      </View>
+      <SurfaceCard key={visible ? "visible" : "hidden"}>
+        <View style={sheetStyles.codeBlockLoading}>
+          <Text style={sheetStyles.mutedText}>{t("settings.providers.diagnostic.none")}</Text>
+        </View>
+      </SurfaceCard>
     );
   }
 
@@ -395,7 +395,7 @@ function DiagnosticSubSheet({
       scrollable={false}
       testID="provider-diagnostic-sheet"
     >
-      <View style={DIAGNOSTIC_CARD_STYLE}>{body}</View>
+      {body}
     </AdaptiveModalSheet>
   );
 }
@@ -862,22 +862,6 @@ const sheetStyles = StyleSheet.create((theme) => ({
     justifyContent: "flex-end",
     gap: theme.spacing[2],
   },
-  diagnosticCard: {
-    overflow: "hidden",
-  },
-  codeScroll: {
-    maxHeight: 480,
-  },
-  codeContent: {
-    paddingVertical: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
-  },
-  codeText: {
-    fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.code,
-    color: theme.colors.foreground,
-    lineHeight: 18,
-  },
   codeBlockLoading: {
     paddingVertical: theme.spacing[4],
     paddingHorizontal: theme.spacing[4],
@@ -893,4 +877,3 @@ const COMPACT_FOOTER_META_STYLE = [sheetStyles.footerMeta, sheetStyles.compactFo
 const MAIN_SNAP_POINTS = ["65%", "92%"];
 const ADD_SNAP_POINTS = ["40%"];
 const DIAGNOSTIC_SNAP_POINTS = ["50%", "85%"];
-const DIAGNOSTIC_CARD_STYLE = [settingsStyles.card, sheetStyles.diagnosticCard];
