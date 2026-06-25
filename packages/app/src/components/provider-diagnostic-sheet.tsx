@@ -32,6 +32,10 @@ import { formatTimeAgo } from "@/utils/time";
 import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
 import type { AgentModelDefinition, AgentProvider } from "@getpaseo/protocol/agent-types";
 import type { ProviderProfileModel } from "@getpaseo/protocol/provider-config";
+import {
+  resolveProviderDiscoveredModels,
+  type ProviderDiscoveredModelsCache,
+} from "./provider-diagnostic-models";
 
 interface ProviderDiagnosticSheetProps {
   provider: string;
@@ -599,21 +603,16 @@ export function ProviderDiagnosticSheet({
       : null;
   const modelsRefreshing = isRefreshing || providerSnapshotRefreshing;
 
-  const stableDiscoveredRef = useRef<AgentModelDefinition[]>([]);
+  const stableDiscoveredRef = useRef<ProviderDiscoveredModelsCache | null>(null);
   const currentModels = providerEntry?.models;
-  if (currentModels && currentModels.length > 0) {
-    stableDiscoveredRef.current = currentModels;
-  }
-
-  const discoveredModels = useMemo(() => {
-    if (currentModels && currentModels.length > 0) {
-      return currentModels;
-    }
-    if (providerSnapshotRefreshing) {
-      return stableDiscoveredRef.current;
-    }
-    return [];
-  }, [currentModels, providerSnapshotRefreshing]);
+  const { models: discoveredModels, cache: nextDiscoveredCache } = resolveProviderDiscoveredModels({
+    serverId,
+    provider,
+    currentModels,
+    providerSnapshotRefreshing,
+    previousCache: stableDiscoveredRef.current,
+  });
+  stableDiscoveredRef.current = nextDiscoveredCache;
 
   const [clockTick, setClockTick] = useState(0);
   useEffect(() => {
