@@ -2735,7 +2735,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 36,
     marginBottom: theme.spacing[1],
     paddingVertical: theme.spacing[2],
-    paddingLeft: theme.spacing[3] + theme.spacing[3],
+    paddingLeft: theme.spacing[2],
     paddingRight: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
     flexDirection: "column",
