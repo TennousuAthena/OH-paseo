@@ -50,6 +50,7 @@ The heart of Paseo. A Node.js process that:
 - Streams agent output in real time via a timeline model
 - Provides agent-to-agent tools through a transport-neutral tool catalog, with MCP as one adapter
 - Optionally connects outbound to a relay for remote access
+- Optionally serves the browser web client from the same HTTP server
 
 All paths are under `packages/server/src/`.
 
