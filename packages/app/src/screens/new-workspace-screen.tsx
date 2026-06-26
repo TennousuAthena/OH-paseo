@@ -976,11 +976,24 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
 function useNewWorkspaceHostSelector(initialServerId: string) {
   const allHosts = useHosts();
   const allServerIds = useMemo(() => allHosts.map((h) => h.serverId), [allHosts]);
-  const [selectedServerId, setSelectedServerId] = useState(initialServerId);
+  const lastWorkspaceSelection = useLastWorkspaceSelection();
+  const normalizedInitialServerId = initialServerId.trim();
+  const routeInitialServerId = allServerIds.includes(normalizedInitialServerId)
+    ? normalizedInitialServerId
+    : null;
+  const fallbackServerId =
+    lastWorkspaceSelection && allServerIds.includes(lastWorkspaceSelection.serverId)
+      ? lastWorkspaceSelection.serverId
+      : (allServerIds[0] ?? "");
+  const [manualServerId, setManualServerId] = useState<string | null>(null);
   const [hostPickerOpen, setHostPickerOpen] = useState(false);
+  const selectedServerId =
+    manualServerId && allServerIds.includes(manualServerId)
+      ? manualServerId
+      : (routeInitialServerId ?? fallbackServerId);
 
   const handleSelectHost = useCallback((id: string) => {
-    setSelectedServerId(id);
+    setManualServerId(id);
     setHostPickerOpen(false);
   }, []);
 
@@ -996,9 +1009,7 @@ function useNewWorkspaceHostSelector(initialServerId: string) {
     allHosts,
     allServerIds,
     selectedServerId,
-    setSelectedServerId,
     hostPickerOpen,
-    setHostPickerOpen,
     handleSelectHost,
     handleHostPickerOpenChange,
     openHostPicker,
