@@ -238,6 +238,8 @@ Service proxy hostnames use the double-dash shape: `web--feature-auth--project.l
 
 ## Bundled daemon web UI
 
+> The user-facing guide for this feature (enabling it, reverse proxy, TLS, tunnels, security) lives at [public-docs/web-ui.md](../public-docs/web-ui.md). This section is the contributor/build reference: how the artifact is produced, bundled, and excluded from desktop packaging.
+
 The daemon can optionally serve the browser web client from the same HTTP server. This is disabled by default.
 
 Enable it for a running daemon with:
