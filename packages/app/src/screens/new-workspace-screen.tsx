@@ -2084,6 +2084,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     height: BADGE_HEIGHT,
     maxWidth: 240,
+    overflow: "hidden",
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius["2xl"],
     gap: theme.spacing[1],
@@ -2115,6 +2116,7 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.6,
   },
   badgeText: {
+    minWidth: 0,
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
