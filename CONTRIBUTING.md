@@ -16,6 +16,10 @@ Here's the progression:
 2. Triage bugs: replicate and help fix them
 3. Work on maintainer-approved features
 
+The reason for this progression is so that you can gain all the context you need to take on more responsibility, so that I can see if you have what it takes to be a maintainer.
+
+Learning on the job is fine, I do not care how many years of experience you have, what I care about is that you get the vision and want to contribute.
+
 ## Pull requests
 
 ✅ Will be accepted
