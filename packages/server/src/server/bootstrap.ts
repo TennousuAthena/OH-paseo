@@ -159,6 +159,7 @@ import {
   isAgentMcpRequestAuthorized,
   type DaemonAuthConfig,
 } from "./auth.js";
+import { createWebUiMiddleware } from "./web-ui.js";
 
 const MAX_MCP_DEBUG_BATCH_ITEMS = 10;
 const REDACTED_LOG_VALUE = "[redacted]";
@@ -345,6 +346,10 @@ export interface PaseoDaemonConfig {
     publicBaseUrl: string | null;
     standaloneListen: string | null;
   };
+  webUi?: {
+    enabled: boolean;
+    distDir: string | null;
+  };
   appBaseUrl?: string;
   auth?: DaemonAuthConfig;
   openai?: PaseoOpenAIConfig;
@@ -405,6 +410,17 @@ async function reconcileManagedProcessLedger(
   if (reapResult.checked > 0 || reapResult.errors.length > 0) {
     logger.info(reapResult, "Managed helper process ledger reconciled");
   }
+}
+
+function mountWebUi(app: express.Application, config: PaseoDaemonConfig, logger: Logger): void {
+  app.use(
+    createWebUiMiddleware({
+      enabled: config.webUi?.enabled ?? false,
+      distDir: config.webUi?.distDir ?? null,
+      label: getHostname(),
+      logger,
+    }),
+  );
 }
 
 export async function createPaseoDaemon(
@@ -567,6 +583,12 @@ export async function createPaseoDaemon(
     express.json(),
     createTerminalActivityRouteHandler(terminalManager),
   );
+
+  // Serve the bundled browser web UI when enabled. Mounted after service-proxy
+  // classification and host/CORS handling, but before daemon bearer auth, so
+  // static app files load without the daemon password while API/WebSocket calls
+  // remain protected.
+  mountWebUi(app, config, logger);
 
   app.use(
     createRequireBearerMiddleware(config.auth, (context) => {
