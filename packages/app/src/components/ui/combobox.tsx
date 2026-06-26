@@ -230,7 +230,6 @@ export interface ComboboxItemProps {
   disabled?: boolean;
   /** When true, bumps hover/pressed colors up one surface level (for items on elevated backgrounds). */
   elevated?: boolean;
-  interactiveFeedback?: boolean;
   onPress: () => void;
   testID?: string;
 }
@@ -245,7 +244,6 @@ export function ComboboxItem({
   active,
   disabled,
   elevated,
-  interactiveFeedback = true,
   onPress,
   testID,
 }: ComboboxItemProps): ReactElement {
@@ -271,16 +269,12 @@ export function ComboboxItem({
   const itemPressableStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.comboboxItem,
-      interactiveFeedback &&
-        hovered &&
-        (elevated ? styles.comboboxItemHoveredElevated : styles.comboboxItemHovered),
-      interactiveFeedback &&
-        pressed &&
-        (elevated ? styles.comboboxItemPressedElevated : styles.comboboxItemPressed),
-      interactiveFeedback && active && styles.comboboxItemActive,
+      hovered && (elevated ? styles.comboboxItemHoveredElevated : styles.comboboxItemHovered),
+      pressed && (elevated ? styles.comboboxItemPressedElevated : styles.comboboxItemPressed),
+      active && styles.comboboxItemActive,
       disabled && styles.comboboxItemDisabled,
     ],
-    [elevated, active, disabled, interactiveFeedback],
+    [elevated, active, disabled],
   );
 
   const itemContentStyle = useMemo(

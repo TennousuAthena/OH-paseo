@@ -74,6 +74,37 @@ test.describe("New workspace entry points", () => {
     }
   });
 
+  test("the New Workspace screen hides the host selector when there is only one host", async ({
+    page,
+  }) => {
+    const seeded: SeededWorkspace = await seedWorkspace({ repoPrefix: "entry-single-host-" });
+
+    try {
+      await seedSavedSettingsHosts(page, [
+        {
+          serverId: getServerId(),
+          label: "localhost",
+          endpoint: `127.0.0.1:${getE2EDaemonPort()}`,
+        },
+      ]);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+      await expect(
+        page.getByTestId(`sidebar-workspace-row-${getServerId()}:${seeded.workspaceId}`),
+      ).toBeVisible({ timeout: 30_000 });
+
+      await openGlobalNewWorkspaceComposer(page);
+
+      await expect(page.getByTestId("new-workspace-project-picker-trigger")).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.getByTestId("host-picker-trigger")).toHaveCount(0);
+    } finally {
+      await seeded.cleanup();
+    }
+  });
+
   test("each project's row icon preselects that project, and the reused screen resets a stale manual choice across projects", async ({
     page,
   }) => {

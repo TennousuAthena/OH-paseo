@@ -1196,6 +1196,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
 
   const selectedHostLabel =
     host.allHosts.find((h) => h.serverId === host.selectedServerId)?.label ?? "Host";
+  const showHostControl = host.allHosts.length > 1;
   const isolationTriggerLabel = isolationLabel(t, isolation.effectiveIsolation);
 
   const badgePressableStyle = useCallback(
@@ -1242,7 +1243,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
     </View>
   );
 
-  const hostControl = (
+  const hostControl = showHostControl ? (
     <View>
       <HostPicker
         hosts={host.allHosts}
@@ -1271,7 +1272,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
         </Pressable>
       </HostPicker>
     </View>
-  );
+  ) : null;
 
   const isolationControl = isolation.canCreateWorktree ? (
     <View>
@@ -1334,7 +1335,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
   return isCompact ? (
     <View testID="new-workspace-ref-picker-row" style={styles.formStack}>
       <FormRow>{projectControl}</FormRow>
-      <FormRow>{hostControl}</FormRow>
+      {hostControl ? <FormRow>{hostControl}</FormRow> : null}
       {/* Keep fixed row height when git-only controls are hidden. */}
       {isolationControl ? (
         <FormRow>{isolationControl}</FormRow>
