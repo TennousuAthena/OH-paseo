@@ -82,17 +82,18 @@ export function ProjectPickerModal() {
 
   const inputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [openErrorReason, setOpenErrorReason] = useState<OpenProjectFailureReason | null>(null);
   const openProject = useOpenProject(serverId);
 
   const directorySuggestionsQuery = useQuery({
-    queryKey: ["project-picker-directory-suggestions", serverId, query],
+    queryKey: ["project-picker-directory-suggestions", serverId, debouncedQuery],
     queryFn: async () => {
       if (!client) return [];
       const result = await client.getDirectorySuggestions({
-        query,
+        query: debouncedQuery,
         includeDirectories: true,
         includeFiles: false,
         limit: 30,
@@ -165,12 +166,20 @@ export function ProjectPickerModal() {
   useEffect(() => {
     if (open) {
       setQuery("");
+      setDebouncedQuery("");
       setActiveIndex(0);
       setOpenErrorReason(null);
       const id = setTimeout(() => inputRef.current?.focus(), 0);
       return () => clearTimeout(id);
     }
   }, [open]);
+
+  // Debounce the query that drives the (potentially multi-second) directory
+  // suggestions RPC so fast typing doesn't fire a filesystem scan per keystroke.
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 250);
+    return () => clearTimeout(id);
+  }, [query]);
 
   useEffect(() => {
     if (!open) return;
