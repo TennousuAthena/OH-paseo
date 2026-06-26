@@ -1201,6 +1201,48 @@ describe("HostRuntimeController", () => {
 });
 
 describe("HostRuntimeStore", () => {
+  it("marks the host registry loaded after boot reads storage", async () => {
+    const previousOverride = process.env.EXPO_PUBLIC_LOCAL_DAEMON;
+    process.env.EXPO_PUBLIC_LOCAL_DAEMON = "not-an-endpoint";
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => {
+          throw new Error("createClient should not be called");
+        },
+        connectToDaemon: async () => {
+          throw new Error("connectToDaemon should not be called");
+        },
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    try {
+      let hostListNotifications = 0;
+      let unsubscribeHostList = () => {};
+      const registryLoaded = new Promise<void>((resolve) => {
+        unsubscribeHostList = store.subscribeHostList(() => {
+          hostListNotifications += 1;
+          if (store.isHostRegistryLoaded()) {
+            unsubscribeHostList();
+            resolve();
+          }
+        });
+      });
+
+      store.boot();
+      await registryLoaded;
+
+      expect(store.isHostRegistryLoaded()).toBe(true);
+      expect(hostListNotifications).toBe(2);
+    } finally {
+      if (previousOverride === undefined) {
+        delete process.env.EXPO_PUBLIC_LOCAL_DAEMON;
+      } else {
+        process.env.EXPO_PUBLIC_LOCAL_DAEMON = previousOverride;
+      }
+    }
+  });
+
   it("bootstraps agent directory subscription when host transitions online", async () => {
     const host = makeHost({
       connections: [
