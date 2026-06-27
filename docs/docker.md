@@ -208,6 +208,22 @@ non-publishing check. Stable `vX.Y.Z` tag pushes publish
 publish only the exact prerelease tag, such as
 `ghcr.io/getpaseo/paseo:0.1.102-beta.1`, and do not update `latest`.
 
+To replace a Docker image in place without rebuilding desktop, APK, or EAS
+mobile release artifacts, dispatch the Docker workflow manually instead of
+pushing a `v*` release tag:
+
+```bash
+gh workflow run docker.yml \
+  --ref main \
+  -f paseo_version=0.1.102-beta.1 \
+  -f publish=true \
+  -f source_build=auto
+```
+
+Manual Docker publishes require an explicit `paseo_version`. Prerelease
+versions build from the checked-out source tree by default and publish only the
+exact prerelease image tag.
+
 The published image is multi-arch for `linux/amd64` and `linux/arm64`.
 
 ## Troubleshooting
