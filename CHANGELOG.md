@@ -30,6 +30,7 @@
 - OpenCode no longer indexes your home directory by mistake ([#1704](https://github.com/getpaseo/paseo/pull/1704) by [@rex-chang](https://github.com/rex-chang))
 - ACP sessions load with the correct project folder and MCP server settings ([#1624](https://github.com/getpaseo/paseo/pull/1624) by [@theslava](https://github.com/theslava))
 - Docker images serve the bundled web UI from global installs
+- Docker web UI connections work when opened through either `localhost` or `127.0.0.1`
 - Docker images can extract downloaded local speech models
 
 ## 0.1.101 - 2026-06-26
