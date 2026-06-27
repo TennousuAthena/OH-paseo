@@ -1333,6 +1333,13 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     await this.applyConfiguredOverrides();
   }
 
+  /**
+   * IMPORTANT: Some ACP providers (e.g., Devin CLI) require all three params
+   * (sessionId, cwd, mcpServers) to be present in session/load or
+   * unstable_resumeSession — even when mcpServers is an empty array — and
+   * return "Invalid params" if any are omitted. Never drop cwd or mcpServers
+   * from these calls regardless of capabilities.
+   */
   async initializeResumedSession(): Promise<void> {
     const handle = this.initialHandle;
     if (!handle) {
