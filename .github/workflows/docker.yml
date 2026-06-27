@@ -32,6 +32,7 @@ jobs:
       image: ${{ steps.values.outputs.image }}
       install_version: ${{ steps.values.outputs.install_version }}
       publish: ${{ steps.values.outputs.publish }}
+      source_build: ${{ steps.values.outputs.source_build }}
       check_tag: ${{ steps.values.outputs.check_tag }}
       publish_tags: ${{ steps.values.outputs.publish_tags }}
     steps:
@@ -49,28 +50,37 @@ jobs:
           image="ghcr.io/${owner}/paseo"
           install_version="${INPUT_PASEO_VERSION:-latest}"
           publish=false
+          source_build=false
+          prerelease=false
 
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             install_version="${REF_NAME#v}"
-            if [[ "${REF_NAME}" != *-* ]]; then
-              publish=true
+            publish=true
+            if [[ "${REF_NAME}" == *-* ]]; then
+              prerelease=true
+              source_build=true
             fi
           fi
 
           check_tag="${image}:check-${GITHUB_SHA::12}"
-          publish_tags="${image}:${install_version}"$'\n'"${image}:latest"
+          if [[ "${prerelease}" == "true" ]]; then
+            publish_tags="${image}:${install_version}"
+          else
+            publish_tags="${image}:${install_version}"$'\n'"${image}:latest"
+          fi
 
           {
             echo "image=${image}"
             echo "install_version=${install_version}"
             echo "publish=${publish}"
+            echo "source_build=${source_build}"
             echo "check_tag=${check_tag}"
             echo "publish_tags<<EOF"
             echo "${publish_tags}"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-          echo "Resolved image=${image} install_version=${install_version} publish=${publish}"
+          echo "Resolved image=${image} install_version=${install_version} publish=${publish} source_build=${source_build}"
 
   build:
     needs: setup
@@ -86,8 +96,8 @@ jobs:
 
       - uses: docker/build-push-action@v7
         with:
-          context: docker/base
-          file: docker/base/Dockerfile
+          context: ${{ needs.setup.outputs.source_build == 'true' && '.' || 'docker/base' }}
+          file: ${{ needs.setup.outputs.source_build == 'true' && 'docker/base/Dockerfile.source' || 'docker/base/Dockerfile' }}
           platforms: ${{ env.PLATFORMS }}
           build-args: |
             PASEO_VERSION=${{ needs.setup.outputs.install_version }}
@@ -119,8 +129,8 @@ jobs:
 
       - uses: docker/build-push-action@v7
         with:
-          context: docker/base
-          file: docker/base/Dockerfile
+          context: ${{ needs.setup.outputs.source_build == 'true' && '.' || 'docker/base' }}
+          file: ${{ needs.setup.outputs.source_build == 'true' && 'docker/base/Dockerfile.source' || 'docker/base/Dockerfile' }}
           platforms: ${{ env.PLATFORMS }}
           build-args: |
             PASEO_VERSION=${{ needs.setup.outputs.install_version }}
