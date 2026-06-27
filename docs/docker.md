@@ -10,7 +10,8 @@ The image source lives in [`docker/`](../docker/).
 
 The official image:
 
-- installs `@getpaseo/server` and `@getpaseo/cli` from npm
+- installs `@getpaseo/server` and `@getpaseo/cli` from npm for stable images,
+  or from source-built workspace tarballs for beta images
 - runs the daemon as the non-root `paseo` user
 - listens on `0.0.0.0:6767` inside the container
 - enables the bundled daemon web UI with `PASEO_WEB_UI_ENABLED=true`
@@ -202,10 +203,10 @@ docker build \
 ```
 
 The Docker workflow builds the image on pull requests and on `main` as a
-non-publishing check. GHCR publishing follows the stable release cadence: only a
-stable `vX.Y.Z` tag push publishes `ghcr.io/getpaseo/paseo:X.Y.Z` and
-`ghcr.io/getpaseo/paseo:latest`. Beta tags and manual workflow runs build for
-validation only.
+non-publishing check. Stable `vX.Y.Z` tag pushes publish
+`ghcr.io/getpaseo/paseo:X.Y.Z` and `ghcr.io/getpaseo/paseo:latest`. Beta tags
+publish only the exact prerelease tag, such as
+`ghcr.io/getpaseo/paseo:0.1.102-beta.1`, and do not update `latest`.
 
 The published image is multi-arch for `linux/amd64` and `linux/arm64`.
 

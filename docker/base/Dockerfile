@@ -27,6 +27,7 @@ RUN set -eux; \
       curl \
       git \
       gosu \
+      lbzip2 \
       openssh-client \
       tini; \
     rm -rf /var/lib/apt/lists/*
