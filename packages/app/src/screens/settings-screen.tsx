@@ -39,7 +39,8 @@ import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
-import { HostPicker as SharedHostPicker, HostStatusDotSlot } from "@/components/hosts/host-picker";
+import { HostPicker as SharedHostPicker } from "@/components/hosts/host-picker";
+import { HostStatusDot } from "@/components/host-status-dot";
 import { ScreenTitle } from "@/components/headers/screen-title";
 import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
 import { SettingsSection } from "@/screens/settings/settings-section";
@@ -938,13 +939,18 @@ function HostPicker({ activeServerId, sortedHosts, onSelectHost, onAddHost }: Ho
     >
       <ComboboxTrigger
         ref={triggerRef}
+        block
         style={triggerStyle}
         onPress={handleOpen}
         accessibilityRole="button"
         accessibilityLabel={t("settings.hostPicker.switchHost")}
         testID="settings-host-picker"
       >
-        {activeHost ? <HostStatusDotSlot serverId={activeHost.serverId} /> : null}
+        {activeHost ? (
+          <View style={sidebarStyles.pickerTriggerDot}>
+            <HostStatusDot serverId={activeHost.serverId} />
+          </View>
+        ) : null}
         <Text style={sidebarStyles.pickerTriggerLabel} numberOfLines={1}>
           {activeHost?.label ?? t("settings.groups.host")}
         </Text>
@@ -1707,5 +1713,12 @@ const sidebarStyles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
+  },
+  // Match the setting items' icon footprint so the host label aligns with them.
+  pickerTriggerDot: {
+    width: theme.iconSize.md,
+    height: theme.iconSize.md,
+    alignItems: "center",
+    justifyContent: "center",
   },
 }));
