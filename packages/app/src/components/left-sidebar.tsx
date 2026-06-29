@@ -290,10 +290,6 @@ function sidebarHostOptionTestID(serverId: string): string {
   return `sidebar-host-row-${serverId}`;
 }
 
-function sidebarHostLocalMarkerTestID(serverId: string): string {
-  return `sidebar-host-local-marker-${serverId}`;
-}
-
 function FooterIconButton({
   buttonRef,
   onPress,
@@ -365,13 +361,12 @@ function SidebarHostPicker({
       anchorRef={triggerRef}
       includeAddHost
       onAddHost={onAddHost}
-      showLocalMarker
+      showActiveConnection
       onOpenHostSettings={onOpenHostSettings}
       searchable
       desktopMinWidth={240}
       addHostTestID="sidebar-host-add"
       hostOptionTestID={sidebarHostOptionTestID}
-      hostLocalMarkerTestID={sidebarHostLocalMarkerTestID}
     >
       <FooterIconButton
         buttonRef={triggerRef}
