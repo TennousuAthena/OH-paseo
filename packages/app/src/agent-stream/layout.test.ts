@@ -352,4 +352,22 @@ describe("layoutStream", () => {
       expect(footerOwners(layout)).toEqual([assistant.id]);
     },
   );
+
+  it.each(["web", "android"] as const)(
+    "does not render a completed footer before tool rows while the turn is running on %s",
+    (platform) => {
+      const assistant = assistantMessage("a1", 2);
+      const tool = toolCall("tool-1", 3);
+      const layout = layoutFor({
+        platform,
+        agentStatus: "running",
+        tail: [userMessage("u1", 1), assistant, tool],
+        timingIds: [assistant.id],
+      });
+
+      expect(layout.auxiliaryTurnFooter).toBeNull();
+      expect(findLayoutItem(layout, assistant.id).completedFooter).toBeNull();
+      expect(footerOwners(layout)).toEqual([]);
+    },
+  );
 });

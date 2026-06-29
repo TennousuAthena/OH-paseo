@@ -150,6 +150,8 @@ function shouldRenderCompletedFooter(input: {
   belowItem: StreamItem | null;
   agentStatus: string;
   auxiliaryTurnFooter: TurnFooterHost | null;
+  boundaryIndex: number | null;
+  boundaryBelowItem: StreamItem | null;
 }): boolean {
   if (
     input.item.kind !== "assistant_message" ||
@@ -179,6 +181,17 @@ function shouldRenderCompletedFooter(input: {
     items: input.items,
     startIndex: input.index,
   });
+  const belowTurnItem = getSegmentNeighbor({
+    strategy: input.strategy,
+    items: input.items,
+    index: turnEndIndex,
+    relation: "below",
+    boundaryIndex: input.boundaryIndex,
+    boundaryItem: input.boundaryBelowItem,
+  });
+  if (input.agentStatus === "running" && belowTurnItem?.kind !== "user_message") {
+    return false;
+  }
   const assistantIndex = findLatestAssistantIndexInTurn({
     strategy: input.strategy,
     items: input.items,
@@ -265,6 +278,8 @@ function layoutSegment(input: LayoutSegmentInput): StreamLayoutItem[] {
       belowItem,
       agentStatus: input.agentStatus,
       auxiliaryTurnFooter: input.auxiliaryTurnFooter,
+      boundaryIndex: input.boundaryIndex,
+      boundaryBelowItem: input.boundaryBelowItem,
     })
       ? createTurnFooterHost({
           item,
