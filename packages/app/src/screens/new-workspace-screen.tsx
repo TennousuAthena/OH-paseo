@@ -28,7 +28,14 @@ import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import { useGithubSearchQuery } from "@/git/use-github-search-query";
-import { useHostRuntimeClient, useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
+import {
+  useHostRuntimeClient,
+  useHostRuntimeConnectionStatuses,
+  useHostRuntimeIsConnected,
+  useHosts,
+  type HostRuntimeConnectionStatus,
+} from "@/runtime/host-runtime";
+import { useHostFeature, useHostFeatureMap } from "@/runtime/host-features";
 import type { HostProfile } from "@/types/host-connection";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
@@ -57,7 +64,6 @@ import {
   resolveSelectedHostProject,
   useHostProjects,
   type HostProjectListItem,
-  type HostProjectRouteContext,
 } from "@/projects/host-projects";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
@@ -78,6 +84,10 @@ import {
   type PickerItem,
 } from "./new-workspace-picker-item";
 import { findCheckoutHintPrAttachment, syncPickerPrAttachment } from "./new-workspace-picker-state";
+import {
+  resolveNewWorkspaceAutomaticServerId,
+  resolveNewWorkspaceInitialServerId,
+} from "./new-workspace-initial-context";
 
 function resolveCheckoutRequest(
   selectedItem: PickerItem | null,
@@ -1160,29 +1170,95 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
   useDraftStore.getState().clearDraftInput({ draftKey, lifecycle: "sent" });
 }
 
-function useNewWorkspaceHostSelector(initialServerId: string) {
-  const allHosts = useHosts();
-  const allServerIds = useMemo(() => allHosts.map((h) => h.serverId), [allHosts]);
-  const lastWorkspaceSelection = useLastWorkspaceSelection();
-  const normalizedInitialServerId = initialServerId.trim();
-  const routeInitialServerId = allServerIds.includes(normalizedInitialServerId)
-    ? normalizedInitialServerId
-    : null;
-  const fallbackServerId =
-    lastWorkspaceSelection && allServerIds.includes(lastWorkspaceSelection.serverId)
-      ? lastWorkspaceSelection.serverId
-      : (allServerIds[0] ?? "");
-  const [manualServerId, setManualServerId] = useState<string | null>(null);
+function useNewWorkspaceHostSelector(input: {
+  initialServerId: string;
+  allServerIds: string[];
+  projects: HostProjectListItem[];
+  lastActiveProject: HostProjectListItem | null;
+  hostConnectionStatusByServerId: ReadonlyMap<string, HostRuntimeConnectionStatus>;
+  workspaceMultiplicityByServerId: ReadonlyMap<string, boolean>;
+}) {
+  const routeServerId = input.initialServerId.trim();
+  const defaultServerId = useMemo(
+    () =>
+      resolveNewWorkspaceInitialServerId({
+        allServerIds: input.allServerIds,
+        routeServerId: input.initialServerId,
+        lastActiveProject: input.lastActiveProject,
+        projects: input.projects,
+        hostConnectionStatusByServerId: input.hostConnectionStatusByServerId,
+        workspaceMultiplicityByServerId: input.workspaceMultiplicityByServerId,
+      }),
+    [
+      input.allServerIds,
+      input.hostConnectionStatusByServerId,
+      input.initialServerId,
+      input.lastActiveProject,
+      input.projects,
+      input.workspaceMultiplicityByServerId,
+    ],
+  );
+  const [automaticSelection, setAutomaticSelection] = useState(() => ({
+    routeServerId,
+    serverId: defaultServerId,
+  }));
+  const [manualSelection, setManualSelection] = useState<{
+    routeServerId: string;
+    serverId: string;
+  } | null>(null);
   const [hostPickerOpen, setHostPickerOpen] = useState(false);
-  const selectedServerId =
-    manualServerId && allServerIds.includes(manualServerId)
-      ? manualServerId
-      : (routeInitialServerId ?? fallbackServerId);
 
-  const handleSelectHost = useCallback((id: string) => {
-    setManualServerId(id);
-    setHostPickerOpen(false);
-  }, []);
+  useEffect(() => {
+    setAutomaticSelection((current) => {
+      const nextServerId =
+        current.routeServerId === routeServerId
+          ? resolveNewWorkspaceAutomaticServerId({
+              allServerIds: input.allServerIds,
+              routeServerId: input.initialServerId,
+              lastActiveProject: input.lastActiveProject,
+              projects: input.projects,
+              hostConnectionStatusByServerId: input.hostConnectionStatusByServerId,
+              workspaceMultiplicityByServerId: input.workspaceMultiplicityByServerId,
+              currentServerId: current.serverId,
+              nextServerId: defaultServerId,
+            })
+          : defaultServerId;
+
+      if (current.routeServerId === routeServerId && current.serverId === nextServerId) {
+        return current;
+      }
+
+      return { routeServerId, serverId: nextServerId };
+    });
+  }, [
+    defaultServerId,
+    input.allServerIds,
+    input.hostConnectionStatusByServerId,
+    input.initialServerId,
+    input.lastActiveProject,
+    input.projects,
+    input.workspaceMultiplicityByServerId,
+    routeServerId,
+  ]);
+
+  const automaticServerId =
+    automaticSelection.routeServerId === routeServerId &&
+    input.allServerIds.includes(automaticSelection.serverId)
+      ? automaticSelection.serverId
+      : defaultServerId;
+  const selectedServerId =
+    manualSelection?.routeServerId === routeServerId &&
+    input.allServerIds.includes(manualSelection.serverId)
+      ? manualSelection.serverId
+      : automaticServerId;
+
+  const handleSelectHost = useCallback(
+    (id: string) => {
+      setManualSelection({ routeServerId, serverId: id });
+      setHostPickerOpen(false);
+    },
+    [routeServerId],
+  );
 
   const handleHostPickerOpenChange = useCallback((open: boolean) => {
     setHostPickerOpen(open);
@@ -1193,8 +1269,6 @@ function useNewWorkspaceHostSelector(initialServerId: string) {
   }, []);
 
   return {
-    allHosts,
-    allServerIds,
     selectedServerId,
     hostPickerOpen,
     handleSelectHost,
@@ -1203,9 +1277,93 @@ function useNewWorkspaceHostSelector(initialServerId: string) {
   };
 }
 
-interface NewWorkspaceProjectPickerInput extends HostProjectRouteContext {
+interface NewWorkspaceInitialContextState {
+  allHosts: HostProfile[];
   selectedServerId: string;
-  allServerIds: string[];
+  hostPickerOpen: boolean;
+  handleSelectHost: (id: string) => void;
+  handleHostPickerOpenChange: (open: boolean) => void;
+  openHostPicker: () => void;
+  projects: HostProjectListItem[];
+  routeProject: HostProjectListItem | null;
+  lastActiveProject: HostProjectListItem | null;
+  routeDisplayName: string;
+}
+
+function useNewWorkspaceInitialContext({
+  serverId,
+  sourceDirectory: sourceDirectoryProp,
+  projectId,
+  displayName: displayNameProp,
+}: NewWorkspaceScreenProps): NewWorkspaceInitialContextState {
+  const allHosts = useHosts();
+  const allServerIds = useMemo(() => allHosts.map((h) => h.serverId), [allHosts]);
+  const projects = useHostProjects(allServerIds);
+  const routeDisplayName = displayNameProp?.trim() ?? "";
+  const routeProject = useMemo(
+    () =>
+      hostProjectFromRoute({
+        serverId,
+        projectId,
+        displayName: routeDisplayName,
+        sourceDirectory: sourceDirectoryProp,
+      }),
+    [projectId, routeDisplayName, serverId, sourceDirectoryProp],
+  );
+  const lastWorkspaceSelection = useLastWorkspaceSelection();
+  const lastWorkspaceServerId = useMemo(
+    () =>
+      lastWorkspaceSelection && allServerIds.includes(lastWorkspaceSelection.serverId)
+        ? lastWorkspaceSelection.serverId
+        : null,
+    [allServerIds, lastWorkspaceSelection],
+  );
+  const lastWorkspaceId = lastWorkspaceServerId ? lastWorkspaceSelection!.workspaceId : null;
+  const lastWorkspace = useWorkspace(lastWorkspaceServerId, lastWorkspaceId);
+  const lastActiveProject = useMemo(
+    () =>
+      lastWorkspaceServerId
+        ? hostProjectFromWorkspace({ serverId: lastWorkspaceServerId, workspace: lastWorkspace })
+        : null,
+    [lastWorkspace, lastWorkspaceServerId],
+  );
+  const hostConnectionStatusByServerId = useHostRuntimeConnectionStatuses(allServerIds);
+  const workspaceMultiplicityByServerId = useHostFeatureMap(allServerIds, "workspaceMultiplicity");
+  const {
+    selectedServerId,
+    hostPickerOpen,
+    handleSelectHost,
+    handleHostPickerOpenChange,
+    openHostPicker,
+  } = useNewWorkspaceHostSelector({
+    initialServerId: serverId,
+    allServerIds,
+    projects,
+    lastActiveProject,
+    hostConnectionStatusByServerId,
+    workspaceMultiplicityByServerId,
+  });
+
+  return {
+    allHosts,
+    selectedServerId,
+    hostPickerOpen,
+    handleSelectHost,
+    handleHostPickerOpenChange,
+    openHostPicker,
+    projects,
+    routeProject,
+    lastActiveProject,
+    routeDisplayName,
+  };
+}
+
+interface NewWorkspaceProjectPickerInput {
+  selectedServerId: string;
+  projects: HostProjectListItem[];
+  routeProject: HostProjectListItem | null;
+  lastActiveProject: HostProjectListItem | null;
+  displayName?: string;
   allowAllProjects: boolean;
 }
 
@@ -1222,39 +1380,15 @@ interface NewWorkspaceProjectPickerState {
 }
 
 function useNewWorkspaceProjectPicker({
-  serverId,
   selectedServerId,
-  allServerIds,
-  sourceDirectory,
-  projectId,
+  projects,
+  routeProject,
+  lastActiveProject,
   displayName: displayNameProp,
   allowAllProjects,
 }: NewWorkspaceProjectPickerInput): NewWorkspaceProjectPickerState {
   const [manualProjectKey, setManualProjectKey] = useState<string | null>(null);
   const displayName = displayNameProp?.trim() ?? "";
-  const projects = useHostProjects(allServerIds);
-  const lastWorkspaceSelection = useLastWorkspaceSelection();
-  const lastWorkspaceServerId = useMemo(
-    () =>
-      lastWorkspaceSelection && allServerIds.includes(lastWorkspaceSelection.serverId)
-        ? lastWorkspaceSelection.serverId
-        : null,
-    [allServerIds, lastWorkspaceSelection],
-  );
-  const lastWorkspaceId = lastWorkspaceServerId ? lastWorkspaceSelection!.workspaceId : null;
-  const lastWorkspace = useWorkspace(lastWorkspaceServerId, lastWorkspaceId);
-
-  const routeProject = useMemo(
-    () => hostProjectFromRoute({ serverId, projectId, displayName, sourceDirectory }),
-    [displayName, projectId, serverId, sourceDirectory],
-  );
-  const lastActiveProject = useMemo(
-    () =>
-      lastWorkspaceServerId
-        ? hostProjectFromWorkspace({ serverId: lastWorkspaceServerId, workspace: lastWorkspace })
-        : null,
-    [lastWorkspace, lastWorkspaceServerId],
-  );
   const selectableProjects = useMemo(
     () =>
       filterWorkspaceProjectsForHost({ projects, serverId: selectedServerId, allowAllProjects }),
@@ -1556,18 +1690,23 @@ export function NewWorkspaceScreen({
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const {
     allHosts,
-    allServerIds,
     selectedServerId,
     hostPickerOpen,
     handleSelectHost,
     handleHostPickerOpenChange,
     openHostPicker,
-  } = useNewWorkspaceHostSelector(serverId);
+    projects,
+    routeProject,
+    lastActiveProject,
+    routeDisplayName,
+  } = useNewWorkspaceInitialContext({
+    serverId,
+    sourceDirectory: sourceDirectoryProp,
+    projectId,
+    displayName: displayNameProp,
+  });
   // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
-  const supportsWorkspaceMultiplicity = useSessionStore(
-    (state) =>
-      state.sessions[selectedServerId]?.serverInfo?.features?.workspaceMultiplicity === true,
-  );
+  const supportsWorkspaceMultiplicity = useHostFeature(selectedServerId, "workspaceMultiplicity");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdWorkspace, setCreatedWorkspace] = useState<ReturnType<
     typeof normalizeWorkspaceDescriptor
@@ -1596,7 +1735,6 @@ export function NewWorkspaceScreen({
   const client = useHostRuntimeClient(selectedServerId);
   const isConnected = useHostRuntimeIsConnected(selectedServerId);
   const {
-    projects,
     selectedProject,
     selectedSourceDirectory,
     projectPickerOptions,
@@ -1605,12 +1743,11 @@ export function NewWorkspaceScreen({
     projectTriggerLabel,
     handleSelectProjectOption: selectProjectOption,
   } = useNewWorkspaceProjectPicker({
-    serverId,
     selectedServerId,
-    allServerIds,
-    sourceDirectory: sourceDirectoryProp,
-    projectId,
-    displayName: displayNameProp,
+    projects,
+    routeProject,
+    lastActiveProject,
+    displayName: routeDisplayName,
     allowAllProjects: supportsWorkspaceMultiplicity,
   });
 
