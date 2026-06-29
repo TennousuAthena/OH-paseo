@@ -965,8 +965,14 @@ export const es: TranslationResources = {
         upToDate: "La aplicación está actualizada.",
         upToDateWithLastChecked: "Up to date. Last checked at {{time}}.",
         pending: "Le avisaremos cuando la actualización esté lista.",
+        pendingWithLastChecked:
+          "Le avisaremos cuando la actualización esté lista. Última comprobación a las {{time}}.",
         availableWithVersion: "Actualización lista:{{version}}",
+        availableWithVersionAndLastChecked:
+          "Actualización lista:{{version}}. Última comprobación a las {{time}}.",
         available: "Una actualización de la aplicación está lista para instalarse.",
+        availableWithLastChecked:
+          "Una actualización de la aplicación está lista para instalarse. Última comprobación a las {{time}}.",
         installed: "Actualización de la aplicación instalada. Se requiere reinicio.",
         failed: "No se pudo actualizar la aplicación.",
         idle: "El estado de la actualización aún no se ha comprobado.",
