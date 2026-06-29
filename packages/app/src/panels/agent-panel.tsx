@@ -588,7 +588,7 @@ function AgentPanelBody({
     const attemptToken = ++lookupAttemptTokenRef.current;
 
     client
-      .fetchAgent(agentId)
+      .fetchAgent({ agentId })
       .then((result) => {
         if (attemptToken !== lookupAttemptTokenRef.current) {
           return;
@@ -985,7 +985,7 @@ function ChatAgentContent({
         const currentAgent =
           currentSession?.agents.get(agentId) ?? currentSession?.agentDetails.get(agentId);
         if (!currentAgent) {
-          const result = await client.fetchAgent(agentId);
+          const result = await client.fetchAgent({ agentId });
           if (attemptToken !== initAttemptTokenRef.current) {
             return;
           }
