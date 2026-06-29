@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
-import { FolderPlus, Split } from "lucide-react-native";
+import { Split } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   DropdownMenu,
@@ -19,20 +19,10 @@ interface AssistantForkMenuProps {
   testID?: string;
 }
 
-const ThemedFolderPlus = withUnistyles(FolderPlus);
 const ThemedSplit = withUnistyles(Split);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-
-function getIcon(target: AssistantForkTarget) {
-  switch (target) {
-    case "tab":
-      return <ThemedSplit size={16} uniProps={foregroundColorMapping} />;
-    case "workspace":
-      return <ThemedFolderPlus size={16} uniProps={foregroundColorMapping} />;
-  }
-}
 
 export const AssistantForkMenu = memo(function AssistantForkMenu({
   onFork,
@@ -79,6 +69,8 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
     [t],
   );
 
+  const forkIcon = useMemo(() => <ThemedSplit size={16} uniProps={foregroundColorMapping} />, []);
+
   return (
     <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
       <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
@@ -106,7 +98,7 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
         <DropdownMenuItem
           closeOnSelect={false}
           disabled={isLocked && pendingTarget !== "tab"}
-          leading={getIcon("tab")}
+          leading={forkIcon}
           onSelect={handleSelect("tab")}
           status={pendingTarget === "tab" ? "pending" : undefined}
           testID={`${testID}-new-tab`}
@@ -116,7 +108,7 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
         <DropdownMenuItem
           closeOnSelect={false}
           disabled={isLocked && pendingTarget !== "workspace"}
-          leading={getIcon("workspace")}
+          leading={forkIcon}
           onSelect={handleSelect("workspace")}
           status={pendingTarget === "workspace" ? "pending" : undefined}
           testID={`${testID}-new-workspace`}
