@@ -423,6 +423,25 @@ export const en = {
         openDevTools: "Open browser dev tools",
         cancelSelector: "Cancel element selector",
         selectElement: "Select element",
+        grabElement: "Copy element to clipboard",
+        grabElementLabel: "element",
+        grabFailed: "Couldn't copy element",
+      },
+      annotate: {
+        title: "Send feedback to agent",
+        placeholder: "Describe what should change…",
+        submit: "Attach",
+        cancel: "Cancel",
+        intents: {
+          fix: "Fix",
+          change: "Change",
+          question: "Question",
+          approve: "Approve",
+        },
+      },
+      devices: {
+        label: "Device size",
+        responsive: "Responsive",
       },
       errors: {
         failedToLoad: "Failed to load page",

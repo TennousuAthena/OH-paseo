@@ -427,6 +427,25 @@ export const es: TranslationResources = {
         openDevTools: "Abrir herramientas de desarrollo del navegador",
         cancelSelector: "Cancelar selector de elementos",
         selectElement: "Seleccionar elemento",
+        grabElement: "Copiar elemento al portapapeles",
+        grabElementLabel: "elemento",
+        grabFailed: "No se pudo copiar el elemento",
+      },
+      annotate: {
+        title: "Enviar comentarios al agente",
+        placeholder: "Describe qué debería cambiar…",
+        submit: "Adjuntar",
+        cancel: "Cancelar",
+        intents: {
+          fix: "Corregir",
+          change: "Cambiar",
+          question: "Pregunta",
+          approve: "Aprobar",
+        },
+      },
+      devices: {
+        label: "Tamaño del dispositivo",
+        responsive: "Adaptable",
       },
       errors: {
         failedToLoad: "No se pudo cargar la página",

@@ -138,6 +138,13 @@ export interface DesktopBrowserBridge {
   executeAutomationCommand?: (
     request: BrowserAutomationExecuteRequest,
   ) => Promise<BrowserAutomationExecuteResponse["payload"]>;
+  /** Capture a PNG screenshot of the guest viewport cropped to `rect`. */
+  captureElement?: (
+    browserId: string,
+    rect: { x: number; y: number; width: number; height: number },
+  ) => Promise<string | null>;
+  /** Copy element text and/or an image to the system clipboard from main. */
+  copyElement?: (payload: { text?: string; imageDataUrl?: string }) => Promise<boolean>;
 }
 
 export interface DesktopInvokeBridge {

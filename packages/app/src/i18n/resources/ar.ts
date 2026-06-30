@@ -423,6 +423,25 @@ export const ar: TranslationResources = {
         openDevTools: "افتح أدوات تطوير المتصفح",
         cancelSelector: "إلغاء محدد العنصر",
         selectElement: "حدد العنصر",
+        grabElement: "نسخ العنصر إلى الحافظة",
+        grabElementLabel: "العنصر",
+        grabFailed: "تعذّر نسخ العنصر",
+      },
+      annotate: {
+        title: "إرسال ملاحظات إلى الوكيل",
+        placeholder: "صف ما الذي ينبغي تغييره…",
+        submit: "إرفاق",
+        cancel: "إلغاء",
+        intents: {
+          fix: "إصلاح",
+          change: "تغيير",
+          question: "سؤال",
+          approve: "موافقة",
+        },
+      },
+      devices: {
+        label: "حجم الجهاز",
+        responsive: "متجاوب",
       },
       errors: {
         failedToLoad: "فشل تحميل الصفحة",

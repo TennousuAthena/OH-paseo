@@ -427,6 +427,25 @@ export const ru: TranslationResources = {
         openDevTools: "Открыть инструменты разработки браузера",
         cancelSelector: "Отменить выбор элемента",
         selectElement: "Выберите элемент",
+        grabElement: "Скопировать элемент в буфер обмена",
+        grabElementLabel: "элемент",
+        grabFailed: "Не удалось скопировать элемент",
+      },
+      annotate: {
+        title: "Отправить отзыв агенту",
+        placeholder: "Опишите, что нужно изменить…",
+        submit: "Прикрепить",
+        cancel: "Отмена",
+        intents: {
+          fix: "Исправить",
+          change: "Изменить",
+          question: "Вопрос",
+          approve: "Одобрить",
+        },
+      },
+      devices: {
+        label: "Размер устройства",
+        responsive: "Адаптивный",
       },
       errors: {
         failedToLoad: "Не удалось загрузить страницу",

@@ -423,6 +423,25 @@ export const zhCN: TranslationResources = {
         openDevTools: "打开浏览器开发者工具",
         cancelSelector: "取消元素选择器",
         selectElement: "选择元素",
+        grabElement: "复制元素到剪贴板",
+        grabElementLabel: "元素",
+        grabFailed: "复制元素失败",
+      },
+      annotate: {
+        title: "发送反馈给智能体",
+        placeholder: "描述需要修改的内容…",
+        submit: "附加",
+        cancel: "取消",
+        intents: {
+          fix: "修复",
+          change: "修改",
+          question: "提问",
+          approve: "认可",
+        },
+      },
+      devices: {
+        label: "设备尺寸",
+        responsive: "自适应",
       },
       errors: {
         failedToLoad: "页面加载失败",

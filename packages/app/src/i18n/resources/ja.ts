@@ -427,6 +427,25 @@ export const ja: TranslationResources = {
         openDevTools: "ブラウザ開発ツールを開く",
         cancelSelector: "要素セレクターをキャンセル",
         selectElement: "要素を選択",
+        grabElement: "要素をクリップボードにコピー",
+        grabElementLabel: "要素",
+        grabFailed: "要素をコピーできませんでした",
+      },
+      annotate: {
+        title: "エージェントにフィードバックを送信",
+        placeholder: "変更すべき内容を記述…",
+        submit: "添付",
+        cancel: "キャンセル",
+        intents: {
+          fix: "修正",
+          change: "変更",
+          question: "質問",
+          approve: "承認",
+        },
+      },
+      devices: {
+        label: "デバイスサイズ",
+        responsive: "レスポンシブ",
       },
       errors: {
         failedToLoad: "ページの読み込みに失敗しました",

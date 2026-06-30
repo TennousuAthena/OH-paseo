@@ -427,6 +427,25 @@ export const fr: TranslationResources = {
         openDevTools: "Outils de développement du navigateur ouvert",
         cancelSelector: "Annuler le sélecteur d'élément",
         selectElement: "Sélectionner un élément",
+        grabElement: "Copier l'élément dans le presse-papiers",
+        grabElementLabel: "élément",
+        grabFailed: "Impossible de copier l'élément",
+      },
+      annotate: {
+        title: "Envoyer un retour à l'agent",
+        placeholder: "Décrivez ce qui doit changer…",
+        submit: "Joindre",
+        cancel: "Annuler",
+        intents: {
+          fix: "Corriger",
+          change: "Modifier",
+          question: "Question",
+          approve: "Approuver",
+        },
+      },
+      devices: {
+        label: "Taille de l'appareil",
+        responsive: "Adaptatif",
       },
       errors: {
         failedToLoad: "Échec du chargement de la page",
