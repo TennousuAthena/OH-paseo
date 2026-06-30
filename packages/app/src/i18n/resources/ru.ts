@@ -808,6 +808,7 @@ export const ru: TranslationResources = {
     },
     sections: {
       sessions: "История",
+      schedules: "Расписания",
     },
     worktreeSetup: {
       title: "Настройка сценариев рабочего дерева",
