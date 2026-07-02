@@ -51,6 +51,7 @@ interface QueuedBrowserRequests {
 }
 
 const harnesses: BrowserToolsDaemonHarness[] = [];
+const BROWSER_ID = "11111111-1111-4111-8111-111111111111";
 
 afterEach(async () => {
   await Promise.all(harnesses.splice(0).map((harness) => harness.stop()));
@@ -131,7 +132,7 @@ describe("WebSocketServer browser tools wiring", () => {
     });
 
     const resultPromise = harness.broker.execute({
-      command: { command: "click", args: { ref: "@e1" } },
+      command: { command: "click", args: { browserId: BROWSER_ID, ref: "@e1" } },
     });
     const request = await resumedDesktop.nextBrowserRequest();
     resumedDesktop.respondToBrowserRequest({
@@ -139,13 +140,13 @@ describe("WebSocketServer browser tools wiring", () => {
       payload: {
         requestId: request.requestId,
         ok: true,
-        result: { command: "click", browserId: "browser-1", ref: "@e1" },
+        result: { command: "click", browserId: BROWSER_ID, ref: "@e1" },
       },
     });
 
     await expect(resultPromise).resolves.toMatchObject({
       ok: true,
-      result: { command: "click", browserId: "browser-1", ref: "@e1" },
+      result: { command: "click", browserId: BROWSER_ID, ref: "@e1" },
     });
   });
 });

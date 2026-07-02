@@ -73,7 +73,7 @@ function browserNewTabRequest(): BrowserAutomationExecuteRequest {
     workspaceId: "wks_workspace_a",
     command: {
       command: "new_tab",
-      args: { workspaceId: "wks_workspace_a", url: "https://example.com" },
+      args: { url: "https://example.com" },
     },
   };
 }
@@ -128,7 +128,6 @@ describe("mountBrowserAutomationHandler", () => {
   test("creates a focused workspace browser tab for browser_new_tab", async () => {
     const client = new FakeDaemonClient();
     const setWorkspaceActiveBrowser = vi.fn(async () => undefined);
-    const setAgentActiveBrowser = vi.fn(async () => undefined);
     const registerWorkspaceBrowser = vi.fn(async () => undefined);
     const ensureResidentBrowserWebview = vi.fn();
     const executeAutomationCommand = vi.fn(async () => currentListTabsPayload());
@@ -150,7 +149,6 @@ describe("mountBrowserAutomationHandler", () => {
             executeAutomationCommand,
             registerWorkspaceBrowser,
             setWorkspaceActiveBrowser,
-            setAgentActiveBrowser,
           },
         }) satisfies DesktopHostBridge,
       ensureResidentBrowserWebview,
@@ -179,10 +177,6 @@ describe("mountBrowserAutomationHandler", () => {
     expect(registerWorkspaceBrowser).toHaveBeenCalledWith({
       browserId,
       workspaceId: "wks_workspace_a",
-    });
-    expect(setAgentActiveBrowser).toHaveBeenCalledWith({
-      agentId: "agent-1",
-      browserId,
     });
     expect(setWorkspaceActiveBrowser).toHaveBeenCalledWith({
       browserId,

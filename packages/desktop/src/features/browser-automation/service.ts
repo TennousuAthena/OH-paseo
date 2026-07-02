@@ -54,9 +54,7 @@ export interface BrowserRegistry {
   listRegisteredBrowserIdsForWorkspace(workspaceId: string): string[];
   getTabContents(browserId: string): TabContents | null;
   getBrowserWorkspaceId(browserId: string): string | null;
-  getWorkspaceActiveTabContents(workspaceId: string): TabContents | null;
   getWorkspaceActiveBrowserId(workspaceId: string): string | null;
-  getAgentActiveBrowserId(agentId: string): string | null;
 }
 
 export type AutomationCommandPayload = BrowserAutomationExecuteResponse["payload"];
@@ -167,43 +165,16 @@ function tabInfoFromContents(
 }
 
 export function executeAutomationCommand(
-  rawRequest: BrowserAutomationExecuteRequest,
+  request: BrowserAutomationExecuteRequest,
   registry: BrowserRegistry,
   options?: { snapshotEngine?: BrowserSnapshotEngine },
 ): AutomationCommandPayload | Promise<AutomationCommandPayload> {
-  const request = resolveAgentBrowserTarget(rawRequest, registry);
   const { requestId, command } = request;
-  const workspaceId = request.workspaceId ?? command.args.workspaceId;
+  const workspaceId = request.workspaceId;
   const snapshotEngine = options?.snapshotEngine ?? defaultSnapshotEngine;
   const handler = commandHandlers[command.command];
 
   return handler({ request, command, requestId, workspaceId, registry, snapshotEngine });
-}
-
-function resolveAgentBrowserTarget(
-  request: BrowserAutomationExecuteRequest,
-  registry: BrowserRegistry,
-): BrowserAutomationExecuteRequest {
-  if (request.browserId || readCommandBrowserId(request.command)) {
-    return request;
-  }
-  if (!request.agentId) {
-    return request;
-  }
-
-  const agentBrowserId = registry.getAgentActiveBrowserId(request.agentId);
-  if (!agentBrowserId) {
-    return request;
-  }
-
-  return { ...request, browserId: agentBrowserId };
-}
-
-function readCommandBrowserId(command: BrowserAutomationCommand): string | undefined {
-  const args = command.args as { browserId?: unknown };
-  return typeof args.browserId === "string" && args.browserId.length > 0
-    ? args.browserId
-    : undefined;
 }
 
 interface CommandHandlerContext {
@@ -224,54 +195,49 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
     executeListTabs(requestId, workspaceId, registry),
   new_tab: ({ requestId }) =>
     fail(requestId, "browser_unsupported", "browser_new_tab is handled by the app runtime."),
-  page_info: ({ request, command, requestId, workspaceId, registry }) => {
+  page_info: ({ command, requestId, workspaceId, registry }) => {
     const pageInfoCommand = command as Extract<BrowserAutomationCommand, { command: "page_info" }>;
-    return executePageInfo(
-      requestId,
-      workspaceId,
-      pageInfoCommand.args.browserId ?? request.browserId,
-      registry,
-    );
+    return executePageInfo(requestId, workspaceId, pageInfoCommand.args.browserId, registry);
   },
-  snapshot: ({ request, command, requestId, workspaceId, registry, snapshotEngine }) => {
+  snapshot: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const snapshotCommand = command as Extract<BrowserAutomationCommand, { command: "snapshot" }>;
     return executeSnapshot(
       requestId,
       workspaceId,
-      snapshotCommand.args.browserId ?? request.browserId,
+      snapshotCommand.args.browserId,
       registry,
       snapshotEngine,
     );
   },
-  click: ({ request, command, requestId, workspaceId, registry, snapshotEngine }) => {
+  click: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const clickCommand = command as Extract<BrowserAutomationCommand, { command: "click" }>;
     return executeClick(
       requestId,
       workspaceId,
-      clickCommand.args.browserId ?? request.browserId,
+      clickCommand.args.browserId,
       clickCommand.args.ref,
       registry,
       snapshotEngine,
     );
   },
-  fill: ({ request, command, requestId, workspaceId, registry, snapshotEngine }) => {
+  fill: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const fillCommand = command as Extract<BrowserAutomationCommand, { command: "fill" }>;
     return executeFill(
       requestId,
       workspaceId,
-      fillCommand.args.browserId ?? request.browserId,
+      fillCommand.args.browserId,
       fillCommand.args.ref,
       fillCommand.args.value,
       registry,
       snapshotEngine,
     );
   },
-  wait: ({ request, command, requestId, workspaceId, registry }) => {
+  wait: ({ command, requestId, workspaceId, registry }) => {
     const waitCommand = command as Extract<BrowserAutomationCommand, { command: "wait" }>;
     return executeWait(
       requestId,
       workspaceId,
-      waitCommand.args.browserId ?? request.browserId,
+      waitCommand.args.browserId,
       {
         text: waitCommand.args.text,
         url: waitCommand.args.url,
@@ -280,83 +246,78 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
       registry,
     );
   },
-  type: ({ request, command, requestId, workspaceId, registry, snapshotEngine }) => {
+  type: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const typeCommand = command as Extract<BrowserAutomationCommand, { command: "type" }>;
     return executeType(
       requestId,
       workspaceId,
-      typeCommand.args.browserId ?? request.browserId,
+      typeCommand.args.browserId,
       typeCommand.args.ref,
       typeCommand.args.text,
       registry,
       snapshotEngine,
     );
   },
-  keypress: ({ request, command, requestId, workspaceId, registry, snapshotEngine }) => {
+  keypress: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const keypressCommand = command as Extract<BrowserAutomationCommand, { command: "keypress" }>;
     return executeKeypress(
       requestId,
       workspaceId,
-      keypressCommand.args.browserId ?? request.browserId,
+      keypressCommand.args.browserId,
       keypressCommand.args.ref,
       keypressCommand.args.key,
       registry,
       snapshotEngine,
     );
   },
-  navigate: ({ request, command, requestId, workspaceId, registry }) => {
+  navigate: ({ command, requestId, workspaceId, registry }) => {
     const navigateCommand = command as Extract<BrowserAutomationCommand, { command: "navigate" }>;
     return executeNavigate(
       requestId,
       workspaceId,
-      navigateCommand.args.browserId ?? request.browserId,
+      navigateCommand.args.browserId,
       navigateCommand.args.url,
       registry,
     );
   },
-  back: ({ request, command, requestId, workspaceId, registry }) => {
+  back: ({ command, requestId, workspaceId, registry }) => {
     const backCommand = command as Extract<BrowserAutomationCommand, { command: "back" }>;
     return executeNavigationAction(
       requestId,
       workspaceId,
-      backCommand.args.browserId ?? request.browserId,
+      backCommand.args.browserId,
       "back",
       registry,
     );
   },
-  forward: ({ request, command, requestId, workspaceId, registry }) => {
+  forward: ({ command, requestId, workspaceId, registry }) => {
     const forwardCommand = command as Extract<BrowserAutomationCommand, { command: "forward" }>;
     return executeNavigationAction(
       requestId,
       workspaceId,
-      forwardCommand.args.browserId ?? request.browserId,
+      forwardCommand.args.browserId,
       "forward",
       registry,
     );
   },
-  reload: ({ request, command, requestId, workspaceId, registry }) => {
+  reload: ({ command, requestId, workspaceId, registry }) => {
     const reloadCommand = command as Extract<BrowserAutomationCommand, { command: "reload" }>;
     return executeNavigationAction(
       requestId,
       workspaceId,
-      reloadCommand.args.browserId ?? request.browserId,
+      reloadCommand.args.browserId,
       "reload",
       registry,
     );
   },
-  screenshot: ({ request, command, requestId, workspaceId, registry }) => {
+  screenshot: ({ command, requestId, workspaceId, registry }) => {
     const screenshotCommand = command as Extract<
       BrowserAutomationCommand,
       { command: "screenshot" }
     >;
-    return executeScreenshot(
-      requestId,
-      workspaceId,
-      screenshotCommand.args.browserId ?? request.browserId,
-      registry,
-    );
+    return executeScreenshot(requestId, workspaceId, screenshotCommand.args.browserId, registry);
   },
-  full_page_screenshot: ({ request, command, requestId, workspaceId, registry }) => {
+  full_page_screenshot: ({ command, requestId, workspaceId, registry }) => {
     const screenshotCommand = command as Extract<
       BrowserAutomationCommand,
       { command: "full_page_screenshot" }
@@ -364,26 +325,26 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
     return executeFullPageScreenshot(
       requestId,
       workspaceId,
-      screenshotCommand.args.browserId ?? request.browserId,
+      screenshotCommand.args.browserId,
       registry,
     );
   },
-  pdf: ({ request, command, requestId, workspaceId, registry }) => {
+  pdf: ({ command, requestId, workspaceId, registry }) => {
     const pdfCommand = command as Extract<BrowserAutomationCommand, { command: "pdf" }>;
     return executePdf(
       requestId,
       workspaceId,
-      pdfCommand.args.browserId ?? request.browserId,
+      pdfCommand.args.browserId,
       { landscape: pdfCommand.args.landscape, printBackground: pdfCommand.args.printBackground },
       registry,
     );
   },
-  download: ({ request, command, requestId, workspaceId, registry }) => {
+  download: ({ command, requestId, workspaceId, registry }) => {
     const downloadCommand = command as Extract<BrowserAutomationCommand, { command: "download" }>;
     return executeDownload(
       requestId,
       workspaceId,
-      downloadCommand.args.browserId ?? request.browserId,
+      downloadCommand.args.browserId,
       { url: downloadCommand.args.url, fileName: downloadCommand.args.fileName },
       registry,
     );
@@ -394,101 +355,96 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
       requestId,
       request.cwd,
       workspaceId,
-      uploadCommand.args.browserId ?? request.browserId,
+      uploadCommand.args.browserId,
       { ref: uploadCommand.args.ref, filePaths: uploadCommand.args.filePaths },
       registry,
       snapshotEngine,
     );
   },
-  focus: ({ request, command, requestId, workspaceId, registry, snapshotEngine }) => {
+  focus: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const focusCommand = command as Extract<BrowserAutomationCommand, { command: "focus" }>;
     return executeFocus(
       requestId,
       workspaceId,
-      focusCommand.args.browserId ?? request.browserId,
+      focusCommand.args.browserId,
       focusCommand.args.ref,
       registry,
       snapshotEngine,
     );
   },
-  clear: ({ request, command, requestId, workspaceId, registry, snapshotEngine }) => {
+  clear: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const clearCommand = command as Extract<BrowserAutomationCommand, { command: "clear" }>;
     return executeClear(
       requestId,
       workspaceId,
-      clearCommand.args.browserId ?? request.browserId,
+      clearCommand.args.browserId,
       clearCommand.args.ref,
       registry,
       snapshotEngine,
     );
   },
-  check: ({ request, command, requestId, workspaceId, registry, snapshotEngine }) => {
+  check: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const checkCommand = command as Extract<BrowserAutomationCommand, { command: "check" }>;
     return executeCheck(
       requestId,
       workspaceId,
-      checkCommand.args.browserId ?? request.browserId,
+      checkCommand.args.browserId,
       checkCommand.args.ref,
       checkCommand.args.checked,
       registry,
       snapshotEngine,
     );
   },
-  select: ({ request, command, requestId, workspaceId, registry, snapshotEngine }) => {
+  select: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const selectCommand = command as Extract<BrowserAutomationCommand, { command: "select" }>;
     return executeSelect(
       requestId,
       workspaceId,
-      selectCommand.args.browserId ?? request.browserId,
+      selectCommand.args.browserId,
       selectCommand.args.ref,
       selectCommand.args.value,
       registry,
       snapshotEngine,
     );
   },
-  hover: ({ request, command, requestId, workspaceId, registry, snapshotEngine }) => {
+  hover: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const hoverCommand = command as Extract<BrowserAutomationCommand, { command: "hover" }>;
     return executeHover(
       requestId,
       workspaceId,
-      hoverCommand.args.browserId ?? request.browserId,
+      hoverCommand.args.browserId,
       hoverCommand.args.ref,
       registry,
       snapshotEngine,
     );
   },
-  drag: ({ request, command, requestId, workspaceId, registry, snapshotEngine }) => {
+  drag: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const dragCommand = command as Extract<BrowserAutomationCommand, { command: "drag" }>;
     return executeDrag(
       requestId,
       workspaceId,
-      dragCommand.args.browserId ?? request.browserId,
+      dragCommand.args.browserId,
       dragCommand.args.sourceRef,
       dragCommand.args.targetRef,
       registry,
       snapshotEngine,
     );
   },
-  logs: ({ request, command, requestId, workspaceId, registry }) => {
+  logs: ({ command, requestId, workspaceId, registry }) => {
     const logsCommand = command as Extract<BrowserAutomationCommand, { command: "logs" }>;
     return executeLogs(
       requestId,
       workspaceId,
-      logsCommand.args.browserId ?? request.browserId,
+      logsCommand.args.browserId,
       logsCommand.args.maxEntries,
       registry,
     );
   },
-  storage: ({ request, command, requestId, workspaceId, registry }) => {
+  storage: ({ command, requestId, workspaceId, registry }) => {
     const storageCommand = command as Extract<BrowserAutomationCommand, { command: "storage" }>;
-    return executeStorage(
-      requestId,
-      workspaceId,
-      storageCommand.args.browserId ?? request.browserId,
-      registry,
-    );
+    return executeStorage(requestId, workspaceId, storageCommand.args.browserId, registry);
   },
-  environment: ({ request, command, requestId, workspaceId, registry }) => {
+  environment: ({ command, requestId, workspaceId, registry }) => {
     const environmentCommand = command as Extract<
       BrowserAutomationCommand,
       { command: "environment" }
@@ -496,7 +452,7 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
     return executeEnvironment(
       requestId,
       workspaceId,
-      environmentCommand.args.browserId ?? request.browserId,
+      environmentCommand.args.browserId,
       {
         viewport: environmentCommand.args.viewport,
         geolocation: environmentCommand.args.geolocation,
@@ -504,7 +460,7 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
       registry,
     );
   },
-  set_background: ({ request, command, requestId, workspaceId, registry }) => {
+  set_background: ({ command, requestId, workspaceId, registry }) => {
     const setBackgroundCommand = command as Extract<
       BrowserAutomationCommand,
       { command: "set_background" }
@@ -512,7 +468,7 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
     return executeSetBackground(
       requestId,
       workspaceId,
-      setBackgroundCommand.args.browserId ?? request.browserId,
+      setBackgroundCommand.args.browserId,
       setBackgroundCommand.args.color,
       registry,
     );
@@ -555,7 +511,7 @@ function executeListTabs(
 function executePageInfo(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   registry: BrowserRegistry,
 ): AutomationCommandPayload {
   const target = resolveTabTarget({
@@ -586,7 +542,7 @@ function executePageInfo(
 async function executeSnapshot(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   registry: BrowserRegistry,
   snapshotEngine: BrowserSnapshotEngine,
 ): Promise<AutomationCommandPayload> {
@@ -624,7 +580,7 @@ async function executeSnapshot(
 async function executeClick(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   ref: string,
   registry: BrowserRegistry,
   snapshotEngine: BrowserSnapshotEngine,
@@ -647,7 +603,7 @@ async function executeClick(
 async function executeFill(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   ref: string,
   value: string,
   registry: BrowserRegistry,
@@ -672,7 +628,7 @@ async function executeFill(
 async function executeFocus(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   ref: string,
   registry: BrowserRegistry,
   snapshotEngine: BrowserSnapshotEngine,
@@ -695,7 +651,7 @@ async function executeFocus(
 async function executeClear(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   ref: string,
   registry: BrowserRegistry,
   snapshotEngine: BrowserSnapshotEngine,
@@ -718,7 +674,7 @@ async function executeClear(
 async function executeCheck(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   ref: string,
   checked: boolean,
   registry: BrowserRegistry,
@@ -747,7 +703,7 @@ async function executeCheck(
 async function executeSelect(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   ref: string,
   value: string,
   registry: BrowserRegistry,
@@ -776,7 +732,7 @@ async function executeSelect(
 async function executeHover(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   ref: string,
   registry: BrowserRegistry,
   snapshotEngine: BrowserSnapshotEngine,
@@ -799,7 +755,7 @@ async function executeHover(
 async function executeDrag(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   sourceRef: string,
   targetRef: string,
   registry: BrowserRegistry,
@@ -828,7 +784,7 @@ async function executeDrag(
 async function executeLogs(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   maxEntries: number,
   registry: BrowserRegistry,
 ): Promise<AutomationCommandPayload> {
@@ -855,7 +811,7 @@ async function executeLogs(
 async function executeStorage(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   registry: BrowserRegistry,
 ): Promise<AutomationCommandPayload> {
   const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
@@ -882,7 +838,7 @@ async function executeStorage(
 async function executeEnvironment(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   environment: {
     viewport?: { width: number; height: number; deviceScaleFactor?: number };
     geolocation?: { latitude: number; longitude: number; accuracy?: number };
@@ -941,7 +897,7 @@ function staleRefFailure(requestId: string, ref: string): FailurePayload {
 async function executeWait(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   condition: { text?: string; url?: string; timeoutMs?: number },
   registry: BrowserRegistry,
 ): Promise<AutomationCommandPayload> {
@@ -999,7 +955,7 @@ async function executeWait(
 async function executeSetBackground(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   color: string,
   registry: BrowserRegistry,
 ): Promise<AutomationCommandPayload> {
@@ -1032,7 +988,7 @@ function buildSetBackgroundScript(color: string): string {
 async function executeType(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   ref: string | undefined,
   text: string,
   registry: BrowserRegistry,
@@ -1061,7 +1017,7 @@ async function executeType(
 async function executeKeypress(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   ref: string | undefined,
   key: string,
   registry: BrowserRegistry,
@@ -1090,7 +1046,7 @@ async function executeKeypress(
 async function executeNavigate(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   url: string,
   registry: BrowserRegistry,
 ): Promise<AutomationCommandPayload> {
@@ -1112,7 +1068,7 @@ async function executeNavigate(
 function executeNavigationAction(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   action: "back" | "forward" | "reload",
   registry: BrowserRegistry,
 ): AutomationCommandPayload {
@@ -1135,7 +1091,7 @@ function executeNavigationAction(
 async function executeScreenshot(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   registry: BrowserRegistry,
 ): Promise<AutomationCommandPayload> {
   const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
@@ -1212,7 +1168,7 @@ async function getCdpLayoutMetrics(contents: TabContents): Promise<{
 async function executeFullPageScreenshot(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   registry: BrowserRegistry,
 ): Promise<AutomationCommandPayload> {
   const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
@@ -1260,7 +1216,7 @@ async function executeFullPageScreenshot(
 async function executePdf(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   options: { landscape?: boolean; printBackground: boolean },
   registry: BrowserRegistry,
 ): Promise<AutomationCommandPayload> {
@@ -1290,7 +1246,7 @@ async function executePdf(
 async function executeDownload(
   requestId: string,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   input: { url: string; fileName?: string },
   registry: BrowserRegistry,
 ): Promise<AutomationCommandPayload> {
@@ -1331,7 +1287,7 @@ async function executeUpload(
   requestId: string,
   cwd: string | undefined,
   workspaceId: string | undefined,
-  browserId: string | undefined,
+  browserId: string,
   input: { ref: string; filePaths: string[] },
   registry: BrowserRegistry,
   snapshotEngine: BrowserSnapshotEngine,
@@ -1573,41 +1529,22 @@ const VIEWPORT_SCRIPT = String.raw`(() => JSON.stringify({
 function resolveTabTarget(input: {
   requestId: string;
   workspaceId: string | undefined;
-  browserId: string | undefined;
+  browserId: string;
   registry: BrowserRegistry;
 }): ResolvedTabTarget | FailurePayload {
   const { requestId, workspaceId, browserId, registry } = input;
-  let contents: TabContents | null;
-  let resolvedBrowserId: string;
+  if (workspaceId && registry.getBrowserWorkspaceId(browserId) !== workspaceId) {
+    return fail(requestId, "browser_tab_not_found", `No browser tab found for ID: ${browserId}`);
+  }
 
-  if (browserId) {
-    if (workspaceId && registry.getBrowserWorkspaceId(browserId) !== workspaceId) {
-      return fail(requestId, "browser_tab_not_found", `No browser tab found for ID: ${browserId}`);
-    }
-    contents = registry.getTabContents(browserId);
-    resolvedBrowserId = browserId;
-    if (!contents) {
-      return fail(requestId, "browser_tab_not_found", `No browser tab found for ID: ${browserId}`);
-    }
-  } else {
-    if (!workspaceId) {
-      return fail(requestId, "browser_no_tab", "No active browser tab in workspace");
-    }
-    contents = registry.getWorkspaceActiveTabContents(workspaceId);
-    const activeId = registry.getWorkspaceActiveBrowserId(workspaceId);
-    if (!contents || !activeId) {
-      return fail(requestId, "browser_no_tab", "No active browser tab in workspace");
-    }
-    resolvedBrowserId = activeId;
+  const contents = registry.getTabContents(browserId);
+  if (!contents) {
+    return fail(requestId, "browser_tab_not_found", `No browser tab found for ID: ${browserId}`);
   }
 
   if (contents.isDestroyed()) {
-    return fail(
-      requestId,
-      "browser_tab_closed",
-      `Browser tab ${resolvedBrowserId} has been closed`,
-    );
+    return fail(requestId, "browser_tab_closed", `Browser tab ${browserId} has been closed`);
   }
 
-  return { browserId: resolvedBrowserId, contents };
+  return { browserId, contents };
 }

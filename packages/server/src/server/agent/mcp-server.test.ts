@@ -609,8 +609,7 @@ describe("browser MCP tools", () => {
     expect(execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: REPO_CWD,
-      workspaceId: REPO_CWD,
-      command: { command: "list_tabs", args: { workspaceId: REPO_CWD } },
+      command: { command: "list_tabs", args: {} },
     });
     expect(response.structuredContent).toEqual({
       ok: false,
@@ -619,7 +618,7 @@ describe("browser MCP tools", () => {
         message: "Browser tools are disabled.",
         retryable: false,
       },
-      context: { agentId: "agent-1", cwd: REPO_CWD, workspaceId: REPO_CWD },
+      context: { agentId: "agent-1", cwd: REPO_CWD },
     });
   });
 
@@ -646,19 +645,18 @@ describe("browser MCP tools", () => {
     expect(execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: REPO_CWD,
-      workspaceId: REPO_CWD,
-      command: { command: "list_tabs", args: { workspaceId: REPO_CWD } },
+      command: { command: "list_tabs", args: {} },
     });
     expect(response.content).toEqual([
       {
         type: "text",
-        text: "No Paseo browser tabs are open. Call browser_new_tab to create one, then use the returned browserId or omit browserId for the active tab.",
+        text: "No Paseo browser tabs are open. Call browser_new_tab to create one.",
       },
     ]);
     expect(response.structuredContent).toEqual({
       ok: true,
       result: { command: "list_tabs", tabs: [] },
-      context: { agentId: "agent-1", cwd: REPO_CWD, workspaceId: REPO_CWD },
+      context: { agentId: "agent-1", cwd: REPO_CWD },
     });
   });
 });
