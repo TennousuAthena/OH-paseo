@@ -178,12 +178,13 @@ async function openBrowserTabForRequest(params: {
       message: "Cannot create a browser tab without a workspace context.",
     });
   }
-  useWorkspaceLayoutStore.getState().openTabInBackground(workspaceKey, {
+  useWorkspaceLayoutStore.getState().openTabFocused(workspaceKey, {
     kind: "browser",
     browserId,
   });
 
   await browserHost?.registerWorkspaceBrowser?.({ browserId, workspaceId });
+  await browserHost?.setWorkspaceActiveBrowser?.({ browserId, workspaceId });
   if (request.agentId) {
     await browserHost?.setAgentActiveBrowser?.({ agentId: request.agentId, browserId });
   }

@@ -125,7 +125,7 @@ describe("mountBrowserAutomationHandler", () => {
     useWorkspaceLayoutStore.setState({ layoutByWorkspace: {} });
   });
 
-  test("creates an unfocused workspace browser tab for browser_new_tab", async () => {
+  test("creates a focused workspace browser tab for browser_new_tab", async () => {
     const client = new FakeDaemonClient();
     const setWorkspaceActiveBrowser = vi.fn(async () => undefined);
     const setAgentActiveBrowser = vi.fn(async () => undefined);
@@ -164,25 +164,32 @@ describe("mountBrowserAutomationHandler", () => {
     if (!payload?.ok) throw new Error("expected success");
     expect(payload.result.command).toBe("new_tab");
     if (payload.result.command !== "new_tab") throw new Error("expected new_tab result");
+    const browserId = payload.result.browserId;
     expect(payload.result.url).toBe("https://example.com");
-    expect(useWorkspaceLayoutStore.getState().getWorkspaceTabs(workspaceKey)).toContainEqual(
-      expect.objectContaining({ target: { kind: "browser", browserId: payload.result.browserId } }),
-    );
+    const browserTab = useWorkspaceLayoutStore
+      .getState()
+      .getWorkspaceTabs(workspaceKey)
+      .find((tab) => tab.target.kind === "browser" && tab.target.browserId === browserId);
+    expect(browserTab).toBeDefined();
     const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(layout?.root.kind).toBe("pane");
     if (layout?.root.kind !== "pane") throw new Error("expected root pane");
-    expect(layout.root.pane.focusedTabId).toBe(focusedTabId);
+    expect(layout.root.pane.focusedTabId).toBe(browserTab?.tabId);
+    expect(layout.root.pane.focusedTabId).not.toBe(focusedTabId);
     expect(registerWorkspaceBrowser).toHaveBeenCalledWith({
-      browserId: payload.result.browserId,
+      browserId,
       workspaceId: "wks_workspace_a",
     });
     expect(setAgentActiveBrowser).toHaveBeenCalledWith({
       agentId: "agent-1",
-      browserId: payload.result.browserId,
+      browserId,
     });
-    expect(setWorkspaceActiveBrowser).not.toHaveBeenCalled();
+    expect(setWorkspaceActiveBrowser).toHaveBeenCalledWith({
+      browserId,
+      workspaceId: "wks_workspace_a",
+    });
     expect(ensureResidentBrowserWebview).toHaveBeenCalledWith({
-      browserId: payload.result.browserId,
+      browserId,
       url: "https://example.com",
     });
     expect(executeAutomationCommand).toHaveBeenCalledTimes(1);
