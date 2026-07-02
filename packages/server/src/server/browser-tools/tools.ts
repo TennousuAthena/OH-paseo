@@ -63,8 +63,8 @@ export interface RegisterBrowserToolsOptions {
 const HTTP_URL_ONLY_MESSAGE = "URL must use http/https only";
 const WORKSPACE_CONTEXT_MESSAGE =
   "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.";
-const SCHEMELESS_HTTP_URL_PATTERN =
-  /^(?:localhost|(?:\d{1,3}\.){3}\d{1,3}|\[[0-9a-f:.]+\]|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)(?::\d{1,5})?(?:[/?#].*)?$/i;
+const URL_WHITESPACE_PATTERN = /\s/;
+const NON_HTTP_EXPLICIT_SCHEME_PATTERN = /^(?!https?:\/\/)[a-z][a-z0-9+.-]*:\/\//i;
 
 const BrowserToolContextSchema = z.object({
   agentId: z.string().optional(),
@@ -453,15 +453,36 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     },
   );
 
-  for (const name of ["browser_back", "browser_forward", "browser_reload"] as const) {
-    const command = name.replace("browser_", "") as "back" | "forward" | "reload";
+  for (const toolConfig of [
+    {
+      name: "browser_back",
+      command: "back",
+      title: "Browser back",
+      description:
+        "Go back in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
+    },
+    {
+      name: "browser_forward",
+      command: "forward",
+      title: "Browser forward",
+      description:
+        "Go forward in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
+    },
+    {
+      name: "browser_reload",
+      command: "reload",
+      title: "Browser reload",
+      description:
+        "Reload a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
+    },
+  ] as const) {
     options.registerTool(
-      name,
+      toolConfig.name,
       {
-        title: `Browser ${command}`,
-        description: `${command} a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.`,
+        title: toolConfig.title,
+        description: toolConfig.description,
         inputSchema: { browserId: BrowserAutomationBrowserIdSchema },
-        outputSchema: BrowserToolOutputs[command],
+        outputSchema: BrowserToolOutputs[toolConfig.command],
       },
       async ({ browserId }) => {
         const context = resolveBrowserToolContext(options);
@@ -471,7 +492,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
           ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
 
           command: {
-            command,
+            command: toolConfig.command,
             args: {
               browserId,
             },
@@ -943,12 +964,12 @@ function normalizeHttpUrlInput(value: string): string | null {
     return isValidHttpUrl(value) ? value : null;
   }
 
-  if (SCHEMELESS_HTTP_URL_PATTERN.test(value)) {
-    const normalized = `http://${value}`;
-    return isValidHttpUrl(normalized) ? normalized : null;
+  if (URL_WHITESPACE_PATTERN.test(value) || NON_HTTP_EXPLICIT_SCHEME_PATTERN.test(value)) {
+    return null;
   }
 
-  return null;
+  const normalized = `http://${value}`;
+  return isValidHttpUrl(normalized) ? normalized : null;
 }
 
 function isValidHttpUrl(value: string): boolean {

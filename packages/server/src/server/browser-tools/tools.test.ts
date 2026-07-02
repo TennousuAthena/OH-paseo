@@ -217,6 +217,24 @@ describe("registerBrowserTools", () => {
       expected: { url: "http://example.com/x" },
     },
     {
+      name: "navigate accepts a single-label host with a port as http",
+      toolName: "browser_navigate",
+      input: { browserId: BROWSER_ID, url: "devbox:8080" },
+      expected: { browserId: BROWSER_ID, url: "http://devbox:8080" },
+    },
+    {
+      name: "navigate accepts an IPv6 host with a port as http",
+      toolName: "browser_navigate",
+      input: { browserId: BROWSER_ID, url: "[::1]:5173" },
+      expected: { browserId: BROWSER_ID, url: "http://[::1]:5173" },
+    },
+    {
+      name: "navigate trims whitespace around a URL",
+      toolName: "browser_navigate",
+      input: { browserId: BROWSER_ID, url: "  https://example.com/x  " },
+      expected: { browserId: BROWSER_ID, url: "https://example.com/x" },
+    },
+    {
       name: "navigate keeps https URLs unchanged",
       toolName: "browser_navigate",
       input: { browserId: BROWSER_ID, url: "https://example.com/x" },
@@ -245,6 +263,16 @@ describe("registerBrowserTools", () => {
       name: "new tab rejects file URLs",
       toolName: "browser_new_tab",
       input: { url: "file:///tmp/index.html" },
+    },
+    {
+      name: "navigate rejects invalid ports",
+      toolName: "browser_navigate",
+      input: { browserId: BROWSER_ID, url: "devbox:99999" },
+    },
+    {
+      name: "navigate rejects URLs with spaces",
+      toolName: "browser_navigate",
+      input: { browserId: BROWSER_ID, url: "dev box:8080" },
     },
   ])("$name", ({ toolName, input }) => {
     const harness = new BrowserToolHarness();

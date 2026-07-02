@@ -39,6 +39,7 @@ import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 
 const REPO_CWD = resolvePath("/tmp/repo");
 const TARGET_CWD = resolvePath("/tmp/target");
+const BROWSER_WORKSPACE_ID = "wks_browser_tools";
 
 interface LooseSafeParseResult {
   success: boolean;
@@ -583,7 +584,11 @@ describe("browser MCP tools", () => {
 
   it("keeps browser tools registered when browser tools are disabled", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({ id: "agent-1", cwd: REPO_CWD });
+    spies.agentManager.getAgent.mockReturnValue({
+      id: "agent-1",
+      cwd: REPO_CWD,
+      workspaceId: BROWSER_WORKSPACE_ID,
+    });
     const execute = vi.fn().mockResolvedValue({
       requestId: "req-browser-disabled",
       ok: false,
@@ -609,6 +614,7 @@ describe("browser MCP tools", () => {
     expect(execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: REPO_CWD,
+      workspaceId: BROWSER_WORKSPACE_ID,
       command: { command: "list_tabs", args: {} },
     });
     expect(response.structuredContent).toEqual({
@@ -618,13 +624,17 @@ describe("browser MCP tools", () => {
         message: "Browser tools are disabled.",
         retryable: false,
       },
-      context: { agentId: "agent-1", cwd: REPO_CWD },
+      context: { agentId: "agent-1", cwd: REPO_CWD, workspaceId: BROWSER_WORKSPACE_ID },
     });
   });
 
   it("wires browser tools through the browser tools broker", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({ id: "agent-1", cwd: REPO_CWD });
+    spies.agentManager.getAgent.mockReturnValue({
+      id: "agent-1",
+      cwd: REPO_CWD,
+      workspaceId: BROWSER_WORKSPACE_ID,
+    });
     const execute = vi.fn().mockResolvedValue({
       requestId: "req-browser-tabs",
       ok: true,
@@ -645,6 +655,7 @@ describe("browser MCP tools", () => {
     expect(execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: REPO_CWD,
+      workspaceId: BROWSER_WORKSPACE_ID,
       command: { command: "list_tabs", args: {} },
     });
     expect(response.content).toEqual([
@@ -656,6 +667,45 @@ describe("browser MCP tools", () => {
     expect(response.structuredContent).toEqual({
       ok: true,
       result: { command: "list_tabs", tabs: [] },
+      context: { agentId: "agent-1", cwd: REPO_CWD, workspaceId: BROWSER_WORKSPACE_ID },
+    });
+  });
+
+  it("tells browser callers without a workspace how to proceed before broker execution", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.getAgent.mockReturnValue({ id: "agent-1", cwd: REPO_CWD });
+    const execute = vi.fn().mockResolvedValue({
+      requestId: "req-browser-tabs",
+      ok: true,
+      result: { command: "list_tabs", tabs: [] },
+    });
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      browserToolsBroker: { execute } as never,
+      callerAgentId: "agent-1",
+      logger,
+    });
+    const tool = registeredTool(server, "browser_list_tabs");
+
+    const response = await tool.handler({});
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(response.content).toEqual([
+      {
+        type: "text",
+        text: "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.",
+      },
+    ]);
+    expect(response.structuredContent).toEqual({
+      ok: false,
+      error: {
+        code: "browser_denied",
+        message:
+          "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.",
+        retryable: false,
+      },
       context: { agentId: "agent-1", cwd: REPO_CWD },
     });
   });
