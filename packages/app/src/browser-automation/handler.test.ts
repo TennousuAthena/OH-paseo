@@ -70,8 +70,11 @@ function browserNewTabRequest(): BrowserAutomationExecuteRequest {
     type: "browser.automation.execute.request",
     requestId: "req-new",
     agentId: "agent-1",
-    workspaceId: "/repo",
-    command: { command: "new_tab", args: { workspaceId: "/repo", url: "https://example.com" } },
+    workspaceId: "wks_workspace_a",
+    command: {
+      command: "new_tab",
+      args: { workspaceId: "wks_workspace_a", url: "https://example.com" },
+    },
   };
 }
 
@@ -108,7 +111,7 @@ function waitForAsyncWork(): Promise<void> {
 function currentBrowserTabs() {
   return Object.values(useBrowserStore.getState().browsersById).map((browser) => ({
     browserId: browser.browserId,
-    workspaceId: "/repo",
+    workspaceId: "wks_workspace_a",
     url: browser.url,
     title: browser.title,
     isActive: true,
@@ -131,7 +134,7 @@ describe("mountBrowserAutomationHandler", () => {
     const executeAutomationCommand = vi.fn(async () => currentListTabsPayload());
     const workspaceKey = buildWorkspaceTabPersistenceKey({
       serverId: "server-1",
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
     });
     if (!workspaceKey) throw new Error("expected workspace key");
     const focusedTabId = useWorkspaceLayoutStore
@@ -171,7 +174,7 @@ describe("mountBrowserAutomationHandler", () => {
     expect(layout.root.pane.focusedTabId).toBe(focusedTabId);
     expect(registerWorkspaceBrowser).toHaveBeenCalledWith({
       browserId: payload.result.browserId,
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
     });
     expect(setAgentActiveBrowser).toHaveBeenCalledWith({
       agentId: "agent-1",

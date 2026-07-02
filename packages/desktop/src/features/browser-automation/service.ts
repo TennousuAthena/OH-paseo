@@ -319,6 +319,7 @@ const commandHandlers: Partial<Record<BrowserAutomationCommand["command"], Comma
     const uploadCommand = command as Extract<BrowserAutomationCommand, { command: "upload" }>;
     return executeUpload(
       requestId,
+      request.cwd,
       workspaceId,
       uploadCommand.args.browserId ?? request.browserId,
       { ref: uploadCommand.args.ref, filePaths: uploadCommand.args.filePaths },
@@ -1273,6 +1274,7 @@ function isAllowedPageUrl(value: string): boolean {
 
 async function executeUpload(
   requestId: string,
+  cwd: string | undefined,
   workspaceId: string | undefined,
   browserId: string | undefined,
   input: { ref: string; filePaths: string[] },
@@ -1309,9 +1311,9 @@ async function executeUpload(
   if (typeof queried.nodeId !== "number" || queried.nodeId <= 0) {
     return staleRefFailure(requestId, input.ref);
   }
-  const workspaceRoot = resolveUploadWorkspaceRoot({ workspaceId, target, registry });
+  const workspaceRoot = resolveUploadWorkspaceRoot(cwd);
   if (!workspaceRoot) {
-    return fail(requestId, "browser_unsupported", "browser_upload requires a workspace target");
+    return fail(requestId, "browser_unsupported", "browser_upload requires request cwd");
   }
   const filePaths = resolveWorkspaceFilePaths(input.filePaths, workspaceRoot);
   if (!filePaths) {
@@ -1338,14 +1340,8 @@ async function executeUpload(
   };
 }
 
-function resolveUploadWorkspaceRoot(params: {
-  workspaceId: string | undefined;
-  target: ResolvedTabTarget;
-  registry: BrowserRegistry;
-}): string | null {
-  const workspaceRoot =
-    params.workspaceId ?? params.registry.getBrowserWorkspaceId(params.target.browserId);
-  return workspaceRoot ? resolvePath(workspaceRoot) : null;
+function resolveUploadWorkspaceRoot(cwd: string | undefined): string | null {
+  return cwd ? resolvePath(cwd) : null;
 }
 
 function resolveWorkspaceFilePaths(filePaths: string[], workspaceRoot: string): string[] | null {

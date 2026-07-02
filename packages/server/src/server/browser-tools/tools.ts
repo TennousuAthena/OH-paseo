@@ -10,6 +10,7 @@ import type {
 interface CallerAgentContext {
   id: string;
   cwd: string;
+  workspaceId?: string;
 }
 
 export interface RegisterBrowserToolsOptions {
@@ -839,10 +840,10 @@ function resolveBrowserToolContext(options: RegisterBrowserToolsOptions): {
   workspaceId?: string;
 } {
   const callerAgent = options.resolveCallerAgent();
-  const cwd = callerAgent?.cwd;
   return {
     ...(options.callerAgentId ? { agentId: options.callerAgentId } : {}),
-    ...(cwd ? { cwd, workspaceId: cwd } : {}),
+    ...(callerAgent?.cwd ? { cwd: callerAgent.cwd } : {}),
+    ...(callerAgent?.workspaceId ? { workspaceId: callerAgent.workspaceId } : {}),
   };
 }
 

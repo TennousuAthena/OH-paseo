@@ -11,7 +11,11 @@ interface RegisteredTool {
   }>;
 }
 
-function createHarness(options?: { brokerResponse?: BrowserToolsResponsePayload }) {
+function createHarness(options?: {
+  brokerResponse?: BrowserToolsResponsePayload;
+  resolveCallerAgent?: RegisterBrowserToolsOptions["resolveCallerAgent"];
+  callerAgentId?: string | null;
+}) {
   const tools = new Map<string, RegisteredTool>();
   const execute = vi.fn(async () => {
     return (
@@ -43,8 +47,12 @@ function createHarness(options?: { brokerResponse?: BrowserToolsResponsePayload 
   registerBrowserTools({
     registerTool,
     broker: { execute } as unknown as BrowserToolsBroker,
-    callerAgentId: "agent-1",
-    resolveCallerAgent: () => ({ id: "agent-1", cwd: "/repo" }),
+    ...(options?.callerAgentId !== null
+      ? { callerAgentId: options?.callerAgentId ?? "agent-1" }
+      : {}),
+    resolveCallerAgent:
+      options?.resolveCallerAgent ??
+      (() => ({ id: "agent-1", cwd: "/repo", workspaceId: "wks_workspace_a" })),
   });
 
   return { tools, execute };
@@ -67,8 +75,8 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "list_tabs", args: { workspaceId: "/repo" } },
+      workspaceId: "wks_workspace_a",
+      command: { command: "list_tabs", args: { workspaceId: "wks_workspace_a" } },
     });
     expect(response.content).toEqual([
       {
@@ -90,8 +98,37 @@ describe("registerBrowserTools", () => {
           },
         ],
       },
-      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "/repo" },
+      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "wks_workspace_a" },
     });
+  });
+
+  it("omits workspaceId when the caller agent has no workspaceId", async () => {
+    const harness = createHarness({
+      resolveCallerAgent: () => ({ id: "agent-1", cwd: "/repo" }),
+    });
+
+    const response = await tool(harness, "browser_list_tabs").handler({});
+
+    expect(harness.execute).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      cwd: "/repo",
+      command: { command: "list_tabs", args: {} },
+    });
+    expect(response.structuredContent?.context).toEqual({ agentId: "agent-1", cwd: "/repo" });
+  });
+
+  it("uses empty browser context when there is no caller agent", async () => {
+    const harness = createHarness({
+      callerAgentId: null,
+      resolveCallerAgent: () => null,
+    });
+
+    const response = await tool(harness, "browser_list_tabs").handler({});
+
+    expect(harness.execute).toHaveBeenCalledWith({
+      command: { command: "list_tabs", args: {} },
+    });
+    expect(response.structuredContent?.context).toEqual({});
   });
 
   it("registers browser_new_tab and returns the created tab handle", async () => {
@@ -102,7 +139,7 @@ describe("registerBrowserTools", () => {
         result: {
           command: "new_tab",
           browserId: "browser-new",
-          workspaceId: "/repo",
+          workspaceId: "wks_workspace_a",
           url: "https://example.com",
         },
       },
@@ -113,10 +150,10 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
       command: {
         command: "new_tab",
-        args: { workspaceId: "/repo", url: "https://example.com" },
+        args: { workspaceId: "wks_workspace_a", url: "https://example.com" },
       },
     });
     expect(response.content).toEqual([
@@ -150,11 +187,11 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
       browserId: "browser-2",
       command: {
         command: "page_info",
-        args: { workspaceId: "/repo", browserId: "browser-2" },
+        args: { workspaceId: "wks_workspace_a", browserId: "browser-2" },
       },
     });
     expect(response.content).toEqual([
@@ -172,7 +209,12 @@ describe("registerBrowserTools", () => {
           isLoading: false,
         },
       },
-      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "/repo", browserId: "browser-2" },
+      context: {
+        agentId: "agent-1",
+        cwd: "/repo",
+        workspaceId: "wks_workspace_a",
+        browserId: "browser-2",
+      },
     });
   });
 
@@ -184,7 +226,7 @@ describe("registerBrowserTools", () => {
         result: {
           command: "snapshot",
           browserId: "browser-1",
-          workspaceId: "/repo",
+          workspaceId: "wks_workspace_a",
           url: "https://example.com/form",
           title: "Fixture",
           elements: [
@@ -206,8 +248,8 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "snapshot", args: { workspaceId: "/repo" } },
+      workspaceId: "wks_workspace_a",
+      command: { command: "snapshot", args: { workspaceId: "wks_workspace_a" } },
     });
     expect(response.content).toEqual([{ type: "text", text: "Snapshot captured 1 element." }]);
     expect(response.structuredContent).toEqual({
@@ -215,7 +257,7 @@ describe("registerBrowserTools", () => {
       result: {
         command: "snapshot",
         browserId: "browser-1",
-        workspaceId: "/repo",
+        workspaceId: "wks_workspace_a",
         url: "https://example.com/form",
         title: "Fixture",
         elements: [
@@ -229,7 +271,7 @@ describe("registerBrowserTools", () => {
           },
         ],
       },
-      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "/repo" },
+      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "wks_workspace_a" },
     });
   });
 
@@ -247,8 +289,11 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "set_background", args: { workspaceId: "/repo", color: "red" } },
+      workspaceId: "wks_workspace_a",
+      command: {
+        command: "set_background",
+        args: { workspaceId: "wks_workspace_a", color: "red" },
+      },
     });
     expect(response.content).toEqual([
       { type: "text", text: "Set browser page background to red." },
@@ -269,14 +314,14 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "click", args: { workspaceId: "/repo", ref: "@e2" } },
+      workspaceId: "wks_workspace_a",
+      command: { command: "click", args: { workspaceId: "wks_workspace_a", ref: "@e2" } },
     });
     expect(response.content).toEqual([{ type: "text", text: "Clicked browser element @e2." }]);
     expect(response.structuredContent).toEqual({
       ok: true,
       result: { command: "click", browserId: "browser-1", ref: "@e2" },
-      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "/repo" },
+      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "wks_workspace_a" },
     });
   });
 
@@ -294,14 +339,17 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "fill", args: { workspaceId: "/repo", ref: "@e1", value: "Ada" } },
+      workspaceId: "wks_workspace_a",
+      command: {
+        command: "fill",
+        args: { workspaceId: "wks_workspace_a", ref: "@e1", value: "Ada" },
+      },
     });
     expect(response.content).toEqual([{ type: "text", text: "Filled browser element @e1." }]);
     expect(response.structuredContent).toEqual({
       ok: true,
       result: { command: "fill", browserId: "browser-1", ref: "@e1" },
-      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "/repo" },
+      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "wks_workspace_a" },
     });
   });
 
@@ -322,18 +370,18 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
       timeoutMs: 2000,
       command: {
         command: "wait",
-        args: { workspaceId: "/repo", text: "Ready", timeoutMs: 1000 },
+        args: { workspaceId: "wks_workspace_a", text: "Ready", timeoutMs: 1000 },
       },
     });
     expect(response.content).toEqual([{ type: "text", text: "Browser wait matched text." }]);
     expect(response.structuredContent).toEqual({
       ok: true,
       result: { command: "wait", browserId: "browser-1", matched: "text" },
-      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "/repo" },
+      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "wks_workspace_a" },
     });
   });
 
@@ -351,8 +399,11 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "type", args: { workspaceId: "/repo", ref: "@e1", text: "Ada" } },
+      workspaceId: "wks_workspace_a",
+      command: {
+        command: "type",
+        args: { workspaceId: "wks_workspace_a", ref: "@e1", text: "Ada" },
+      },
     });
     expect(response.content).toEqual([{ type: "text", text: "Typed into browser element @e1." }]);
   });
@@ -374,10 +425,10 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
       command: {
         command: "keypress",
-        args: { workspaceId: "/repo", ref: "@e1", key: "Enter" },
+        args: { workspaceId: "wks_workspace_a", ref: "@e1", key: "Enter" },
       },
     });
     expect(response.content).toEqual([
@@ -401,10 +452,10 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
       command: {
         command: "navigate",
-        args: { workspaceId: "/repo", url: "https://example.com/next" },
+        args: { workspaceId: "wks_workspace_a", url: "https://example.com/next" },
       },
     });
     expect(response.content).toEqual([
@@ -426,8 +477,8 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "back", args: { workspaceId: "/repo" } },
+      workspaceId: "wks_workspace_a",
+      command: { command: "back", args: { workspaceId: "wks_workspace_a" } },
     });
     expect(response.content).toEqual([{ type: "text", text: "Browser back complete." }]);
   });
@@ -453,8 +504,8 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "screenshot", args: { workspaceId: "/repo" } },
+      workspaceId: "wks_workspace_a",
+      command: { command: "screenshot", args: { workspaceId: "wks_workspace_a" } },
     });
     expect(response.content).toEqual([
       { type: "text", text: "Captured browser screenshot (100x50)." },
@@ -488,8 +539,8 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "logs", args: { workspaceId: "/repo", maxEntries: 25 } },
+      workspaceId: "wks_workspace_a",
+      command: { command: "logs", args: { workspaceId: "wks_workspace_a", maxEntries: 25 } },
     });
     expect(response.content).toEqual([
       { type: "text", text: "Read 1 console log and 1 network entry." },
@@ -517,8 +568,8 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "storage", args: { workspaceId: "/repo" } },
+      workspaceId: "wks_workspace_a",
+      command: { command: "storage", args: { workspaceId: "wks_workspace_a" } },
     });
     expect(response.content).toEqual([
       { type: "text", text: "Read 1 cookie, 1 localStorage entry, and 1 sessionStorage entry." },
@@ -547,11 +598,11 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
       command: {
         command: "environment",
         args: {
-          workspaceId: "/repo",
+          workspaceId: "wks_workspace_a",
           viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
           geolocation: { latitude: 37.7749, longitude: -122.4194, accuracy: 5 },
         },
@@ -583,8 +634,8 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "full_page_screenshot", args: { workspaceId: "/repo" } },
+      workspaceId: "wks_workspace_a",
+      command: { command: "full_page_screenshot", args: { workspaceId: "wks_workspace_a" } },
     });
     expect(response.content).toEqual([
       { type: "text", text: "Captured full-page browser screenshot (390x1200)." },
@@ -611,10 +662,10 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
       command: {
         command: "pdf",
-        args: { workspaceId: "/repo", landscape: true, printBackground: true },
+        args: { workspaceId: "wks_workspace_a", landscape: true, printBackground: true },
       },
     });
     expect(response.content).toEqual([{ type: "text", text: "Exported browser page PDF." }]);
@@ -644,10 +695,14 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
       command: {
         command: "download",
-        args: { workspaceId: "/repo", url: "https://example.com/file.txt", fileName: "file.txt" },
+        args: {
+          workspaceId: "wks_workspace_a",
+          url: "https://example.com/file.txt",
+          fileName: "file.txt",
+        },
       },
     });
     expect(response.content).toEqual([
@@ -677,10 +732,10 @@ describe("registerBrowserTools", () => {
     expect(harness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
       command: {
         command: "upload",
-        args: { workspaceId: "/repo", ref: "@e1", filePaths: ["/tmp/file.txt"] },
+        args: { workspaceId: "wks_workspace_a", ref: "@e1", filePaths: ["/tmp/file.txt"] },
       },
     });
     expect(response.content).toEqual([
@@ -700,8 +755,8 @@ describe("registerBrowserTools", () => {
     expect(focusHarness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "focus", args: { workspaceId: "/repo", ref: "@e1" } },
+      workspaceId: "wks_workspace_a",
+      command: { command: "focus", args: { workspaceId: "wks_workspace_a", ref: "@e1" } },
     });
     expect(focusResponse.content).toEqual([{ type: "text", text: "Focused browser element @e1." }]);
 
@@ -719,8 +774,11 @@ describe("registerBrowserTools", () => {
     expect(checkHarness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "check", args: { workspaceId: "/repo", ref: "@e2", checked: false } },
+      workspaceId: "wks_workspace_a",
+      command: {
+        command: "check",
+        args: { workspaceId: "wks_workspace_a", ref: "@e2", checked: false },
+      },
     });
     expect(checkResponse.content).toEqual([
       { type: "text", text: "Unchecked browser element @e2." },
@@ -740,8 +798,11 @@ describe("registerBrowserTools", () => {
     expect(selectHarness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "select", args: { workspaceId: "/repo", ref: "@e3", value: "us" } },
+      workspaceId: "wks_workspace_a",
+      command: {
+        command: "select",
+        args: { workspaceId: "wks_workspace_a", ref: "@e3", value: "us" },
+      },
     });
     expect(selectResponse.content).toEqual([
       { type: "text", text: "Selected us in browser element @e3." },
@@ -758,8 +819,8 @@ describe("registerBrowserTools", () => {
     expect(hoverHarness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
-      command: { command: "hover", args: { workspaceId: "/repo", ref: "@e4" } },
+      workspaceId: "wks_workspace_a",
+      command: { command: "hover", args: { workspaceId: "wks_workspace_a", ref: "@e4" } },
     });
     expect(hoverResponse.content).toEqual([{ type: "text", text: "Hovered browser element @e4." }]);
 
@@ -777,10 +838,10 @@ describe("registerBrowserTools", () => {
     expect(dragHarness.execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: "/repo",
-      workspaceId: "/repo",
+      workspaceId: "wks_workspace_a",
       command: {
         command: "drag",
-        args: { workspaceId: "/repo", sourceRef: "@e4", targetRef: "@e5" },
+        args: { workspaceId: "wks_workspace_a", sourceRef: "@e4", targetRef: "@e5" },
       },
     });
     expect(dragResponse.content).toEqual([
@@ -816,7 +877,7 @@ describe("registerBrowserTools", () => {
         message: "Browser tools are disabled. Enable daemon.browserTools.enabled to use them.",
         retryable: false,
       },
-      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "/repo" },
+      context: { agentId: "agent-1", cwd: "/repo", workspaceId: "wks_workspace_a" },
     });
   });
 
