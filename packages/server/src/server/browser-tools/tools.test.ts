@@ -13,6 +13,9 @@ const BROWSER_ID = "11111111-1111-4111-8111-111111111111";
 const BROWSER_ID_MESSAGE =
   "browserId must be a real id returned by browser_new_tab or browser_list_tabs";
 const WAIT_CONDITION_MESSAGE = "browser_wait requires exactly one of text or url";
+const HTTP_URL_MESSAGE = "URL must use http/https only";
+const WORKSPACE_CONTEXT_MESSAGE =
+  "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.";
 
 interface RegisteredTool {
   config: PaseoToolConfig;
@@ -65,6 +68,10 @@ class BrowserToolHarness {
     return this.get(name).handler(parsed, {});
   }
 
+  public outputParses(name: string, output: unknown) {
+    return schemaFor(this.get(name).config.outputSchema).safeParse(output);
+  }
+
   private get(name: string): RegisteredTool {
     const tool = this.tools.get(name);
     if (!tool) {
@@ -103,6 +110,49 @@ function listTabsPayload(): Extract<BrowserToolsResponsePayload, { ok: true }> {
   };
 }
 
+function newTabPayload(): Extract<BrowserToolsResponsePayload, { ok: true }> {
+  return {
+    requestId: "req-new-tab",
+    ok: true,
+    result: {
+      command: "new_tab",
+      browserId: BROWSER_ID,
+      workspaceId: "wks_workspace_a",
+      url: "https://example.com",
+    },
+  };
+}
+
+function snapshotPayload(): Extract<BrowserToolsResponsePayload, { ok: true }> {
+  return {
+    requestId: "req-snapshot",
+    ok: true,
+    result: {
+      command: "snapshot",
+      browserId: BROWSER_ID,
+      workspaceId: "wks_workspace_a",
+      url: "https://example.com",
+      title: "Example",
+      elements: [],
+    },
+  };
+}
+
+function screenshotPayload(): Extract<BrowserToolsResponsePayload, { ok: true }> {
+  return {
+    requestId: "req-screenshot",
+    ok: true,
+    result: {
+      command: "screenshot",
+      browserId: BROWSER_ID,
+      mimeType: "image/png",
+      dataBase64: "iVBORw0KGgo=",
+      width: 800,
+      height: 600,
+    },
+  };
+}
+
 describe("registerBrowserTools", () => {
   test("list tabs sends workspace in the request envelope", async () => {
     const harness = new BrowserToolHarness();
@@ -127,16 +177,7 @@ describe("registerBrowserTools", () => {
 
   test("new tab sends workspace in the request envelope", async () => {
     const harness = new BrowserToolHarness();
-    harness.broker.setResponse({
-      requestId: "req-new-tab",
-      ok: true,
-      result: {
-        command: "new_tab",
-        browserId: BROWSER_ID,
-        workspaceId: "wks_workspace_a",
-        url: "https://example.com",
-      },
-    });
+    harness.broker.setResponse(newTabPayload());
 
     const response = await harness.execute("browser_new_tab", { url: "https://example.com" });
 
@@ -154,6 +195,155 @@ describe("registerBrowserTools", () => {
         text: `Created browser tab browserId=${BROWSER_ID} url=https://example.com. Use this browserId for tab-scoped browser tools.`,
       },
     ]);
+  });
+
+  test.each([
+    {
+      name: "navigate accepts localhost without a scheme as http",
+      toolName: "browser_navigate",
+      input: { browserId: BROWSER_ID, url: "localhost:3000" },
+      expected: { browserId: BROWSER_ID, url: "http://localhost:3000" },
+    },
+    {
+      name: "download accepts an IP host without a scheme as http",
+      toolName: "browser_download",
+      input: { browserId: BROWSER_ID, url: "127.0.0.1:8081/admin" },
+      expected: { browserId: BROWSER_ID, url: "http://127.0.0.1:8081/admin" },
+    },
+    {
+      name: "new tab accepts a domain path without a scheme as http",
+      toolName: "browser_new_tab",
+      input: { url: "example.com/x" },
+      expected: { url: "http://example.com/x" },
+    },
+    {
+      name: "navigate keeps https URLs unchanged",
+      toolName: "browser_navigate",
+      input: { browserId: BROWSER_ID, url: "https://example.com/x" },
+      expected: { browserId: BROWSER_ID, url: "https://example.com/x" },
+    },
+  ])("$name", ({ toolName, input, expected }) => {
+    const harness = new BrowserToolHarness();
+
+    const parsed = harness.validate(toolName, input);
+
+    expect(parsed).toEqual({ success: true, data: expected });
+  });
+
+  test.each([
+    {
+      name: "navigate rejects file URLs",
+      toolName: "browser_navigate",
+      input: { browserId: BROWSER_ID, url: "file:///tmp/index.html" },
+    },
+    {
+      name: "download rejects file URLs",
+      toolName: "browser_download",
+      input: { browserId: BROWSER_ID, url: "file:///tmp/archive.zip" },
+    },
+    {
+      name: "new tab rejects file URLs",
+      toolName: "browser_new_tab",
+      input: { url: "file:///tmp/index.html" },
+    },
+  ])("$name", ({ toolName, input }) => {
+    const harness = new BrowserToolHarness();
+
+    const parsed = harness.validate(toolName, input);
+
+    expect(parsed).toMatchObject({
+      success: false,
+      error: { issues: [expect.objectContaining({ message: HTTP_URL_MESSAGE })] },
+    });
+  });
+
+  test("list tabs tells agents without a workspace how to proceed", async () => {
+    const harness = new BrowserToolHarness({ id: "agent-1", cwd: "/repo" });
+
+    const response = await harness.execute("browser_list_tabs", {});
+
+    expect(harness.broker.calls).toEqual([]);
+    expect(response.content).toEqual([{ type: "text", text: WORKSPACE_CONTEXT_MESSAGE }]);
+    expect(response.structuredContent).toEqual({
+      ok: false,
+      error: {
+        code: "browser_denied",
+        message: WORKSPACE_CONTEXT_MESSAGE,
+        retryable: false,
+      },
+      context: {
+        agentId: "agent-1",
+        cwd: "/repo",
+      },
+    });
+  });
+
+  test("new tab tells agents without a workspace how to proceed", async () => {
+    const harness = new BrowserToolHarness({ id: "agent-1", cwd: "/repo" });
+
+    const response = await harness.execute("browser_new_tab", {});
+
+    expect(harness.broker.calls).toEqual([]);
+    expect(response.content).toEqual([{ type: "text", text: WORKSPACE_CONTEXT_MESSAGE }]);
+    expect(response.structuredContent).toEqual({
+      ok: false,
+      error: {
+        code: "browser_denied",
+        message: WORKSPACE_CONTEXT_MESSAGE,
+        retryable: false,
+      },
+      context: {
+        agentId: "agent-1",
+        cwd: "/repo",
+      },
+    });
+  });
+
+  test("new tab declares the shape it returns", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(newTabPayload());
+
+    const response = await harness.execute("browser_new_tab", {});
+
+    expect(harness.outputParses("browser_new_tab", response.structuredContent)).toEqual({
+      success: true,
+      data: response.structuredContent,
+    });
+  });
+
+  test("list tabs declares the shape it returns", async () => {
+    const harness = new BrowserToolHarness();
+
+    const response = await harness.execute("browser_list_tabs", {});
+
+    expect(harness.outputParses("browser_list_tabs", response.structuredContent)).toEqual({
+      success: true,
+      data: response.structuredContent,
+    });
+  });
+
+  test("snapshot declares the shape it returns", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(snapshotPayload());
+
+    const response = await harness.execute("browser_snapshot", { browserId: BROWSER_ID });
+
+    expect(harness.outputParses("browser_snapshot", response.structuredContent)).toEqual({
+      success: true,
+      data: response.structuredContent,
+    });
+  });
+
+  test("screenshot declares the shape it returns", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(screenshotPayload());
+
+    const response = await harness.execute("browser_screenshot", { browserId: BROWSER_ID });
+
+    expect(harness.outputParses("browser_screenshot", response.structuredContent)).toEqual({
+      success: true,
+      data: response.structuredContent,
+    });
   });
 
   test("snapshot rejects calls without a browser id", () => {
@@ -180,18 +370,7 @@ describe("registerBrowserTools", () => {
 
   test("snapshot sends browser id in command args only", async () => {
     const harness = new BrowserToolHarness();
-    harness.broker.setResponse({
-      requestId: "req-snapshot",
-      ok: true,
-      result: {
-        command: "snapshot",
-        browserId: BROWSER_ID,
-        workspaceId: "wks_workspace_a",
-        url: "https://example.com",
-        title: "Example",
-        elements: [],
-      },
-    });
+    harness.broker.setResponse(snapshotPayload());
 
     const response = await harness.execute("browser_snapshot", { browserId: BROWSER_ID });
 
@@ -288,16 +467,41 @@ describe("registerBrowserTools", () => {
     expect(response.content).toEqual([{ type: "text", text: "Browser wait matched text." }]);
   });
 
-  test("tools keep empty context when there is no caller agent", async () => {
+  test("tab tools keep empty context when there is no caller agent", async () => {
     const harness = new BrowserToolHarness(null, null);
+    harness.broker.setResponse({
+      requestId: "req-page-info",
+      ok: true,
+      result: {
+        command: "page_info",
+        tab: {
+          browserId: BROWSER_ID,
+          url: "https://example.com",
+          title: "Example",
+          isActive: false,
+          isLoading: false,
+        },
+      },
+    });
 
-    const response = await harness.execute("browser_list_tabs", {});
+    const response = await harness.execute("browser_page_info", { browserId: BROWSER_ID });
 
-    expect(harness.broker.calls).toEqual([{ command: { command: "list_tabs", args: {} } }]);
+    expect(harness.broker.calls).toEqual([
+      { command: { command: "page_info", args: { browserId: BROWSER_ID } } },
+    ]);
     expect(response.structuredContent).toEqual({
       ok: true,
-      result: listTabsPayload().result,
-      context: {},
+      result: {
+        command: "page_info",
+        tab: {
+          browserId: BROWSER_ID,
+          url: "https://example.com",
+          title: "Example",
+          isActive: false,
+          isLoading: false,
+        },
+      },
+      context: { browserId: BROWSER_ID },
     });
   });
 });

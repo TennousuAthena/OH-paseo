@@ -1,5 +1,36 @@
 import { z } from "zod";
-import { BrowserAutomationBrowserIdSchema } from "@getpaseo/protocol/browser-automation/rpc-schemas";
+import {
+  BrowserAutomationBackResultSchema,
+  BrowserAutomationBrowserIdSchema,
+  BrowserAutomationCheckResultSchema,
+  BrowserAutomationClearResultSchema,
+  BrowserAutomationClickResultSchema,
+  BrowserAutomationDownloadResultSchema,
+  BrowserAutomationDragResultSchema,
+  BrowserAutomationEnvironmentResultSchema,
+  BrowserAutomationErrorSchema,
+  BrowserAutomationFillResultSchema,
+  BrowserAutomationFocusResultSchema,
+  BrowserAutomationForwardResultSchema,
+  BrowserAutomationFullPageScreenshotResultSchema,
+  BrowserAutomationHoverResultSchema,
+  BrowserAutomationKeypressResultSchema,
+  BrowserAutomationListTabsResultSchema,
+  BrowserAutomationLogsResultSchema,
+  BrowserAutomationNavigateResultSchema,
+  BrowserAutomationNewTabResultSchema,
+  BrowserAutomationPageInfoResultSchema,
+  BrowserAutomationPdfResultSchema,
+  BrowserAutomationReloadResultSchema,
+  BrowserAutomationScreenshotResultSchema,
+  BrowserAutomationSelectResultSchema,
+  BrowserAutomationSetBackgroundResultSchema,
+  BrowserAutomationSnapshotResultSchema,
+  BrowserAutomationStorageResultSchema,
+  BrowserAutomationTypeResultSchema,
+  BrowserAutomationUploadResultSchema,
+  BrowserAutomationWaitResultSchema,
+} from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import type { BrowserToolsBroker } from "./broker.js";
 import type { BrowserToolsResponsePayload } from "./errors.js";
 import type {
@@ -29,26 +60,50 @@ export interface RegisterBrowserToolsOptions {
   resolveCallerAgent: () => CallerAgentContext | null;
 }
 
-const BrowserToolOutputSchema = z.object({
-  ok: z.boolean(),
-  result: z.unknown().optional(),
-  error: z
-    .object({
-      code: z.string(),
-      message: z.string(),
-      retryable: z.boolean(),
-    })
-    .optional(),
-  context: z
-    .object({
-      agentId: z.string().optional(),
-      cwd: z.string().optional(),
-      workspaceId: z.string().optional(),
-      browserId: z.string().optional(),
-    })
-    .optional(),
+const HTTP_URL_ONLY_MESSAGE = "URL must use http/https only";
+const WORKSPACE_CONTEXT_MESSAGE =
+  "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.";
+const SCHEMELESS_HTTP_URL_PATTERN =
+  /^(?:localhost|(?:\d{1,3}\.){3}\d{1,3}|\[[0-9a-f:.]+\]|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)(?::\d{1,5})?(?:[/?#].*)?$/i;
+
+const BrowserToolContextSchema = z.object({
+  agentId: z.string().optional(),
+  cwd: z.string().optional(),
+  workspaceId: z.string().optional(),
+  browserId: z.string().optional(),
 });
 
+const BrowserToolErrorOutputSchema = z.object({
+  ok: z.literal(false),
+  error: BrowserAutomationErrorSchema,
+  context: BrowserToolContextSchema,
+});
+
+function browserToolOutputSchema<ResultSchema extends z.ZodType>(resultSchema: ResultSchema) {
+  return z.discriminatedUnion("ok", [
+    z.object({
+      ok: z.literal(true),
+      result: resultSchema,
+      context: BrowserToolContextSchema,
+    }),
+    BrowserToolErrorOutputSchema,
+  ]);
+}
+
+const BrowserHttpUrlInputSchema = z
+  .string()
+  .trim()
+  .transform((value, context) => {
+    const normalized = normalizeHttpUrlInput(value);
+    if (!normalized) {
+      context.addIssue({
+        code: "custom",
+        message: HTTP_URL_ONLY_MESSAGE,
+      });
+      return z.NEVER;
+    }
+    return normalized;
+  });
 const BrowserRefInputSchema = z.string().regex(/^@e\d+$/);
 const BrowserWaitInputSchema = z
   .object({
@@ -61,18 +116,53 @@ const BrowserWaitInputSchema = z
     message: "browser_wait requires exactly one of text or url",
   });
 
+const BrowserToolOutputs = {
+  listTabs: browserToolOutputSchema(BrowserAutomationListTabsResultSchema),
+  newTab: browserToolOutputSchema(BrowserAutomationNewTabResultSchema),
+  pageInfo: browserToolOutputSchema(BrowserAutomationPageInfoResultSchema),
+  snapshot: browserToolOutputSchema(BrowserAutomationSnapshotResultSchema),
+  click: browserToolOutputSchema(BrowserAutomationClickResultSchema),
+  fill: browserToolOutputSchema(BrowserAutomationFillResultSchema),
+  wait: browserToolOutputSchema(BrowserAutomationWaitResultSchema),
+  type: browserToolOutputSchema(BrowserAutomationTypeResultSchema),
+  keypress: browserToolOutputSchema(BrowserAutomationKeypressResultSchema),
+  navigate: browserToolOutputSchema(BrowserAutomationNavigateResultSchema),
+  back: browserToolOutputSchema(BrowserAutomationBackResultSchema),
+  forward: browserToolOutputSchema(BrowserAutomationForwardResultSchema),
+  reload: browserToolOutputSchema(BrowserAutomationReloadResultSchema),
+  screenshot: browserToolOutputSchema(BrowserAutomationScreenshotResultSchema),
+  fullPageScreenshot: browserToolOutputSchema(BrowserAutomationFullPageScreenshotResultSchema),
+  pdf: browserToolOutputSchema(BrowserAutomationPdfResultSchema),
+  download: browserToolOutputSchema(BrowserAutomationDownloadResultSchema),
+  upload: browserToolOutputSchema(BrowserAutomationUploadResultSchema),
+  focus: browserToolOutputSchema(BrowserAutomationFocusResultSchema),
+  clear: browserToolOutputSchema(BrowserAutomationClearResultSchema),
+  check: browserToolOutputSchema(BrowserAutomationCheckResultSchema),
+  select: browserToolOutputSchema(BrowserAutomationSelectResultSchema),
+  hover: browserToolOutputSchema(BrowserAutomationHoverResultSchema),
+  drag: browserToolOutputSchema(BrowserAutomationDragResultSchema),
+  logs: browserToolOutputSchema(BrowserAutomationLogsResultSchema),
+  storage: browserToolOutputSchema(BrowserAutomationStorageResultSchema),
+  environment: browserToolOutputSchema(BrowserAutomationEnvironmentResultSchema),
+  setBackground: browserToolOutputSchema(BrowserAutomationSetBackgroundResultSchema),
+} as const;
+
 export function registerBrowserTools(options: RegisterBrowserToolsOptions): void {
   options.registerTool(
     "browser_list_tabs",
     {
       title: "List browser tabs",
       description:
-        "List open Paseo desktop browser tabs for this agent's workspace context. Use the returned browserId values for tab-scoped browser tools.",
+        "List open Paseo desktop browser tabs for this agent's workspace. Use returned browserId values with tab-scoped tools.",
       inputSchema: {},
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.listTabs,
     },
     async () => {
       const context = resolveBrowserToolContext(options);
+      const missingWorkspace = requireWorkspaceContext(context);
+      if (missingWorkspace) {
+        return missingWorkspace;
+      }
       const payload = await options.broker.execute({
         agentId: context.agentId,
         cwd: context.cwd,
@@ -91,14 +181,18 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Create browser tab",
       description:
-        "Create and focus a new Paseo desktop browser tab in this agent's workspace. Optionally pass an http(s) URL to open immediately. Returns the browserId for later tab-scoped browser tools.",
+        "Create and focus a new Paseo desktop browser tab in this agent's workspace. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools.",
       inputSchema: {
-        url: z.string().url().optional(),
+        url: BrowserHttpUrlInputSchema.optional(),
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.newTab,
     },
     async ({ url }) => {
       const context = resolveBrowserToolContext(options);
+      const missingWorkspace = requireWorkspaceContext(context);
+      if (missingWorkspace) {
+        return missingWorkspace;
+      }
       const payload = await options.broker.execute({
         agentId: context.agentId,
         cwd: context.cwd,
@@ -117,11 +211,11 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Get browser page info",
       description:
-        "Get page info for a Paseo desktop browser tab. Pass browserId from browser_new_tab or browser_list_tabs.",
+        "Get page info for a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.pageInfo,
     },
     async ({ browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -146,11 +240,11 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Snapshot browser page",
       description:
-        "Return a model-readable snapshot of a Paseo desktop browser tab. Pass browserId from browser_new_tab or browser_list_tabs. Snapshot refs like @e1 are valid until the page changes or a new snapshot is taken.",
+        "Return a model-readable snapshot of a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.snapshot,
     },
     async ({ browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -175,12 +269,12 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Click browser element",
       description:
-        "Click an element ref from the latest browser_snapshot for this agent's workspace browser tab.",
+        "Click an element in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.click,
     },
     async ({ ref, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -206,13 +300,13 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Fill browser element",
       description:
-        "Fill an input-like element ref from the latest browser_snapshot for this agent's workspace browser tab.",
+        "Fill an input-like element in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         value: z.string(),
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.fill,
     },
     async ({ ref, value, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -239,9 +333,9 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Wait for browser condition",
       description:
-        "Wait until a Paseo desktop browser tab contains text or reaches a URL fragment. Pass browserId from browser_new_tab or browser_list_tabs.",
+        "Wait until a Paseo desktop browser tab contains text or reaches a URL fragment. Use browserId from browser_new_tab or browser_list_tabs; waits up to 5s by default on the desktop side.",
       inputSchema: BrowserWaitInputSchema,
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.wait,
     },
     async ({ text, url, timeoutMs, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -270,13 +364,13 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Type into browser",
       description:
-        "Type text into an element ref from the latest browser_snapshot, or into the currently focused browser element when ref is omitted.",
+        "Type text into an element, or into the focused element when ref is omitted. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         text: z.string(),
         ref: BrowserRefInputSchema.optional(),
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.type,
     },
     async ({ text, ref, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -303,13 +397,13 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Press browser key",
       description:
-        "Dispatch a keypress to an element ref from the latest browser_snapshot, or to the currently focused browser element when ref is omitted.",
+        "Dispatch a keypress to an element, or to the focused element when ref is omitted. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         key: z.string().min(1),
         ref: BrowserRefInputSchema.optional(),
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.keypress,
     },
     async ({ key, ref, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -336,9 +430,9 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Navigate browser",
       description:
-        "Navigate a Paseo desktop browser tab to a URL. Pass browserId from browser_new_tab or browser_list_tabs.",
-      inputSchema: { url: z.string().min(1), browserId: BrowserAutomationBrowserIdSchema },
-      outputSchema: BrowserToolOutputSchema,
+        "Navigate a Paseo desktop browser tab to a URL. Use browserId from browser_new_tab or browser_list_tabs; pass an http(s) URL or a scheme-less host URL, which is treated as http.",
+      inputSchema: { url: BrowserHttpUrlInputSchema, browserId: BrowserAutomationBrowserIdSchema },
+      outputSchema: BrowserToolOutputs.navigate,
     },
     async ({ url, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -365,9 +459,9 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       name,
       {
         title: `Browser ${command}`,
-        description: `${command} a Paseo desktop browser tab. Pass browserId from browser_new_tab or browser_list_tabs.`,
+        description: `${command} a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.`,
         inputSchema: { browserId: BrowserAutomationBrowserIdSchema },
-        outputSchema: BrowserToolOutputSchema,
+        outputSchema: BrowserToolOutputs[command],
       },
       async ({ browserId }) => {
         const context = resolveBrowserToolContext(options);
@@ -393,9 +487,9 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Capture browser screenshot",
       description:
-        "Capture a PNG screenshot of a Paseo desktop browser tab. Pass browserId from browser_new_tab or browser_list_tabs.",
+        "Capture a PNG screenshot of a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
       inputSchema: { browserId: BrowserAutomationBrowserIdSchema },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.screenshot,
     },
     async ({ browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -419,9 +513,10 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     "browser_full_page_screenshot",
     {
       title: "Capture full-page browser screenshot",
-      description: "Capture a full-page PNG screenshot of a Paseo desktop browser tab.",
+      description:
+        "Capture a full-page PNG screenshot of a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
       inputSchema: { browserId: BrowserAutomationBrowserIdSchema },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.fullPageScreenshot,
     },
     async ({ browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -446,13 +541,13 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Export browser page PDF",
       description:
-        "Export a Paseo desktop browser tab as a PDF. Pass browserId from browser_new_tab or browser_list_tabs.",
+        "Export a Paseo desktop browser tab as a PDF. Use browserId from browser_new_tab or browser_list_tabs.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
         landscape: z.boolean().optional(),
         printBackground: z.boolean().default(true),
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.pdf,
     },
     async ({ browserId, landscape, printBackground }) => {
       const context = resolveBrowserToolContext(options);
@@ -478,13 +573,14 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     "browser_download",
     {
       title: "Download file in browser",
-      description: "Download a URL through the Paseo desktop browser session.",
+      description:
+        "Download a URL through a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; pass an http(s) URL or a scheme-less host URL, which is treated as http.",
       inputSchema: {
-        url: z.string().min(1),
+        url: BrowserHttpUrlInputSchema,
         fileName: z.string().min(1).optional(),
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.download,
     },
     async ({ url, fileName, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -511,13 +607,13 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Upload files in browser",
       description:
-        "Set workspace files on a file input ref from the latest browser_snapshot. Paths must resolve inside the agent workspace.",
+        "Set workspace files on a file input in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         filePaths: z.array(z.string().min(1)).min(1),
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.upload,
     },
     async ({ ref, filePaths, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -544,19 +640,22 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       name: "browser_focus",
       command: "focus",
       title: "Focus browser element",
-      description: "Focus an element ref from the latest browser_snapshot.",
+      description:
+        "Focus an element in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
     },
     {
       name: "browser_clear",
       command: "clear",
       title: "Clear browser element",
-      description: "Clear an input-like element ref from the latest browser_snapshot.",
+      description:
+        "Clear an input-like element in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
     },
     {
       name: "browser_hover",
       command: "hover",
       title: "Hover browser element",
-      description: "Hover an element ref from the latest browser_snapshot.",
+      description:
+        "Hover an element in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
     },
   ] as const) {
     options.registerTool(
@@ -565,7 +664,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
         title: toolConfig.title,
         description: toolConfig.description,
         inputSchema: { ref: BrowserRefInputSchema, browserId: BrowserAutomationBrowserIdSchema },
-        outputSchema: BrowserToolOutputSchema,
+        outputSchema: BrowserToolOutputs[toolConfig.command],
       },
       async ({ ref, browserId }) => {
         const context = resolveBrowserToolContext(options);
@@ -591,13 +690,14 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     "browser_check",
     {
       title: "Check browser control",
-      description: "Set a checkbox or radio ref from the latest browser_snapshot.",
+      description:
+        "Set a checkbox or radio control in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         checked: z.boolean().default(true),
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.check,
     },
     async ({ ref, checked, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -623,13 +723,14 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     "browser_select",
     {
       title: "Select browser option",
-      description: "Set a select element ref from the latest browser_snapshot to a value.",
+      description:
+        "Set a select element in a Paseo desktop browser tab to a value. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         value: z.string(),
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.select,
     },
     async ({ ref, value, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -656,13 +757,13 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Drag browser element",
       description:
-        "Drag a source element ref onto a target element ref from the latest browser_snapshot.",
+        "Drag one element onto another in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         sourceRef: BrowserRefInputSchema,
         targetRef: BrowserRefInputSchema,
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.drag,
     },
     async ({ sourceRef, targetRef, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -689,12 +790,12 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Read browser logs",
       description:
-        "Read recent console messages and browser performance network entries for a Paseo desktop browser tab.",
+        "Read recent console messages and browser performance network entries for a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; maxEntries defaults to 50.",
       inputSchema: {
         maxEntries: z.number().int().positive().max(200).optional(),
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.logs,
     },
     async ({ maxEntries, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -720,9 +821,9 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Read browser storage",
       description:
-        "Read cookies plus localStorage and sessionStorage for a Paseo desktop browser tab.",
+        "Read cookies plus localStorage and sessionStorage for a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
       inputSchema: { browserId: BrowserAutomationBrowserIdSchema },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.storage,
     },
     async ({ browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -746,7 +847,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     "browser_environment",
     {
       title: "Set/read browser environment",
-      description: "Set or read viewport and geolocation for a Paseo desktop browser tab.",
+      description:
+        "Set or read viewport and geolocation for a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
       inputSchema: {
         viewport: z
           .object({
@@ -764,7 +866,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
           .optional(),
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.environment,
     },
     async ({ viewport, geolocation, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -791,12 +893,12 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Set browser background",
       description:
-        "Set the current page background color in a Paseo desktop browser tab. Pass browserId from browser_new_tab or browser_list_tabs.",
+        "Set the current page background color in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
       inputSchema: {
         color: z.string().min(1),
         browserId: BrowserAutomationBrowserIdSchema,
       },
-      outputSchema: BrowserToolOutputSchema,
+      outputSchema: BrowserToolOutputs.setBackground,
     },
     async ({ color, browserId }) => {
       const context = resolveBrowserToolContext(options);
@@ -829,6 +931,56 @@ function resolveBrowserToolContext(options: RegisterBrowserToolsOptions): {
     ...(callerAgent?.cwd ? { cwd: callerAgent.cwd } : {}),
     ...(callerAgent?.workspaceId ? { workspaceId: callerAgent.workspaceId } : {}),
   };
+}
+
+function normalizeHttpUrlInput(value: string): string | null {
+  if (value.length === 0) {
+    return null;
+  }
+
+  const explicitHttpUrl = /^https?:\/\//i.test(value);
+  if (explicitHttpUrl) {
+    return isValidHttpUrl(value) ? value : null;
+  }
+
+  if (SCHEMELESS_HTTP_URL_PATTERN.test(value)) {
+    const normalized = `http://${value}`;
+    return isValidHttpUrl(normalized) ? normalized : null;
+  }
+
+  return null;
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function requireWorkspaceContext(context: {
+  agentId?: string;
+  cwd?: string;
+  workspaceId?: string;
+}): PaseoToolResult | null {
+  if (context.workspaceId) {
+    return null;
+  }
+
+  return browserToolResult({
+    payload: {
+      requestId: "browser-tools-workspace-context",
+      ok: false,
+      error: {
+        code: "browser_denied",
+        message: WORKSPACE_CONTEXT_MESSAGE,
+        retryable: false,
+      },
+    },
+    context,
+  });
 }
 
 function browserToolResult(params: {
