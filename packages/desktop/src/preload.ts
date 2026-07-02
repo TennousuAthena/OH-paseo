@@ -1,6 +1,81 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 type EventHandler = (payload: unknown) => void;
+type BrowserPixelCapturePrepareHandler = (input: {
+  browserId: string;
+}) => Promise<{ token: string }>;
+type BrowserPixelCaptureRestoreHandler = (input: { token: string }) => Promise<void>;
+
+let prepareForPixelCaptureHandler: BrowserPixelCapturePrepareHandler | null = null;
+let restorePixelCaptureHandler: BrowserPixelCaptureRestoreHandler | null = null;
+
+function readStringField(payload: unknown, key: string): string | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+  const value = payload[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+ipcRenderer.on("paseo:browser:capture-prepare", async (_event, payload: unknown) => {
+  const requestId = readStringField(payload, "requestId");
+  const browserId = readStringField(payload, "browserId");
+  if (!requestId || !browserId || !prepareForPixelCaptureHandler) {
+    ipcRenderer.send("paseo:browser:capture-prepared", {
+      requestId: requestId ?? "unknown",
+      ok: false,
+      message: "Browser pixel capture preparation is unavailable.",
+    });
+    return;
+  }
+
+  try {
+    const preparation = await prepareForPixelCaptureHandler({ browserId });
+    ipcRenderer.send("paseo:browser:capture-prepared", {
+      requestId,
+      ok: true,
+      token: preparation.token,
+    });
+  } catch (error) {
+    ipcRenderer.send("paseo:browser:capture-prepared", {
+      requestId,
+      ok: false,
+      message: errorMessage(error),
+    });
+  }
+});
+
+ipcRenderer.on("paseo:browser:capture-restore", async (_event, payload: unknown) => {
+  const requestId = readStringField(payload, "requestId");
+  const token = readStringField(payload, "token");
+  if (!requestId || !token || !restorePixelCaptureHandler) {
+    ipcRenderer.send("paseo:browser:capture-restored", {
+      requestId: requestId ?? "unknown",
+      ok: false,
+      message: "Browser pixel capture restore is unavailable.",
+    });
+    return;
+  }
+
+  try {
+    await restorePixelCaptureHandler({ token });
+    ipcRenderer.send("paseo:browser:capture-restored", { requestId, ok: true });
+  } catch (error) {
+    ipcRenderer.send("paseo:browser:capture-restored", {
+      requestId,
+      ok: false,
+      message: errorMessage(error),
+    });
+  }
+});
 
 contextBridge.exposeInMainWorld("paseoDesktop", {
   platform: process.platform,
@@ -90,5 +165,21 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     ) => ipcRenderer.invoke("paseo:browser:capture-element", browserId, rect),
     copyElement: (payload: { text?: string; imageDataUrl?: string }) =>
       ipcRenderer.invoke("paseo:browser:copy-element", payload),
+    onPrepareForPixelCapture: (handler: BrowserPixelCapturePrepareHandler): (() => void) => {
+      prepareForPixelCaptureHandler = handler;
+      return () => {
+        if (prepareForPixelCaptureHandler === handler) {
+          prepareForPixelCaptureHandler = null;
+        }
+      };
+    },
+    onRestorePixelCapture: (handler: BrowserPixelCaptureRestoreHandler): (() => void) => {
+      restorePixelCaptureHandler = handler;
+      return () => {
+        if (restorePixelCaptureHandler === handler) {
+          restorePixelCaptureHandler = null;
+        }
+      };
+    },
   },
 });

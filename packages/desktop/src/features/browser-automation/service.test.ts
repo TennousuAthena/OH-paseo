@@ -7,7 +7,12 @@ import type {
   BrowserAutomationExecuteRequest,
 } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
-import type { BrowserRegistry, TabContents, TabImage } from "./service.js";
+import type {
+  BrowserRegistry,
+  TabContents,
+  TabImage,
+  TabPixelCapturePreparation,
+} from "./service.js";
 import { executeAutomationCommand } from "./service.js";
 
 const BROWSER_A = "11111111-1111-4111-8111-111111111111";
@@ -36,6 +41,9 @@ class FakeTab implements TabContents {
   public readonly actions: string[] = [];
   public readonly capturedViewports: Array<{ stayHidden?: boolean }> = [];
   public readonly debugCommands: Array<{ command: string; params?: Record<string, unknown> }> = [];
+  public readonly restoredPixelCaptureTokens: string[] = [];
+  private readonly captureStartWaiters: Array<() => void> = [];
+  private readonly deferredCaptures: Array<(image: TabImage) => void> = [];
 
   public destroyed = false;
   public bodyText = "";
@@ -44,6 +52,9 @@ class FakeTab implements TabContents {
   public networkEntries: unknown[] = [];
   public consoleMessages: BrowserAutomationConsoleLogEntry[] = [];
   public captureNeverPaints = false;
+  public captureThrows = false;
+  public deferCaptures = false;
+  public prepareNeverAcks = false;
   public layoutMetrics = {
     cssLayoutViewport: { clientWidth: 390, clientHeight: 844 },
     cssContentSize: { width: 390, height: 1200 },
@@ -52,6 +63,7 @@ class FakeTab implements TabContents {
   public documentNodeId = 1;
   public queriedNodeId = 2;
   public backgroundThrottlingAllowed = true;
+  private nextPixelCapturePreparationId = 0;
 
   public constructor(
     public readonly id: number,
@@ -116,10 +128,33 @@ class FakeTab implements TabContents {
   public async capturePage(options?: { stayHidden?: boolean }): Promise<TabImage> {
     this.capturedViewports.push(options ?? {});
     this.actions.push("capture");
+    this.resolveCaptureStartWaiters();
+    if (this.captureThrows) {
+      throw new Error("capture failed");
+    }
     if (this.captureNeverPaints) {
       return new Promise<never>(() => {});
     }
+    if (this.deferCaptures) {
+      return new Promise<TabImage>((resolve) => {
+        this.deferredCaptures.push(resolve);
+      });
+    }
     return new FakeImage();
+  }
+
+  public async prepareForPixelCapture(): Promise<TabPixelCapturePreparation> {
+    this.actions.push("prepare");
+    if (this.prepareNeverAcks) {
+      return new Promise<never>(() => {});
+    }
+    const token = `capture-${++this.nextPixelCapturePreparationId}`;
+    return { token };
+  }
+
+  public async restorePixelCapture(preparation: TabPixelCapturePreparation): Promise<void> {
+    this.actions.push(`restore:${preparation.token}`);
+    this.restoredPixelCaptureTokens.push(preparation.token);
   }
 
   public invalidate(): void {
@@ -143,6 +178,7 @@ class FakeTab implements TabContents {
     command: string,
     params?: Record<string, unknown>,
   ): Promise<unknown> {
+    this.actions.push(`debug:${command}`);
     this.debugCommands.push({ command, ...(params ? { params } : {}) });
     if (command === "Page.getLayoutMetrics") {
       return this.layoutMetrics;
@@ -157,6 +193,33 @@ class FakeTab implements TabContents {
       return { nodeId: this.queriedNodeId };
     }
     return {};
+  }
+
+  public waitForCaptureStart(count: number): Promise<void> {
+    if (this.capturedViewports.length >= count) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      this.captureStartWaiters.push(() => {
+        if (this.capturedViewports.length >= count) {
+          resolve();
+        }
+      });
+    });
+  }
+
+  public finishNextCapture(): void {
+    const resolve = this.deferredCaptures.shift();
+    if (!resolve) {
+      throw new Error("No deferred capture is waiting");
+    }
+    resolve(new FakeImage());
+  }
+
+  private resolveCaptureStartWaiters(): void {
+    for (const waiter of this.captureStartWaiters.splice(0)) {
+      waiter();
+    }
   }
 }
 
@@ -852,9 +915,11 @@ describe("executeAutomationCommand", () => {
     });
     expect(browser.tab.capturedViewports).toEqual([{ stayHidden: false }]);
     expect(browser.tab.actions).toEqual([
+      "prepare",
       "background:false",
       "invalidate",
       "capture",
+      "restore:capture-1",
       "background:true",
     ]);
   });
@@ -882,14 +947,121 @@ describe("executeAutomationCommand", () => {
         },
       });
       expect(browser.tab.actions).toEqual([
+        "prepare",
         "background:false",
         "invalidate",
         "capture",
+        "restore:capture-1",
         "background:true",
       ]);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test("screenshot restores capture preparation when viewport capture fails", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.captureThrows = true;
+
+    await expect(
+      browser.execute({
+        command: "screenshot",
+        args: { browserId: BROWSER_A },
+      }),
+    ).rejects.toThrow("capture failed");
+
+    expect(browser.tab.actions).toEqual([
+      "prepare",
+      "background:false",
+      "invalidate",
+      "capture",
+      "restore:capture-1",
+      "background:true",
+    ]);
+  });
+
+  test("screenshot returns no-frame when capture preparation does not ack", async () => {
+    vi.useFakeTimers();
+    try {
+      const browser = new BrowserAutomationHarness();
+      browser.tab.prepareNeverAcks = true;
+
+      const resultPromise = browser.execute({
+        command: "screenshot",
+        args: { browserId: BROWSER_A },
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(resultPromise).resolves.toEqual({
+        requestId: "req-screenshot",
+        ok: false,
+        error: {
+          code: "screenshot_no_frame",
+          message:
+            "The browser tab has no painted frame. Focus the tab in the app, then try again.",
+          retryable: false,
+        },
+      });
+      expect(browser.tab.actions).toEqual(["prepare", "background:true"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("overlapping screenshots serialize capture preparation and restore", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.deferCaptures = true;
+
+    const first = browser.execute({
+      command: "screenshot",
+      args: { browserId: BROWSER_A },
+    });
+    await browser.tab.waitForCaptureStart(1);
+
+    const second = browser.execute(
+      {
+        command: "screenshot",
+        args: { browserId: BROWSER_A },
+      },
+      { requestId: "req-screenshot-2" },
+    );
+    await Promise.resolve();
+
+    expect(browser.tab.actions).toEqual(["prepare", "background:false", "invalidate", "capture"]);
+
+    browser.tab.finishNextCapture();
+    await browser.tab.waitForCaptureStart(2);
+
+    expect(browser.tab.actions).toEqual([
+      "prepare",
+      "background:false",
+      "invalidate",
+      "capture",
+      "restore:capture-1",
+      "background:true",
+      "prepare",
+      "background:false",
+      "invalidate",
+      "capture",
+    ]);
+
+    browser.tab.finishNextCapture();
+    await expect(first).resolves.toMatchObject({ requestId: "req-screenshot", ok: true });
+    await expect(second).resolves.toMatchObject({ requestId: "req-screenshot-2", ok: true });
+    expect(browser.tab.actions).toEqual([
+      "prepare",
+      "background:false",
+      "invalidate",
+      "capture",
+      "restore:capture-1",
+      "background:true",
+      "prepare",
+      "background:false",
+      "invalidate",
+      "capture",
+      "restore:capture-2",
+      "background:true",
+    ]);
   });
 
   test("screenshot with fullPage captures the page content area through CDP", async () => {
@@ -922,6 +1094,44 @@ describe("executeAutomationCommand", () => {
           clip: { x: 0, y: 0, width: 390, height: 1200, scale: 1 },
         },
       },
+    ]);
+    expect(browser.tab.actions).toEqual([
+      "prepare",
+      "background:false",
+      "invalidate",
+      "debug:Page.getLayoutMetrics",
+      "debug:Page.captureScreenshot",
+      "restore:capture-1",
+      "background:true",
+    ]);
+  });
+
+  test("screenshot with fullPage restores capture preparation when CDP returns no image", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.fullPageScreenshotData = "";
+
+    const result = await browser.execute({
+      command: "screenshot",
+      args: { browserId: BROWSER_A, fullPage: true },
+    });
+
+    expect(result).toEqual({
+      requestId: "req-screenshot",
+      ok: false,
+      error: {
+        code: "browser_unsupported",
+        message: "browser_screenshot fullPage returned no data",
+        retryable: false,
+      },
+    });
+    expect(browser.tab.actions).toEqual([
+      "prepare",
+      "background:false",
+      "invalidate",
+      "debug:Page.getLayoutMetrics",
+      "debug:Page.captureScreenshot",
+      "restore:capture-1",
+      "background:true",
     ]);
   });
 

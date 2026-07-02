@@ -1,6 +1,9 @@
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import { getDesktopHost, type DesktopHostBridge } from "@/desktop/host";
-import { ensureResidentBrowserWebview as ensureResidentBrowserWebviewDefault } from "@/components/browser-webview-resident";
+import {
+  ensureResidentBrowserWebview as ensureResidentBrowserWebviewDefault,
+  installResidentBrowserCaptureBridge,
+} from "@/components/browser-webview-resident";
 import { createWorkspaceBrowser } from "@/stores/browser-store";
 import {
   buildWorkspaceTabPersistenceKey,
@@ -40,7 +43,8 @@ export function mountBrowserAutomationHandler(
   options: BrowserAutomationHandlerOptions,
 ): () => void {
   const getHost = options.getHost ?? getDesktopHost;
-  return options.client.on("browser.automation.execute.request", (request) => {
+  const uninstallCaptureBridge = installResidentBrowserCaptureBridge();
+  const unsubscribe = options.client.on("browser.automation.execute.request", (request) => {
     void handleBrowserAutomationRequest({
       client: options.client,
       getHost,
@@ -56,6 +60,10 @@ export function mountBrowserAutomationHandler(
         : {}),
     });
   });
+  return () => {
+    unsubscribe();
+    uninstallCaptureBridge();
+  };
 }
 
 export function mountBrowserAutomationDaemonClientHandler(

@@ -24,11 +24,17 @@ export interface TabContents {
   goForward(): void;
   reload(): void;
   capturePage(options?: TabCapturePageOptions): Promise<TabImage>;
+  prepareForPixelCapture(): Promise<TabPixelCapturePreparation>;
+  restorePixelCapture(preparation: TabPixelCapturePreparation): Promise<void>;
   invalidate(): void;
   isBackgroundThrottlingAllowed(): boolean;
   setBackgroundThrottling(allowed: boolean): void;
   getConsoleMessages?(): BrowserAutomationConsoleLogEntry[];
   sendDebugCommand?(command: string, params?: Record<string, unknown>): Promise<unknown>;
+}
+
+export interface TabPixelCapturePreparation {
+  token: string;
 }
 
 export interface TabImage {
@@ -124,17 +130,54 @@ async function runSerializedPixelCapture<T>(
   }
 }
 
-async function capturePaintedViewport(contents: TabContents): Promise<TabImage> {
+async function prepareForPixelCapture(contents: TabContents): Promise<TabPixelCapturePreparation> {
+  try {
+    return await withPixelCaptureTimeout(contents.prepareForPixelCapture());
+  } catch {
+    throw new ScreenshotNoFrameError();
+  }
+}
+
+async function restorePixelCapture(
+  contents: TabContents,
+  preparation: TabPixelCapturePreparation,
+): Promise<void> {
+  try {
+    await withPixelCaptureTimeout(contents.restorePixelCapture(preparation));
+  } catch {
+    throw new ScreenshotNoFrameError();
+  }
+}
+
+async function runPreparedPixelCapture<T>(
+  contents: TabContents,
+  capture: () => Promise<T>,
+): Promise<T> {
   return runSerializedPixelCapture(contents, async () => {
     const previousBackgroundThrottling = contents.isBackgroundThrottlingAllowed();
-    contents.setBackgroundThrottling(false);
+    let preparation: TabPixelCapturePreparation | null = null;
     try {
+      // Offscreen-parked webview guests have no compositor surface for
+      // capturePage/CDP to copy. The renderer must briefly make the host
+      // paintable before capture; see ~/.paseo/plans/browser-capture-harness-results.md.
+      preparation = await prepareForPixelCapture(contents);
+      contents.setBackgroundThrottling(false);
       contents.invalidate();
-      return await withPixelCaptureTimeout(contents.capturePage({ stayHidden: false }));
+      return await withPixelCaptureTimeout(capture());
     } finally {
-      contents.setBackgroundThrottling(previousBackgroundThrottling);
+      try {
+        if (preparation) {
+          await restorePixelCapture(contents, preparation);
+        }
+      } finally {
+        contents.setBackgroundThrottling(previousBackgroundThrottling);
+      }
     }
   });
+}
+
+async function capturePaintedViewport(contents: TabContents): Promise<TabImage> {
+  return runPreparedPixelCapture(contents, () => contents.capturePage({ stayHidden: false }));
 }
 
 function tabInfoFromContents(
@@ -860,18 +903,21 @@ async function executeFullPageScreenshot(
   if (!target.contents.sendDebugCommand) {
     return fail(requestId, "browser_unsupported", "browser_screenshot fullPage requires CDP");
   }
-  const metrics = await getCdpLayoutMetrics(target.contents);
-  const width = metrics.contentWidth;
-  const height = metrics.contentHeight;
+  const sendDebugCommand = target.contents.sendDebugCommand.bind(target.contents);
   let screenshot: CdpCaptureScreenshotResult;
+  let width = 0;
+  let height = 0;
   try {
-    screenshot = (await withPixelCaptureTimeout(
-      target.contents.sendDebugCommand("Page.captureScreenshot", {
+    screenshot = await runPreparedPixelCapture(target.contents, async () => {
+      const metrics = await getCdpLayoutMetrics(target.contents);
+      width = metrics.contentWidth;
+      height = metrics.contentHeight;
+      return (await sendDebugCommand("Page.captureScreenshot", {
         format: "png",
         captureBeyondViewport: true,
         clip: { x: 0, y: 0, width, height, scale: 1 },
-      }),
-    )) as CdpCaptureScreenshotResult;
+      })) as CdpCaptureScreenshotResult;
+    });
   } catch (error) {
     if (isScreenshotNoFrameError(error)) {
       return screenshotNoFrameFailure(requestId);
