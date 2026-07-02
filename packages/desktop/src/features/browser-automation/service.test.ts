@@ -22,6 +22,9 @@ function fakeTab(overrides: Partial<TabContents> & { id: number }): TabContents 
       toPNG: () => new Uint8Array([137, 80, 78, 71]),
       getSize: () => ({ width: 10, height: 5 }),
     }),
+    invalidate: () => {},
+    isBackgroundThrottlingAllowed: () => true,
+    setBackgroundThrottling: () => {},
     ...overrides,
   };
 }
@@ -1932,20 +1935,27 @@ describe("executeAutomationCommand", () => {
   });
 
   describe("screenshot", () => {
-    it("captures a viewport screenshot through CDP when available", async () => {
-      let captureParams: Record<string, unknown> | undefined;
+    it("captures a viewport screenshot through Electron capturePage when CDP is available", async () => {
+      const actions: string[] = [];
+      let captureOptions: unknown;
       const tab = fakeTab({
         id: 13,
-        executeJavaScript: async () => ({ width: 321, height: 123 }),
-        sendDebugCommand: async (command, params) => {
-          if (command === "Page.captureScreenshot") {
-            captureParams = params;
-            return { data: "iVBORw0KGgo=" };
-          }
+        sendDebugCommand: async (command) => {
           throw new Error(`Unexpected CDP command ${command}`);
         },
-        capturePage: async () => {
-          throw new Error("capturePage should not be used when CDP is available");
+        capturePage: async (options) => {
+          actions.push("capture");
+          captureOptions = options;
+          return {
+            toPNG: () => new Uint8Array([137, 80, 78, 71, 1, 2, 3]),
+            getSize: () => ({ width: 640, height: 480 }),
+          };
+        },
+        invalidate: () => {
+          actions.push("invalidate");
+        },
+        setBackgroundThrottling: (allowed) => {
+          actions.push(`background:${allowed}`);
         },
       });
       const registry = createRegistry({
@@ -1958,7 +1968,7 @@ describe("executeAutomationCommand", () => {
       const result = await executeAutomationCommand(
         {
           type: "browser.automation.execute.request",
-          requestId: "r-screenshot-cdp",
+          requestId: "r-screenshot-capture-page",
           workspaceId: "workspace-a",
           command: { command: "screenshot", args: { workspaceId: "workspace-a" } },
         },
@@ -1966,33 +1976,42 @@ describe("executeAutomationCommand", () => {
       );
 
       expect(result).toEqual({
-        requestId: "r-screenshot-cdp",
+        requestId: "r-screenshot-capture-page",
         ok: true,
         result: {
           command: "screenshot",
           browserId: "a",
           mimeType: "image/png",
-          dataBase64: "iVBORw0KGgo=",
-          width: 321,
-          height: 123,
+          dataBase64: "iVBORwECAw==",
+          width: 640,
+          height: 480,
         },
       });
-      expect(captureParams).toEqual({ format: "png", fromSurface: false });
+      expect(captureOptions).toEqual({ stayHidden: false });
+      expect(actions).toEqual(["background:false", "invalidate", "capture", "background:true"]);
     });
 
-    it("returns screenshot_no_frame when CDP viewport capture never paints", async () => {
+    it("returns screenshot_no_frame when viewport capture never paints", async () => {
       vi.useFakeTimers();
       try {
+        const actions: string[] = [];
+        let backgroundThrottlingAllowed = false;
         const tab = fakeTab({
           id: 13,
           sendDebugCommand: async (command) => {
-            if (command === "Page.captureScreenshot") {
-              return new Promise<never>(() => {});
-            }
             throw new Error(`Unexpected CDP command ${command}`);
           },
           capturePage: async () => {
-            throw new Error("capturePage should not be used when CDP is available");
+            actions.push("capture");
+            return new Promise<never>(() => {});
+          },
+          invalidate: () => {
+            actions.push("invalidate");
+          },
+          isBackgroundThrottlingAllowed: () => backgroundThrottlingAllowed,
+          setBackgroundThrottling: (allowed) => {
+            backgroundThrottlingAllowed = allowed;
+            actions.push(`background:${allowed}`);
           },
         });
         const registry = createRegistry({
@@ -2006,7 +2025,7 @@ describe("executeAutomationCommand", () => {
         const resultPromise = executeAutomationCommand(
           {
             type: "browser.automation.execute.request",
-            requestId: "r-screenshot-cdp-no-frame",
+            requestId: "r-screenshot-no-frame",
             workspaceId: "workspace-a",
             command: { command: "screenshot", args: { workspaceId: "workspace-a" } },
           },
@@ -2016,7 +2035,7 @@ describe("executeAutomationCommand", () => {
         await vi.advanceTimersByTimeAsync(5_000);
 
         await expect(resultPromise).resolves.toEqual({
-          requestId: "r-screenshot-cdp-no-frame",
+          requestId: "r-screenshot-no-frame",
           ok: false,
           error: {
             code: "screenshot_no_frame",
@@ -2025,6 +2044,8 @@ describe("executeAutomationCommand", () => {
             retryable: false,
           },
         });
+        expect(backgroundThrottlingAllowed).toBe(false);
+        expect(actions).toEqual(["background:false", "invalidate", "capture", "background:false"]);
       } finally {
         vi.useRealTimers();
       }

@@ -25,7 +25,10 @@ export interface TabContents {
   goBack(): void;
   goForward(): void;
   reload(): void;
-  capturePage(): Promise<TabImage>;
+  capturePage(options?: TabCapturePageOptions): Promise<TabImage>;
+  invalidate(): void;
+  isBackgroundThrottlingAllowed(): boolean;
+  setBackgroundThrottling(allowed: boolean): void;
   getConsoleMessages?(): BrowserAutomationConsoleLogEntry[];
   getCookies?(url: string): Promise<BrowserAutomationCookieEntry[]>;
   sendDebugCommand?(command: string, params?: Record<string, unknown>): Promise<unknown>;
@@ -40,6 +43,10 @@ export interface TabContents {
 export interface TabImage {
   toPNG(): Uint8Array;
   getSize(): { width: number; height: number };
+}
+
+export interface TabCapturePageOptions {
+  stayHidden?: boolean;
 }
 
 export interface BrowserRegistry {
@@ -101,6 +108,17 @@ async function withPixelCaptureTimeout<T>(capture: Promise<T>): Promise<T> {
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
+  }
+}
+
+async function capturePaintedViewport(contents: TabContents): Promise<TabImage> {
+  const previousBackgroundThrottling = contents.isBackgroundThrottlingAllowed();
+  contents.setBackgroundThrottling(false);
+  try {
+    contents.invalidate();
+    return await withPixelCaptureTimeout(contents.capturePage({ stayHidden: false }));
+  } finally {
+    contents.setBackgroundThrottling(previousBackgroundThrottling);
   }
 }
 
@@ -1104,41 +1122,9 @@ async function executeScreenshot(
   if ("ok" in target) {
     return target;
   }
-  if (target.contents.sendDebugCommand) {
-    let screenshot: CdpCaptureScreenshotResult;
-    try {
-      screenshot = (await withPixelCaptureTimeout(
-        target.contents.sendDebugCommand("Page.captureScreenshot", {
-          format: "png",
-          fromSurface: false,
-        }),
-      )) as CdpCaptureScreenshotResult;
-    } catch (error) {
-      if (isScreenshotNoFrameError(error)) {
-        return screenshotNoFrameFailure(requestId);
-      }
-      throw error;
-    }
-    if (!screenshot.data) {
-      return fail(requestId, "browser_unsupported", "browser_screenshot returned no data");
-    }
-    const viewport = await getViewportSize(target.contents);
-    return {
-      requestId,
-      ok: true,
-      result: {
-        command: "screenshot",
-        browserId: target.browserId,
-        mimeType: "image/png",
-        dataBase64: screenshot.data,
-        width: viewport.width,
-        height: viewport.height,
-      },
-    };
-  }
   let image: TabImage;
   try {
-    image = await withPixelCaptureTimeout(target.contents.capturePage());
+    image = await capturePaintedViewport(target.contents);
   } catch (error) {
     if (isScreenshotNoFrameError(error)) {
       return screenshotNoFrameFailure(requestId);
@@ -1181,20 +1167,6 @@ interface CdpLayoutMetrics {
 
 interface CdpCaptureScreenshotResult {
   data?: string;
-}
-
-async function getViewportSize(contents: TabContents): Promise<{ width: number; height: number }> {
-  const result = await contents.executeJavaScript(
-    "({ width: Math.round(window.innerWidth), height: Math.round(window.innerHeight) })",
-  );
-  if (!result || typeof result !== "object") {
-    return { width: 0, height: 0 };
-  }
-  const record = result as { width?: unknown; height?: unknown };
-  return {
-    width: typeof record.width === "number" && Number.isFinite(record.width) ? record.width : 0,
-    height: typeof record.height === "number" && Number.isFinite(record.height) ? record.height : 0,
-  };
 }
 
 async function getCdpLayoutMetrics(contents: TabContents): Promise<{

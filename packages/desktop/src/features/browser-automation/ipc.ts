@@ -23,6 +23,7 @@ import {
 const MAX_CONSOLE_MESSAGES_PER_TAB = 200;
 const consoleMessagesByContentsId = new Map<number, BrowserAutomationConsoleLogEntry[]>();
 const observedContentsIds = new Set<number>();
+const backgroundThrottlingByContentsId = new Map<number, boolean>();
 
 interface IpcHandlerRegistry {
   handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
@@ -43,7 +44,10 @@ function adaptWebContents(contents: WebContents): TabContents {
     goBack: () => contents.goBack(),
     goForward: () => contents.goForward(),
     reload: () => contents.reload(),
-    capturePage: () => contents.capturePage(),
+    capturePage: (options) => contents.capturePage(undefined, options),
+    invalidate: () => contents.invalidate(),
+    isBackgroundThrottlingAllowed: () => readBackgroundThrottling(contents),
+    setBackgroundThrottling: (allowed) => setBackgroundThrottling(contents, allowed),
     getConsoleMessages: () => consoleMessagesByContentsId.get(contents.id) ?? [],
     getCookies: async (url: string) =>
       (await contents.session.cookies.get({ url })).map(normalizeCookie),
@@ -103,6 +107,15 @@ function normalizeCookie(cookie: Electron.Cookie): BrowserAutomationCookieEntry 
   };
 }
 
+function readBackgroundThrottling(contents: WebContents): boolean {
+  return backgroundThrottlingByContentsId.get(contents.id) ?? true;
+}
+
+function setBackgroundThrottling(contents: WebContents, allowed: boolean): void {
+  backgroundThrottlingByContentsId.set(contents.id, allowed);
+  contents.setBackgroundThrottling(allowed);
+}
+
 function observeConsoleMessages(contents: WebContents): void {
   if (observedContentsIds.has(contents.id)) {
     return;
@@ -117,6 +130,7 @@ function observeConsoleMessages(contents: WebContents): void {
   contents.once("destroyed", () => {
     observedContentsIds.delete(contents.id);
     consoleMessagesByContentsId.delete(contents.id);
+    backgroundThrottlingByContentsId.delete(contents.id);
   });
 }
 
