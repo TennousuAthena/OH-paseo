@@ -680,7 +680,7 @@ function browserToolResult(params: {
       content: browserToolSuccessContent(payload),
       structuredContent: {
         ok: true,
-        result: payload.result,
+        result: browserToolStructuredResult(payload.result),
         context,
       },
     };
@@ -694,6 +694,17 @@ function browserToolResult(params: {
       context,
     },
   };
+}
+
+function browserToolStructuredResult(
+  result: Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
+): Extract<BrowserToolsResponsePayload, { ok: true }>["result"] | Record<string, unknown> {
+  if (result.command !== "screenshot") {
+    return result;
+  }
+
+  const { dataBase64: _dataBase64, ...metadata } = result;
+  return metadata;
 }
 
 function browserToolSuccessContent(

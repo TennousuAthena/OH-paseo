@@ -2359,6 +2359,88 @@ describe("Codex app-server provider", () => {
     rmSync(source, { force: true });
   });
 
+  test("emits mcpToolCall image content as a completed tool call plus assistant markdown image", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("item/completed", {
+      item: {
+        id: "mcp-browser-screenshot",
+        type: "mcpToolCall",
+        status: "completed",
+        server: "paseo",
+        tool: "browser_screenshot",
+        arguments: { browserId: "11111111-1111-4111-8111-111111111111" },
+        result: {
+          content: [
+            { type: "text", text: "Captured browser screenshot (1x1)." },
+            { type: "image", data: ONE_BY_ONE_PNG_BASE64, mimeType: "image/png" },
+          ],
+          structuredContent: {
+            ok: true,
+            result: {
+              command: "screenshot",
+              browserId: "11111111-1111-4111-8111-111111111111",
+              mimeType: "image/png",
+              width: 1,
+              height: 1,
+            },
+          },
+        },
+      },
+    });
+
+    expect(events.length).toBe(2);
+    expect(events[0]).toEqual({
+      type: "timeline",
+      provider: "codex",
+      turnId: "test-turn",
+      item: {
+        type: "tool_call",
+        callId: "mcp-browser-screenshot",
+        name: "paseo.browser_screenshot",
+        status: "completed",
+        error: null,
+        detail: {
+          type: "unknown",
+          input: { browserId: "11111111-1111-4111-8111-111111111111" },
+          output: {
+            content: [
+              { type: "text", text: "Captured browser screenshot (1x1)." },
+              { type: "text", text: "[image]" },
+            ],
+            structuredContent: {
+              ok: true,
+              result: {
+                command: "screenshot",
+                browserId: "11111111-1111-4111-8111-111111111111",
+                mimeType: "image/png",
+                width: 1,
+                height: 1,
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(events[1]).toMatchObject({
+      type: "timeline",
+      provider: "codex",
+      turnId: "test-turn",
+      item: { type: "assistant_message" },
+    });
+    const imageEvent = events[1];
+    if (imageEvent?.type !== "timeline" || imageEvent.item.type !== "assistant_message") {
+      throw new Error("Expected assistant image timeline event");
+    }
+    expect(JSON.stringify(events)).not.toContain(ONE_BY_ONE_PNG_BASE64);
+    const source = markdownImageSource(imageEvent.item.text);
+    expect(source).toMatch(/paseo-attachments[\\/].+\.png$/);
+    expect(existsSync(source)).toBe(true);
+    rmSync(source, { force: true });
+  });
+
   test("ignores incomplete imageGeneration thread items without failing the turn", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];

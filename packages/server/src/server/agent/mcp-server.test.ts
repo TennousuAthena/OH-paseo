@@ -63,6 +63,13 @@ interface LooseStructuredContent {
   [key: string]: unknown;
 }
 
+interface LooseContentBlock {
+  type: string;
+  text?: string;
+  data?: string;
+  mimeType?: string;
+}
+
 interface RegisteredMcpTool {
   inputSchema: LooseInputSchema;
   outputSchema?: unknown;
@@ -71,18 +78,18 @@ interface RegisteredMcpTool {
     extra?: unknown,
   ) => Promise<{
     structuredContent: LooseStructuredContent;
-    content?: Array<{ type: string; text?: string }>;
+    content?: LooseContentBlock[];
   }>;
   handler?: (input: unknown) => Promise<{
     structuredContent: LooseStructuredContent;
-    content?: Array<{ type: string; text?: string }>;
+    content?: LooseContentBlock[];
   }>;
 }
 
 interface RegisteredMcpToolWithHandler extends RegisteredMcpTool {
   handler: (input: unknown) => Promise<{
     structuredContent: LooseStructuredContent;
-    content?: Array<{ type: string; text?: string }>;
+    content?: LooseContentBlock[];
   }>;
 }
 
@@ -719,6 +726,80 @@ describe("browser MCP tools", () => {
           );
         }
       }
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("returns screenshot pixels as image content and keeps structured content metadata-only", async () => {
+    const agentManager = new BoundaryAgentManagerFake();
+    const agentStorage = new BoundaryAgentStorageFake();
+    const broker = new FakeBrowserToolsBroker({
+      requestId: "req-browser-screenshot",
+      ok: true,
+      result: {
+        command: "screenshot",
+        browserId: "11111111-1111-4111-8111-111111111111",
+        mimeType: "image/png",
+        dataBase64: "iVBORw0KGgo=",
+        width: 800,
+        height: 600,
+      },
+    });
+    const server = await createAgentMcpServer({
+      agentManager: agentManager as AgentManager,
+      agentStorage: agentStorage as AgentStorage,
+      providerSnapshotManager:
+        new BoundaryProviderSnapshotManagerFake() as unknown as ProviderSnapshotManager,
+      browserToolsBroker: broker as BrowserToolsBroker,
+      callerAgentId: "agent-1",
+      logger,
+    });
+    const client = await connectInMemoryMcpClient(server);
+
+    try {
+      const response = await client.callTool({
+        name: "browser_screenshot",
+        arguments: { browserId: "11111111-1111-4111-8111-111111111111" },
+      });
+
+      expect(broker.calls).toEqual([
+        {
+          agentId: "agent-1",
+          cwd: REPO_CWD,
+          workspaceId: BROWSER_WORKSPACE_ID,
+          command: {
+            command: "screenshot",
+            args: {
+              browserId: "11111111-1111-4111-8111-111111111111",
+              fullPage: false,
+            },
+          },
+        },
+      ]);
+      expect(response.content).toEqual([
+        { type: "text", text: "Captured browser screenshot (800x600)." },
+        { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+      ]);
+      expect(response.structuredContent).toEqual({
+        ok: true,
+        result: {
+          command: "screenshot",
+          browserId: "11111111-1111-4111-8111-111111111111",
+          mimeType: "image/png",
+          width: 800,
+          height: 600,
+        },
+        context: {
+          agentId: "agent-1",
+          cwd: REPO_CWD,
+          workspaceId: BROWSER_WORKSPACE_ID,
+          browserId: "11111111-1111-4111-8111-111111111111",
+        },
+      });
+      expect(JSON.stringify(response.structuredContent)).not.toContain("iVBORw0KGgo=");
+      expect(JSON.stringify(response.structuredContent)).not.toContain("dataBase64");
     } finally {
       await client.close();
       await server.close();

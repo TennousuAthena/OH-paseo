@@ -224,6 +224,13 @@ const routedToolCases = [
       { type: "text", text: "Captured browser screenshot (800x600)." },
       { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
     ],
+    structuredResult: {
+      command: "screenshot",
+      browserId: BROWSER_ID,
+      mimeType: "image/png",
+      width: 800,
+      height: 600,
+    },
   },
   {
     name: "logs",
@@ -270,6 +277,13 @@ const routedToolCases = [
       { type: "text", text: "Captured browser screenshot (390x1200)." },
       { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
     ],
+    structuredResult: {
+      command: "screenshot",
+      browserId: BROWSER_ID,
+      mimeType: "image/png",
+      width: 390,
+      height: 1200,
+    },
   },
   {
     name: "upload",
@@ -667,7 +681,7 @@ describe("registerBrowserTools", () => {
 
   test.each(routedToolCases)(
     "$name routes browser id in command args and workspace id in the envelope",
-    async ({ toolName, input, command, payload, content }) => {
+    async ({ toolName, input, command, payload, content, structuredResult }) => {
       const harness = new BrowserToolHarness();
       harness.broker.setResponse(payload);
 
@@ -684,7 +698,7 @@ describe("registerBrowserTools", () => {
       expect(response.content).toEqual(content);
       expect(response.structuredContent).toEqual({
         ok: payload.ok,
-        result: payload.result,
+        result: structuredResult ?? payload.result,
         context: {
           agentId: "agent-1",
           cwd: "/repo",
