@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { createAgentMcpServer } from "./mcp-server.js";
+import { createPaseoToolCatalog } from "./tools/paseo-tools.js";
 import { AgentManager, type ManagedAgent } from "./agent-manager.js";
 import { AgentStorage, type StoredAgentRecord } from "./agent-storage.js";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
@@ -666,7 +667,7 @@ describe("browser MCP tools", () => {
       ok: true,
       result: { command: "list_tabs", tabs: [] },
     });
-    const server = await createAgentMcpServer({
+    const serverOptions = {
       agentManager: agentManager as AgentManager,
       agentStorage: agentStorage as AgentStorage,
       providerSnapshotManager:
@@ -674,7 +675,8 @@ describe("browser MCP tools", () => {
       browserToolsBroker: broker as BrowserToolsBroker,
       callerAgentId: "agent-1",
       logger,
-    });
+    };
+    const server = await createAgentMcpServer(serverOptions);
     const client = await connectInMemoryMcpClient(server);
 
     try {
@@ -708,14 +710,11 @@ describe("browser MCP tools", () => {
 
       const listedTools = await client.listTools();
       const toolsByName = new Map(listedTools.tools.map((tool) => [tool.name, tool]));
-      const registeredTools = Reflect.get(server, "_registeredTools") as Record<
-        string,
-        RegisteredMcpTool
-      >;
+      const catalog = createPaseoToolCatalog(serverOptions);
 
-      for (const [name, tool] of Object.entries(registeredTools)) {
+      for (const tool of catalog.tools.values()) {
         if (tool.outputSchema !== undefined) {
-          expect(toolsByName.get(name)?.outputSchema, `${name} outputSchema`).toEqual(
+          expect(toolsByName.get(tool.name)?.outputSchema, `${tool.name} outputSchema`).toEqual(
             expect.objectContaining({ type: "object" }),
           );
         }
