@@ -153,6 +153,418 @@ function screenshotPayload(): Extract<BrowserToolsResponsePayload, { ok: true }>
   };
 }
 
+const routedToolCases = [
+  {
+    name: "set background",
+    toolName: "browser_set_background",
+    input: { browserId: BROWSER_ID, color: "red" },
+    command: { command: "set_background", args: { browserId: BROWSER_ID, color: "red" } },
+    payload: {
+      requestId: "req-set-background",
+      ok: true,
+      result: { command: "set_background", browserId: BROWSER_ID, color: "red" },
+    },
+    content: [{ type: "text", text: "Set browser page background to red." }],
+  },
+  {
+    name: "click",
+    toolName: "browser_click",
+    input: { browserId: BROWSER_ID, ref: "@e2" },
+    command: { command: "click", args: { browserId: BROWSER_ID, ref: "@e2" } },
+    payload: {
+      requestId: "req-click",
+      ok: true,
+      result: { command: "click", browserId: BROWSER_ID, ref: "@e2" },
+    },
+    content: [{ type: "text", text: "Clicked browser element @e2." }],
+  },
+  {
+    name: "fill",
+    toolName: "browser_fill",
+    input: { browserId: BROWSER_ID, ref: "@e1", value: "Ada" },
+    command: { command: "fill", args: { browserId: BROWSER_ID, ref: "@e1", value: "Ada" } },
+    payload: {
+      requestId: "req-fill",
+      ok: true,
+      result: { command: "fill", browserId: BROWSER_ID, ref: "@e1" },
+    },
+    content: [{ type: "text", text: "Filled browser element @e1." }],
+  },
+  {
+    name: "type",
+    toolName: "browser_type",
+    input: { browserId: BROWSER_ID, ref: "@e1", text: "Ada" },
+    command: { command: "type", args: { browserId: BROWSER_ID, ref: "@e1", text: "Ada" } },
+    payload: {
+      requestId: "req-type",
+      ok: true,
+      result: { command: "type", browserId: BROWSER_ID, ref: "@e1" },
+    },
+    content: [{ type: "text", text: "Typed into browser element @e1." }],
+  },
+  {
+    name: "keypress",
+    toolName: "browser_keypress",
+    input: { browserId: BROWSER_ID, key: "Enter" },
+    command: { command: "keypress", args: { browserId: BROWSER_ID, key: "Enter" } },
+    payload: {
+      requestId: "req-keypress",
+      ok: true,
+      result: { command: "keypress", browserId: BROWSER_ID, key: "Enter" },
+    },
+    content: [{ type: "text", text: "Pressed Enter in the browser." }],
+  },
+  {
+    name: "back",
+    toolName: "browser_back",
+    input: { browserId: BROWSER_ID },
+    command: { command: "back", args: { browserId: BROWSER_ID } },
+    payload: {
+      requestId: "req-back",
+      ok: true,
+      result: { command: "back", browserId: BROWSER_ID },
+    },
+    content: [{ type: "text", text: "Browser back complete." }],
+  },
+  {
+    name: "screenshot",
+    toolName: "browser_screenshot",
+    input: { browserId: BROWSER_ID },
+    command: { command: "screenshot", args: { browserId: BROWSER_ID } },
+    payload: screenshotPayload(),
+    content: [
+      { type: "text", text: "Captured browser screenshot (800x600)." },
+      { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+    ],
+  },
+  {
+    name: "logs",
+    toolName: "browser_logs",
+    input: { browserId: BROWSER_ID },
+    command: { command: "logs", args: { browserId: BROWSER_ID, maxEntries: 50 } },
+    payload: {
+      requestId: "req-logs",
+      ok: true,
+      result: {
+        command: "logs",
+        browserId: BROWSER_ID,
+        console: [{ level: "info", message: "ready", timestamp: 10 }],
+        network: [
+          {
+            url: "https://example.com/app.js",
+            type: "script",
+            startTime: 1,
+            duration: 2,
+          },
+        ],
+      },
+    },
+    content: [{ type: "text", text: "Read 1 console log and 1 network entry." }],
+  },
+  {
+    name: "storage",
+    toolName: "browser_storage",
+    input: { browserId: BROWSER_ID },
+    command: { command: "storage", args: { browserId: BROWSER_ID } },
+    payload: {
+      requestId: "req-storage",
+      ok: true,
+      result: {
+        command: "storage",
+        browserId: BROWSER_ID,
+        url: "https://example.com",
+        cookies: [{ name: "theme", value: "dark" }],
+        localStorage: [{ key: "token", value: "abc" }],
+        sessionStorage: [{ key: "tab", value: "1" }],
+      },
+    },
+    content: [
+      { type: "text", text: "Read 1 cookie, 1 localStorage entry, and 1 sessionStorage entry." },
+    ],
+  },
+  {
+    name: "environment",
+    toolName: "browser_environment",
+    input: {
+      browserId: BROWSER_ID,
+      viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
+      geolocation: { latitude: 37.7749, longitude: -122.4194, accuracy: 5 },
+    },
+    command: {
+      command: "environment",
+      args: {
+        browserId: BROWSER_ID,
+        viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
+        geolocation: { latitude: 37.7749, longitude: -122.4194, accuracy: 5 },
+      },
+    },
+    payload: {
+      requestId: "req-environment",
+      ok: true,
+      result: {
+        command: "environment",
+        browserId: BROWSER_ID,
+        viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
+        geolocation: { latitude: 37.7749, longitude: -122.4194, accuracy: 5 },
+      },
+    },
+    content: [{ type: "text", text: "Browser environment viewport is 390x844." }],
+  },
+  {
+    name: "full page screenshot",
+    toolName: "browser_full_page_screenshot",
+    input: { browserId: BROWSER_ID },
+    command: { command: "full_page_screenshot", args: { browserId: BROWSER_ID } },
+    payload: {
+      requestId: "req-full-page",
+      ok: true,
+      result: {
+        command: "full_page_screenshot",
+        browserId: BROWSER_ID,
+        mimeType: "image/png",
+        dataBase64: "iVBORw0KGgo=",
+        width: 390,
+        height: 1200,
+      },
+    },
+    content: [
+      { type: "text", text: "Captured full-page browser screenshot (390x1200)." },
+      { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+    ],
+  },
+  {
+    name: "pdf",
+    toolName: "browser_pdf",
+    input: { browserId: BROWSER_ID, landscape: true },
+    command: {
+      command: "pdf",
+      args: { browserId: BROWSER_ID, landscape: true, printBackground: true },
+    },
+    payload: {
+      requestId: "req-pdf",
+      ok: true,
+      result: {
+        command: "pdf",
+        browserId: BROWSER_ID,
+        mimeType: "application/pdf",
+        dataBase64: "JVBERg==",
+      },
+    },
+    content: [{ type: "text", text: "Exported browser page PDF." }],
+  },
+  {
+    name: "download",
+    toolName: "browser_download",
+    input: { browserId: BROWSER_ID, url: "https://example.com/file.txt", fileName: "file.txt" },
+    command: {
+      command: "download",
+      args: {
+        browserId: BROWSER_ID,
+        url: "https://example.com/file.txt",
+        fileName: "file.txt",
+      },
+    },
+    payload: {
+      requestId: "req-download",
+      ok: true,
+      result: {
+        command: "download",
+        browserId: BROWSER_ID,
+        url: "https://example.com/file.txt",
+        filePath: "/tmp/file.txt",
+        totalBytes: 5,
+        state: "completed",
+      },
+    },
+    content: [{ type: "text", text: "Downloaded browser file to /tmp/file.txt." }],
+  },
+  {
+    name: "upload",
+    toolName: "browser_upload",
+    input: { browserId: BROWSER_ID, ref: "@e1", filePaths: ["/tmp/file.txt"] },
+    command: {
+      command: "upload",
+      args: { browserId: BROWSER_ID, ref: "@e1", filePaths: ["/tmp/file.txt"] },
+    },
+    payload: {
+      requestId: "req-upload",
+      ok: true,
+      result: {
+        command: "upload",
+        browserId: BROWSER_ID,
+        ref: "@e1",
+        filePaths: ["/tmp/file.txt"],
+      },
+    },
+    content: [{ type: "text", text: "Uploaded 1 file to browser element @e1." }],
+  },
+  {
+    name: "focus",
+    toolName: "browser_focus",
+    input: { browserId: BROWSER_ID, ref: "@e1" },
+    command: { command: "focus", args: { browserId: BROWSER_ID, ref: "@e1" } },
+    payload: {
+      requestId: "req-focus",
+      ok: true,
+      result: { command: "focus", browserId: BROWSER_ID, ref: "@e1" },
+    },
+    content: [{ type: "text", text: "Focused browser element @e1." }],
+  },
+  {
+    name: "clear",
+    toolName: "browser_clear",
+    input: { browserId: BROWSER_ID, ref: "@e1" },
+    command: { command: "clear", args: { browserId: BROWSER_ID, ref: "@e1" } },
+    payload: {
+      requestId: "req-clear",
+      ok: true,
+      result: { command: "clear", browserId: BROWSER_ID, ref: "@e1" },
+    },
+    content: [{ type: "text", text: "Cleared browser element @e1." }],
+  },
+  {
+    name: "check",
+    toolName: "browser_check",
+    input: { browserId: BROWSER_ID, ref: "@e2", checked: false },
+    command: { command: "check", args: { browserId: BROWSER_ID, ref: "@e2", checked: false } },
+    payload: {
+      requestId: "req-check",
+      ok: true,
+      result: { command: "check", browserId: BROWSER_ID, ref: "@e2", checked: false },
+    },
+    content: [{ type: "text", text: "Unchecked browser element @e2." }],
+  },
+  {
+    name: "select",
+    toolName: "browser_select",
+    input: { browserId: BROWSER_ID, ref: "@e3", value: "us" },
+    command: { command: "select", args: { browserId: BROWSER_ID, ref: "@e3", value: "us" } },
+    payload: {
+      requestId: "req-select",
+      ok: true,
+      result: { command: "select", browserId: BROWSER_ID, ref: "@e3", value: "us" },
+    },
+    content: [{ type: "text", text: "Selected us in browser element @e3." }],
+  },
+  {
+    name: "hover",
+    toolName: "browser_hover",
+    input: { browserId: BROWSER_ID, ref: "@e4" },
+    command: { command: "hover", args: { browserId: BROWSER_ID, ref: "@e4" } },
+    payload: {
+      requestId: "req-hover",
+      ok: true,
+      result: { command: "hover", browserId: BROWSER_ID, ref: "@e4" },
+    },
+    content: [{ type: "text", text: "Hovered browser element @e4." }],
+  },
+  {
+    name: "drag",
+    toolName: "browser_drag",
+    input: { browserId: BROWSER_ID, sourceRef: "@e4", targetRef: "@e5" },
+    command: {
+      command: "drag",
+      args: { browserId: BROWSER_ID, sourceRef: "@e4", targetRef: "@e5" },
+    },
+    payload: {
+      requestId: "req-drag",
+      ok: true,
+      result: { command: "drag", browserId: BROWSER_ID, sourceRef: "@e4", targetRef: "@e5" },
+    },
+    content: [{ type: "text", text: "Dragged browser element @e4 to @e5." }],
+  },
+] satisfies Array<{
+  name: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  command: BrowserToolsExecuteInput["command"];
+  payload: Extract<BrowserToolsResponsePayload, { ok: true }>;
+  content: PaseoToolResult["content"];
+}>;
+
+const brokerErrorCases = [
+  {
+    name: "disabled browser tools",
+    toolName: "browser_list_tabs",
+    input: {},
+    payload: {
+      requestId: "req-disabled",
+      ok: false,
+      error: {
+        code: "browser_disabled",
+        message: "Browser tools are disabled. Enable daemon.browserTools.enabled to use them.",
+        retryable: false,
+      },
+    },
+    content: [
+      {
+        type: "text",
+        text: "Browser tools are disabled. Enable desktop browser tools on the host, then try again.",
+      },
+    ],
+    context: { agentId: "agent-1", cwd: "/repo", workspaceId: "wks_workspace_a" },
+  },
+  {
+    name: "typed timeout errors",
+    toolName: "browser_page_info",
+    input: { browserId: BROWSER_ID },
+    payload: {
+      requestId: "req-timeout",
+      ok: false,
+      error: {
+        code: "browser_timeout",
+        message: "Browser automation timed out after 15000ms.",
+        retryable: true,
+      },
+    },
+    content: [
+      {
+        type: "text",
+        text: "The browser did not respond before the timeout. Try again or check the desktop app.",
+      },
+    ],
+    context: {
+      agentId: "agent-1",
+      cwd: "/repo",
+      workspaceId: "wks_workspace_a",
+      browserId: BROWSER_ID,
+    },
+  },
+  {
+    name: "screenshot no-frame errors",
+    toolName: "browser_screenshot",
+    input: { browserId: BROWSER_ID },
+    payload: {
+      requestId: "req-no-frame",
+      ok: false,
+      error: {
+        code: "screenshot_no_frame",
+        message: "The browser tab has no painted frame. Focus the tab in the app, then try again.",
+        retryable: false,
+      },
+    },
+    content: [
+      {
+        type: "text",
+        text: "The browser tab has no painted frame. Focus the tab in the app, then try again.",
+      },
+    ],
+    context: {
+      agentId: "agent-1",
+      cwd: "/repo",
+      workspaceId: "wks_workspace_a",
+      browserId: BROWSER_ID,
+    },
+  },
+] satisfies Array<{
+  name: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  payload: Extract<BrowserToolsResponsePayload, { ok: false }>;
+  content: PaseoToolResult["content"];
+  context: Record<string, unknown>;
+}>;
+
 describe("registerBrowserTools", () => {
   test("list tabs sends workspace in the request envelope", async () => {
     const harness = new BrowserToolHarness();
@@ -428,6 +840,53 @@ describe("registerBrowserTools", () => {
       },
     });
   });
+
+  test.each(routedToolCases)(
+    "$name routes browser id in command args and workspace id in the envelope",
+    async ({ toolName, input, command, payload, content }) => {
+      const harness = new BrowserToolHarness();
+      harness.broker.setResponse(payload);
+
+      const response = await harness.execute(toolName, input);
+
+      expect(harness.broker.calls).toEqual([
+        {
+          agentId: "agent-1",
+          cwd: "/repo",
+          workspaceId: "wks_workspace_a",
+          command,
+        },
+      ]);
+      expect(response.content).toEqual(content);
+      expect(response.structuredContent).toEqual({
+        ok: payload.ok,
+        result: payload.result,
+        context: {
+          agentId: "agent-1",
+          cwd: "/repo",
+          workspaceId: "wks_workspace_a",
+          browserId: BROWSER_ID,
+        },
+      });
+    },
+  );
+
+  test.each(brokerErrorCases)(
+    "$name keep broker error summaries model-actionable",
+    async ({ toolName, input, payload, content, context }) => {
+      const harness = new BrowserToolHarness();
+      harness.broker.setResponse(payload);
+
+      const response = await harness.execute(toolName, input);
+
+      expect(response.content).toEqual(content);
+      expect(response.structuredContent).toEqual({
+        ok: false,
+        error: payload.error,
+        context,
+      });
+    },
+  );
 
   test("wait rejects calls without a condition", () => {
     const harness = new BrowserToolHarness();

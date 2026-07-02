@@ -7,7 +7,7 @@ import type {
 } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import type pino from "pino";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { AgentManager } from "./agent/agent-manager.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
@@ -228,17 +228,17 @@ function createVoiceAssistantWebSocketServer(params: {
 }): VoiceAssistantWebSocketServer {
   const { httpServer, broker } = params;
   const agentManager = {
-    setAgentAttentionCallback: vi.fn(),
-    subscribe: vi.fn(() => () => {}),
-    getMetricsSnapshot: vi.fn(() => ({
+    setAgentAttentionCallback() {},
+    subscribe: () => () => {},
+    getMetricsSnapshot: () => ({
       total: 0,
       byLifecycle: {},
       withActiveForegroundTurn: 0,
       timelineStats: { totalItems: 0, maxItemsPerAgent: 0 },
-    })),
+    }),
   };
   const daemonConfigStore = {
-    onChange: vi.fn(() => () => {}),
+    onChange: () => () => {},
   };
 
   return new VoiceAssistantWebSocketServer(
@@ -264,15 +264,15 @@ function createVoiceAssistantWebSocketServer(params: {
     createStub<LoopService>({}),
     createStub<ScheduleService>({}),
     createStub<CheckoutDiffManager>({
-      subscribe: vi.fn(),
-      scheduleRefreshForCwd: vi.fn(),
-      getMetrics: vi.fn(() => ({
+      subscribe: () => {},
+      scheduleRefreshForCwd: () => {},
+      getMetrics: () => ({
         checkoutDiffTargetCount: 0,
         checkoutDiffSubscriptionCount: 0,
         checkoutDiffWatcherCount: 0,
         checkoutDiffFallbackRefreshTargetCount: 0,
-      })),
-      dispose: vi.fn(),
+      }),
+      dispose: () => {},
     }),
     undefined,
     undefined,
@@ -348,12 +348,12 @@ function createBrowserRequestQueue(): QueuedBrowserRequests {
 
 function createLogger() {
   const logger = {
-    child: vi.fn(() => logger),
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
+    child: () => logger,
+    trace() {},
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
   };
   return logger;
 }
