@@ -24,7 +24,7 @@ interface SchedulesTableProps {
   rows: ScheduleRowView[];
   /**
    * The form sheet is owned by the screen (it serves both create and edit and
-   * shares the header's "New schedule" button), so the table delegates edit
+   * shares the screen's "New schedule" button), so the table delegates edit
    * upward rather than mounting a second sheet here.
    */
   onEditSchedule: (schedule: AggregatedSchedule) => void;
@@ -32,9 +32,9 @@ interface SchedulesTableProps {
 
 /**
  * The schedules list: a single settings-style card of rows across every
- * connected host, in a centered, width-constrained reading column matching the
- * projects list. Rows own their host-scoped mutations (pause/resume/run/delete
- * via the mutations hook + a destructive confirm) and delegate editing upward.
+ * connected host, in a full-width list matching the History screen. Rows own
+ * their host-scoped mutations (pause/resume/run/delete via the mutations hook +
+ * a destructive confirm) and delegate editing upward.
  */
 export function SchedulesTable({ rows, onEditSchedule }: SchedulesTableProps): ReactElement {
   return (
@@ -145,14 +145,9 @@ function SchedulesTableRow({
   );
 }
 
-const CONTENT_MAX_WIDTH = 720;
-
 const styles = StyleSheet.create((theme) => ({
-  // Center the card in a readable column, matching settings and projects.
+  // Full-width list padding matching the History screen.
   listContent: {
-    width: "100%",
-    maxWidth: CONTENT_MAX_WIDTH,
-    alignSelf: "center",
-    paddingHorizontal: theme.spacing[4],
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
   },
 }));

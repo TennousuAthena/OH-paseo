@@ -83,7 +83,7 @@ test.describe("Schedules project target", () => {
     await expect(page).not.toHaveURL(/\/h\//);
     await expect(page.getByTestId("schedules-empty")).toBeVisible();
 
-    await page.getByTestId("schedules-new").click();
+    await page.getByTestId("schedules-empty-new").click();
     await expect(page.getByTestId("schedule-form-sheet")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("schedule-cwd-trigger")).toHaveCount(0);
 
@@ -127,7 +127,7 @@ test.describe("Schedules project target", () => {
       port: fakePort,
     });
     await expect(page.getByTestId("schedules-empty")).toBeVisible({ timeout: 30_000 });
-    await page.getByTestId("schedules-new").click();
+    await page.getByTestId("schedules-empty-new").click();
     await expect(page.getByTestId("schedule-form-sheet")).toBeVisible({ timeout: 10_000 });
 
     await page.getByRole("button", { name: /select project/i }).click();

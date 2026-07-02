@@ -154,21 +154,12 @@ function SchedulesScreenContent(): ReactElement {
       }));
   }, [resolvedRows, selectedHost, statusFilter, hosts.length]);
 
-  const headerAction = useMemo(
-    () => (
-      <Button leftIcon={Plus} onPress={openCreate} size="sm" testID="schedules-new">
-        New schedule
-      </Button>
-    ),
-    [openCreate],
-  );
-
   const showLoadError = isError && schedules.length === 0;
   const showHostFilter = hosts.length > 1;
 
   return (
     <View style={styles.container}>
-      <MenuHeader title="Schedules" rightContent={headerAction} />
+      <MenuHeader title="Schedules" />
       <SchedulesScreenBody
         rows={visibleRows}
         hostErrors={hostErrors}
@@ -263,21 +254,26 @@ function SchedulesScreenBody({
   return (
     <View style={styles.body}>
       <View style={styles.filterRow}>
-        {showHostFilter ? (
-          <HostFilter
-            hosts={hosts}
-            selectedHost={selectedHost}
-            onSelectHost={onSelectHost}
-            triggerTestID="schedules-host-filter-trigger"
+        <View style={styles.filterRowControls}>
+          {showHostFilter ? (
+            <HostFilter
+              hosts={hosts}
+              selectedHost={selectedHost}
+              onSelectHost={onSelectHost}
+              triggerTestID="schedules-host-filter-trigger"
+            />
+          ) : null}
+          <SegmentedControl
+            size="sm"
+            value={statusFilter}
+            onValueChange={onStatusFilterChange}
+            options={STATUS_FILTER_OPTIONS}
+            testID="schedules-status-filter"
           />
-        ) : null}
-        <SegmentedControl
-          size="sm"
-          value={statusFilter}
-          onValueChange={onStatusFilterChange}
-          options={STATUS_FILTER_OPTIONS}
-          testID="schedules-status-filter"
-        />
+        </View>
+        <Button leftIcon={Plus} onPress={onCreate} size="sm" testID="schedules-new">
+          New schedule
+        </Button>
       </View>
       <ScrollView
         style={styles.scroll}
@@ -313,8 +309,6 @@ function ScheduleHostErrorsBanner({ errors }: { errors: ScheduleHostError[] }): 
   );
 }
 
-const CONTENT_MAX_WIDTH = 720;
-
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
@@ -332,15 +326,19 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[6],
   },
   filterRow: {
-    width: "100%",
-    maxWidth: CONTENT_MAX_WIDTH,
-    alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
+    justifyContent: "space-between",
     gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingTop: theme.spacing[4],
+  },
+  filterRowControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    flexShrink: 1,
+    flexWrap: "wrap",
   },
   scroll: {
     flex: 1,
@@ -352,10 +350,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[6],
   },
   errorsBannerWrap: {
-    width: "100%",
-    maxWidth: CONTENT_MAX_WIDTH,
-    alignSelf: "center",
-    paddingHorizontal: theme.spacing[4],
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
   },
   errorsBanner: {
     borderWidth: 1,
@@ -369,10 +364,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
   },
   filterEmpty: {
-    width: "100%",
-    maxWidth: CONTENT_MAX_WIDTH,
-    alignSelf: "center",
-    paddingHorizontal: theme.spacing[4],
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingVertical: theme.spacing[6],
     alignItems: "center",
   },
