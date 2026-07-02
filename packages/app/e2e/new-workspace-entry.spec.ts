@@ -13,12 +13,12 @@ import { getServerId } from "./helpers/server-id";
 import { clickArchiveWorkspaceMenuItem, expectWorkspaceAbsentFromSidebar } from "./helpers/sidebar";
 import { waitForSidebarHydration } from "./helpers/workspace-ui";
 
-// Model B entry points into the New Workspace screen. The per-project
-// "+ New workspace" sidebar row is gone; the surviving entries are the global
-// button (universal) and each git project's own new-worktree icon (preselects
-// that project). These specs prove the global entry opens the screen, the
-// project icon preselects the right project across the reused 'new' screen, and
-// non-git projects never offer the worktree Isolation control.
+// Model B entry points into the New Workspace screen. The surviving entries are
+// the global button (universal) and each project's per-row New workspace icon
+// (preselects that project) — shown for git projects and for non-git projects on
+// a multiplicity-capable host. These specs prove the global entry opens the
+// screen, the project icon preselects the right project across the reused 'new'
+// screen, and non-git projects never offer the worktree Isolation control.
 
 function projectRow(page: import("@playwright/test").Page, projectKey: string) {
   return page.getByTestId(`sidebar-project-row-${projectKey}`);
@@ -215,7 +215,7 @@ test.describe("New workspace entry points", () => {
       await expect(projectRow(page, nonGitProject.projectId)).toBeVisible({ timeout: 30_000 });
 
       // Open New Workspace for the non-git project via the global button, then
-      // select it in the picker (its row has no new-worktree icon).
+      // select it in the picker (the per-row icon would preselect it too).
       await openGlobalNewWorkspaceComposer(page);
       const trigger = page.getByTestId("new-workspace-project-picker-trigger");
       await expect(trigger).toBeVisible({ timeout: 30_000 });
