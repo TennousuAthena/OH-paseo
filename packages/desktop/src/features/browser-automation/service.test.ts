@@ -2,7 +2,7 @@ import { resolve as resolvePath } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
-import type { TabContents, BrowserRegistry } from "./service.js";
+import type { TabContents, BrowserRegistry, TabImage } from "./service.js";
 import { executeAutomationCommand } from "./service.js";
 
 function fakeTab(overrides: Partial<TabContents> & { id: number }): TabContents {
@@ -1991,6 +1991,93 @@ describe("executeAutomationCommand", () => {
       expect(actions).toEqual(["background:false", "invalidate", "capture", "background:true"]);
     });
 
+    it("serializes overlapping viewport captures before restoring background throttling", async () => {
+      const actions: string[] = [];
+      const captures: Array<{ resolve: (image: TabImage) => void }> = [];
+      let backgroundThrottlingAllowed = true;
+      const image: TabImage = {
+        toPNG: () => new Uint8Array([137, 80, 78, 71]),
+        getSize: () => ({ width: 640, height: 480 }),
+      };
+      const tab = fakeTab({
+        id: 13,
+        capturePage: async () => {
+          actions.push("capture");
+          return new Promise<TabImage>((resolve) => {
+            captures.push({ resolve });
+          });
+        },
+        invalidate: () => {
+          actions.push("invalidate");
+        },
+        isBackgroundThrottlingAllowed: () => backgroundThrottlingAllowed,
+        setBackgroundThrottling: (allowed) => {
+          backgroundThrottlingAllowed = allowed;
+          actions.push(`background:${allowed}`);
+        },
+      });
+      const registry = createRegistry({
+        getWorkspaceActiveTabContents: (workspaceId) =>
+          workspaceId === "workspace-a" ? tab : null,
+        getWorkspaceActiveBrowserId: (workspaceId) => (workspaceId === "workspace-a" ? "a" : null),
+        getBrowserWorkspaceId: (id) => (id === "a" ? "workspace-a" : null),
+      });
+
+      const first = executeAutomationCommand(
+        {
+          type: "browser.automation.execute.request",
+          requestId: "r-screenshot-overlap-first",
+          workspaceId: "workspace-a",
+          command: { command: "screenshot", args: { workspaceId: "workspace-a" } },
+        },
+        registry,
+      );
+      const second = executeAutomationCommand(
+        {
+          type: "browser.automation.execute.request",
+          requestId: "r-screenshot-overlap-second",
+          workspaceId: "workspace-a",
+          command: { command: "screenshot", args: { workspaceId: "workspace-a" } },
+        },
+        registry,
+      );
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(captures).toHaveLength(1);
+      expect(backgroundThrottlingAllowed).toBe(false);
+
+      const firstCapture = captures[0];
+      if (!firstCapture) {
+        throw new Error("expected first capture to start");
+      }
+      firstCapture.resolve(image);
+      await expect(first).resolves.toMatchObject({ requestId: "r-screenshot-overlap-first" });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(captures).toHaveLength(2);
+      expect(backgroundThrottlingAllowed).toBe(false);
+
+      const secondCapture = captures[1];
+      if (!secondCapture) {
+        throw new Error("expected second capture to start");
+      }
+      secondCapture.resolve(image);
+      await expect(second).resolves.toMatchObject({ requestId: "r-screenshot-overlap-second" });
+
+      expect(backgroundThrottlingAllowed).toBe(true);
+      expect(actions).toEqual([
+        "background:false",
+        "invalidate",
+        "capture",
+        "background:true",
+        "background:false",
+        "invalidate",
+        "capture",
+        "background:true",
+      ]);
+    });
+
     it("returns screenshot_no_frame when viewport capture never paints", async () => {
       vi.useFakeTimers();
       try {
@@ -2130,32 +2217,6 @@ describe("executeAutomationCommand", () => {
       } finally {
         vi.useRealTimers();
       }
-    });
-  });
-
-  describe("unsupported command", () => {
-    it("returns browser_unsupported for unknown commands", () => {
-      const registry = createRegistry();
-
-      const result = executeAutomationCommand(
-        {
-          type: "browser.automation.execute.request",
-          requestId: "r9",
-          // Cast to bypass discriminated union — tests forward-compat fallback
-          command: { command: "future_click", args: {} } as never,
-        },
-        registry,
-      );
-
-      expect(result).toEqual({
-        requestId: "r9",
-        ok: false,
-        error: {
-          code: "browser_unsupported",
-          message: "Unsupported command: future_click",
-          retryable: false,
-        },
-      });
     });
   });
 });

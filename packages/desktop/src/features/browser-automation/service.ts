@@ -69,6 +69,7 @@ const PIXEL_CAPTURE_TIMEOUT_MS = 5_000;
 const SCREENSHOT_NO_FRAME_MESSAGE =
   "The browser tab has no painted frame. Focus the tab in the app, then try again.";
 const ALLOWED_PAGE_URL_PROTOCOLS = new Set(["http:", "https:"]);
+const pixelCaptureQueuesByContentsId = new Map<number, Promise<void>>();
 
 function fail(
   requestId: string,
@@ -111,15 +112,40 @@ async function withPixelCaptureTimeout<T>(capture: Promise<T>): Promise<T> {
   }
 }
 
-async function capturePaintedViewport(contents: TabContents): Promise<TabImage> {
-  const previousBackgroundThrottling = contents.isBackgroundThrottlingAllowed();
-  contents.setBackgroundThrottling(false);
+async function runSerializedPixelCapture<T>(
+  contents: TabContents,
+  capture: () => Promise<T>,
+): Promise<T> {
+  const previous = pixelCaptureQueuesByContentsId.get(contents.id) ?? Promise.resolve();
+  let releaseCurrent = () => {};
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const tail = previous.catch(() => {}).then(() => current);
+  pixelCaptureQueuesByContentsId.set(contents.id, tail);
+
+  await previous.catch(() => {});
   try {
-    contents.invalidate();
-    return await withPixelCaptureTimeout(contents.capturePage({ stayHidden: false }));
+    return await capture();
   } finally {
-    contents.setBackgroundThrottling(previousBackgroundThrottling);
+    releaseCurrent();
+    if (pixelCaptureQueuesByContentsId.get(contents.id) === tail) {
+      pixelCaptureQueuesByContentsId.delete(contents.id);
+    }
   }
+}
+
+async function capturePaintedViewport(contents: TabContents): Promise<TabImage> {
+  return runSerializedPixelCapture(contents, async () => {
+    const previousBackgroundThrottling = contents.isBackgroundThrottlingAllowed();
+    contents.setBackgroundThrottling(false);
+    try {
+      contents.invalidate();
+      return await withPixelCaptureTimeout(contents.capturePage({ stayHidden: false }));
+    } finally {
+      contents.setBackgroundThrottling(previousBackgroundThrottling);
+    }
+  });
 }
 
 function tabInfoFromContents(
@@ -150,14 +176,6 @@ export function executeAutomationCommand(
   const workspaceId = request.workspaceId ?? command.args.workspaceId;
   const snapshotEngine = options?.snapshotEngine ?? defaultSnapshotEngine;
   const handler = commandHandlers[command.command];
-
-  if (!handler) {
-    return fail(
-      requestId,
-      "browser_unsupported",
-      `Unsupported command: ${(command as { command: string }).command}`,
-    );
-  }
 
   return handler({ request, command, requestId, workspaceId, registry, snapshotEngine });
 }
@@ -201,9 +219,11 @@ type CommandHandler = (
   context: CommandHandlerContext,
 ) => AutomationCommandPayload | Promise<AutomationCommandPayload>;
 
-const commandHandlers: Partial<Record<BrowserAutomationCommand["command"], CommandHandler>> = {
+const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandler> = {
   list_tabs: ({ requestId, workspaceId, registry }) =>
     executeListTabs(requestId, workspaceId, registry),
+  new_tab: ({ requestId }) =>
+    fail(requestId, "browser_unsupported", "browser_new_tab is handled by the app runtime."),
   page_info: ({ request, command, requestId, workspaceId, registry }) => {
     const pageInfoCommand = command as Extract<BrowserAutomationCommand, { command: "page_info" }>;
     return executePageInfo(
