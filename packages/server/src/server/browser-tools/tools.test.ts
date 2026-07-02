@@ -908,4 +908,29 @@ describe("registerBrowserTools", () => {
       retryable: true,
     });
   });
+
+  it("preserves screenshot no-frame broker messages", async () => {
+    const message =
+      "The browser tab has no painted frame. Focus the tab in the app, then try again.";
+    const harness = createHarness({
+      brokerResponse: {
+        requestId: "req-no-frame",
+        ok: false,
+        error: {
+          code: "screenshot_no_frame",
+          message,
+          retryable: false,
+        },
+      },
+    });
+
+    const response = await tool(harness, "browser_screenshot").handler({});
+
+    expect(response.content).toEqual([{ type: "text", text: message }]);
+    expect(response.structuredContent?.error).toEqual({
+      code: "screenshot_no_frame",
+      message,
+      retryable: false,
+    });
+  });
 });

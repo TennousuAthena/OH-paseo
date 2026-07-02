@@ -1,6 +1,6 @@
 import { resolve as resolvePath } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
 import type { TabContents, BrowserRegistry } from "./service.js";
 import { executeAutomationCommand } from "./service.js";
@@ -1360,6 +1360,53 @@ describe("executeAutomationCommand", () => {
       });
     });
 
+    it("returns screenshot_no_frame when full-page CDP capture never paints", async () => {
+      vi.useFakeTimers();
+      try {
+        const tab = fakeTab({
+          id: 22,
+          sendDebugCommand: async (command) => {
+            if (command === "Page.getLayoutMetrics") {
+              return { contentSize: { width: 390, height: 1200 } };
+            }
+            return new Promise<never>(() => {});
+          },
+        });
+        const registry = createRegistry({
+          getWorkspaceActiveTabContents: (workspaceId) =>
+            workspaceId === "workspace-a" ? tab : null,
+          getWorkspaceActiveBrowserId: (workspaceId) =>
+            workspaceId === "workspace-a" ? "a" : null,
+          getBrowserWorkspaceId: (id) => (id === "a" ? "workspace-a" : null),
+        });
+
+        const resultPromise = executeAutomationCommand(
+          {
+            type: "browser.automation.execute.request",
+            requestId: "r-full-page-no-frame",
+            workspaceId: "workspace-a",
+            command: { command: "full_page_screenshot", args: { workspaceId: "workspace-a" } },
+          },
+          registry,
+        );
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        await expect(resultPromise).resolves.toEqual({
+          requestId: "r-full-page-no-frame",
+          ok: false,
+          error: {
+            code: "screenshot_no_frame",
+            message:
+              "The browser tab has no painted frame. Focus the tab in the app, then try again.",
+            retryable: false,
+          },
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("exports the target tab as PDF", async () => {
       const printOptions: Record<string, unknown>[] = [];
       const tab = fakeTab({
@@ -1933,6 +1980,56 @@ describe("executeAutomationCommand", () => {
       expect(captureParams).toEqual({ format: "png", fromSurface: false });
     });
 
+    it("returns screenshot_no_frame when CDP viewport capture never paints", async () => {
+      vi.useFakeTimers();
+      try {
+        const tab = fakeTab({
+          id: 13,
+          sendDebugCommand: async (command) => {
+            if (command === "Page.captureScreenshot") {
+              return new Promise<never>(() => {});
+            }
+            throw new Error(`Unexpected CDP command ${command}`);
+          },
+          capturePage: async () => {
+            throw new Error("capturePage should not be used when CDP is available");
+          },
+        });
+        const registry = createRegistry({
+          getWorkspaceActiveTabContents: (workspaceId) =>
+            workspaceId === "workspace-a" ? tab : null,
+          getWorkspaceActiveBrowserId: (workspaceId) =>
+            workspaceId === "workspace-a" ? "a" : null,
+          getBrowserWorkspaceId: (id) => (id === "a" ? "workspace-a" : null),
+        });
+
+        const resultPromise = executeAutomationCommand(
+          {
+            type: "browser.automation.execute.request",
+            requestId: "r-screenshot-cdp-no-frame",
+            workspaceId: "workspace-a",
+            command: { command: "screenshot", args: { workspaceId: "workspace-a" } },
+          },
+          registry,
+        );
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        await expect(resultPromise).resolves.toEqual({
+          requestId: "r-screenshot-cdp-no-frame",
+          ok: false,
+          error: {
+            code: "screenshot_no_frame",
+            message:
+              "The browser tab has no painted frame. Focus the tab in the app, then try again.",
+            retryable: false,
+          },
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("captures a PNG screenshot from the active browser", async () => {
       const tab = fakeTab({
         id: 13,
@@ -1970,6 +2067,48 @@ describe("executeAutomationCommand", () => {
           height: 480,
         },
       });
+    });
+
+    it("returns screenshot_no_frame when capturePage never paints", async () => {
+      vi.useFakeTimers();
+      try {
+        const tab = fakeTab({
+          id: 13,
+          capturePage: async () => new Promise<never>(() => {}),
+        });
+        const registry = createRegistry({
+          getWorkspaceActiveTabContents: (workspaceId) =>
+            workspaceId === "workspace-a" ? tab : null,
+          getWorkspaceActiveBrowserId: (workspaceId) =>
+            workspaceId === "workspace-a" ? "a" : null,
+          getBrowserWorkspaceId: (id) => (id === "a" ? "workspace-a" : null),
+        });
+
+        const resultPromise = executeAutomationCommand(
+          {
+            type: "browser.automation.execute.request",
+            requestId: "r-screenshot-no-frame",
+            workspaceId: "workspace-a",
+            command: { command: "screenshot", args: { workspaceId: "workspace-a" } },
+          },
+          registry,
+        );
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        await expect(resultPromise).resolves.toEqual({
+          requestId: "r-screenshot-no-frame",
+          ok: false,
+          error: {
+            code: "screenshot_no_frame",
+            message:
+              "The browser tab has no painted frame. Focus the tab in the app, then try again.",
+            retryable: false,
+          },
+        });
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

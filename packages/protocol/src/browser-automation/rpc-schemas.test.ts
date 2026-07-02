@@ -374,6 +374,30 @@ describe("browser automation execute RPC schemas", () => {
         height: 50,
       },
     });
+
+    expect(
+      BrowserAutomationExecuteResponseSchema.parse({
+        type: "browser.automation.execute.response",
+        payload: {
+          requestId: "req-shot-no-frame",
+          ok: false,
+          error: {
+            code: "screenshot_no_frame",
+            message:
+              "The browser tab has no painted frame. Focus the tab in the app, then try again.",
+            retryable: false,
+          },
+        },
+      }).payload,
+    ).toEqual({
+      requestId: "req-shot-no-frame",
+      ok: false,
+      error: {
+        code: "screenshot_no_frame",
+        message: "The browser tab has no painted frame. Focus the tab in the app, then try again.",
+        retryable: false,
+      },
+    });
   });
 
   test("parses form control commands and responses", () => {

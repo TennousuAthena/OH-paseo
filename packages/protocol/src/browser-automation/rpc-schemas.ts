@@ -7,6 +7,7 @@ export const BrowserAutomationErrorCodeSchema = z.enum([
   "browser_tab_not_found",
   "browser_tab_closed",
   "browser_timeout",
+  "screenshot_no_frame",
   "browser_denied",
   "browser_unsupported",
   "browser_stale_ref",

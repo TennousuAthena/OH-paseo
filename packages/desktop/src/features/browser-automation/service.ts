@@ -58,6 +58,9 @@ type FailurePayload = Extract<AutomationCommandPayload, { ok: false }>;
 const defaultSnapshotEngine = new BrowserSnapshotEngine();
 const DEFAULT_WAIT_TIMEOUT_MS = 5_000;
 const WAIT_POLL_INTERVAL_MS = 25;
+const PIXEL_CAPTURE_TIMEOUT_MS = 5_000;
+const SCREENSHOT_NO_FRAME_MESSAGE =
+  "The browser tab has no painted frame. Focus the tab in the app, then try again.";
 const ALLOWED_PAGE_URL_PROTOCOLS = new Set(["http:", "https:"]);
 
 function fail(
@@ -67,6 +70,38 @@ function fail(
   retryable = false,
 ): FailurePayload {
   return { requestId, ok: false, error: { code, message, retryable } };
+}
+
+class ScreenshotNoFrameError extends Error {
+  public constructor() {
+    super(SCREENSHOT_NO_FRAME_MESSAGE);
+    this.name = "ScreenshotNoFrameError";
+  }
+}
+
+function isScreenshotNoFrameError(error: unknown): error is ScreenshotNoFrameError {
+  return error instanceof ScreenshotNoFrameError;
+}
+
+function screenshotNoFrameFailure(requestId: string): FailurePayload {
+  return fail(requestId, "screenshot_no_frame", SCREENSHOT_NO_FRAME_MESSAGE);
+}
+
+async function withPixelCaptureTimeout<T>(capture: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new ScreenshotNoFrameError());
+    }, PIXEL_CAPTURE_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([capture, timeout]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function tabInfoFromContents(
@@ -1070,10 +1105,20 @@ async function executeScreenshot(
     return target;
   }
   if (target.contents.sendDebugCommand) {
-    const screenshot = (await target.contents.sendDebugCommand("Page.captureScreenshot", {
-      format: "png",
-      fromSurface: false,
-    })) as CdpCaptureScreenshotResult;
+    let screenshot: CdpCaptureScreenshotResult;
+    try {
+      screenshot = (await withPixelCaptureTimeout(
+        target.contents.sendDebugCommand("Page.captureScreenshot", {
+          format: "png",
+          fromSurface: false,
+        }),
+      )) as CdpCaptureScreenshotResult;
+    } catch (error) {
+      if (isScreenshotNoFrameError(error)) {
+        return screenshotNoFrameFailure(requestId);
+      }
+      throw error;
+    }
     if (!screenshot.data) {
       return fail(requestId, "browser_unsupported", "browser_screenshot returned no data");
     }
@@ -1091,7 +1136,15 @@ async function executeScreenshot(
       },
     };
   }
-  const image = await target.contents.capturePage();
+  let image: TabImage;
+  try {
+    image = await withPixelCaptureTimeout(target.contents.capturePage());
+  } catch (error) {
+    if (isScreenshotNoFrameError(error)) {
+      return screenshotNoFrameFailure(requestId);
+    }
+    throw error;
+  }
   const size = image.getSize();
   return {
     requestId,
@@ -1180,11 +1233,21 @@ async function executeFullPageScreenshot(
   const metrics = await getCdpLayoutMetrics(target.contents);
   const width = metrics.contentWidth;
   const height = metrics.contentHeight;
-  const screenshot = (await target.contents.sendDebugCommand("Page.captureScreenshot", {
-    format: "png",
-    captureBeyondViewport: true,
-    clip: { x: 0, y: 0, width, height, scale: 1 },
-  })) as CdpCaptureScreenshotResult;
+  let screenshot: CdpCaptureScreenshotResult;
+  try {
+    screenshot = (await withPixelCaptureTimeout(
+      target.contents.sendDebugCommand("Page.captureScreenshot", {
+        format: "png",
+        captureBeyondViewport: true,
+        clip: { x: 0, y: 0, width, height, scale: 1 },
+      }),
+    )) as CdpCaptureScreenshotResult;
+  } catch (error) {
+    if (isScreenshotNoFrameError(error)) {
+      return screenshotNoFrameFailure(requestId);
+    }
+    throw error;
+  }
   if (!screenshot.data) {
     return fail(requestId, "browser_unsupported", "browser_full_page_screenshot returned no data");
   }

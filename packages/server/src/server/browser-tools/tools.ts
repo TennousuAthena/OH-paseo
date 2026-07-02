@@ -1116,6 +1116,8 @@ function summarizeBrowserError(
       return "No active browser tab is available. Call browser_new_tab to create one, then omit browserId for the active tab or use the returned browserId.";
     case "browser_timeout":
       return "The browser did not respond before the timeout. Try again or check the desktop app.";
+    case "screenshot_no_frame":
+      return error.message;
     case "browser_unsupported":
       return "This desktop build does not support that browser automation request yet.";
     case "browser_stale_ref":
