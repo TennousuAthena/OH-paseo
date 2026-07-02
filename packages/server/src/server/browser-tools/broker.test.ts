@@ -216,7 +216,7 @@ describe("BrowserToolsBroker", () => {
     const broker = createBroker({ enabled: true, timeoutMs: 50 });
     broker.registerClient(new FakeDesktopClient("desktop-1"));
 
-    const resultPromise = broker.execute({ command: pageInfoCommand() });
+    const resultPromise = broker.execute({ command: snapshotCommand() });
     expect(broker.getPendingRequestCount()).toBe(1);
 
     await vi.advanceTimersByTimeAsync(50);
@@ -238,7 +238,7 @@ describe("BrowserToolsBroker", () => {
     const client = new FakeDesktopClient("desktop-1");
     const unregister = broker.registerClient(client);
 
-    const resultPromise = broker.execute({ command: pageInfoCommand() });
+    const resultPromise = broker.execute({ command: snapshotCommand() });
     expect(broker.getPendingRequestCount()).toBe(1);
 
     unregister();
@@ -259,7 +259,7 @@ describe("BrowserToolsBroker", () => {
     const broker = createBroker({ enabled: true });
     broker.registerClient(new FailingDesktopClient());
 
-    await expect(broker.execute({ command: pageInfoCommand() })).resolves.toEqual({
+    await expect(broker.execute({ command: snapshotCommand() })).resolves.toEqual({
       requestId: "req-1",
       ok: false,
       error: {
@@ -276,7 +276,7 @@ describe("BrowserToolsBroker", () => {
     const client = new FakeDesktopClient("desktop-1");
     broker.registerClient(client);
 
-    const resultPromise = broker.execute({ command: pageInfoCommand() });
+    const resultPromise = broker.execute({ command: snapshotCommand() });
 
     client.resolveLatestWith(broker, {
       requestId: "req-1",
@@ -305,7 +305,7 @@ describe("BrowserToolsBroker", () => {
     const client = new FakeDesktopClient("desktop-1");
     broker.registerClient(client);
 
-    const resultPromise = broker.execute({ command: pageInfoCommand() });
+    const resultPromise = broker.execute({ command: snapshotCommand() });
     expect(broker.getPendingRequestCount()).toBe(1);
 
     expect(
