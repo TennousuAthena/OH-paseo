@@ -68,10 +68,6 @@ class BrowserToolHarness {
     return this.get(name).handler(parsed, {});
   }
 
-  public outputParses(name: string, output: unknown) {
-    return schemaFor(this.get(name).config.outputSchema).safeParse(output);
-  }
-
   private get(name: string): RegisteredTool {
     const tool = this.tools.get(name);
     if (!tool) {
@@ -736,53 +732,6 @@ describe("registerBrowserTools", () => {
         agentId: "agent-1",
         cwd: "/repo",
       },
-    });
-  });
-
-  test("new tab declares the shape it returns", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse(newTabPayload());
-
-    const response = await harness.execute("browser_new_tab", {});
-
-    expect(harness.outputParses("browser_new_tab", response.structuredContent)).toEqual({
-      success: true,
-      data: response.structuredContent,
-    });
-  });
-
-  test("list tabs declares the shape it returns", async () => {
-    const harness = new BrowserToolHarness();
-
-    const response = await harness.execute("browser_list_tabs", {});
-
-    expect(harness.outputParses("browser_list_tabs", response.structuredContent)).toEqual({
-      success: true,
-      data: response.structuredContent,
-    });
-  });
-
-  test("snapshot declares the shape it returns", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse(snapshotPayload());
-
-    const response = await harness.execute("browser_snapshot", { browserId: BROWSER_ID });
-
-    expect(harness.outputParses("browser_snapshot", response.structuredContent)).toEqual({
-      success: true,
-      data: response.structuredContent,
-    });
-  });
-
-  test("screenshot declares the shape it returns", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse(screenshotPayload());
-
-    const response = await harness.execute("browser_screenshot", { browserId: BROWSER_ID });
-
-    expect(harness.outputParses("browser_screenshot", response.structuredContent)).toEqual({
-      success: true,
-      data: response.structuredContent,
     });
   });
 

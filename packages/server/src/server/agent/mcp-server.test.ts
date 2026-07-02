@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it, vi } from "vitest";
 import { realpathSync, rmSync } from "node:fs";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
@@ -13,6 +15,7 @@ import { AgentManager, type ManagedAgent } from "./agent-manager.js";
 import { AgentStorage, type StoredAgentRecord } from "./agent-storage.js";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
 import type { AgentMode, AgentProvider, ProviderSnapshotEntry } from "./agent-sdk-types.js";
+import type { ProviderSnapshotManager } from "./provider-snapshot-manager.js";
 import { createProviderSnapshotManagerStub } from "../test-utils/session-stubs.js";
 import {
   AgentListItemPayloadSchema,
@@ -36,6 +39,8 @@ import { WorkspaceGitServiceImpl } from "../workspace-git-service.js";
 import type { GitHubService } from "../../services/github-service.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import type { BrowserToolsBroker, BrowserToolsExecuteInput } from "../browser-tools/broker.js";
+import type { BrowserToolsResponsePayload } from "../browser-tools/errors.js";
 
 const REPO_CWD = resolvePath("/tmp/repo");
 const TARGET_CWD = resolvePath("/tmp/target");
@@ -487,6 +492,77 @@ function createGitHubServiceStub(): GitHubService {
   };
 }
 
+class FakeBrowserToolsBroker {
+  public readonly calls: BrowserToolsExecuteInput[] = [];
+
+  public constructor(private readonly response: BrowserToolsResponsePayload) {}
+
+  public async execute(input: BrowserToolsExecuteInput): Promise<BrowserToolsResponsePayload> {
+    this.calls.push(input);
+    return this.response;
+  }
+}
+
+class BoundaryAgentManagerFake {
+  private readonly agent = createManagedAgent({
+    id: "agent-1",
+    cwd: REPO_CWD,
+    workspaceId: BROWSER_WORKSPACE_ID,
+  });
+
+  public getAgent(agentId: string): ManagedAgent | null {
+    return agentId === this.agent.id ? this.agent : null;
+  }
+
+  public listAgents(): ManagedAgent[] {
+    return [];
+  }
+}
+
+class BoundaryAgentStorageFake {
+  public async list(): Promise<StoredAgentRecord[]> {
+    return [];
+  }
+}
+
+class BoundaryProviderSnapshotManagerFake {
+  public listRegisteredProviderIds(): AgentProvider[] {
+    return [];
+  }
+
+  public hasProvider(): boolean {
+    return false;
+  }
+
+  public getProviderLabel(provider: AgentProvider): string {
+    return provider;
+  }
+
+  public async listProviders(): Promise<ProviderSnapshotEntry[]> {
+    return [];
+  }
+
+  public async getProvider(): Promise<ProviderSnapshotEntry> {
+    throw new Error("Provider catalog is not used by this boundary test");
+  }
+
+  public async listModels(): Promise<[]> {
+    return [];
+  }
+
+  public async listModes(): Promise<[]> {
+    return [];
+  }
+}
+
+async function connectInMemoryMcpClient(server: Awaited<ReturnType<typeof createAgentMcpServer>>) {
+  const client = new Client({ name: "paseo-test-client", version: "0.0.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  return client;
+}
+
 function createStoredSchedule(input: CreateScheduleInput): StoredSchedule {
   const now = "2026-04-11T00:00:00.000Z";
   return {
@@ -581,6 +657,74 @@ function createPaseoWorktreeForMcpTest(options: {
 
 describe("browser MCP tools", () => {
   const logger = createTestLogger();
+
+  it("calls registered tools through the MCP SDK with listed output schemas", async () => {
+    const agentManager = new BoundaryAgentManagerFake();
+    const agentStorage = new BoundaryAgentStorageFake();
+    const broker = new FakeBrowserToolsBroker({
+      requestId: "req-browser-tabs",
+      ok: true,
+      result: { command: "list_tabs", tabs: [] },
+    });
+    const server = await createAgentMcpServer({
+      agentManager: agentManager as AgentManager,
+      agentStorage: agentStorage as AgentStorage,
+      providerSnapshotManager:
+        new BoundaryProviderSnapshotManagerFake() as unknown as ProviderSnapshotManager,
+      browserToolsBroker: broker as BrowserToolsBroker,
+      callerAgentId: "agent-1",
+      logger,
+    });
+    const client = await connectInMemoryMcpClient(server);
+
+    try {
+      const browserResult = await client.callTool({
+        name: "browser_list_tabs",
+        arguments: {},
+      });
+      const listAgentsResult = await client.callTool({
+        name: "list_agents",
+        arguments: {},
+      });
+
+      expect(broker.calls).toEqual([
+        {
+          agentId: "agent-1",
+          cwd: REPO_CWD,
+          workspaceId: BROWSER_WORKSPACE_ID,
+          command: { command: "list_tabs", args: {} },
+        },
+      ]);
+      expect(browserResult.isError).not.toBe(true);
+      expect(browserResult.structuredContent).toEqual({
+        ok: true,
+        result: { command: "list_tabs", tabs: [] },
+        context: { agentId: "agent-1", cwd: REPO_CWD, workspaceId: BROWSER_WORKSPACE_ID },
+      });
+      expect(listAgentsResult.isError).not.toBe(true);
+      expect(listAgentsResult.structuredContent).toEqual({
+        agents: [],
+      });
+
+      const listedTools = await client.listTools();
+      const toolsByName = new Map(listedTools.tools.map((tool) => [tool.name, tool]));
+      const registeredTools = Reflect.get(server, "_registeredTools") as Record<
+        string,
+        RegisteredMcpTool
+      >;
+
+      for (const [name, tool] of Object.entries(registeredTools)) {
+        if (tool.outputSchema !== undefined) {
+          expect(toolsByName.get(name)?.outputSchema, `${name} outputSchema`).toEqual(
+            expect.objectContaining({ type: "object" }),
+          );
+        }
+      }
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
 
   it("keeps browser tools registered when browser tools are disabled", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
