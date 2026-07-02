@@ -141,35 +141,6 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
   );
 
   options.registerTool(
-    "browser_page_info",
-    {
-      title: "Get browser page info",
-      description:
-        "Get page info for a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
-      inputSchema: {
-        browserId: BrowserAutomationBrowserIdSchema,
-      },
-      outputSchema: BrowserToolOutputSchema,
-    },
-    async ({ browserId }) => {
-      const context = resolveBrowserToolContext(options);
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-
-        command: {
-          command: "page_info",
-          args: {
-            browserId,
-          },
-        },
-      });
-      return browserToolResult({ payload, context: { ...context, browserId } });
-    },
-  );
-
-  options.registerTool(
     "browser_snapshot",
     {
       title: "Snapshot browser page",
@@ -442,11 +413,14 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Capture browser screenshot",
       description:
-        "Capture a PNG screenshot of a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
-      inputSchema: { browserId: BrowserAutomationBrowserIdSchema },
+        "Capture a PNG screenshot of a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs. Set fullPage to true to capture the full page.",
+      inputSchema: {
+        browserId: BrowserAutomationBrowserIdSchema,
+        fullPage: z.boolean().default(false),
+      },
       outputSchema: BrowserToolOutputSchema,
     },
-    async ({ browserId }) => {
+    async ({ browserId, fullPage }) => {
       const context = resolveBrowserToolContext(options);
       const payload = await options.broker.execute({
         agentId: context.agentId,
@@ -457,99 +431,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
           command: "screenshot",
           args: {
             browserId,
-          },
-        },
-      });
-      return browserToolResult({ payload, context: { ...context, browserId } });
-    },
-  );
-
-  options.registerTool(
-    "browser_full_page_screenshot",
-    {
-      title: "Capture full-page browser screenshot",
-      description:
-        "Capture a full-page PNG screenshot of a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
-      inputSchema: { browserId: BrowserAutomationBrowserIdSchema },
-      outputSchema: BrowserToolOutputSchema,
-    },
-    async ({ browserId }) => {
-      const context = resolveBrowserToolContext(options);
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-
-        command: {
-          command: "full_page_screenshot",
-          args: {
-            browserId,
-          },
-        },
-      });
-      return browserToolResult({ payload, context: { ...context, browserId } });
-    },
-  );
-
-  options.registerTool(
-    "browser_pdf",
-    {
-      title: "Export browser page PDF",
-      description:
-        "Export a Paseo desktop browser tab as a PDF. Use browserId from browser_new_tab or browser_list_tabs.",
-      inputSchema: {
-        browserId: BrowserAutomationBrowserIdSchema,
-        landscape: z.boolean().optional(),
-        printBackground: z.boolean().default(true),
-      },
-      outputSchema: BrowserToolOutputSchema,
-    },
-    async ({ browserId, landscape, printBackground }) => {
-      const context = resolveBrowserToolContext(options);
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-
-        command: {
-          command: "pdf",
-          args: {
-            browserId,
-            ...(landscape !== undefined ? { landscape } : {}),
-            printBackground: printBackground ?? true,
-          },
-        },
-      });
-      return browserToolResult({ payload, context: { ...context, browserId } });
-    },
-  );
-
-  options.registerTool(
-    "browser_download",
-    {
-      title: "Download file in browser",
-      description:
-        "Download a URL through a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; pass an http(s) URL or a scheme-less host URL, which is treated as http.",
-      inputSchema: {
-        url: BrowserHttpUrlInputSchema,
-        fileName: z.string().min(1).optional(),
-        browserId: BrowserAutomationBrowserIdSchema,
-      },
-      outputSchema: BrowserToolOutputSchema,
-    },
-    async ({ url, fileName, browserId }) => {
-      const context = resolveBrowserToolContext(options);
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-
-        command: {
-          command: "download",
-          args: {
-            browserId,
-            url,
-            ...(fileName ? { fileName } : {}),
+            fullPage: fullPage ?? false,
           },
         },
       });
@@ -592,20 +474,6 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
 
   for (const toolConfig of [
     {
-      name: "browser_focus",
-      command: "focus",
-      title: "Focus browser element",
-      description:
-        "Focus an element in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
-    },
-    {
-      name: "browser_clear",
-      command: "clear",
-      title: "Clear browser element",
-      description:
-        "Clear an input-like element in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
-    },
-    {
       name: "browser_hover",
       command: "hover",
       title: "Hover browser element",
@@ -640,39 +508,6 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       },
     );
   }
-
-  options.registerTool(
-    "browser_check",
-    {
-      title: "Check browser control",
-      description:
-        "Set a checkbox or radio control in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
-      inputSchema: {
-        ref: BrowserRefInputSchema,
-        checked: z.boolean().default(true),
-        browserId: BrowserAutomationBrowserIdSchema,
-      },
-      outputSchema: BrowserToolOutputSchema,
-    },
-    async ({ ref, checked, browserId }) => {
-      const context = resolveBrowserToolContext(options);
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-
-        command: {
-          command: "check",
-          args: {
-            browserId,
-            ref,
-            checked,
-          },
-        },
-      });
-      return browserToolResult({ payload, context: { ...context, browserId } });
-    },
-  );
 
   options.registerTool(
     "browser_select",
@@ -764,109 +599,6 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
           args: {
             browserId,
             maxEntries: maxEntries ?? 50,
-          },
-        },
-      });
-      return browserToolResult({ payload, context: { ...context, browserId } });
-    },
-  );
-
-  options.registerTool(
-    "browser_storage",
-    {
-      title: "Read browser storage",
-      description:
-        "Read cookies plus localStorage and sessionStorage for a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
-      inputSchema: { browserId: BrowserAutomationBrowserIdSchema },
-      outputSchema: BrowserToolOutputSchema,
-    },
-    async ({ browserId }) => {
-      const context = resolveBrowserToolContext(options);
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-
-        command: {
-          command: "storage",
-          args: {
-            browserId,
-          },
-        },
-      });
-      return browserToolResult({ payload, context: { ...context, browserId } });
-    },
-  );
-
-  options.registerTool(
-    "browser_environment",
-    {
-      title: "Set/read browser environment",
-      description:
-        "Set or read viewport and geolocation for a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
-      inputSchema: {
-        viewport: z
-          .object({
-            width: z.number().int().positive(),
-            height: z.number().int().positive(),
-            deviceScaleFactor: z.number().positive().optional(),
-          })
-          .optional(),
-        geolocation: z
-          .object({
-            latitude: z.number().min(-90).max(90),
-            longitude: z.number().min(-180).max(180),
-            accuracy: z.number().positive().optional(),
-          })
-          .optional(),
-        browserId: BrowserAutomationBrowserIdSchema,
-      },
-      outputSchema: BrowserToolOutputSchema,
-    },
-    async ({ viewport, geolocation, browserId }) => {
-      const context = resolveBrowserToolContext(options);
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-
-        command: {
-          command: "environment",
-          args: {
-            browserId,
-            ...(viewport ? { viewport } : {}),
-            ...(geolocation ? { geolocation } : {}),
-          },
-        },
-      });
-      return browserToolResult({ payload, context: { ...context, browserId } });
-    },
-  );
-
-  options.registerTool(
-    "browser_set_background",
-    {
-      title: "Set browser background",
-      description:
-        "Set the current page background color in a Paseo desktop browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
-      inputSchema: {
-        color: z.string().min(1),
-        browserId: BrowserAutomationBrowserIdSchema,
-      },
-      outputSchema: BrowserToolOutputSchema,
-    },
-    async ({ color, browserId }) => {
-      const context = resolveBrowserToolContext(options);
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-
-        command: {
-          command: "set_background",
-          args: {
-            browserId,
-            color,
           },
         },
       });
@@ -975,7 +707,7 @@ function browserToolSuccessContent(
 function browserToolImageContent(
   result: Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
 ): PaseoToolResult["content"][number] | null {
-  if (result.command !== "screenshot" && result.command !== "full_page_screenshot") {
+  if (result.command !== "screenshot") {
     return null;
   }
 
@@ -1002,16 +734,6 @@ function summarizeBrowserSuccess(
   const diagnosticsSummary = summarizeBrowserDiagnosticsSuccess(payload.result);
   if (diagnosticsSummary) {
     return diagnosticsSummary;
-  }
-
-  const storageSummary = summarizeBrowserStorageSuccess(payload.result);
-  if (storageSummary) {
-    return storageSummary;
-  }
-
-  const environmentSummary = summarizeBrowserEnvironmentSuccess(payload.result);
-  if (environmentSummary) {
-    return environmentSummary;
   }
 
   const keyboardSummary = summarizeBrowserKeyboardSuccess(payload.result);
@@ -1057,10 +779,6 @@ function summarizeBrowserSuccess(
     return `Browser wait matched ${payload.result.matched}.`;
   }
 
-  if (payload.result.command === "page_info") {
-    return `Current page browserId=${payload.result.tab.browserId}: ${payload.result.tab.title || "Untitled"} — ${payload.result.tab.url}`;
-  }
-
   return `Browser ${payload.result.command} complete.`;
 }
 
@@ -1069,15 +787,6 @@ function summarizeBrowserMediaSuccess(
 ): string | null {
   if (result.command === "screenshot") {
     return `Captured browser screenshot (${result.width}x${result.height}).`;
-  }
-  if (result.command === "full_page_screenshot") {
-    return `Captured full-page browser screenshot (${result.width}x${result.height}).`;
-  }
-  if (result.command === "pdf") {
-    return "Exported browser page PDF.";
-  }
-  if (result.command === "download") {
-    return `Downloaded browser file to ${result.filePath}.`;
   }
   if (result.command === "upload") {
     const count = result.filePaths.length;
@@ -1129,24 +838,6 @@ function summarizeBrowserDiagnosticsSuccess(
   return `Read ${consoleCount} console log${consoleCount === 1 ? "" : "s"} and ${networkCount} network entr${networkCount === 1 ? "y" : "ies"}.`;
 }
 
-function summarizeBrowserStorageSuccess(
-  result: Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
-): string | null {
-  if (result.command !== "storage") {
-    return null;
-  }
-  return `Read ${result.cookies.length} cookie${result.cookies.length === 1 ? "" : "s"}, ${result.localStorage.length} localStorage entr${result.localStorage.length === 1 ? "y" : "ies"}, and ${result.sessionStorage.length} sessionStorage entr${result.sessionStorage.length === 1 ? "y" : "ies"}.`;
-}
-
-function summarizeBrowserEnvironmentSuccess(
-  result: Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
-): string | null {
-  if (result.command !== "environment") {
-    return null;
-  }
-  return `Browser environment viewport is ${result.viewport.width}x${result.viewport.height}.`;
-}
-
 function summarizeBrowserRefActionSuccess(
   result: Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
 ): string | null {
@@ -1164,18 +855,6 @@ function summarizeBrowserRefActionSuccess(
 function summarizeBrowserControlSuccess(
   result: Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
 ): string | null {
-  if (result.command === "focus") {
-    return `Focused browser element ${result.ref}.`;
-  }
-
-  if (result.command === "clear") {
-    return `Cleared browser element ${result.ref}.`;
-  }
-
-  if (result.command === "check") {
-    return `${result.checked ? "Checked" : "Unchecked"} browser element ${result.ref}.`;
-  }
-
   if (result.command === "select") {
     return `Selected ${result.value} in browser element ${result.ref}.`;
   }
@@ -1186,10 +865,6 @@ function summarizeBrowserControlSuccess(
 
   if (result.command === "drag") {
     return `Dragged browser element ${result.sourceRef} to ${result.targetRef}.`;
-  }
-
-  if (result.command === "set_background") {
-    return `Set browser page background to ${result.color}.`;
   }
 
   return null;

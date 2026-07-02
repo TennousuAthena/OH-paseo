@@ -4,7 +4,6 @@ import { describe, expect, test, vi } from "vitest";
 import type {
   BrowserAutomationCommand,
   BrowserAutomationConsoleLogEntry,
-  BrowserAutomationCookieEntry,
   BrowserAutomationExecuteRequest,
 } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
@@ -37,25 +36,14 @@ class FakeTab implements TabContents {
   public readonly actions: string[] = [];
   public readonly capturedViewports: Array<{ stayHidden?: boolean }> = [];
   public readonly debugCommands: Array<{ command: string; params?: Record<string, unknown> }> = [];
-  public readonly pdfOptions: Record<string, unknown>[] = [];
-  public readonly downloads: Array<{ url: string; fileName?: string }> = [];
 
   public destroyed = false;
   public bodyText = "";
   public snapshotElements: unknown[] = [];
   public actionScriptResult: unknown = true;
   public networkEntries: unknown[] = [];
-  public storageState: unknown = { localStorage: [], sessionStorage: [] };
-  public viewport = { width: 1024, height: 768, deviceScaleFactor: 2 };
   public consoleMessages: BrowserAutomationConsoleLogEntry[] = [];
-  public cookies: BrowserAutomationCookieEntry[] = [];
   public captureNeverPaints = false;
-  public pdfBytes = new Uint8Array([37, 80, 68, 70]);
-  public downloadResult = {
-    filePath: "/workspace/downloads/file.txt",
-    totalBytes: 42,
-    state: "completed",
-  };
   public layoutMetrics = {
     cssLayoutViewport: { clientWidth: 390, clientHeight: 844 },
     cssContentSize: { width: 390, height: 1200 },
@@ -106,12 +94,6 @@ class FakeTab implements TabContents {
     if (code.includes("performance.getEntriesByType")) {
       return JSON.stringify(this.networkEntries);
     }
-    if (code.includes("localStorage") && code.includes("sessionStorage")) {
-      return JSON.stringify(this.storageState);
-    }
-    if (code.includes("window.innerWidth")) {
-      return JSON.stringify(this.viewport);
-    }
     return this.actionScriptResult;
   }
 
@@ -157,10 +139,6 @@ class FakeTab implements TabContents {
     return this.consoleMessages;
   }
 
-  public async getCookies(_url: string): Promise<BrowserAutomationCookieEntry[]> {
-    return this.cookies;
-  }
-
   public async sendDebugCommand(
     command: string,
     params?: Record<string, unknown>,
@@ -179,20 +157,6 @@ class FakeTab implements TabContents {
       return { nodeId: this.queriedNodeId };
     }
     return {};
-  }
-
-  public async printToPDF(options?: Record<string, unknown>): Promise<Uint8Array> {
-    this.pdfOptions.push(options ?? {});
-    return this.pdfBytes;
-  }
-
-  public async downloadURL(input: { url: string; fileName?: string }): Promise<{
-    filePath: string;
-    totalBytes?: number;
-    state: string;
-  }> {
-    this.downloads.push(input);
-    return this.downloadResult;
   }
 }
 
@@ -470,50 +434,20 @@ describe("executeAutomationCommand", () => {
     });
   });
 
-  test("page info reads the explicit browser id from command args", () => {
-    const browser = new BrowserAutomationHarness();
-
-    const result = executeAutomationCommand(
-      automationRequest(
-        { command: "page_info", args: { browserId: BROWSER_A } },
-        { requestId: "req-page" },
-      ),
-      browser.registry,
-    );
-
-    expect(result).toEqual({
-      requestId: "req-page",
-      ok: true,
-      result: {
-        command: "page_info",
-        tab: {
-          browserId: BROWSER_A,
-          workspaceId: WORKSPACE_A,
-          url: "https://a.test/form",
-          title: "Fixture",
-          isActive: true,
-          isLoading: false,
-          canGoBack: true,
-          canGoForward: false,
-        },
-      },
-    });
-  });
-
-  test("page info returns tab not found for an id in another workspace", () => {
+  test("tab commands return tab not found for an id in another workspace", async () => {
     const registry = new FakeRegistry();
     registry.register(BROWSER_A, WORKSPACE_B, new FakeTab(1, "https://a.test", "A"));
 
-    const result = executeAutomationCommand(
+    const result = await executeAutomationCommand(
       automationRequest(
-        { command: "page_info", args: { browserId: BROWSER_A } },
-        { requestId: "req-page" },
+        { command: "snapshot", args: { browserId: BROWSER_A } },
+        { requestId: "req-snapshot" },
       ),
       registry,
     );
 
     expect(result).toEqual({
-      requestId: "req-page",
+      requestId: "req-snapshot",
       ok: false,
       error: {
         code: "browser_tab_not_found",
@@ -523,22 +457,22 @@ describe("executeAutomationCommand", () => {
     });
   });
 
-  test("page info returns tab closed for a destroyed explicit tab", () => {
+  test("tab commands return tab closed for a destroyed explicit tab", async () => {
     const tab = new FakeTab(1, "https://a.test", "A");
     tab.destroyed = true;
     const registry = new FakeRegistry();
     registry.register(BROWSER_A, WORKSPACE_A, tab);
 
-    const result = executeAutomationCommand(
+    const result = await executeAutomationCommand(
       automationRequest(
-        { command: "page_info", args: { browserId: BROWSER_A } },
-        { requestId: "req-page" },
+        { command: "snapshot", args: { browserId: BROWSER_A } },
+        { requestId: "req-snapshot" },
       ),
       registry,
     );
 
     expect(result).toEqual({
-      requestId: "req-page",
+      requestId: "req-snapshot",
       ok: false,
       error: {
         code: "browser_tab_closed",
@@ -595,46 +529,12 @@ describe("executeAutomationCommand", () => {
     expect(containsScript(browser.tab, "#submit", ".click()")).toBe(true);
   });
 
-  test("set background writes the requested color into the explicit page", async () => {
-    const browser = new BrowserAutomationHarness();
-
-    const result = await browser.execute({
-      command: "set_background",
-      args: { browserId: BROWSER_A, color: "red" },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-set_background",
-      ok: true,
-      result: { command: "set_background", browserId: BROWSER_A, color: "red" },
-    });
-    expect(containsScript(browser.tab, "document.body.style.background", "red")).toBe(true);
-  });
-
   test.each([
     {
       name: "fill updates a ref from the latest snapshot",
       command: { command: "fill", args: { browserId: BROWSER_A, ref: "@e1", value: "Ada" } },
       result: { command: "fill", browserId: BROWSER_A, ref: "@e1" },
       scriptParts: ["#name", "Ada"],
-    },
-    {
-      name: "focus focuses a ref from the latest snapshot",
-      command: { command: "focus", args: { browserId: BROWSER_A, ref: "@e1" } },
-      result: { command: "focus", browserId: BROWSER_A, ref: "@e1" },
-      scriptParts: ["#name", "focus"],
-    },
-    {
-      name: "clear clears a ref from the latest snapshot",
-      command: { command: "clear", args: { browserId: BROWSER_A, ref: "@e1" } },
-      result: { command: "clear", browserId: BROWSER_A, ref: "@e1" },
-      scriptParts: ["#name", "deleteContent"],
-    },
-    {
-      name: "check sets the requested checked state on a ref",
-      command: { command: "check", args: { browserId: BROWSER_A, ref: "@e2", checked: false } },
-      result: { command: "check", browserId: BROWSER_A, ref: "@e2", checked: false },
-      scriptParts: ["#agree", "nextChecked = false"],
     },
     {
       name: "select sets the requested value on a ref",
@@ -670,6 +570,24 @@ describe("executeAutomationCommand", () => {
       result,
     });
     expect(containsScript(browser.tab, ...scriptParts)).toBe(true);
+  });
+
+  test("fill with an empty string clears a ref through the regular fill path", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.snapshotElements = formElements();
+
+    requireSnapshotRefs(await browser.snapshot());
+    const action = await browser.execute({
+      command: "fill",
+      args: { browserId: BROWSER_A, ref: "@e1", value: "" },
+    });
+
+    expect(action).toEqual({
+      requestId: "req-fill",
+      ok: true,
+      result: { command: "fill", browserId: BROWSER_A, ref: "@e1" },
+    });
+    expect(containsScript(browser.tab, "#name", 'const nextValue = "";')).toBe(true);
   });
 
   test("refs become stale after navigation changes the tab URL", async () => {
@@ -912,71 +830,6 @@ describe("executeAutomationCommand", () => {
     });
   });
 
-  test("storage reads cookies and web storage from the explicit tab", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.cookies = [
-      { name: "theme", value: "dark", domain: "a.test", path: "/", secure: true },
-    ];
-    browser.tab.storageState = {
-      localStorage: [{ key: "token", value: "abc" }],
-      sessionStorage: [{ key: "tab", value: "1" }],
-    };
-
-    const result = await browser.execute({
-      command: "storage",
-      args: { browserId: BROWSER_A },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-storage",
-      ok: true,
-      result: {
-        command: "storage",
-        browserId: BROWSER_A,
-        url: "https://a.test/form",
-        cookies: [{ name: "theme", value: "dark", domain: "a.test", path: "/", secure: true }],
-        localStorage: [{ key: "token", value: "abc" }],
-        sessionStorage: [{ key: "tab", value: "1" }],
-      },
-    });
-  });
-
-  test("environment applies viewport and geolocation before reporting the current viewport", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.viewport = { width: 390, height: 844, deviceScaleFactor: 3 };
-
-    const result = await browser.execute({
-      command: "environment",
-      args: {
-        browserId: BROWSER_A,
-        viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
-        geolocation: { latitude: 37.7749, longitude: -122.4194, accuracy: 5 },
-      },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-environment",
-      ok: true,
-      result: {
-        command: "environment",
-        browserId: BROWSER_A,
-        viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
-        geolocation: { latitude: 37.7749, longitude: -122.4194, accuracy: 5 },
-      },
-    });
-    expect(browser.tab.debugCommands).toEqual([
-      {
-        command: "Emulation.setDeviceMetricsOverride",
-        params: { width: 390, height: 844, deviceScaleFactor: 3, mobile: false },
-      },
-      {
-        command: "Emulation.setGeolocationOverride",
-        params: { latitude: 37.7749, longitude: -122.4194, accuracy: 5 },
-      },
-    ]);
-    expect(containsScript(browser.tab, "navigator", "geolocation")).toBe(true);
-  });
-
   test("screenshot serializes the painted viewport and restores throttling", async () => {
     const browser = new BrowserAutomationHarness();
 
@@ -1039,19 +892,19 @@ describe("executeAutomationCommand", () => {
     }
   });
 
-  test("full page screenshot captures the page content area through CDP", async () => {
+  test("screenshot with fullPage captures the page content area through CDP", async () => {
     const browser = new BrowserAutomationHarness();
 
     const result = await browser.execute({
-      command: "full_page_screenshot",
-      args: { browserId: BROWSER_A },
+      command: "screenshot",
+      args: { browserId: BROWSER_A, fullPage: true },
     });
 
     expect(result).toEqual({
-      requestId: "req-full_page_screenshot",
+      requestId: "req-screenshot",
       ok: true,
       result: {
-        command: "full_page_screenshot",
+        command: "screenshot",
         browserId: BROWSER_A,
         mimeType: "image/png",
         dataBase64: "fullPagePng",
@@ -1069,56 +922,6 @@ describe("executeAutomationCommand", () => {
           clip: { x: 0, y: 0, width: 390, height: 1200, scale: 1 },
         },
       },
-    ]);
-  });
-
-  test("pdf exports the explicit tab with requested print options", async () => {
-    const browser = new BrowserAutomationHarness();
-
-    const result = await browser.execute({
-      command: "pdf",
-      args: { browserId: BROWSER_A, landscape: true, printBackground: false },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-pdf",
-      ok: true,
-      result: {
-        command: "pdf",
-        browserId: BROWSER_A,
-        mimeType: "application/pdf",
-        dataBase64: "JVBERg==",
-      },
-    });
-    expect(browser.tab.pdfOptions).toEqual([{ printBackground: false, landscape: true }]);
-  });
-
-  test("download saves the requested HTTP URL through the explicit tab", async () => {
-    const browser = new BrowserAutomationHarness();
-
-    const result = await browser.execute({
-      command: "download",
-      args: {
-        browserId: BROWSER_A,
-        url: "https://a.test/file.txt",
-        fileName: "file.txt",
-      },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-download",
-      ok: true,
-      result: {
-        command: "download",
-        browserId: BROWSER_A,
-        url: "https://a.test/file.txt",
-        filePath: "/workspace/downloads/file.txt",
-        totalBytes: 42,
-        state: "completed",
-      },
-    });
-    expect(browser.tab.downloads).toEqual([
-      { url: "https://a.test/file.txt", fileName: "file.txt" },
     ]);
   });
 

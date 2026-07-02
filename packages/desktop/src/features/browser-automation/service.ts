@@ -3,12 +3,10 @@ import { isAbsolute, relative, resolve as resolvePath } from "node:path";
 import type {
   BrowserAutomationCommand,
   BrowserAutomationConsoleLogEntry,
-  BrowserAutomationCookieEntry,
   BrowserAutomationErrorCode,
   BrowserAutomationExecuteResponse,
   BrowserAutomationExecuteRequest,
   BrowserAutomationNetworkLogEntry,
-  BrowserAutomationStorageEntry,
 } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
 
@@ -30,14 +28,7 @@ export interface TabContents {
   isBackgroundThrottlingAllowed(): boolean;
   setBackgroundThrottling(allowed: boolean): void;
   getConsoleMessages?(): BrowserAutomationConsoleLogEntry[];
-  getCookies?(url: string): Promise<BrowserAutomationCookieEntry[]>;
   sendDebugCommand?(command: string, params?: Record<string, unknown>): Promise<unknown>;
-  printToPDF?(options?: Record<string, unknown>): Promise<Uint8Array>;
-  downloadURL?(input: { url: string; fileName?: string }): Promise<{
-    filePath: string;
-    totalBytes?: number;
-    state: string;
-  }>;
 }
 
 export interface TabImage {
@@ -195,10 +186,6 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
     executeListTabs(requestId, workspaceId, registry),
   new_tab: ({ requestId }) =>
     fail(requestId, "browser_unsupported", "browser_new_tab is handled by the app runtime."),
-  page_info: ({ command, requestId, workspaceId, registry }) => {
-    const pageInfoCommand = command as Extract<BrowserAutomationCommand, { command: "page_info" }>;
-    return executePageInfo(requestId, workspaceId, pageInfoCommand.args.browserId, registry);
-  },
   snapshot: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const snapshotCommand = command as Extract<BrowserAutomationCommand, { command: "snapshot" }>;
     return executeSnapshot(
@@ -315,37 +302,11 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
       BrowserAutomationCommand,
       { command: "screenshot" }
     >;
-    return executeScreenshot(requestId, workspaceId, screenshotCommand.args.browserId, registry);
-  },
-  full_page_screenshot: ({ command, requestId, workspaceId, registry }) => {
-    const screenshotCommand = command as Extract<
-      BrowserAutomationCommand,
-      { command: "full_page_screenshot" }
-    >;
-    return executeFullPageScreenshot(
+    return executeScreenshot(
       requestId,
       workspaceId,
       screenshotCommand.args.browserId,
-      registry,
-    );
-  },
-  pdf: ({ command, requestId, workspaceId, registry }) => {
-    const pdfCommand = command as Extract<BrowserAutomationCommand, { command: "pdf" }>;
-    return executePdf(
-      requestId,
-      workspaceId,
-      pdfCommand.args.browserId,
-      { landscape: pdfCommand.args.landscape, printBackground: pdfCommand.args.printBackground },
-      registry,
-    );
-  },
-  download: ({ command, requestId, workspaceId, registry }) => {
-    const downloadCommand = command as Extract<BrowserAutomationCommand, { command: "download" }>;
-    return executeDownload(
-      requestId,
-      workspaceId,
-      downloadCommand.args.browserId,
-      { url: downloadCommand.args.url, fileName: downloadCommand.args.fileName },
+      screenshotCommand.args.fullPage,
       registry,
     );
   },
@@ -357,40 +318,6 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
       workspaceId,
       uploadCommand.args.browserId,
       { ref: uploadCommand.args.ref, filePaths: uploadCommand.args.filePaths },
-      registry,
-      snapshotEngine,
-    );
-  },
-  focus: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
-    const focusCommand = command as Extract<BrowserAutomationCommand, { command: "focus" }>;
-    return executeFocus(
-      requestId,
-      workspaceId,
-      focusCommand.args.browserId,
-      focusCommand.args.ref,
-      registry,
-      snapshotEngine,
-    );
-  },
-  clear: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
-    const clearCommand = command as Extract<BrowserAutomationCommand, { command: "clear" }>;
-    return executeClear(
-      requestId,
-      workspaceId,
-      clearCommand.args.browserId,
-      clearCommand.args.ref,
-      registry,
-      snapshotEngine,
-    );
-  },
-  check: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
-    const checkCommand = command as Extract<BrowserAutomationCommand, { command: "check" }>;
-    return executeCheck(
-      requestId,
-      workspaceId,
-      checkCommand.args.browserId,
-      checkCommand.args.ref,
-      checkCommand.args.checked,
       registry,
       snapshotEngine,
     );
@@ -440,39 +367,6 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
       registry,
     );
   },
-  storage: ({ command, requestId, workspaceId, registry }) => {
-    const storageCommand = command as Extract<BrowserAutomationCommand, { command: "storage" }>;
-    return executeStorage(requestId, workspaceId, storageCommand.args.browserId, registry);
-  },
-  environment: ({ command, requestId, workspaceId, registry }) => {
-    const environmentCommand = command as Extract<
-      BrowserAutomationCommand,
-      { command: "environment" }
-    >;
-    return executeEnvironment(
-      requestId,
-      workspaceId,
-      environmentCommand.args.browserId,
-      {
-        viewport: environmentCommand.args.viewport,
-        geolocation: environmentCommand.args.geolocation,
-      },
-      registry,
-    );
-  },
-  set_background: ({ command, requestId, workspaceId, registry }) => {
-    const setBackgroundCommand = command as Extract<
-      BrowserAutomationCommand,
-      { command: "set_background" }
-    >;
-    return executeSetBackground(
-      requestId,
-      workspaceId,
-      setBackgroundCommand.args.browserId,
-      setBackgroundCommand.args.color,
-      registry,
-    );
-  },
 };
 
 interface ResolvedTabTarget {
@@ -506,37 +400,6 @@ function executeListTabs(
   }
 
   return { requestId, ok: true, result: { command: "list_tabs", tabs } };
-}
-
-function executePageInfo(
-  requestId: string,
-  workspaceId: string | undefined,
-  browserId: string,
-  registry: BrowserRegistry,
-): AutomationCommandPayload {
-  const target = resolveTabTarget({
-    requestId,
-    workspaceId,
-    browserId,
-    registry,
-  });
-  if ("ok" in target) {
-    return target;
-  }
-
-  return {
-    requestId,
-    ok: true,
-    result: {
-      command: "page_info",
-      tab: tabInfoFromContents(
-        target.browserId,
-        target.contents,
-        workspaceId ? registry.getWorkspaceActiveBrowserId(workspaceId) : null,
-        registry.getBrowserWorkspaceId(target.browserId),
-      ),
-    },
-  };
 }
 
 async function executeSnapshot(
@@ -623,81 +486,6 @@ async function executeFill(
     return staleRefFailure(requestId, ref);
   }
   return { requestId, ok: true, result: { command: "fill", browserId: target.browserId, ref } };
-}
-
-async function executeFocus(
-  requestId: string,
-  workspaceId: string | undefined,
-  browserId: string,
-  ref: string,
-  registry: BrowserRegistry,
-  snapshotEngine: BrowserSnapshotEngine,
-): Promise<AutomationCommandPayload> {
-  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
-  if ("ok" in target) {
-    return target;
-  }
-  const result = await snapshotEngine.focus({
-    browserId: target.browserId,
-    page: target.contents,
-    ref,
-  });
-  if (!result.ok) {
-    return staleRefFailure(requestId, ref);
-  }
-  return { requestId, ok: true, result: { command: "focus", browserId: target.browserId, ref } };
-}
-
-async function executeClear(
-  requestId: string,
-  workspaceId: string | undefined,
-  browserId: string,
-  ref: string,
-  registry: BrowserRegistry,
-  snapshotEngine: BrowserSnapshotEngine,
-): Promise<AutomationCommandPayload> {
-  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
-  if ("ok" in target) {
-    return target;
-  }
-  const result = await snapshotEngine.clear({
-    browserId: target.browserId,
-    page: target.contents,
-    ref,
-  });
-  if (!result.ok) {
-    return staleRefFailure(requestId, ref);
-  }
-  return { requestId, ok: true, result: { command: "clear", browserId: target.browserId, ref } };
-}
-
-async function executeCheck(
-  requestId: string,
-  workspaceId: string | undefined,
-  browserId: string,
-  ref: string,
-  checked: boolean,
-  registry: BrowserRegistry,
-  snapshotEngine: BrowserSnapshotEngine,
-): Promise<AutomationCommandPayload> {
-  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
-  if ("ok" in target) {
-    return target;
-  }
-  const result = await snapshotEngine.check({
-    browserId: target.browserId,
-    page: target.contents,
-    ref,
-    checked,
-  });
-  if (!result.ok) {
-    return staleRefFailure(requestId, ref);
-  }
-  return {
-    requestId,
-    ok: true,
-    result: { command: "check", browserId: target.browserId, ref, checked },
-  };
 }
 
 async function executeSelect(
@@ -808,84 +596,6 @@ async function executeLogs(
   };
 }
 
-async function executeStorage(
-  requestId: string,
-  workspaceId: string | undefined,
-  browserId: string,
-  registry: BrowserRegistry,
-): Promise<AutomationCommandPayload> {
-  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
-  if ("ok" in target) {
-    return target;
-  }
-  const url = target.contents.getURL();
-  const cookies = (await target.contents.getCookies?.(url)) ?? [];
-  const storage = parseStorageState(await target.contents.executeJavaScript(STORAGE_STATE_SCRIPT));
-  return {
-    requestId,
-    ok: true,
-    result: {
-      command: "storage",
-      browserId: target.browserId,
-      url,
-      cookies,
-      localStorage: storage.localStorage,
-      sessionStorage: storage.sessionStorage,
-    },
-  };
-}
-
-async function executeEnvironment(
-  requestId: string,
-  workspaceId: string | undefined,
-  browserId: string,
-  environment: {
-    viewport?: { width: number; height: number; deviceScaleFactor?: number };
-    geolocation?: { latitude: number; longitude: number; accuracy?: number };
-  },
-  registry: BrowserRegistry,
-): Promise<AutomationCommandPayload> {
-  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
-  if ("ok" in target) {
-    return target;
-  }
-  if (environment.viewport) {
-    await target.contents.sendDebugCommand?.("Emulation.setDeviceMetricsOverride", {
-      width: environment.viewport.width,
-      height: environment.viewport.height,
-      deviceScaleFactor: environment.viewport.deviceScaleFactor ?? 1,
-      mobile: false,
-    });
-  }
-  if (environment.geolocation) {
-    const geolocation = {
-      latitude: environment.geolocation.latitude,
-      longitude: environment.geolocation.longitude,
-      accuracy: environment.geolocation.accuracy ?? 1,
-    };
-    await target.contents.sendDebugCommand?.("Emulation.setGeolocationOverride", geolocation);
-    await target.contents.executeJavaScript(buildGeolocationShimScript(geolocation));
-  }
-  const viewport = parseViewport(await target.contents.executeJavaScript(VIEWPORT_SCRIPT));
-  return {
-    requestId,
-    ok: true,
-    result: {
-      command: "environment",
-      browserId: target.browserId,
-      viewport,
-      ...(environment.geolocation
-        ? {
-            geolocation: {
-              ...environment.geolocation,
-              accuracy: environment.geolocation.accuracy ?? 1,
-            },
-          }
-        : {}),
-    },
-  };
-}
-
 function staleRefFailure(requestId: string, ref: string): FailurePayload {
   return fail(
     requestId,
@@ -950,39 +660,6 @@ async function executeWait(
     );
   }
   return fail(requestId, "browser_unsupported", "browser_wait requires text or url");
-}
-
-async function executeSetBackground(
-  requestId: string,
-  workspaceId: string | undefined,
-  browserId: string,
-  color: string,
-  registry: BrowserRegistry,
-): Promise<AutomationCommandPayload> {
-  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
-  if ("ok" in target) {
-    return target;
-  }
-
-  await target.contents.executeJavaScript(buildSetBackgroundScript(color));
-  return {
-    requestId,
-    ok: true,
-    result: { command: "set_background", browserId: target.browserId, color },
-  };
-}
-
-function buildSetBackgroundScript(color: string): string {
-  return String.raw`(() => {
-    const color = ${JSON.stringify(color)};
-    document.documentElement.style.background = color;
-    if (document.body) {
-      document.body.style.background = color;
-      document.body.style.backgroundColor = color;
-      document.body.style.minHeight = '100vh';
-    }
-    return true;
-  })()`;
 }
 
 async function executeType(
@@ -1092,8 +769,13 @@ async function executeScreenshot(
   requestId: string,
   workspaceId: string | undefined,
   browserId: string,
+  fullPage: boolean,
   registry: BrowserRegistry,
 ): Promise<AutomationCommandPayload> {
+  if (fullPage) {
+    return executeFullPageScreenshot(requestId, workspaceId, browserId, registry);
+  }
+
   const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
   if ("ok" in target) {
     return target;
@@ -1176,7 +858,7 @@ async function executeFullPageScreenshot(
     return target;
   }
   if (!target.contents.sendDebugCommand) {
-    return fail(requestId, "browser_unsupported", "browser_full_page_screenshot requires CDP");
+    return fail(requestId, "browser_unsupported", "browser_screenshot fullPage requires CDP");
   }
   const metrics = await getCdpLayoutMetrics(target.contents);
   const width = metrics.contentWidth;
@@ -1197,80 +879,18 @@ async function executeFullPageScreenshot(
     throw error;
   }
   if (!screenshot.data) {
-    return fail(requestId, "browser_unsupported", "browser_full_page_screenshot returned no data");
+    return fail(requestId, "browser_unsupported", "browser_screenshot fullPage returned no data");
   }
   return {
     requestId,
     ok: true,
     result: {
-      command: "full_page_screenshot",
+      command: "screenshot",
       browserId: target.browserId,
       mimeType: "image/png",
       dataBase64: screenshot.data,
       width,
       height,
-    },
-  };
-}
-
-async function executePdf(
-  requestId: string,
-  workspaceId: string | undefined,
-  browserId: string,
-  options: { landscape?: boolean; printBackground: boolean },
-  registry: BrowserRegistry,
-): Promise<AutomationCommandPayload> {
-  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
-  if ("ok" in target) {
-    return target;
-  }
-  if (!target.contents.printToPDF) {
-    return fail(requestId, "browser_unsupported", "browser_pdf requires PDF support");
-  }
-  const pdf = await target.contents.printToPDF({
-    printBackground: options.printBackground,
-    ...(options.landscape !== undefined ? { landscape: options.landscape } : {}),
-  });
-  return {
-    requestId,
-    ok: true,
-    result: {
-      command: "pdf",
-      browserId: target.browserId,
-      mimeType: "application/pdf",
-      dataBase64: Buffer.from(pdf).toString("base64"),
-    },
-  };
-}
-
-async function executeDownload(
-  requestId: string,
-  workspaceId: string | undefined,
-  browserId: string,
-  input: { url: string; fileName?: string },
-  registry: BrowserRegistry,
-): Promise<AutomationCommandPayload> {
-  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
-  if ("ok" in target) {
-    return target;
-  }
-  if (!isAllowedPageUrl(input.url)) {
-    return fail(requestId, "browser_denied", "Browser download only supports http and https URLs.");
-  }
-  if (!target.contents.downloadURL) {
-    return fail(requestId, "browser_unsupported", "browser_download requires download support");
-  }
-  const download = await target.contents.downloadURL(input);
-  return {
-    requestId,
-    ok: true,
-    result: {
-      command: "download",
-      browserId: target.browserId,
-      url: input.url,
-      filePath: download.filePath,
-      ...(download.totalBytes !== undefined ? { totalBytes: download.totalBytes } : {}),
-      state: download.state,
     },
   };
 }
@@ -1408,79 +1028,12 @@ function parseNetworkEntries(value: unknown): BrowserAutomationNetworkLogEntry[]
   });
 }
 
-function parseStorageState(value: unknown): {
-  localStorage: BrowserAutomationStorageEntry[];
-  sessionStorage: BrowserAutomationStorageEntry[];
-} {
-  const parsed = typeof value === "string" ? JSON.parse(value) : value;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { localStorage: [], sessionStorage: [] };
-  }
-  const record = parsed as Record<string, unknown>;
-  return {
-    localStorage: parseStorageEntries(record.localStorage),
-    sessionStorage: parseStorageEntries(record.sessionStorage),
-  };
-}
-
-function parseStorageEntries(value: unknown): BrowserAutomationStorageEntry[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.flatMap((entry): BrowserAutomationStorageEntry[] => {
-    if (!entry || typeof entry !== "object") {
-      return [];
-    }
-    const record = entry as Record<string, unknown>;
-    const key = readString(record.key);
-    const itemValue = readString(record.value);
-    return key !== null && itemValue !== null ? [{ key, value: itemValue }] : [];
-  });
-}
-
 function readString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
 function readNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function parseViewport(value: unknown): {
-  width: number;
-  height: number;
-  deviceScaleFactor: number;
-} {
-  const parsed = typeof value === "string" ? JSON.parse(value) : value;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { width: 0, height: 0, deviceScaleFactor: 1 };
-  }
-  const record = parsed as Record<string, unknown>;
-  return {
-    width: readNumber(record.width) ?? 0,
-    height: readNumber(record.height) ?? 0,
-    deviceScaleFactor: readNumber(record.deviceScaleFactor) ?? 1,
-  };
-}
-
-function buildGeolocationShimScript(geolocation: {
-  latitude: number;
-  longitude: number;
-  accuracy: number;
-}): string {
-  return String.raw`(() => {
-    const coords = ${JSON.stringify({ ...geolocation, altitude: null, altitudeAccuracy: null, heading: null, speed: null })};
-    const position = { coords, timestamp: Date.now() };
-    Object.defineProperty(navigator, 'geolocation', {
-      configurable: true,
-      value: {
-        getCurrentPosition(success) { setTimeout(() => success(position), 0); },
-        watchPosition(success) { setTimeout(() => success(position), 0); return 1; },
-        clearWatch() {},
-      },
-    });
-    return true;
-  })()`;
 }
 
 const NETWORK_PERFORMANCE_SCRIPT = String.raw`(() => {
@@ -1497,34 +1050,6 @@ const NETWORK_PERFORMANCE_SCRIPT = String.raw`(() => {
     }));
   return JSON.stringify(entries);
 })()`;
-
-const STORAGE_STATE_SCRIPT = String.raw`(() => {
-  function entriesFor(storage) {
-    const entries = [];
-    for (let index = 0; index < storage.length; index += 1) {
-      const key = storage.key(index);
-      if (key !== null) entries.push({ key, value: storage.getItem(key) || '' });
-    }
-    return entries;
-  }
-  function safeEntries(readStorage) {
-    try {
-      return entriesFor(readStorage());
-    } catch {
-      return [];
-    }
-  }
-  return JSON.stringify({
-    localStorage: safeEntries(() => window.localStorage),
-    sessionStorage: safeEntries(() => window.sessionStorage),
-  });
-})()`;
-
-const VIEWPORT_SCRIPT = String.raw`(() => JSON.stringify({
-  width: window.innerWidth,
-  height: window.innerHeight,
-  deviceScaleFactor: window.devicePixelRatio || 1,
-}))()`;
 
 function resolveTabTarget(input: {
   requestId: string;

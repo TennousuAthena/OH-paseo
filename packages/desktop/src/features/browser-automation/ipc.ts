@@ -1,13 +1,7 @@
-import { mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
 import type { WebContents } from "electron";
 import { ipcMain } from "electron";
 import { BrowserAutomationExecuteRequestSchema } from "@getpaseo/protocol/browser-automation/rpc-schemas";
-import type {
-  BrowserAutomationConsoleLogEntry,
-  BrowserAutomationCookieEntry,
-} from "@getpaseo/protocol/browser-automation/rpc-schemas";
+import type { BrowserAutomationConsoleLogEntry } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import type { TabContents, BrowserRegistry } from "./service.js";
 import { executeAutomationCommand } from "./service.js";
 import {
@@ -46,61 +40,12 @@ function adaptWebContents(contents: WebContents): TabContents {
     isBackgroundThrottlingAllowed: () => contents.getBackgroundThrottling(),
     setBackgroundThrottling: (allowed) => contents.setBackgroundThrottling(allowed),
     getConsoleMessages: () => consoleMessagesByContentsId.get(contents.id) ?? [],
-    getCookies: async (url: string) =>
-      (await contents.session.cookies.get({ url })).map(normalizeCookie),
     sendDebugCommand: async (command: string, params?: Record<string, unknown>) => {
       if (!contents.debugger.isAttached()) {
         contents.debugger.attach("1.3");
       }
       return contents.debugger.sendCommand(command, params ?? {});
     },
-    printToPDF: async (options?: Record<string, unknown>) => contents.printToPDF(options ?? {}),
-    downloadURL: (input) => downloadWithContents(contents, input),
-  };
-}
-
-function downloadWithContents(
-  contents: WebContents,
-  input: { url: string; fileName?: string },
-): Promise<{ filePath: string; totalBytes?: number; state: string }> {
-  const downloadDir = join(tmpdir(), "paseo-browser-downloads");
-  mkdirSync(downloadDir, { recursive: true });
-  const filePath = join(downloadDir, sanitizeDownloadFileName(input));
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      contents.session.off("will-download", onDownload);
-      reject(new Error(`Timed out waiting for browser download: ${input.url}`));
-    }, 30_000);
-    function onDownload(_event: Electron.Event, item: Electron.DownloadItem): void {
-      if (item.getURL() !== input.url) {
-        return;
-      }
-      clearTimeout(timeout);
-      contents.session.off("will-download", onDownload);
-      item.setSavePath(filePath);
-      item.once("done", (_doneEvent, state) => {
-        resolve({ filePath, totalBytes: item.getTotalBytes(), state });
-      });
-    }
-    contents.session.on("will-download", onDownload);
-    contents.downloadURL(input.url);
-  });
-}
-
-export function sanitizeDownloadFileName(input: { url: string; fileName?: string }): string {
-  const requestedName = input.fileName ?? basename(new URL(input.url).pathname);
-  return basename(requestedName) || "download";
-}
-
-function normalizeCookie(cookie: Electron.Cookie): BrowserAutomationCookieEntry {
-  return {
-    name: cookie.name,
-    value: cookie.value,
-    ...(cookie.domain ? { domain: cookie.domain } : {}),
-    ...(cookie.path ? { path: cookie.path } : {}),
-    secure: cookie.secure,
-    httpOnly: cookie.httpOnly,
-    ...(typeof cookie.expirationDate === "number" ? { expirationDate: cookie.expirationDate } : {}),
   };
 }
 

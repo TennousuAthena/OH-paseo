@@ -55,11 +55,6 @@ export const BrowserAutomationNewTabCommandSchema = z.object({
     .default({}),
 });
 
-export const BrowserAutomationPageInfoCommandSchema = z.object({
-  command: z.literal("page_info"),
-  args: BrowserAutomationTabTargetSchema,
-});
-
 export const BrowserAutomationSnapshotCommandSchema = z.object({
   command: z.literal("snapshot"),
   args: BrowserAutomationTabTargetSchema,
@@ -131,27 +126,8 @@ export const BrowserAutomationReloadCommandSchema = z.object({
 
 export const BrowserAutomationScreenshotCommandSchema = z.object({
   command: z.literal("screenshot"),
-  args: BrowserAutomationTabTargetSchema,
-});
-
-export const BrowserAutomationFullPageScreenshotCommandSchema = z.object({
-  command: z.literal("full_page_screenshot"),
-  args: BrowserAutomationTabTargetSchema,
-});
-
-export const BrowserAutomationPdfCommandSchema = z.object({
-  command: z.literal("pdf"),
   args: BrowserAutomationTabTargetSchema.extend({
-    landscape: z.boolean().optional(),
-    printBackground: z.boolean().default(true),
-  }),
-});
-
-export const BrowserAutomationDownloadCommandSchema = z.object({
-  command: z.literal("download"),
-  args: BrowserAutomationTabTargetSchema.extend({
-    url: BrowserAutomationHttpUrlSchema,
-    fileName: z.string().min(1).optional(),
+    fullPage: z.boolean().default(false),
   }),
 });
 
@@ -160,28 +136,6 @@ export const BrowserAutomationUploadCommandSchema = z.object({
   args: BrowserAutomationTabTargetSchema.extend({
     ref: BrowserAutomationRefSchema,
     filePaths: z.array(z.string().min(1)).min(1),
-  }),
-});
-
-export const BrowserAutomationFocusCommandSchema = z.object({
-  command: z.literal("focus"),
-  args: BrowserAutomationTabTargetSchema.extend({
-    ref: BrowserAutomationRefSchema,
-  }),
-});
-
-export const BrowserAutomationClearCommandSchema = z.object({
-  command: z.literal("clear"),
-  args: BrowserAutomationTabTargetSchema.extend({
-    ref: BrowserAutomationRefSchema,
-  }),
-});
-
-export const BrowserAutomationCheckCommandSchema = z.object({
-  command: z.literal("check"),
-  args: BrowserAutomationTabTargetSchema.extend({
-    ref: BrowserAutomationRefSchema,
-    checked: z.boolean().default(true),
   }),
 });
 
@@ -215,42 +169,9 @@ export const BrowserAutomationLogsCommandSchema = z.object({
   }),
 });
 
-export const BrowserAutomationStorageCommandSchema = z.object({
-  command: z.literal("storage"),
-  args: BrowserAutomationTabTargetSchema,
-});
-
-const BrowserAutomationViewportInputSchema = z.object({
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-  deviceScaleFactor: z.number().positive().optional(),
-});
-
-const BrowserAutomationGeolocationInputSchema = z.object({
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
-  accuracy: z.number().positive().optional(),
-});
-
-export const BrowserAutomationEnvironmentCommandSchema = z.object({
-  command: z.literal("environment"),
-  args: BrowserAutomationTabTargetSchema.extend({
-    viewport: BrowserAutomationViewportInputSchema.optional(),
-    geolocation: BrowserAutomationGeolocationInputSchema.optional(),
-  }),
-});
-
-export const BrowserAutomationSetBackgroundCommandSchema = z.object({
-  command: z.literal("set_background"),
-  args: BrowserAutomationTabTargetSchema.extend({
-    color: z.string().min(1),
-  }),
-});
-
 export const BrowserAutomationCommandSchema = z.discriminatedUnion("command", [
   BrowserAutomationListTabsCommandSchema,
   BrowserAutomationNewTabCommandSchema,
-  BrowserAutomationPageInfoCommandSchema,
   BrowserAutomationSnapshotCommandSchema,
   BrowserAutomationClickCommandSchema,
   BrowserAutomationFillCommandSchema,
@@ -262,20 +183,11 @@ export const BrowserAutomationCommandSchema = z.discriminatedUnion("command", [
   BrowserAutomationForwardCommandSchema,
   BrowserAutomationReloadCommandSchema,
   BrowserAutomationScreenshotCommandSchema,
-  BrowserAutomationFullPageScreenshotCommandSchema,
-  BrowserAutomationPdfCommandSchema,
-  BrowserAutomationDownloadCommandSchema,
   BrowserAutomationUploadCommandSchema,
-  BrowserAutomationFocusCommandSchema,
-  BrowserAutomationClearCommandSchema,
-  BrowserAutomationCheckCommandSchema,
   BrowserAutomationSelectCommandSchema,
   BrowserAutomationHoverCommandSchema,
   BrowserAutomationDragCommandSchema,
   BrowserAutomationLogsCommandSchema,
-  BrowserAutomationStorageCommandSchema,
-  BrowserAutomationEnvironmentCommandSchema,
-  BrowserAutomationSetBackgroundCommandSchema,
 ]);
 
 export const BrowserAutomationTabInfoSchema = z.object({
@@ -299,11 +211,6 @@ export const BrowserAutomationNewTabResultSchema = z.object({
   browserId: BrowserAutomationBrowserIdSchema,
   workspaceId: z.string().min(1),
   url: z.string().min(1),
-});
-
-export const BrowserAutomationPageInfoResultSchema = z.object({
-  command: z.literal("page_info"),
-  tab: BrowserAutomationTabInfoSchema,
 });
 
 export const BrowserAutomationSnapshotElementSchema = z.object({
@@ -385,55 +292,11 @@ export const BrowserAutomationScreenshotResultSchema = z.object({
   height: z.number().int().nonnegative(),
 });
 
-export const BrowserAutomationFullPageScreenshotResultSchema = z.object({
-  command: z.literal("full_page_screenshot"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  mimeType: z.literal("image/png"),
-  dataBase64: z.string().min(1),
-  width: z.number().int().nonnegative(),
-  height: z.number().int().nonnegative(),
-});
-
-export const BrowserAutomationPdfResultSchema = z.object({
-  command: z.literal("pdf"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  mimeType: z.literal("application/pdf"),
-  dataBase64: z.string().min(1),
-});
-
-export const BrowserAutomationDownloadResultSchema = z.object({
-  command: z.literal("download"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  url: z.string().min(1),
-  filePath: z.string().min(1),
-  totalBytes: z.number().int().nonnegative().optional(),
-  state: z.string().min(1),
-});
-
 export const BrowserAutomationUploadResultSchema = z.object({
   command: z.literal("upload"),
   browserId: BrowserAutomationBrowserIdSchema,
   ref: BrowserAutomationRefSchema,
   filePaths: z.array(z.string().min(1)).min(1),
-});
-
-export const BrowserAutomationFocusResultSchema = z.object({
-  command: z.literal("focus"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  ref: BrowserAutomationRefSchema,
-});
-
-export const BrowserAutomationClearResultSchema = z.object({
-  command: z.literal("clear"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  ref: BrowserAutomationRefSchema,
-});
-
-export const BrowserAutomationCheckResultSchema = z.object({
-  command: z.literal("check"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  ref: BrowserAutomationRefSchema,
-  checked: z.boolean(),
 });
 
 export const BrowserAutomationSelectResultSchema = z.object({
@@ -481,59 +344,9 @@ export const BrowserAutomationLogsResultSchema = z.object({
   network: z.array(BrowserAutomationNetworkLogEntrySchema),
 });
 
-export const BrowserAutomationCookieEntrySchema = z.object({
-  name: z.string(),
-  value: z.string(),
-  domain: z.string().optional(),
-  path: z.string().optional(),
-  secure: z.boolean().optional(),
-  httpOnly: z.boolean().optional(),
-  expirationDate: z.number().optional(),
-});
-
-export const BrowserAutomationStorageEntrySchema = z.object({
-  key: z.string(),
-  value: z.string(),
-});
-
-export const BrowserAutomationStorageResultSchema = z.object({
-  command: z.literal("storage"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  url: z.string(),
-  cookies: z.array(BrowserAutomationCookieEntrySchema),
-  localStorage: z.array(BrowserAutomationStorageEntrySchema),
-  sessionStorage: z.array(BrowserAutomationStorageEntrySchema),
-});
-
-export const BrowserAutomationViewportResultSchema = z.object({
-  width: z.number().int().nonnegative(),
-  height: z.number().int().nonnegative(),
-  deviceScaleFactor: z.number().positive(),
-});
-
-export const BrowserAutomationGeolocationResultSchema = z.object({
-  latitude: z.number(),
-  longitude: z.number(),
-  accuracy: z.number(),
-});
-
-export const BrowserAutomationEnvironmentResultSchema = z.object({
-  command: z.literal("environment"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  viewport: BrowserAutomationViewportResultSchema,
-  geolocation: BrowserAutomationGeolocationResultSchema.optional(),
-});
-
-export const BrowserAutomationSetBackgroundResultSchema = z.object({
-  command: z.literal("set_background"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  color: z.string().min(1),
-});
-
 export const BrowserAutomationResultSchema = z.discriminatedUnion("command", [
   BrowserAutomationListTabsResultSchema,
   BrowserAutomationNewTabResultSchema,
-  BrowserAutomationPageInfoResultSchema,
   BrowserAutomationSnapshotResultSchema,
   BrowserAutomationClickResultSchema,
   BrowserAutomationFillResultSchema,
@@ -545,20 +358,11 @@ export const BrowserAutomationResultSchema = z.discriminatedUnion("command", [
   BrowserAutomationForwardResultSchema,
   BrowserAutomationReloadResultSchema,
   BrowserAutomationScreenshotResultSchema,
-  BrowserAutomationFullPageScreenshotResultSchema,
-  BrowserAutomationPdfResultSchema,
-  BrowserAutomationDownloadResultSchema,
   BrowserAutomationUploadResultSchema,
-  BrowserAutomationFocusResultSchema,
-  BrowserAutomationClearResultSchema,
-  BrowserAutomationCheckResultSchema,
   BrowserAutomationSelectResultSchema,
   BrowserAutomationHoverResultSchema,
   BrowserAutomationDragResultSchema,
   BrowserAutomationLogsResultSchema,
-  BrowserAutomationStorageResultSchema,
-  BrowserAutomationEnvironmentResultSchema,
-  BrowserAutomationSetBackgroundResultSchema,
 ]);
 
 export const BrowserAutomationErrorSchema = z.object({
@@ -603,8 +407,6 @@ export type BrowserAutomationConsoleLogEntry = z.infer<
 export type BrowserAutomationNetworkLogEntry = z.infer<
   typeof BrowserAutomationNetworkLogEntrySchema
 >;
-export type BrowserAutomationCookieEntry = z.infer<typeof BrowserAutomationCookieEntrySchema>;
-export type BrowserAutomationStorageEntry = z.infer<typeof BrowserAutomationStorageEntrySchema>;
 export type BrowserAutomationExecuteRequest = z.infer<typeof BrowserAutomationExecuteRequestSchema>;
 export type BrowserAutomationExecuteResponse = z.infer<
   typeof BrowserAutomationExecuteResponseSchema

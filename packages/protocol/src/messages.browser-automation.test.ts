@@ -41,7 +41,7 @@ describe("browser automation protocol integration", () => {
     const parsed = SessionOutboundMessageSchema.parse({
       type: "browser.automation.execute.request",
       requestId: "req-1",
-      command: { command: "page_info", args: { browserId } },
+      command: { command: "snapshot", args: { browserId } },
     });
 
     expect(parsed.type).toBe("browser.automation.execute.request");

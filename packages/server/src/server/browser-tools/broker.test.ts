@@ -45,8 +45,8 @@ function createBroker(options: { enabled: boolean; timeoutMs?: number }): Browse
   });
 }
 
-function pageInfoCommand(): BrowserAutomationCommand {
-  return { command: "page_info", args: { browserId: BROWSER_ID } };
+function snapshotCommand(): BrowserAutomationCommand {
+  return { command: "snapshot", args: { browserId: BROWSER_ID } };
 }
 
 describe("BrowserToolsBroker", () => {
@@ -57,7 +57,7 @@ describe("BrowserToolsBroker", () => {
   test("disabled returns browser_disabled", async () => {
     const broker = createBroker({ enabled: false });
 
-    await expect(broker.execute({ command: pageInfoCommand() })).resolves.toEqual({
+    await expect(broker.execute({ command: snapshotCommand() })).resolves.toEqual({
       requestId: "req-1",
       ok: false,
       error: {
@@ -71,7 +71,7 @@ describe("BrowserToolsBroker", () => {
   test("no capable desktop returns browser_no_desktop", async () => {
     const broker = createBroker({ enabled: true });
 
-    await expect(broker.execute({ command: pageInfoCommand() })).resolves.toEqual({
+    await expect(broker.execute({ command: snapshotCommand() })).resolves.toEqual({
       requestId: "req-1",
       ok: false,
       error: {

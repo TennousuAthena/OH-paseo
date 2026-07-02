@@ -753,7 +753,7 @@ describe("browser MCP tools", () => {
 
     const response = await tool.handler({});
 
-    expect(lookupTool(server, "browser_page_info")).not.toBeUndefined();
+    expect(lookupTool(server, "browser_snapshot")).not.toBeUndefined();
     expect(execute).toHaveBeenCalledWith({
       agentId: "agent-1",
       cwd: REPO_CWD,
