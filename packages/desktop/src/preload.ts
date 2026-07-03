@@ -2,12 +2,19 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 type EventHandler = (payload: unknown) => void;
 type BrowserPixelCapturePrepareHandler = (input: {
+  requestId: string;
   browserId: string;
 }) => Promise<{ token: string }>;
 type BrowserPixelCaptureRestoreHandler = (input: { token: string }) => Promise<void>;
+type BrowserPixelCaptureCancelHandler = (input: {
+  requestId?: string;
+  token?: string;
+}) => Promise<void>;
 
 let prepareForPixelCaptureHandler: BrowserPixelCapturePrepareHandler | null = null;
 let restorePixelCaptureHandler: BrowserPixelCaptureRestoreHandler | null = null;
+let cancelPixelCaptureHandler: BrowserPixelCaptureCancelHandler | null = null;
+const canceledPixelCaptureRequestIds = new Set<string>();
 
 function readStringField(payload: unknown, key: string): string | null {
   if (!isRecord(payload)) {
@@ -38,18 +45,47 @@ ipcRenderer.on("paseo:browser:capture-prepare", async (_event, payload: unknown)
   }
 
   try {
-    const preparation = await prepareForPixelCaptureHandler({ browserId });
+    const preparation = await prepareForPixelCaptureHandler({ requestId, browserId });
+    if (canceledPixelCaptureRequestIds.delete(requestId)) {
+      await restorePixelCaptureHandler?.({ token: preparation.token });
+      ipcRenderer.send("paseo:browser:capture-prepared", {
+        requestId,
+        ok: false,
+        message: "Browser pixel capture preparation was canceled.",
+      });
+      return;
+    }
     ipcRenderer.send("paseo:browser:capture-prepared", {
       requestId,
       ok: true,
       token: preparation.token,
     });
   } catch (error) {
+    canceledPixelCaptureRequestIds.delete(requestId);
     ipcRenderer.send("paseo:browser:capture-prepared", {
       requestId,
       ok: false,
       message: errorMessage(error),
     });
+  }
+});
+
+ipcRenderer.on("paseo:browser:capture-cancel", async (_event, payload: unknown) => {
+  const requestId = readStringField(payload, "requestId");
+  const token = readStringField(payload, "token");
+  if (requestId) {
+    canceledPixelCaptureRequestIds.add(requestId);
+  }
+  if (!requestId && !token) {
+    return;
+  }
+  try {
+    await cancelPixelCaptureHandler?.({
+      ...(requestId ? { requestId } : {}),
+      ...(token ? { token } : {}),
+    });
+  } catch {
+    // The original prepare/restore request owns the user-visible error.
   }
 });
 
@@ -178,6 +214,14 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       return () => {
         if (restorePixelCaptureHandler === handler) {
           restorePixelCaptureHandler = null;
+        }
+      };
+    },
+    onCancelPixelCapture: (handler: BrowserPixelCaptureCancelHandler): (() => void) => {
+      cancelPixelCaptureHandler = handler;
+      return () => {
+        if (cancelPixelCaptureHandler === handler) {
+          cancelPixelCaptureHandler = null;
         }
       };
     },

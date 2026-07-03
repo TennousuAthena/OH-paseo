@@ -159,7 +159,7 @@ async function runPreparedPixelCapture<T>(
     try {
       // Offscreen-parked webview guests have no compositor surface for
       // capturePage/CDP to copy. The renderer must briefly make the host
-      // paintable before capture; see ~/.paseo/plans/browser-capture-harness-results.md.
+      // paintable before capture; see docs/browser-capture-harness.md.
       preparation = await prepareForPixelCapture(contents);
       contents.setBackgroundThrottling(false);
       contents.invalidate();

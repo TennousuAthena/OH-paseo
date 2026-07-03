@@ -1,5 +1,5 @@
 import type { Rectangle } from "electron";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { TabImage } from "./service.js";
 import { adaptWebContents } from "./ipc.js";
 
@@ -40,7 +40,13 @@ class FakeHostWebContents {
   }
 }
 
-type IpcListener = (event: unknown, payload: unknown) => void;
+interface FakeIpcEvent {
+  sender: {
+    id: number;
+  };
+}
+
+type IpcListener = (event: FakeIpcEvent, payload: unknown) => void;
 
 class FakeIpcBridge {
   private readonly listeners = new Map<string, IpcListener[]>();
@@ -59,9 +65,10 @@ class FakeIpcBridge {
     );
   }
 
-  public emit(channel: string, payload: unknown): void {
+  public emit(channel: string, payload: unknown, input: { senderId?: number } = {}): void {
+    const event = { sender: { id: input.senderId ?? 10 } };
     for (const listener of this.listeners.get(channel) ?? []) {
-      listener({}, payload);
+      listener(event, payload);
     }
   }
 
@@ -190,14 +197,33 @@ describe("browser automation IPC adapter", () => {
     const host = new FakeHostWebContents(10);
     const contents = new FakeWebContents(20, host);
     const ipc = new FakeIpcBridge();
+    const requestIds = ["prepare-1", "restore-1"];
     const tab = adaptWebContents(contents, "browser-a", {
       ipc,
-      createRequestId: () => "restore-1",
+      createRequestId: () => {
+        const requestId = requestIds.shift();
+        if (!requestId) {
+          throw new Error("Missing request id");
+        }
+        return requestId;
+      },
     });
+
+    const preparation = tab.prepareForPixelCapture();
+    ipc.emit("paseo:browser:capture-prepared", {
+      requestId: "prepare-1",
+      ok: true,
+      token: "token-a",
+    });
+    await expect(preparation).resolves.toEqual({ token: "token-a" });
 
     const restored = tab.restorePixelCapture({ token: "token-a" });
 
     expect(host.sentMessages).toEqual([
+      {
+        channel: "paseo:browser:capture-prepare",
+        payload: { requestId: "prepare-1", browserId: "browser-a" },
+      },
       {
         channel: "paseo:browser:capture-restore",
         payload: { requestId: "restore-1", browserId: "browser-a", token: "token-a" },
@@ -206,6 +232,51 @@ describe("browser automation IPC adapter", () => {
     ipc.emit("paseo:browser:capture-restored", { requestId: "restore-1", ok: true });
 
     await expect(restored).resolves.toBeUndefined();
+  });
+
+  test("restorePixelCapture uses the host captured during preparation when the guest detaches", async () => {
+    const host = new FakeHostWebContents(10);
+    const contents = new FakeWebContents(20, host);
+    const ipc = new FakeIpcBridge();
+    const requestIds = ["prepare-1", "restore-1"];
+    const tab = adaptWebContents(contents, "browser-a", {
+      ipc,
+      createRequestId: () => {
+        const requestId = requestIds.shift();
+        if (!requestId) {
+          throw new Error("Missing request id");
+        }
+        return requestId;
+      },
+    });
+
+    const preparationPromise = tab.prepareForPixelCapture();
+    ipc.emit("paseo:browser:capture-prepared", {
+      requestId: "prepare-1",
+      ok: true,
+      token: "token-a",
+    });
+    const preparation = await preparationPromise;
+    contents.hostWebContents = null;
+
+    const restored = tab.restorePixelCapture(preparation);
+
+    expect(host.sentMessages).toEqual([
+      {
+        channel: "paseo:browser:capture-prepare",
+        payload: { requestId: "prepare-1", browserId: "browser-a" },
+      },
+      {
+        channel: "paseo:browser:capture-restore",
+        payload: { requestId: "restore-1", browserId: "browser-a", token: "token-a" },
+      },
+    ]);
+    ipc.emit("paseo:browser:capture-restored", { requestId: "restore-1", ok: true });
+
+    await expect(restored).resolves.toBeUndefined();
+    await expect(tab.restorePixelCapture(preparation)).rejects.toThrow(
+      "Browser pixel capture preparation is no longer active.",
+    );
   });
 
   test("prepareForPixelCapture rejects when the renderer reports preparation failure", async () => {
@@ -226,6 +297,71 @@ describe("browser automation IPC adapter", () => {
 
     await expect(preparation).rejects.toThrow("renderer could not prep");
     expect(ipc.listenerCount("paseo:browser:capture-prepared")).toBe(0);
+  });
+
+  test("prepareForPixelCapture ignores matching responses from the wrong sender", async () => {
+    const host = new FakeHostWebContents(10);
+    const contents = new FakeWebContents(20, host);
+    const ipc = new FakeIpcBridge();
+    const tab = adaptWebContents(contents, "browser-a", {
+      ipc,
+      createRequestId: () => "prepare-1",
+    });
+
+    const preparation = tab.prepareForPixelCapture();
+    ipc.emit(
+      "paseo:browser:capture-prepared",
+      {
+        requestId: "prepare-1",
+        ok: true,
+        token: "spoofed-token",
+      },
+      { senderId: 99 },
+    );
+    expect(ipc.listenerCount("paseo:browser:capture-prepared")).toBe(1);
+
+    ipc.emit("paseo:browser:capture-prepared", {
+      requestId: "prepare-1",
+      ok: true,
+      token: "token-a",
+    });
+
+    await expect(preparation).resolves.toEqual({ token: "token-a" });
+  });
+
+  test("prepareForPixelCapture cancels the renderer request when the ack times out", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = new FakeHostWebContents(10);
+      const contents = new FakeWebContents(20, host);
+      const ipc = new FakeIpcBridge();
+      const tab = adaptWebContents(contents, "browser-a", {
+        ipc,
+        createRequestId: () => "prepare-1",
+        timeoutMs: 25,
+      });
+
+      const preparation = tab.prepareForPixelCapture();
+      const rejection = expect(preparation).rejects.toThrow(
+        "Browser pixel capture prepare timed out.",
+      );
+      await vi.advanceTimersByTimeAsync(25);
+
+      await rejection;
+      expect(host.sentMessages).toEqual([
+        {
+          channel: "paseo:browser:capture-prepare",
+          payload: { requestId: "prepare-1", browserId: "browser-a" },
+        },
+        {
+          channel: "paseo:browser:capture-cancel",
+          payload: { requestId: "prepare-1", browserId: "browser-a" },
+        },
+      ]);
+      expect(ipc.listenerCount("paseo:browser:capture-prepared")).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("prepareForPixelCapture rejects when the guest has no embedder renderer", async () => {

@@ -22,7 +22,13 @@ interface IpcHandlerRegistry {
   handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
 }
 
-type IpcListener = (event: unknown, payload: unknown) => void;
+interface IpcBridgeEvent {
+  sender?: {
+    id?: number;
+  };
+}
+
+type IpcListener = (event: IpcBridgeEvent, payload: unknown) => void;
 
 interface IpcCaptureBridge {
   on(channel: string, listener: IpcListener): void;
@@ -88,12 +94,18 @@ interface PixelCaptureBridgeOptions {
   timeoutMs?: number;
 }
 
+interface PreparedPixelCapture {
+  browserId: string;
+  host: HostWebContents;
+}
+
 export function adaptWebContents(
   contents: BrowserAutomationWebContents,
   browserId: string,
   options?: PixelCaptureBridgeOptions,
 ): TabContents {
   observeConsoleMessages(contents);
+  const preparedPixelCapturesByToken = new Map<string, PreparedPixelCapture>();
   return {
     id: contents.id,
     getURL: () => contents.getURL(),
@@ -109,16 +121,30 @@ export function adaptWebContents(
     reload: () => contents.reload(),
     capturePage: (captureOptions) => contents.capturePage(undefined, captureOptions),
     prepareForPixelCapture: async () => {
-      const result = await requestPixelCaptureBridge(contents, browserId, "prepare", options);
+      const host = getPixelCaptureHost(contents);
+      const result = await requestPixelCaptureBridge({ host, browserId, kind: "prepare", options });
       if (!result.token) {
         throw new Error("Browser pixel capture preparation did not return a token.");
       }
+      preparedPixelCapturesByToken.set(result.token, { browserId, host });
       return { token: result.token };
     },
     restorePixelCapture: async (preparation) => {
-      await requestPixelCaptureBridge(contents, browserId, "restore", options, {
-        token: preparation.token,
-      });
+      const prepared = preparedPixelCapturesByToken.get(preparation.token);
+      if (!prepared) {
+        throw new Error("Browser pixel capture preparation is no longer active.");
+      }
+      try {
+        await requestPixelCaptureBridge({
+          host: prepared.host,
+          browserId: prepared.browserId,
+          kind: "restore",
+          options,
+          extraPayload: { token: preparation.token },
+        });
+      } finally {
+        preparedPixelCapturesByToken.delete(preparation.token);
+      }
     },
     invalidate: () => contents.invalidate(),
     isBackgroundThrottlingAllowed: () => contents.getBackgroundThrottling(),
@@ -133,15 +159,23 @@ export function adaptWebContents(
   };
 }
 
-function requestPixelCaptureBridge(
-  contents: BrowserAutomationWebContents,
-  browserId: string,
-  kind: PixelCaptureBridgeKind,
-  options: PixelCaptureBridgeOptions | undefined,
-  extraPayload?: { token: string },
-): Promise<PixelCaptureBridgeSuccess> {
+function getPixelCaptureHost(contents: BrowserAutomationWebContents): HostWebContents {
   const host = contents.hostWebContents;
   if (!host || host.isDestroyed()) {
+    throw new Error("Browser host renderer is not available.");
+  }
+  return host;
+}
+
+function requestPixelCaptureBridge(input: {
+  host: HostWebContents;
+  browserId: string;
+  kind: PixelCaptureBridgeKind;
+  options: PixelCaptureBridgeOptions | undefined;
+  extraPayload?: { token: string };
+}): Promise<PixelCaptureBridgeSuccess> {
+  const { host, browserId, kind, options, extraPayload } = input;
+  if (host.isDestroyed()) {
     return Promise.reject(new Error("Browser host renderer is not available."));
   }
 
@@ -162,7 +196,10 @@ function requestPixelCaptureBridge(
       }
       ipc.removeListener(responseChannel, listener);
     };
-    const listener: IpcListener = (_event, payload) => {
+    const listener: IpcListener = (event, payload) => {
+      if (readSenderId(event) !== host.id) {
+        return;
+      }
       const response = readPixelCaptureBridgeResponse(payload, requestId);
       if (!response) {
         return;
@@ -178,6 +215,11 @@ function requestPixelCaptureBridge(
     ipc.on(responseChannel, listener);
     timeoutId = setTimeout(() => {
       cleanup();
+      sendPixelCaptureCancel(host, {
+        requestId,
+        browserId,
+        ...(extraPayload ? { token: extraPayload.token } : {}),
+      });
       reject(new Error(`Browser pixel capture ${kind} timed out.`));
     }, timeoutMs);
 
@@ -192,6 +234,25 @@ function requestPixelCaptureBridge(
       reject(error);
     }
   });
+}
+
+function sendPixelCaptureCancel(
+  host: HostWebContents,
+  payload: { browserId: string; requestId?: string; token?: string },
+): void {
+  if (host.isDestroyed()) {
+    return;
+  }
+  try {
+    host.send("paseo:browser:capture-cancel", payload);
+  } catch {
+    // The original prepare/restore request owns the user-visible error.
+  }
+}
+
+function readSenderId(event: IpcBridgeEvent): number | null {
+  const senderId = event.sender?.id;
+  return typeof senderId === "number" ? senderId : null;
 }
 
 function readPixelCaptureBridgeResponse(

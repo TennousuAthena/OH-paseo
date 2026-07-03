@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  cancelResidentBrowserWebviewPixelCapture,
   clearResidentBrowserWebviewsForTests,
   ensureResidentBrowserWebview,
   prepareResidentBrowserWebviewForPixelCapture,
@@ -120,5 +121,47 @@ describe("resident browser webviews", () => {
     expect(host?.style.left).toBe("-20000px");
     expect(host?.style.width).toBe("1280px");
     expect(host?.style.opacity).toBe("0");
+  });
+
+  it("cancels an in-flight pixel capture preparation by request id", async () => {
+    ensureResidentBrowserWebview({
+      browserId: "browser-cancel",
+      url: "https://example.com",
+    });
+
+    const preparation = prepareResidentBrowserWebviewForPixelCapture({
+      requestId: "prepare-1",
+      browserId: "browser-cancel",
+    });
+    const host = document.getElementById("paseo-browser-resident-webviews");
+    expect(host?.style.left).toBe("0px");
+    expect(host?.style.opacity).toBe("1");
+
+    await cancelResidentBrowserWebviewPixelCapture({ requestId: "prepare-1" });
+
+    await expect(preparation).rejects.toThrow("Browser pixel capture preparation was canceled.");
+    expect(host?.style.left).toBe("-20000px");
+    expect(host?.style.width).toBe("1280px");
+    expect(host?.style.opacity).toBe("0");
+  });
+
+  it("parks the resident host when a prepared browser tab is removed", async () => {
+    const webview = ensureResidentBrowserWebview({
+      browserId: "browser-detached",
+      url: "https://example.com",
+    });
+    const preparation = await prepareResidentBrowserWebviewForPixelCapture({
+      browserId: "browser-detached",
+    });
+    const host = document.getElementById("paseo-browser-resident-webviews");
+
+    removeResidentBrowserWebview("browser-detached");
+
+    expect(webview?.isConnected).toBe(false);
+    expect(host?.style.left).toBe("-20000px");
+    expect(host?.style.width).toBe("1280px");
+    expect(host?.style.opacity).toBe("0");
+    await restoreResidentBrowserWebviewAfterPixelCapture(preparation);
+    expect(host?.style.left).toBe("-20000px");
   });
 });

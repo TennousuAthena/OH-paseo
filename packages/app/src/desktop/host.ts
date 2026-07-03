@@ -149,10 +149,16 @@ export interface DesktopBrowserBridge {
   /** Copy element text and/or an image to the system clipboard from main. */
   copyElement?: (payload: { text?: string; imageDataUrl?: string }) => Promise<boolean>;
   onPrepareForPixelCapture?: (
-    handler: (input: { browserId: string }) => Promise<DesktopBrowserPixelCapturePreparation>,
+    handler: (input: {
+      requestId: string;
+      browserId: string;
+    }) => Promise<DesktopBrowserPixelCapturePreparation>,
   ) => () => void;
   onRestorePixelCapture?: (
     handler: (input: DesktopBrowserPixelCapturePreparation) => Promise<void>,
+  ) => () => void;
+  onCancelPixelCapture?: (
+    handler: (input: { requestId?: string; token?: string }) => Promise<void>,
   ) => () => void;
 }
 

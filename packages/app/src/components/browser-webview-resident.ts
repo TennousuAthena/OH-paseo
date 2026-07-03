@@ -6,7 +6,7 @@ const RESIDENT_VIEWPORT_WIDTH = 1280;
 const RESIDENT_VIEWPORT_HEIGHT = 800;
 
 const residentWebviewsByBrowserId = new Map<string, HTMLElement>();
-const activeCapturePreparations = new Map<string, { preparesResidentHost: boolean }>();
+const activeCapturePreparations = new Map<string, ActiveCapturePreparation>();
 
 let captureBridgeInstallCount = 0;
 let captureBridgeDisposer: (() => void) | null = null;
@@ -14,6 +14,12 @@ let nextCapturePreparationId = 0;
 
 interface BrowserWebviewElement extends HTMLElement {
   src: string;
+}
+
+interface ActiveCapturePreparation {
+  browserId: string;
+  requestId?: string;
+  preparesResidentHost: boolean;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -120,6 +126,58 @@ async function waitForCapturePaint(webview: HTMLElement): Promise<void> {
   webview.getBoundingClientRect();
 }
 
+function activeCaptureTokenFor(input: { token?: string; requestId?: string }): string | null {
+  const token = trimNonEmpty(input.token);
+  if (token && activeCapturePreparations.has(token)) {
+    return token;
+  }
+  const requestId = trimNonEmpty(input.requestId);
+  if (!requestId) {
+    return null;
+  }
+  for (const [candidateToken, preparation] of activeCapturePreparations.entries()) {
+    if (preparation.requestId === requestId) {
+      return candidateToken;
+    }
+  }
+  return null;
+}
+
+function parkResidentHostIfIdle(): void {
+  if (hasActiveResidentHostPreparation()) {
+    return;
+  }
+  const host = readDocument()?.getElementById(RESIDENT_BROWSER_HOST_ID);
+  if (host instanceof HTMLElement) {
+    applyResidentHostParkingStyle(host);
+  }
+}
+
+function releaseCapturePreparationToken(token: string): void {
+  const preparation = activeCapturePreparations.get(token);
+  if (!preparation) {
+    return;
+  }
+  activeCapturePreparations.delete(token);
+  if (preparation.preparesResidentHost) {
+    parkResidentHostIfIdle();
+  }
+}
+
+function releaseCapturePreparationsForBrowser(browserId: string): void {
+  for (const [token, preparation] of activeCapturePreparations.entries()) {
+    if (preparation.browserId === browserId) {
+      activeCapturePreparations.delete(token);
+    }
+  }
+  parkResidentHostIfIdle();
+}
+
+function releaseAllCapturePreparations(): void {
+  activeCapturePreparations.clear();
+  parkResidentHostIfIdle();
+}
+
 export function prepareBrowserWebview(
   webview: HTMLElement,
   input: { browserId: string; initialUrl?: string | null },
@@ -196,6 +254,7 @@ export function releaseResidentBrowserWebview(browserId: string, webview: HTMLEl
 
 export async function prepareResidentBrowserWebviewForPixelCapture(input: {
   browserId: string;
+  requestId?: string;
 }): Promise<{ token: string }> {
   const browserId = trimNonEmpty(input.browserId);
   if (!browserId) {
@@ -214,19 +273,24 @@ export async function prepareResidentBrowserWebviewForPixelCapture(input: {
 
   const token = `capture-${++nextCapturePreparationId}`;
   const preparesResidentHost = webview.parentElement === host;
-  activeCapturePreparations.set(token, { preparesResidentHost });
+  const requestId = trimNonEmpty(input.requestId);
+  activeCapturePreparations.set(token, {
+    browserId,
+    ...(requestId ? { requestId } : {}),
+    preparesResidentHost,
+  });
   try {
     if (preparesResidentHost) {
       applyResidentHostCaptureStyle(host);
       applyResidentWebviewStyle(webview);
     }
     await waitForCapturePaint(webview);
+    if (!activeCapturePreparations.has(token)) {
+      throw new Error("Browser pixel capture preparation was canceled.");
+    }
     return { token };
   } catch (error) {
-    activeCapturePreparations.delete(token);
-    if (!hasActiveResidentHostPreparation()) {
-      applyResidentHostParkingStyle(host);
-    }
+    releaseCapturePreparationToken(token);
     throw error;
   }
 }
@@ -234,24 +298,18 @@ export async function prepareResidentBrowserWebviewForPixelCapture(input: {
 export async function restoreResidentBrowserWebviewAfterPixelCapture(input: {
   token: string;
 }): Promise<void> {
-  const preparation = activeCapturePreparations.get(input.token);
-  if (!preparation) {
-    return;
-  }
+  releaseCapturePreparationToken(input.token);
+}
 
-  activeCapturePreparations.delete(input.token);
-  if (!preparation.preparesResidentHost || hasActiveResidentHostPreparation()) {
+export async function cancelResidentBrowserWebviewPixelCapture(input: {
+  requestId?: string;
+  token?: string;
+}): Promise<void> {
+  const token = activeCaptureTokenFor(input);
+  if (!token) {
     return;
   }
-
-  const ownerDocument = readDocument();
-  if (!ownerDocument) {
-    return;
-  }
-  const host = ownerDocument.getElementById(RESIDENT_BROWSER_HOST_ID);
-  if (host instanceof HTMLElement) {
-    applyResidentHostParkingStyle(host);
-  }
+  releaseCapturePreparationToken(token);
 }
 
 export function installResidentBrowserCaptureBridge(): () => void {
@@ -264,9 +322,13 @@ export function installResidentBrowserCaptureBridge(): () => void {
     const disposeRestore = browserBridge?.onRestorePixelCapture?.(
       restoreResidentBrowserWebviewAfterPixelCapture,
     );
+    const disposeCancel = browserBridge?.onCancelPixelCapture?.(
+      cancelResidentBrowserWebviewPixelCapture,
+    );
     captureBridgeDisposer = () => {
       disposePrepare?.();
       disposeRestore?.();
+      disposeCancel?.();
     };
   }
 
@@ -277,6 +339,7 @@ export function installResidentBrowserCaptureBridge(): () => void {
     }
     captureBridgeDisposer?.();
     captureBridgeDisposer = null;
+    releaseAllCapturePreparations();
   };
 }
 
@@ -288,6 +351,7 @@ export function removeResidentBrowserWebview(browserId: string): void {
 
   const resident = residentWebviewsByBrowserId.get(normalizedBrowserId) ?? null;
   residentWebviewsByBrowserId.delete(normalizedBrowserId);
+  releaseCapturePreparationsForBrowser(normalizedBrowserId);
   resident?.remove();
 }
 
@@ -296,7 +360,7 @@ export function clearResidentBrowserWebviewsForTests(): void {
     webview.remove();
   }
   residentWebviewsByBrowserId.clear();
-  activeCapturePreparations.clear();
+  releaseAllCapturePreparations();
   nextCapturePreparationId = 0;
   readDocument()?.getElementById(RESIDENT_BROWSER_HOST_ID)?.remove();
 }
