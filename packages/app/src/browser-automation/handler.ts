@@ -179,13 +179,12 @@ async function openBrowserTabForRequest(params: {
       message: "Cannot create a browser tab without a workspace context.",
     });
   }
-  useWorkspaceLayoutStore.getState().openTabFocused(workspaceKey, {
+  useWorkspaceLayoutStore.getState().openTabInBackground(workspaceKey, {
     kind: "browser",
     browserId,
   });
 
   await browserHost?.registerWorkspaceBrowser?.({ browserId, workspaceId });
-  await browserHost?.setWorkspaceActiveBrowser?.({ browserId, workspaceId });
 
   if (browserHost?.executeAutomationCommand) {
     ensureResidentBrowserWebview({ browserId, url: normalizedUrl });
