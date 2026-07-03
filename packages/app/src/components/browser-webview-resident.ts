@@ -20,6 +20,7 @@ interface ActiveCapturePreparation {
   browserId: string;
   requestId?: string;
   preparesResidentHost: boolean;
+  webview: HTMLElement;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -98,15 +99,37 @@ function applyResidentWebviewStyle(webview: HTMLElement): void {
   webview.style.height = `${RESIDENT_VIEWPORT_HEIGHT}px`;
   webview.style.border = "0";
   webview.style.background = "transparent";
+  webview.style.position = "absolute";
+  webview.style.left = "0";
+  webview.style.top = "0";
+  webview.style.marginTop = "0";
+  webview.style.zIndex = "0";
 }
 
-function hasActiveResidentHostPreparation(): boolean {
-  for (const preparation of activeCapturePreparations.values()) {
-    if (preparation.preparesResidentHost) {
-      return true;
+function clearResidentWebviewParkingStyle(webview: HTMLElement): void {
+  webview.style.position = "";
+  webview.style.left = "";
+  webview.style.top = "";
+  webview.style.marginTop = "";
+  webview.style.zIndex = "";
+}
+
+function residentWebviewChildren(host: HTMLElement): HTMLElement[] {
+  const webviews: HTMLElement[] = [];
+  for (const element of host.querySelectorAll(`[${BROWSER_ID_ATTRIBUTE}]`)) {
+    if (element instanceof HTMLElement) {
+      webviews.push(element);
     }
   }
-  return false;
+  return webviews;
+}
+
+function raiseResidentWebviewForCapture(host: HTMLElement, target: HTMLElement): void {
+  for (const webview of residentWebviewChildren(host)) {
+    applyResidentWebviewStyle(webview);
+  }
+  applyResidentWebviewStyle(target);
+  target.style.zIndex = "2";
 }
 
 function nextAnimationFrame(): Promise<void> {
@@ -143,13 +166,32 @@ function activeCaptureTokenFor(input: { token?: string; requestId?: string }): s
   return null;
 }
 
-function parkResidentHostIfIdle(): void {
-  if (hasActiveResidentHostPreparation()) {
+function latestActiveResidentHostPreparation(): ActiveCapturePreparation | null {
+  let latest: ActiveCapturePreparation | null = null;
+  for (const preparation of activeCapturePreparations.values()) {
+    if (preparation.preparesResidentHost) {
+      latest = preparation;
+    }
+  }
+  return latest;
+}
+
+function syncResidentHostCaptureState(): void {
+  const host = readDocument()?.getElementById(RESIDENT_BROWSER_HOST_ID);
+  if (!(host instanceof HTMLElement)) {
     return;
   }
-  const host = readDocument()?.getElementById(RESIDENT_BROWSER_HOST_ID);
-  if (host instanceof HTMLElement) {
-    applyResidentHostParkingStyle(host);
+
+  const latest = latestActiveResidentHostPreparation();
+  if (latest) {
+    applyResidentHostCaptureStyle(host);
+    raiseResidentWebviewForCapture(host, latest.webview);
+    return;
+  }
+
+  applyResidentHostParkingStyle(host);
+  for (const webview of residentWebviewChildren(host)) {
+    applyResidentWebviewStyle(webview);
   }
 }
 
@@ -160,7 +202,8 @@ function releaseCapturePreparationToken(token: string): void {
   }
   activeCapturePreparations.delete(token);
   if (preparation.preparesResidentHost) {
-    parkResidentHostIfIdle();
+    applyResidentWebviewStyle(preparation.webview);
+    syncResidentHostCaptureState();
   }
 }
 
@@ -170,12 +213,12 @@ function releaseCapturePreparationsForBrowser(browserId: string): void {
       activeCapturePreparations.delete(token);
     }
   }
-  parkResidentHostIfIdle();
+  syncResidentHostCaptureState();
 }
 
 function releaseAllCapturePreparations(): void {
   activeCapturePreparations.clear();
-  parkResidentHostIfIdle();
+  syncResidentHostCaptureState();
 }
 
 export function prepareBrowserWebview(
@@ -233,6 +276,7 @@ export function takeResidentBrowserWebview(browserId: string): HTMLElement | nul
   }
 
   residentWebviewsByBrowserId.delete(normalizedBrowserId);
+  clearResidentWebviewParkingStyle(webview);
   return webview;
 }
 
@@ -278,11 +322,12 @@ export async function prepareResidentBrowserWebviewForPixelCapture(input: {
     browserId,
     ...(requestId ? { requestId } : {}),
     preparesResidentHost,
+    webview,
   });
   try {
     if (preparesResidentHost) {
       applyResidentHostCaptureStyle(host);
-      applyResidentWebviewStyle(webview);
+      raiseResidentWebviewForCapture(host, webview);
     }
     await waitForCapturePaint(webview);
     if (!activeCapturePreparations.has(token)) {

@@ -55,6 +55,7 @@ class FakeTab implements TabContents {
   public captureThrows = false;
   public deferCaptures = false;
   public prepareNeverAcks = false;
+  public fullPageScreenshotThrows = false;
   public layoutMetrics = {
     cssLayoutViewport: { clientWidth: 390, clientHeight: 844 },
     cssContentSize: { width: 390, height: 1200 },
@@ -184,6 +185,9 @@ class FakeTab implements TabContents {
       return this.layoutMetrics;
     }
     if (command === "Page.captureScreenshot") {
+      if (this.fullPageScreenshotThrows) {
+        throw new Error("UnknownVizError");
+      }
       return { data: this.fullPageScreenshotData };
     }
     if (command === "DOM.getDocument") {
@@ -959,7 +963,7 @@ describe("executeAutomationCommand", () => {
     }
   });
 
-  test("screenshot restores capture preparation when viewport capture fails", async () => {
+  test("screenshot returns no-frame and restores capture preparation when viewport capture throws", async () => {
     const browser = new BrowserAutomationHarness();
     browser.tab.captureThrows = true;
 
@@ -968,7 +972,15 @@ describe("executeAutomationCommand", () => {
         command: "screenshot",
         args: { browserId: BROWSER_A },
       }),
-    ).rejects.toThrow("capture failed");
+    ).resolves.toEqual({
+      requestId: "req-screenshot",
+      ok: false,
+      error: {
+        code: "screenshot_no_frame",
+        message: "The browser tab has no painted frame. Focus the tab in the app, then try again.",
+        retryable: false,
+      },
+    });
 
     expect(browser.tab.actions).toEqual([
       "prepare",
@@ -1121,6 +1133,35 @@ describe("executeAutomationCommand", () => {
       error: {
         code: "browser_unsupported",
         message: "browser_screenshot fullPage returned no data",
+        retryable: false,
+      },
+    });
+    expect(browser.tab.actions).toEqual([
+      "prepare",
+      "background:false",
+      "invalidate",
+      "debug:Page.getLayoutMetrics",
+      "debug:Page.captureScreenshot",
+      "restore:capture-1",
+      "background:true",
+    ]);
+  });
+
+  test("screenshot with fullPage returns no-frame when CDP capture throws", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.fullPageScreenshotThrows = true;
+
+    const result = await browser.execute({
+      command: "screenshot",
+      args: { browserId: BROWSER_A, fullPage: true },
+    });
+
+    expect(result).toEqual({
+      requestId: "req-screenshot",
+      ok: false,
+      error: {
+        code: "screenshot_no_frame",
+        message: "The browser tab has no painted frame. Focus the tab in the app, then try again.",
         retryable: false,
       },
     });

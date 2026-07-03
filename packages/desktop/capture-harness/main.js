@@ -228,9 +228,15 @@ async function captureFullPage(contents) {
   }
 }
 
-async function captureWithPrep({ win, contents, mode, repeatIndex, guestMetrics }) {
-  const preparation = await renderer(win, "window.captureHarness.prepareForPixelCapture()");
-  const outputPath = path.join(OUT_DIR, `${mode}-prep-${repeatIndex}.png`);
+async function captureWithPrep({ win, contents, mode, repeatIndex, targetIndex, guestMetrics }) {
+  const preparation = await renderer(
+    win,
+    `window.captureHarness.prepareForPixelCapture(${JSON.stringify(targetIndex)})`,
+  );
+  const outputPath = path.join(
+    OUT_DIR,
+    `${mode}-webview-${targetIndex + 1}-prep-${repeatIndex}.png`,
+  );
   try {
     const image =
       mode === "viewport" ? await capturePageSequence(contents) : await captureFullPage(contents);
@@ -245,11 +251,11 @@ async function captureWithPrep({ win, contents, mode, repeatIndex, guestMetrics 
     const bright = analysis.brightRatio.toFixed(4);
     if (!analysis.pass) {
       fail(
-        `${mode} prep ${repeatIndex}/${REPEAT_COUNT} size=${size} logical=${logicalSize} bright=${bright} text=${analysis.textNonUniform} file=${outputPath}`,
+        `${mode} webview ${targetIndex + 1} prep ${repeatIndex}/${REPEAT_COUNT} size=${size} logical=${logicalSize} bright=${bright} text=${analysis.textNonUniform} file=${outputPath}`,
       );
     }
     pass(
-      `${mode} prep ${repeatIndex}/${REPEAT_COUNT} size=${size} logical=${logicalSize} bright=${bright} text=${analysis.textNonUniform} file=${outputPath}`,
+      `${mode} webview ${targetIndex + 1} prep ${repeatIndex}/${REPEAT_COUNT} size=${size} logical=${logicalSize} bright=${bright} text=${analysis.textNonUniform} file=${outputPath}`,
     );
     return analysis;
   } finally {
@@ -264,12 +270,51 @@ async function captureWithPrep({ win, contents, mode, repeatIndex, guestMetrics 
   }
 }
 
+async function expectLegacySecondWebviewFailure({ win, contents, mode, guestMetrics }) {
+  const targetIndex = 1;
+  const preparation = await renderer(
+    win,
+    `window.captureHarness.prepareLegacyVerticalPixelCapture(${JSON.stringify(targetIndex)})`,
+  );
+  const outputPath = path.join(OUT_DIR, `${mode}-legacy-webview-${targetIndex + 1}.png`);
+  try {
+    const image =
+      mode === "viewport" ? await capturePageSequence(contents) : await captureFullPage(contents);
+    await saveImage(image, outputPath);
+    const expected =
+      mode === "viewport"
+        ? { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT, minBrightRatio: 0.65 }
+        : { width: VIEWPORT_WIDTH, height: FULL_PAGE_HEIGHT, minBrightRatio: 0.55 };
+    const analysis = analyzeImage(image, expected, guestMetrics);
+    const size = `${analysis.width}x${analysis.height}`;
+    const logicalSize = `${analysis.logicalWidthAtDpr}x${analysis.logicalHeightAtDpr}`;
+    const bright = analysis.brightRatio.toFixed(4);
+    if (analysis.pass) {
+      fail(
+        `${mode} legacy webview ${targetIndex + 1} unexpectedly captured size=${size} logical=${logicalSize} bright=${bright} text=${analysis.textNonUniform} file=${outputPath}`,
+      );
+    }
+    pass(
+      `${mode} legacy webview ${targetIndex + 1} reproduces no-frame size=${size} logical=${logicalSize} bright=${bright} text=${analysis.textNonUniform} file=${outputPath}`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    pass(`${mode} legacy webview ${targetIndex + 1} reproduces no-frame error=${message}`);
+  } finally {
+    await renderer(
+      win,
+      `window.captureHarness.restoreLegacyVerticalParking(${JSON.stringify(preparation.token)})`,
+    );
+  }
+}
+
 async function main() {
   ensureDirSync(OUT_DIR);
 
-  let resolveGuest;
-  const guestPromise = new Promise((resolve) => {
-    resolveGuest = resolve;
+  const attachedGuests = [];
+  let resolveGuests;
+  const guestsPromise = new Promise((resolve) => {
+    resolveGuests = resolve;
   });
   const win = new BrowserWindow({
     width: 1000,
@@ -289,33 +334,46 @@ async function main() {
     webPreferences.contextIsolation = true;
   });
   win.webContents.on("did-attach-webview", (_event, contents) => {
-    resolveGuest(contents);
+    attachedGuests.push(contents);
+    if (attachedGuests.length >= 2) {
+      resolveGuests(attachedGuests);
+    }
   });
 
   await win.loadFile(path.join(ROOT, "index.html"), {
-    query: { targetUrl: fileUrl(path.join(ROOT, "bright.html")) },
+    query: { targetUrl: fileUrl(path.join(ROOT, "bright.html")), webviewCount: "2" },
   });
-  const guest = await withTimeout(guestPromise, "did-attach-webview");
-  await waitForGuestLoad(guest);
+  await withTimeout(guestsPromise, "did-attach-webview");
+  await Promise.all(attachedGuests.map((guest) => waitForGuestLoad(guest)));
   await renderer(win, "window.captureHarness.waitForFrames(2)");
-  const guestMetrics = await readGuestMetrics(guest);
-
-  if (guestMetrics.innerWidth !== VIEWPORT_WIDTH || guestMetrics.innerHeight !== VIEWPORT_HEIGHT) {
+  const webContentsIds = await renderer(win, "window.captureHarness.webContentsIds()");
+  const guestsById = new Map(attachedGuests.map((guest) => [guest.id, guest]));
+  const guests = webContentsIds.map((id) => guestsById.get(id));
+  if (guests.some((guest) => !guest)) {
     fail(
-      `guest viewport sizing inner=${guestMetrics.innerWidth}x${guestMetrics.innerHeight} expected=${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`,
+      `could not map webviews to guest contents ids=${JSON.stringify(webContentsIds)} attached=${attachedGuests.map((guest) => guest.id).join(",")}`,
     );
   }
-  pass(
-    `guest viewport sizing inner=${guestMetrics.innerWidth}x${guestMetrics.innerHeight} dpr=${guestMetrics.devicePixelRatio}`,
-  );
+  const guestMetrics = await Promise.all(guests.map((guest) => readGuestMetrics(guest)));
+
+  guestMetrics.forEach((metrics, index) => {
+    if (metrics.innerWidth !== VIEWPORT_WIDTH || metrics.innerHeight !== VIEWPORT_HEIGHT) {
+      fail(
+        `guest viewport sizing webview ${index + 1} inner=${metrics.innerWidth}x${metrics.innerHeight} expected=${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`,
+      );
+    }
+    pass(
+      `guest viewport sizing webview ${index + 1} inner=${metrics.innerWidth}x${metrics.innerHeight} dpr=${metrics.devicePixelRatio}`,
+    );
+  });
 
   await renderer(win, "window.captureHarness.restoreParking()");
   try {
-    const image = await capturePageSequence(guest);
+    const image = await capturePageSequence(guests[0]);
     const analysis = analyzeImage(
       image,
       { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT, minBrightRatio: 0.65 },
-      guestMetrics,
+      guestMetrics[0],
     );
     fail(
       `parked webview unexpectedly captured size=${analysis.width}x${analysis.height} bright=${analysis.brightRatio.toFixed(4)}`,
@@ -325,28 +383,47 @@ async function main() {
     pass(`parked webview has no copyable viewport frame error=${message}`);
   }
 
+  await expectLegacySecondWebviewFailure({
+    win,
+    contents: guests[1],
+    mode: "viewport",
+    guestMetrics: guestMetrics[1],
+  });
+  await expectLegacySecondWebviewFailure({
+    win,
+    contents: guests[1],
+    mode: "full-page",
+    guestMetrics: guestMetrics[1],
+  });
+
+  await renderer(win, "window.captureHarness.restoreParking()");
+
   const results = [];
-  for (let index = 1; index <= REPEAT_COUNT; index += 1) {
-    results.push(
-      await captureWithPrep({
-        win,
-        contents: guest,
-        mode: "viewport",
-        repeatIndex: index,
-        guestMetrics,
-      }),
-    );
-  }
-  for (let index = 1; index <= REPEAT_COUNT; index += 1) {
-    results.push(
-      await captureWithPrep({
-        win,
-        contents: guest,
-        mode: "full-page",
-        repeatIndex: index,
-        guestMetrics,
-      }),
-    );
+  for (const targetIndex of [0, 1]) {
+    for (let index = 1; index <= REPEAT_COUNT; index += 1) {
+      results.push(
+        await captureWithPrep({
+          win,
+          contents: guests[targetIndex],
+          mode: "viewport",
+          repeatIndex: index,
+          targetIndex,
+          guestMetrics: guestMetrics[targetIndex],
+        }),
+      );
+    }
+    for (let index = 1; index <= REPEAT_COUNT; index += 1) {
+      results.push(
+        await captureWithPrep({
+          win,
+          contents: guests[targetIndex],
+          mode: "full-page",
+          repeatIndex: index,
+          targetIndex,
+          guestMetrics: guestMetrics[targetIndex],
+        }),
+      );
+    }
   }
 
   await fsp.writeFile(

@@ -149,6 +149,17 @@ async function restorePixelCapture(
   }
 }
 
+async function capturePreparedPixelFrame<T>(capture: () => Promise<T>): Promise<T> {
+  try {
+    return await withPixelCaptureTimeout(capture());
+  } catch (error) {
+    if (isScreenshotNoFrameError(error)) {
+      throw error;
+    }
+    throw new ScreenshotNoFrameError();
+  }
+}
+
 async function runPreparedPixelCapture<T>(
   contents: TabContents,
   capture: () => Promise<T>,
@@ -163,7 +174,7 @@ async function runPreparedPixelCapture<T>(
       preparation = await prepareForPixelCapture(contents);
       contents.setBackgroundThrottling(false);
       contents.invalidate();
-      return await withPixelCaptureTimeout(capture());
+      return await capturePreparedPixelFrame(capture);
     } finally {
       try {
         if (preparation) {
