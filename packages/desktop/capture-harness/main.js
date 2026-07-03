@@ -143,7 +143,7 @@ async function saveImage(image, outputPath) {
   await fsp.writeFile(outputPath, image.toPNG());
 }
 
-async function waitForGuestLoad(contents) {
+async function waitForGuestLoad(contents, input = {}) {
   await new Promise((resolve) => {
     if (!contents.isLoading()) {
       resolve();
@@ -152,7 +152,10 @@ async function waitForGuestLoad(contents) {
     contents.once("did-finish-load", resolve);
     contents.once("did-fail-load", resolve);
   });
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  const settleMs = input.settleMs ?? 500;
+  if (settleMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, settleMs));
+  }
 }
 
 async function renderer(win, expression) {
@@ -228,14 +231,23 @@ async function captureFullPage(contents) {
   }
 }
 
-async function captureWithPrep({ win, contents, mode, repeatIndex, targetIndex, guestMetrics }) {
+async function captureWithPrep({
+  win,
+  contents,
+  mode,
+  repeatIndex,
+  targetIndex,
+  guestMetrics,
+  repeatTotal = REPEAT_COUNT,
+  label = "prep",
+}) {
   const preparation = await renderer(
     win,
     `window.captureHarness.prepareForPixelCapture(${JSON.stringify(targetIndex)})`,
   );
   const outputPath = path.join(
     OUT_DIR,
-    `${mode}-webview-${targetIndex + 1}-prep-${repeatIndex}.png`,
+    `${mode}-webview-${targetIndex + 1}-${label}-${repeatIndex}.png`,
   );
   try {
     const image =
@@ -251,11 +263,11 @@ async function captureWithPrep({ win, contents, mode, repeatIndex, targetIndex, 
     const bright = analysis.brightRatio.toFixed(4);
     if (!analysis.pass) {
       fail(
-        `${mode} webview ${targetIndex + 1} prep ${repeatIndex}/${REPEAT_COUNT} size=${size} logical=${logicalSize} bright=${bright} text=${analysis.textNonUniform} file=${outputPath}`,
+        `${mode} webview ${targetIndex + 1} ${label} ${repeatIndex}/${repeatTotal} size=${size} logical=${logicalSize} bright=${bright} text=${analysis.textNonUniform} file=${outputPath}`,
       );
     }
     pass(
-      `${mode} webview ${targetIndex + 1} prep ${repeatIndex}/${REPEAT_COUNT} size=${size} logical=${logicalSize} bright=${bright} text=${analysis.textNonUniform} file=${outputPath}`,
+      `${mode} webview ${targetIndex + 1} ${label} ${repeatIndex}/${repeatTotal} size=${size} logical=${logicalSize} bright=${bright} text=${analysis.textNonUniform} file=${outputPath}`,
     );
     return analysis;
   } finally {
@@ -308,14 +320,58 @@ async function expectLegacySecondWebviewFailure({ win, contents, mode, guestMetr
   }
 }
 
+async function captureFreshWebviewImmediately({ win, waitForNextAttachedGuest }) {
+  const freshGuestPromise = waitForNextAttachedGuest();
+  const targetIndex = await renderer(
+    win,
+    `window.captureHarness.addWebview(${JSON.stringify(fileUrl(path.join(ROOT, "bright.html")))})`,
+  );
+  const guest = await withTimeout(freshGuestPromise, "fresh did-attach-webview");
+  await waitForGuestLoad(guest, { settleMs: 0 });
+  const guestMetrics = await readGuestMetrics(guest);
+  if (guestMetrics.innerWidth !== VIEWPORT_WIDTH || guestMetrics.innerHeight !== VIEWPORT_HEIGHT) {
+    fail(
+      `fresh guest viewport sizing webview ${targetIndex + 1} inner=${guestMetrics.innerWidth}x${guestMetrics.innerHeight} expected=${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`,
+    );
+  }
+  pass(
+    `fresh guest viewport sizing webview ${targetIndex + 1} inner=${guestMetrics.innerWidth}x${guestMetrics.innerHeight} dpr=${guestMetrics.devicePixelRatio}`,
+  );
+  await captureWithPrep({
+    win,
+    contents: guest,
+    mode: "viewport",
+    repeatIndex: 1,
+    targetIndex,
+    guestMetrics,
+    repeatTotal: 1,
+    label: "fresh-immediate",
+  });
+  await captureWithPrep({
+    win,
+    contents: guest,
+    mode: "full-page",
+    repeatIndex: 1,
+    targetIndex,
+    guestMetrics,
+    repeatTotal: 1,
+    label: "fresh-immediate",
+  });
+}
+
 async function main() {
   ensureDirSync(OUT_DIR);
 
   const attachedGuests = [];
+  const freshGuestWaiters = [];
   let resolveGuests;
   const guestsPromise = new Promise((resolve) => {
     resolveGuests = resolve;
   });
+  const waitForNextAttachedGuest = () =>
+    new Promise((resolve) => {
+      freshGuestWaiters.push(resolve);
+    });
   const win = new BrowserWindow({
     width: 1000,
     height: 700,
@@ -335,6 +391,10 @@ async function main() {
   });
   win.webContents.on("did-attach-webview", (_event, contents) => {
     attachedGuests.push(contents);
+    const waiter = freshGuestWaiters.shift();
+    if (waiter) {
+      waiter(contents);
+    }
     if (attachedGuests.length >= 2) {
       resolveGuests(attachedGuests);
     }
@@ -396,6 +456,9 @@ async function main() {
     guestMetrics: guestMetrics[1],
   });
 
+  await renderer(win, "window.captureHarness.restoreParking()");
+
+  await captureFreshWebviewImmediately({ win, waitForNextAttachedGuest });
   await renderer(win, "window.captureHarness.restoreParking()");
 
   const results = [];

@@ -299,6 +299,101 @@ describe("browser automation IPC adapter", () => {
     expect(ipc.listenerCount("paseo:browser:capture-prepared")).toBe(0);
   });
 
+  test("prepareForPixelCapture waits for the guest host renderer before asking for prep", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = new FakeHostWebContents(10);
+      const contents = new FakeWebContents(20, null);
+      const ipc = new FakeIpcBridge();
+      const tab = adaptWebContents(contents, "browser-a", {
+        ipc,
+        createRequestId: () => "prepare-1",
+        timeoutMs: 250,
+      });
+
+      const preparation = tab.prepareForPixelCapture();
+      await vi.advanceTimersByTimeAsync(49);
+
+      expect(host.sentMessages).toEqual([]);
+
+      contents.hostWebContents = host;
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(host.sentMessages).toEqual([
+        {
+          channel: "paseo:browser:capture-prepare",
+          payload: { requestId: "prepare-1", browserId: "browser-a" },
+        },
+      ]);
+      ipc.emit("paseo:browser:capture-prepared", {
+        requestId: "prepare-1",
+        ok: true,
+        token: "token-a",
+      });
+
+      await expect(preparation).resolves.toEqual({ token: "token-a" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("prepareForPixelCapture retries when the renderer prep handler is not registered yet", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = new FakeHostWebContents(10);
+      const contents = new FakeWebContents(20, host);
+      const ipc = new FakeIpcBridge();
+      const requestIds = ["prepare-1", "prepare-2"];
+      const tab = adaptWebContents(contents, "browser-a", {
+        ipc,
+        createRequestId: () => {
+          const requestId = requestIds.shift();
+          if (!requestId) {
+            throw new Error("Missing request id");
+          }
+          return requestId;
+        },
+        timeoutMs: 250,
+      });
+
+      const preparation = tab.prepareForPixelCapture();
+
+      expect(host.sentMessages).toEqual([
+        {
+          channel: "paseo:browser:capture-prepare",
+          payload: { requestId: "prepare-1", browserId: "browser-a" },
+        },
+      ]);
+      ipc.emit("paseo:browser:capture-prepared", {
+        requestId: "prepare-1",
+        ok: false,
+        message: "Browser pixel capture preparation is unavailable.",
+      });
+
+      await vi.advanceTimersByTimeAsync(50);
+
+      expect(host.sentMessages).toEqual([
+        {
+          channel: "paseo:browser:capture-prepare",
+          payload: { requestId: "prepare-1", browserId: "browser-a" },
+        },
+        {
+          channel: "paseo:browser:capture-prepare",
+          payload: { requestId: "prepare-2", browserId: "browser-a" },
+        },
+      ]);
+      ipc.emit("paseo:browser:capture-prepared", {
+        requestId: "prepare-2",
+        ok: true,
+        token: "token-a",
+      });
+
+      await expect(preparation).resolves.toEqual({ token: "token-a" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("prepareForPixelCapture ignores matching responses from the wrong sender", async () => {
     const host = new FakeHostWebContents(10);
     const contents = new FakeWebContents(20, host);
@@ -364,12 +459,28 @@ describe("browser automation IPC adapter", () => {
     }
   });
 
+  test("prepareForPixelCapture reports prep_unavailable when the guest host renderer never appears", async () => {
+    vi.useFakeTimers();
+    try {
+      const contents = new FakeWebContents(20, null);
+      const tab = adaptWebContents(contents, "browser-a", { timeoutMs: 25 });
+
+      const preparation = tab.prepareForPixelCapture();
+      const rejection = expect(preparation).rejects.toThrow(
+        "Browser screenshot prep_unavailable: Browser host renderer is not available.",
+      );
+      await vi.advanceTimersByTimeAsync(25);
+
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("prepareForPixelCapture rejects when the guest has no embedder renderer", async () => {
     const contents = new FakeWebContents(20, null);
-    const tab = adaptWebContents(contents, "browser-a");
+    const tab = adaptWebContents(contents, "browser-a", { timeoutMs: 1 });
 
-    await expect(tab.prepareForPixelCapture()).rejects.toThrow(
-      "Browser host renderer is not available.",
-    );
+    await expect(tab.prepareForPixelCapture()).rejects.toThrow("prep_unavailable");
   });
 });

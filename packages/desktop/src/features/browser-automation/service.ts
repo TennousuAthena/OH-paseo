@@ -63,8 +63,9 @@ const WAIT_POLL_INTERVAL_MS = 25;
 const PIXEL_CAPTURE_TIMEOUT_MS = 5_000;
 const SCREENSHOT_NO_FRAME_MESSAGE =
   "The browser tab has no painted frame. Focus the tab in the app, then try again.";
+const SCREENSHOT_PREP_UNAVAILABLE_PREFIX = "Browser screenshot prep_unavailable:";
 const ALLOWED_PAGE_URL_PROTOCOLS = new Set(["http:", "https:"]);
-const pixelCaptureQueuesByContentsId = new Map<number, Promise<void>>();
+let pixelCaptureQueue: Promise<void> = Promise.resolve();
 
 function fail(
   requestId: string,
@@ -76,8 +77,8 @@ function fail(
 }
 
 class ScreenshotNoFrameError extends Error {
-  public constructor() {
-    super(SCREENSHOT_NO_FRAME_MESSAGE);
+  public constructor(message = SCREENSHOT_NO_FRAME_MESSAGE) {
+    super(message);
     this.name = "ScreenshotNoFrameError";
   }
 }
@@ -86,8 +87,11 @@ function isScreenshotNoFrameError(error: unknown): error is ScreenshotNoFrameErr
   return error instanceof ScreenshotNoFrameError;
 }
 
-function screenshotNoFrameFailure(requestId: string): FailurePayload {
-  return fail(requestId, "screenshot_no_frame", SCREENSHOT_NO_FRAME_MESSAGE);
+function screenshotNoFrameFailure(
+  requestId: string,
+  error: ScreenshotNoFrameError,
+): FailurePayload {
+  return fail(requestId, "screenshot_no_frame", error.message);
 }
 
 async function withPixelCaptureTimeout<T>(capture: Promise<T>): Promise<T> {
@@ -107,25 +111,22 @@ async function withPixelCaptureTimeout<T>(capture: Promise<T>): Promise<T> {
   }
 }
 
-async function runSerializedPixelCapture<T>(
-  contents: TabContents,
-  capture: () => Promise<T>,
-): Promise<T> {
-  const previous = pixelCaptureQueuesByContentsId.get(contents.id) ?? Promise.resolve();
+async function runSerializedPixelCapture<T>(capture: () => Promise<T>): Promise<T> {
+  const previous = pixelCaptureQueue;
   let releaseCurrent = () => {};
   const current = new Promise<void>((resolve) => {
     releaseCurrent = resolve;
   });
   const tail = previous.catch(() => {}).then(() => current);
-  pixelCaptureQueuesByContentsId.set(contents.id, tail);
+  pixelCaptureQueue = tail;
 
   await previous.catch(() => {});
   try {
     return await capture();
   } finally {
     releaseCurrent();
-    if (pixelCaptureQueuesByContentsId.get(contents.id) === tail) {
-      pixelCaptureQueuesByContentsId.delete(contents.id);
+    if (pixelCaptureQueue === tail) {
+      pixelCaptureQueue = Promise.resolve();
     }
   }
 }
@@ -133,8 +134,8 @@ async function runSerializedPixelCapture<T>(
 async function prepareForPixelCapture(contents: TabContents): Promise<TabPixelCapturePreparation> {
   try {
     return await withPixelCaptureTimeout(contents.prepareForPixelCapture());
-  } catch {
-    throw new ScreenshotNoFrameError();
+  } catch (error) {
+    throw screenshotPreparationError(error);
   }
 }
 
@@ -156,15 +157,47 @@ async function capturePreparedPixelFrame<T>(capture: () => Promise<T>): Promise<
     if (isScreenshotNoFrameError(error)) {
       throw error;
     }
-    throw new ScreenshotNoFrameError();
+    if (isKnownNoFrameCaptureError(error)) {
+      throw new ScreenshotNoFrameError();
+    }
+    throw error;
   }
+}
+
+function screenshotPreparationError(error: unknown): ScreenshotNoFrameError {
+  const message = error instanceof Error ? error.message : String(error);
+  if (isScreenshotNoFrameError(error)) {
+    return new ScreenshotNoFrameError(
+      `${SCREENSHOT_PREP_UNAVAILABLE_PREFIX} the app renderer did not acknowledge capture preparation before the timeout.`,
+    );
+  }
+  if (message.includes(SCREENSHOT_PREP_UNAVAILABLE_PREFIX)) {
+    return new ScreenshotNoFrameError(message);
+  }
+  if (
+    message.includes("Browser pixel capture preparation is unavailable.") ||
+    message.includes("Browser host renderer is not available.") ||
+    message.includes("is not mounted.")
+  ) {
+    return new ScreenshotNoFrameError(`${SCREENSHOT_PREP_UNAVAILABLE_PREFIX} ${message}`);
+  }
+  return new ScreenshotNoFrameError(`${SCREENSHOT_PREP_UNAVAILABLE_PREFIX} ${message}`);
+}
+
+function isKnownNoFrameCaptureError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("UnknownVizError") ||
+    message.includes("No frame") ||
+    message.includes("no painted frame")
+  );
 }
 
 async function runPreparedPixelCapture<T>(
   contents: TabContents,
   capture: () => Promise<T>,
 ): Promise<T> {
-  return runSerializedPixelCapture(contents, async () => {
+  return runSerializedPixelCapture(async () => {
     const previousBackgroundThrottling = contents.isBackgroundThrottlingAllowed();
     let preparation: TabPixelCapturePreparation | null = null;
     try {
@@ -839,7 +872,7 @@ async function executeScreenshot(
     image = await capturePaintedViewport(target.contents);
   } catch (error) {
     if (isScreenshotNoFrameError(error)) {
-      return screenshotNoFrameFailure(requestId);
+      return screenshotNoFrameFailure(requestId, error);
     }
     throw error;
   }
@@ -931,7 +964,7 @@ async function executeFullPageScreenshot(
     });
   } catch (error) {
     if (isScreenshotNoFrameError(error)) {
-      return screenshotNoFrameFailure(requestId);
+      return screenshotNoFrameFailure(requestId, error);
     }
     throw error;
   }

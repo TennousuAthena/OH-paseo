@@ -202,7 +202,10 @@ function releaseCapturePreparationToken(token: string): void {
   }
   activeCapturePreparations.delete(token);
   if (preparation.preparesResidentHost) {
-    applyResidentWebviewStyle(preparation.webview);
+    const host = readDocument()?.getElementById(RESIDENT_BROWSER_HOST_ID);
+    if (host instanceof HTMLElement && preparation.webview.parentElement === host) {
+      applyResidentWebviewStyle(preparation.webview);
+    }
     syncResidentHostCaptureState();
   }
 }
@@ -276,6 +279,7 @@ export function takeResidentBrowserWebview(browserId: string): HTMLElement | nul
   }
 
   residentWebviewsByBrowserId.delete(normalizedBrowserId);
+  releaseCapturePreparationsForBrowser(normalizedBrowserId);
   clearResidentWebviewParkingStyle(webview);
   return webview;
 }

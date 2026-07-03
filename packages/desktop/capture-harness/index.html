@@ -48,7 +48,8 @@
       const activeTokens = new Set();
       let nextTokenId = 0;
 
-      for (let index = 0; index < webviewCount; index += 1) {
+      function appendHarnessWebview(sourceUrl) {
+        const index = webviews.length;
         const webview = document.createElement("webview");
         webview.id = `target-webview-${index + 1}`;
         webview.className = "capture-harness-webview";
@@ -57,9 +58,15 @@
         webview.setAttribute("allowpopups", "true");
         webview.setAttribute("spellcheck", "false");
         webview.setAttribute("autosize", "on");
-        webview.src = params.get("targetUrl") || "bright.html";
+        webview.src = sourceUrl;
+        applyStackedWebviewStyle(webview);
         host.appendChild(webview);
         webviews.push(webview);
+        return index;
+      }
+
+      for (let index = 0; index < webviewCount; index += 1) {
+        appendHarnessWebview(params.get("targetUrl") || "bright.html");
       }
 
       function applyHostParking() {
@@ -202,6 +209,9 @@
           return webviews.map((webview) =>
             typeof webview.getWebContentsId === "function" ? webview.getWebContentsId() : null,
           );
+        },
+        addWebview(sourceUrl) {
+          return appendHarnessWebview(sourceUrl || params.get("targetUrl") || "bright.html");
         },
         async prepareForPixelCapture(targetIndex = 0) {
           const token = `capture-${++nextTokenId}`;

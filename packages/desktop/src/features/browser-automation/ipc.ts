@@ -14,6 +14,8 @@ import {
 
 const MAX_CONSOLE_MESSAGES_PER_TAB = 200;
 const PIXEL_CAPTURE_BRIDGE_TIMEOUT_MS = 5_000;
+const PIXEL_CAPTURE_PREP_RETRY_INTERVAL_MS = 50;
+const PIXEL_CAPTURE_PREP_UNAVAILABLE_PREFIX = "Browser screenshot prep_unavailable:";
 const consoleMessagesByContentsId = new Map<number, BrowserAutomationConsoleLogEntry[]>();
 const observedContentsIds = new Set<number>();
 let nextPixelCaptureBridgeRequest = 0;
@@ -121,12 +123,11 @@ export function adaptWebContents(
     reload: () => contents.reload(),
     capturePage: (captureOptions) => contents.capturePage(undefined, captureOptions),
     prepareForPixelCapture: async () => {
-      const host = getPixelCaptureHost(contents);
-      const result = await requestPixelCaptureBridge({ host, browserId, kind: "prepare", options });
+      const result = await preparePixelCaptureBridgeWithRetry({ contents, browserId, options });
       if (!result.token) {
         throw new Error("Browser pixel capture preparation did not return a token.");
       }
-      preparedPixelCapturesByToken.set(result.token, { browserId, host });
+      preparedPixelCapturesByToken.set(result.token, { browserId, host: result.host });
       return { token: result.token };
     },
     restorePixelCapture: async (preparation) => {
@@ -159,12 +160,81 @@ export function adaptWebContents(
   };
 }
 
-function getPixelCaptureHost(contents: BrowserAutomationWebContents): HostWebContents {
+function getPixelCaptureHost(contents: BrowserAutomationWebContents): HostWebContents | null {
   const host = contents.hostWebContents;
   if (!host || host.isDestroyed()) {
-    throw new Error("Browser host renderer is not available.");
+    return null;
   }
   return host;
+}
+
+async function preparePixelCaptureBridgeWithRetry(input: {
+  contents: BrowserAutomationWebContents;
+  browserId: string;
+  options: PixelCaptureBridgeOptions | undefined;
+}): Promise<PixelCaptureBridgeSuccess & { host: HostWebContents }> {
+  const timeoutMs = input.options?.timeoutMs ?? PIXEL_CAPTURE_BRIDGE_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  let lastUnavailableReason = "Browser host renderer is not available.";
+
+  while (Date.now() < deadline) {
+    const host = getPixelCaptureHost(input.contents);
+    if (!host) {
+      await delayUntilRetry(deadline);
+      continue;
+    }
+
+    try {
+      const result = await requestPixelCaptureBridge({
+        host,
+        browserId: input.browserId,
+        kind: "prepare",
+        options: withBridgeTimeout(input.options, Math.max(1, deadline - Date.now())),
+      });
+      return { ...result, host };
+    } catch (error) {
+      if (!isRetryablePrepareUnavailableError(error)) {
+        throw error;
+      }
+      lastUnavailableReason = errorMessage(error);
+      await delayUntilRetry(deadline);
+    }
+  }
+
+  throw new Error(`${PIXEL_CAPTURE_PREP_UNAVAILABLE_PREFIX} ${lastUnavailableReason}`);
+}
+
+function withBridgeTimeout(
+  options: PixelCaptureBridgeOptions | undefined,
+  timeoutMs: number,
+): PixelCaptureBridgeOptions {
+  return {
+    ...options,
+    timeoutMs,
+  };
+}
+
+function isRetryablePrepareUnavailableError(error: unknown): boolean {
+  const message = errorMessage(error);
+  return (
+    message.includes("Browser pixel capture preparation is unavailable.") ||
+    message.includes("Browser host renderer is not available.") ||
+    message.includes("is not mounted.")
+  );
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function delayUntilRetry(deadline: number): Promise<void> {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) {
+    return;
+  }
+  await new Promise((resolve) => {
+    setTimeout(resolve, Math.min(PIXEL_CAPTURE_PREP_RETRY_INTERVAL_MS, remainingMs));
+  });
 }
 
 function requestPixelCaptureBridge(input: {

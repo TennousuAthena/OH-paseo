@@ -144,6 +144,34 @@ describe("resident browser webviews", () => {
     expect(secondWebview.style.zIndex).toBe("0");
   });
 
+  it("clears capture preparation when a resident webview is taken visible", async () => {
+    const webview = ensureResidentBrowserWebview({
+      browserId: "browser-visible",
+      url: "https://example.com",
+    });
+    if (!webview) {
+      throw new Error("Expected resident browser webview");
+    }
+
+    const preparation = await prepareResidentBrowserWebviewForPixelCapture({
+      browserId: "browser-visible",
+    });
+    const visibleWebview = takeResidentBrowserWebview("browser-visible");
+
+    expect(visibleWebview).toBe(webview);
+    expect(webview.style.position).toBe("");
+    expect(webview.style.left).toBe("");
+    expect(webview.style.top).toBe("");
+    expect(webview.style.zIndex).toBe("");
+
+    await restoreResidentBrowserWebviewAfterPixelCapture(preparation);
+
+    expect(webview.style.position).toBe("");
+    expect(webview.style.left).toBe("");
+    expect(webview.style.top).toBe("");
+    expect(webview.style.zIndex).toBe("");
+  });
+
   it("keeps the resident host paintable until every capture token is restored", async () => {
     ensureResidentBrowserWebview({
       browserId: "browser-overlap",
