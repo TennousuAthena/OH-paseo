@@ -117,13 +117,14 @@ export function ensureResidentBrowserWebview(input: {
 
   const resident = residentWebviewsByBrowserId.get(browserId) ?? null;
   if (resident?.isConnected) {
+    releaseResidentBrowserWebview(browserId, resident);
     return resident;
   }
 
   const existing = findBrowserWebview(browserId, ownerDocument);
   if (existing) {
     if (existing.parentElement?.id === RESIDENT_BROWSER_HOST_ID) {
-      residentWebviewsByBrowserId.set(browserId, existing);
+      releaseResidentBrowserWebview(browserId, existing);
     }
     return existing;
   }

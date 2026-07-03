@@ -101,6 +101,39 @@ describe("resident browser webviews", () => {
     expectResidentWebviewParking(webview as HTMLElement);
   });
 
+  it("normalizes an existing resident webview and its stale host before reusing them", () => {
+    const staleHost = document.createElement("div");
+    staleHost.id = RESIDENT_HOST_ID;
+    staleHost.style.left = "-20000px";
+    staleHost.style.width = "1280px";
+    staleHost.style.height = "800px";
+    staleHost.style.opacity = "0";
+    staleHost.style.display = "none";
+
+    const staleWebview = document.createElement("webview");
+    prepareBrowserWebview(staleWebview, {
+      browserId: "browser-stale-child",
+      initialUrl: "https://example.com",
+    });
+    staleWebview.style.display = "none";
+    staleWebview.style.width = "1px";
+    staleWebview.style.height = "1px";
+    staleWebview.style.position = "fixed";
+    staleWebview.style.left = "-20000px";
+    staleHost.appendChild(staleWebview);
+    document.body.appendChild(staleHost);
+
+    const webview = ensureResidentBrowserWebview({
+      browserId: "browser-stale-child",
+      url: "https://example.com/agent",
+    });
+
+    expect(webview).toBe(staleWebview);
+    expect(Array.from(staleHost.children)).toEqual([staleWebview]);
+    expectPermanentHostParking(staleHost);
+    expectResidentWebviewParking(staleWebview);
+  });
+
   it("parks resident webviews as an overlapping stack", () => {
     const firstWebview = ensureResidentBrowserWebview({
       browserId: "browser-first",
