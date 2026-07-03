@@ -3,6 +3,7 @@ import {
   cancelResidentBrowserWebviewPixelCapture,
   clearResidentBrowserWebviewsForTests,
   ensureResidentBrowserWebview,
+  prepareBrowserWebview,
   prepareResidentBrowserWebviewForPixelCapture,
   releaseResidentBrowserWebview,
   removeResidentBrowserWebview,
@@ -142,6 +143,62 @@ describe("resident browser webviews", () => {
 
     expect(firstWebview.style.zIndex).toBe("0");
     expect(secondWebview.style.zIndex).toBe("0");
+  });
+
+  it("prepares the physically resident webview when a focused duplicate exists outside the resident host", async () => {
+    const residentWebview = ensureResidentBrowserWebview({
+      browserId: "browser-focused-undisplayed",
+      url: "https://example.com/resident",
+    });
+    if (!residentWebview) {
+      throw new Error("Expected resident browser webview");
+    }
+    const visibleHost = document.createElement("div");
+    const duplicateWebview = document.createElement("webview");
+    prepareBrowserWebview(duplicateWebview, {
+      browserId: "browser-focused-undisplayed",
+      initialUrl: "https://example.com/duplicate",
+    });
+    visibleHost.appendChild(duplicateWebview);
+    document.body.prepend(visibleHost);
+
+    const preparation = await prepareResidentBrowserWebviewForPixelCapture({
+      browserId: "browser-focused-undisplayed",
+    });
+    const residentHost = document.getElementById("paseo-browser-resident-webviews");
+
+    expect(residentHost?.style.left).toBe("0px");
+    expect(residentHost?.style.width).toBe("1px");
+    expect(residentWebview.style.zIndex).toBe("2");
+    expect(duplicateWebview.style.zIndex).toBe("");
+
+    await restoreResidentBrowserWebviewAfterPixelCapture(preparation);
+  });
+
+  it("does not apply resident prep styles for a genuinely visible pane webview", async () => {
+    const visibleHost = document.createElement("div");
+    const visibleWebview = document.createElement("webview");
+    prepareBrowserWebview(visibleWebview, {
+      browserId: "browser-visible-pane",
+      initialUrl: "https://example.com",
+    });
+    visibleWebview.style.display = "flex";
+    visibleWebview.style.width = "100%";
+    visibleWebview.style.height = "100%";
+    visibleHost.appendChild(visibleWebview);
+    document.body.appendChild(visibleHost);
+
+    const preparation = await prepareResidentBrowserWebviewForPixelCapture({
+      browserId: "browser-visible-pane",
+    });
+    const residentHost = document.getElementById("paseo-browser-resident-webviews");
+
+    expect(residentHost?.style.left).toBe("-20000px");
+    expect(residentHost?.style.width).toBe("1280px");
+    expect(visibleWebview.style.position).toBe("");
+    expect(visibleWebview.style.zIndex).toBe("");
+
+    await restoreResidentBrowserWebviewAfterPixelCapture(preparation);
   });
 
   it("clears capture preparation when a resident webview is taken visible", async () => {

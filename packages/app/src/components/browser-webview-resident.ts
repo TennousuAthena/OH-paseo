@@ -92,6 +92,17 @@ function findBrowserWebview(browserId: string, ownerDocument: Document): HTMLEle
   return null;
 }
 
+function findBrowserWebviewForPixelCapture(
+  browserId: string,
+  ownerDocument: Document,
+): HTMLElement | null {
+  const resident = residentWebviewsByBrowserId.get(browserId) ?? null;
+  if (resident?.isConnected) {
+    return resident;
+  }
+  return findBrowserWebview(browserId, ownerDocument);
+}
+
 function applyResidentWebviewStyle(webview: HTMLElement): void {
   webview.style.display = "inline-flex";
   webview.style.flex = "0 0 auto";
@@ -258,6 +269,9 @@ export function ensureResidentBrowserWebview(input: {
 
   const existing = findBrowserWebview(browserId, ownerDocument);
   if (existing) {
+    if (existing.parentElement?.id === RESIDENT_BROWSER_HOST_ID) {
+      residentWebviewsByBrowserId.set(browserId, existing);
+    }
     return existing;
   }
 
@@ -314,7 +328,7 @@ export async function prepareResidentBrowserWebviewForPixelCapture(input: {
   }
 
   const host = getResidentBrowserHost(ownerDocument);
-  const webview = findBrowserWebview(browserId, ownerDocument);
+  const webview = findBrowserWebviewForPixelCapture(browserId, ownerDocument);
   if (!webview) {
     throw new Error(`Browser webview ${browserId} is not mounted.`);
   }
