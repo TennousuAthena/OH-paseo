@@ -43,10 +43,16 @@
       const RESIDENT_VIEWPORT_HEIGHT = 800;
       const host = document.getElementById("paseo-browser-resident-webviews");
       const params = new URLSearchParams(window.location.search);
-      const webviewCount = Math.max(2, Number(params.get("webviewCount")) || 2);
+      const requestedWebviewCount = params.has("webviewCount")
+        ? Number(params.get("webviewCount"))
+        : 2;
+      const webviewCount = Number.isFinite(requestedWebviewCount)
+        ? Math.max(0, requestedWebviewCount)
+        : 2;
       const webviews = [];
       const activeTokens = new Set();
       let nextTokenId = 0;
+      let permanentParkingState = params.get("permanentParkingState") || "";
 
       function appendHarnessWebview(sourceUrl) {
         const index = webviews.length;
@@ -112,6 +118,7 @@
       }
 
       function applyParking() {
+        permanentParkingState = "";
         applyHostParking();
         webviews.forEach((webview) => {
           applyStackedWebviewStyle(webview);
@@ -126,6 +133,7 @@
       }
 
       function applyCapturePrep() {
+        permanentParkingState = "";
         host.style.position = "fixed";
         host.style.left = "0";
         host.style.top = "0";
@@ -138,6 +146,99 @@
         host.style.clipPath = "";
         host.style.visibility = "";
         host.style.transform = "";
+      }
+
+      function applyHostPermanentBase() {
+        host.style.position = "fixed";
+        host.style.left = "0";
+        host.style.top = "0";
+        host.style.width = `${RESIDENT_VIEWPORT_WIDTH}px`;
+        host.style.height = `${RESIDENT_VIEWPORT_HEIGHT}px`;
+        host.style.overflow = "hidden";
+        host.style.opacity = "1";
+        host.style.pointerEvents = "none";
+        host.style.zIndex = "1";
+        host.style.clipPath = "";
+        host.style.visibility = "";
+        host.style.transform = "";
+        host.style.transformOrigin = "0 0";
+      }
+
+      function applyPermanentWebviewBase(webview, index) {
+        applyStackedWebviewStyle(webview);
+        webview.style.opacity = "1";
+        webview.style.transform = "";
+        webview.style.pointerEvents = "none";
+        webview.style.zIndex = "0";
+        webview.style.width = `${RESIDENT_VIEWPORT_WIDTH}px`;
+        webview.style.height = `${RESIDENT_VIEWPORT_HEIGHT}px`;
+        webview.style.left = "0";
+        webview.style.top = "0";
+      }
+
+      function applyPermanentParkingState(stateName) {
+        permanentParkingState = stateName;
+        activeTokens.clear();
+        applyHostPermanentBase();
+        webviews.forEach(applyPermanentWebviewBase);
+
+        if (stateName === "p1-overflow-1x1") {
+          host.style.width = "1px";
+          host.style.height = "1px";
+          host.style.overflow = "hidden";
+          return state();
+        }
+
+        if (stateName === "p2-clip-path-1x1") {
+          host.style.width = "1px";
+          host.style.height = "1px";
+          host.style.overflow = "visible";
+          host.style.clipPath = "inset(1px)";
+          return state();
+        }
+
+        if (stateName === "p3-opacity-0") {
+          host.style.opacity = "0";
+          return state();
+        }
+
+        if (stateName === "p4-transform-scale-0") {
+          host.style.transform = "scale(0)";
+          return state();
+        }
+
+        if (stateName === "p4-transform-scale-0001") {
+          host.style.transform = "scale(0.001)";
+          return state();
+        }
+
+        if (stateName === "p5-webview-0x0") {
+          webviews.forEach((webview) => {
+            webview.style.width = "0";
+            webview.style.height = "0";
+          });
+          return state();
+        }
+
+        if (stateName === "p5-webview-1x1") {
+          webviews.forEach((webview) => {
+            webview.style.width = "1px";
+            webview.style.height = "1px";
+          });
+          return state();
+        }
+
+        if (stateName === "p6-z-index-negative") {
+          host.style.zIndex = "-1";
+          return state();
+        }
+
+        if (stateName === "p7-opacity-001") {
+          host.style.opacity = "0.01";
+          return state();
+        }
+
+        throw new Error(`Unknown permanent parking state: ${stateName}`);
       }
 
       function applyTargetStacking(targetIndex) {
@@ -162,7 +263,7 @@
       function state(targetIndex = 0) {
         const hostRect = host.getBoundingClientRect();
         const targetWebview = webviews[targetIndex] || webviews[0];
-        const webviewRect = targetWebview.getBoundingClientRect();
+        const webviewRect = targetWebview?.getBoundingClientRect();
         return {
           hostStyle: {
             left: host.style.left,
@@ -172,6 +273,9 @@
             overflow: host.style.overflow,
             opacity: host.style.opacity,
             pointerEvents: host.style.pointerEvents,
+            zIndex: host.style.zIndex,
+            clipPath: host.style.clipPath,
+            transform: host.style.transform,
           },
           hostRect: {
             x: hostRect.x,
@@ -180,10 +284,10 @@
             height: hostRect.height,
           },
           webviewRect: {
-            x: webviewRect.x,
-            y: webviewRect.y,
-            width: webviewRect.width,
-            height: webviewRect.height,
+            x: webviewRect?.x ?? 0,
+            y: webviewRect?.y ?? 0,
+            width: webviewRect?.width ?? 0,
+            height: webviewRect?.height ?? 0,
           },
           webviews: webviews.map((webview) => {
             const rect = webview.getBoundingClientRect();
@@ -191,6 +295,7 @@
               id: webview.id,
               zIndex: webview.style.zIndex,
               position: webview.style.position,
+              opacity: webview.style.opacity,
               x: rect.x,
               y: rect.y,
               width: rect.width,
@@ -212,6 +317,16 @@
         },
         addWebview(sourceUrl) {
           return appendHarnessWebview(sourceUrl || params.get("targetUrl") || "bright.html");
+        },
+        addPermanentWebview(sourceUrl, stateName) {
+          const index = appendHarnessWebview(sourceUrl || params.get("targetUrl") || "bright.html");
+          applyPermanentParkingState(stateName || permanentParkingState);
+          return index;
+        },
+        async applyPermanentParkingState(stateName) {
+          const nextState = applyPermanentParkingState(stateName);
+          await waitFrames(2);
+          return nextState;
         },
         async prepareForPixelCapture(targetIndex = 0) {
           const token = `capture-${++nextTokenId}`;
@@ -252,6 +367,10 @@
           return state();
         },
       };
+
+      if (permanentParkingState) {
+        applyPermanentParkingState(permanentParkingState);
+      }
     </script>
   </body>
 </html>

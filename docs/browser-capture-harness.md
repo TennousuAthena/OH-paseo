@@ -19,6 +19,15 @@ Run it with the repo Electron:
 npm run capture-harness --workspace=@getpaseo/desktop
 ```
 
+On macOS the harness process must set `app.setActivationPolicy("accessory")` and
+hide the Dock icon before creating any window. `showInactive()` only prevents window
+focus; a normal Electron app launch can still activate the app and steal focus.
+Harness windows are then created hidden, positioned in a screen corner, skipped from
+the taskbar where Electron supports it, and revealed with `showInactive()` from
+`ready-to-show`. Do not replace this with `show()`, `focus()`, or `app.focus()`:
+the compositor only needs visible inactive windows, and harness runs must not steal
+focus from the person using the machine.
+
 The harness writes PNG evidence and `results.json` to:
 
 ```text
