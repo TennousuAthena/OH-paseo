@@ -8,8 +8,8 @@ It validates the compositor behavior that unit tests cannot see:
 - the resident webview guest is sized to 1280x800 logical pixels;
 - multiple resident webviews are parked as an overlapping stack, and the capture
   target is raised above its sibling webviews before capture;
-- a newly attached resident webview can be captured immediately after load, without
-  an extra settle delay;
+- a newly attached resident webview whose first useful frame is delayed can be captured
+  by holding prep active and retrying until the frame appears;
 - the app-style prep sequence moves the host to a paintable 1x1 clipped state, waits two animation frames and a layout read, then both viewport `capturePage` and full-page CDP screenshots return real pixels;
 - restore returns the host to offscreen parking after every capture.
 
@@ -27,10 +27,10 @@ packages/desktop/capture-harness/out/
 
 A passing run prints `PASS` lines for both guest sizes, the expected parked-capture
 failure, the legacy stacked-below-the-clip failure for the second webview, five viewport
-prep captures and five full-page prep captures for each of the first two webviews, a
-fresh-immediate viewport and full-page capture for a newly attached webview, and final
-completion. The PNG sizes may be device-pixel scaled; on a Retina display the 1280x800
-logical viewport is usually saved as 2560x1600.
+prep captures and five full-page prep captures for each of the first two webviews,
+fresh-delayed-first-frame viewport and full-page captures for a newly attached webview,
+and final completion. The PNG sizes may be device-pixel scaled; on a Retina display the
+1280x800 logical viewport is usually saved as 2560x1600.
 
 ## Mechanism
 

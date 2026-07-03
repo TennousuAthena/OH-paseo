@@ -54,11 +54,13 @@ class FakeTab implements TabContents {
   public captureNeverPaints = false;
   public captureThrows = false;
   public captureErrorMessage = "capture failed";
+  public viewportCaptureFailuresBeforeSuccess = 0;
   public deferCaptures = false;
   public prepareNeverAcks = false;
   public prepareErrorMessage: string | null = null;
   public fullPageScreenshotThrows = false;
   public fullPageScreenshotErrorMessage = "UnknownVizError";
+  public fullPageCaptureFailuresBeforeSuccess = 0;
   public layoutMetrics = {
     cssLayoutViewport: { clientWidth: 390, clientHeight: 844 },
     cssContentSize: { width: 390, height: 1200 },
@@ -133,6 +135,10 @@ class FakeTab implements TabContents {
     this.capturedViewports.push(options ?? {});
     this.actions.push("capture");
     this.resolveCaptureStartWaiters();
+    if (this.viewportCaptureFailuresBeforeSuccess > 0) {
+      this.viewportCaptureFailuresBeforeSuccess -= 1;
+      throw new Error(this.captureErrorMessage);
+    }
     if (this.captureThrows) {
       throw new Error(this.captureErrorMessage);
     }
@@ -191,6 +197,10 @@ class FakeTab implements TabContents {
       return this.layoutMetrics;
     }
     if (command === "Page.captureScreenshot") {
+      if (this.fullPageCaptureFailuresBeforeSuccess > 0) {
+        this.fullPageCaptureFailuresBeforeSuccess -= 1;
+        throw new Error(this.fullPageScreenshotErrorMessage);
+      }
       if (this.fullPageScreenshotThrows) {
         throw new Error(this.fullPageScreenshotErrorMessage);
       }
@@ -990,34 +1000,82 @@ describe("executeAutomationCommand", () => {
     ]);
   });
 
-  test("screenshot returns no-frame and restores capture preparation when viewport capture throws UnknownVizError", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.captureThrows = true;
-    browser.tab.captureErrorMessage = "UnknownVizError";
+  test("screenshot retries UnknownVizError until the first viewport frame appears", async () => {
+    vi.useFakeTimers();
+    try {
+      const browser = new BrowserAutomationHarness();
+      browser.tab.captureErrorMessage = "UnknownVizError";
+      browser.tab.viewportCaptureFailuresBeforeSuccess = 2;
 
-    await expect(
-      browser.execute({
+      const resultPromise = browser.execute({
         command: "screenshot",
         args: { browserId: BROWSER_A },
-      }),
-    ).resolves.toEqual({
-      requestId: "req-screenshot",
-      ok: false,
-      error: {
-        code: "screenshot_no_frame",
-        message: "The browser tab has no painted frame. Focus the tab in the app, then try again.",
-        retryable: false,
-      },
-    });
+      });
+      await vi.advanceTimersByTimeAsync(400);
 
-    expect(browser.tab.actions).toEqual([
-      "prepare",
-      "background:false",
-      "invalidate",
-      "capture",
-      "restore:capture-1",
-      "background:true",
-    ]);
+      await expect(resultPromise).resolves.toEqual({
+        requestId: "req-screenshot",
+        ok: true,
+        result: {
+          command: "screenshot",
+          browserId: BROWSER_A,
+          mimeType: "image/png",
+          dataBase64: "iVBORwECAw==",
+          width: 640,
+          height: 480,
+        },
+      });
+      expect(browser.tab.capturedViewports).toHaveLength(3);
+      expect(browser.tab.actions).toEqual([
+        "prepare",
+        "background:false",
+        "invalidate",
+        "capture",
+        "invalidate",
+        "capture",
+        "invalidate",
+        "capture",
+        "restore:capture-1",
+        "background:true",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("screenshot returns no-frame after UnknownVizError spends the retry budget", async () => {
+    vi.useFakeTimers();
+    try {
+      const browser = new BrowserAutomationHarness();
+      browser.tab.captureThrows = true;
+      browser.tab.captureErrorMessage = "UnknownVizError";
+
+      const resultPromise = browser.execute({
+        command: "screenshot",
+        args: { browserId: BROWSER_A },
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(resultPromise).resolves.toEqual({
+        requestId: "req-screenshot",
+        ok: false,
+        error: {
+          code: "screenshot_no_frame",
+          message:
+            "The browser tab has no painted frame. Focus the tab in the app, then try again.",
+          retryable: false,
+        },
+      });
+      expect(browser.tab.capturedViewports.length).toBeGreaterThan(1);
+      expect(browser.tab.actions.filter((action) => action === "invalidate")).toHaveLength(
+        browser.tab.capturedViewports.length,
+      );
+      expect(browser.tab.restoredPixelCaptureTokens).toEqual(["capture-1"]);
+      expect(browser.tab.actions.at(-2)).toBe("restore:capture-1");
+      expect(browser.tab.actions.at(-1)).toBe("background:true");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("screenshot returns no-frame when capture preparation does not ack", async () => {
@@ -1256,33 +1314,45 @@ describe("executeAutomationCommand", () => {
     ]);
   });
 
-  test("screenshot with fullPage returns no-frame when CDP capture throws", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.fullPageScreenshotThrows = true;
+  test("screenshot with fullPage retries UnknownVizError until the first CDP frame appears", async () => {
+    vi.useFakeTimers();
+    try {
+      const browser = new BrowserAutomationHarness();
+      browser.tab.fullPageCaptureFailuresBeforeSuccess = 1;
 
-    const result = await browser.execute({
-      command: "screenshot",
-      args: { browserId: BROWSER_A, fullPage: true },
-    });
+      const resultPromise = browser.execute({
+        command: "screenshot",
+        args: { browserId: BROWSER_A, fullPage: true },
+      });
+      await vi.advanceTimersByTimeAsync(200);
 
-    expect(result).toEqual({
-      requestId: "req-screenshot",
-      ok: false,
-      error: {
-        code: "screenshot_no_frame",
-        message: "The browser tab has no painted frame. Focus the tab in the app, then try again.",
-        retryable: false,
-      },
-    });
-    expect(browser.tab.actions).toEqual([
-      "prepare",
-      "background:false",
-      "invalidate",
-      "debug:Page.getLayoutMetrics",
-      "debug:Page.captureScreenshot",
-      "restore:capture-1",
-      "background:true",
-    ]);
+      await expect(resultPromise).resolves.toEqual({
+        requestId: "req-screenshot",
+        ok: true,
+        result: {
+          command: "screenshot",
+          browserId: BROWSER_A,
+          mimeType: "image/png",
+          dataBase64: "fullPagePng",
+          width: 390,
+          height: 1200,
+        },
+      });
+      expect(browser.tab.actions).toEqual([
+        "prepare",
+        "background:false",
+        "invalidate",
+        "debug:Page.getLayoutMetrics",
+        "debug:Page.captureScreenshot",
+        "invalidate",
+        "debug:Page.getLayoutMetrics",
+        "debug:Page.captureScreenshot",
+        "restore:capture-1",
+        "background:true",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("screenshot with fullPage restores capture preparation when CDP capture fails with an ordinary error", async () => {

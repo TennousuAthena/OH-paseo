@@ -61,6 +61,7 @@ const defaultSnapshotEngine = new BrowserSnapshotEngine();
 const DEFAULT_WAIT_TIMEOUT_MS = 5_000;
 const WAIT_POLL_INTERVAL_MS = 25;
 const PIXEL_CAPTURE_TIMEOUT_MS = 5_000;
+const PIXEL_CAPTURE_RETRY_INTERVAL_MS = 200;
 const SCREENSHOT_NO_FRAME_MESSAGE =
   "The browser tab has no painted frame. Focus the tab in the app, then try again.";
 const SCREENSHOT_PREP_UNAVAILABLE_PREFIX = "Browser screenshot prep_unavailable:";
@@ -94,12 +95,18 @@ function screenshotNoFrameFailure(
   return fail(requestId, "screenshot_no_frame", error.message);
 }
 
-async function withPixelCaptureTimeout<T>(capture: Promise<T>): Promise<T> {
+async function withPixelCaptureTimeout<T>(
+  capture: Promise<T>,
+  timeoutMs = PIXEL_CAPTURE_TIMEOUT_MS,
+): Promise<T> {
+  if (timeoutMs <= 0) {
+    throw new ScreenshotNoFrameError();
+  }
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       reject(new ScreenshotNoFrameError());
-    }, PIXEL_CAPTURE_TIMEOUT_MS);
+    }, timeoutMs);
   });
 
   try {
@@ -150,18 +157,26 @@ async function restorePixelCapture(
   }
 }
 
-async function capturePreparedPixelFrame<T>(capture: () => Promise<T>): Promise<T> {
-  try {
-    return await withPixelCaptureTimeout(capture());
-  } catch (error) {
-    if (isScreenshotNoFrameError(error)) {
-      throw error;
+async function capturePreparedPixelFrame<T>(
+  contents: TabContents,
+  capture: () => Promise<T>,
+): Promise<T> {
+  const deadline = Date.now() + PIXEL_CAPTURE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      contents.invalidate();
+      return await withPixelCaptureTimeout(capture(), deadline - Date.now());
+    } catch (error) {
+      if (isScreenshotNoFrameError(error)) {
+        throw error;
+      }
+      if (!isKnownNoFrameCaptureError(error)) {
+        throw error;
+      }
+      await delay(Math.min(PIXEL_CAPTURE_RETRY_INTERVAL_MS, Math.max(0, deadline - Date.now())));
     }
-    if (isKnownNoFrameCaptureError(error)) {
-      throw new ScreenshotNoFrameError();
-    }
-    throw error;
   }
+  throw new ScreenshotNoFrameError();
 }
 
 function screenshotPreparationError(error: unknown): ScreenshotNoFrameError {
@@ -206,8 +221,7 @@ async function runPreparedPixelCapture<T>(
       // paintable before capture; see docs/browser-capture-harness.md.
       preparation = await prepareForPixelCapture(contents);
       contents.setBackgroundThrottling(false);
-      contents.invalidate();
-      return await capturePreparedPixelFrame(capture);
+      return await capturePreparedPixelFrame(contents, capture);
     } finally {
       try {
         if (preparation) {
