@@ -4,8 +4,7 @@
 
 ### Added
 
-- Agents can drive the in-app browser: open tabs, navigate, click, type, and take screenshots (opt-in desktop browser tools)
-- Screenshots taken by agents appear as images in the chat
+- Agents can drive the in-app browser: open tabs, navigate, click, type, and take screenshots
 - Inspect, annotate, and send page elements from a browser tab to the agent ([#1708](https://github.com/getpaseo/paseo/pull/1708) by [@huiliaoning](https://github.com/huiliaoning))
 - Schedules screen to create and manage recurring agents ([#1246](https://github.com/getpaseo/paseo/pull/1246))
 - Open a project from anywhere with Cmd+O ([#1849](https://github.com/getpaseo/paseo/pull/1849))
