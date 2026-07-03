@@ -16,13 +16,15 @@
 
       #paseo-browser-resident-webviews {
         position: fixed;
-        left: -20000px;
+        left: 0;
         top: 0;
-        width: 1280px;
-        height: 800px;
+        width: 1px;
+        height: 1px;
         overflow: hidden;
-        opacity: 0;
+        opacity: 1;
         pointer-events: none;
+        display: block;
+        visibility: visible;
       }
 
       .capture-harness-webview {
@@ -152,23 +154,24 @@
         host.style.position = "fixed";
         host.style.left = "0";
         host.style.top = "0";
-        host.style.width = `${RESIDENT_VIEWPORT_WIDTH}px`;
-        host.style.height = `${RESIDENT_VIEWPORT_HEIGHT}px`;
+        host.style.width = "1px";
+        host.style.height = "1px";
         host.style.overflow = "hidden";
         host.style.opacity = "1";
         host.style.pointerEvents = "none";
-        host.style.zIndex = "1";
+        host.style.display = "block";
+        host.style.zIndex = "";
         host.style.clipPath = "";
-        host.style.visibility = "";
+        host.style.visibility = "visible";
         host.style.transform = "";
-        host.style.transformOrigin = "0 0";
+        host.style.transformOrigin = "";
       }
 
       function applyPermanentWebviewBase(webview, index) {
         applyStackedWebviewStyle(webview);
-        webview.style.opacity = "1";
+        webview.style.opacity = "";
         webview.style.transform = "";
-        webview.style.pointerEvents = "none";
+        webview.style.pointerEvents = "";
         webview.style.zIndex = "0";
         webview.style.width = `${RESIDENT_VIEWPORT_WIDTH}px`;
         webview.style.height = `${RESIDENT_VIEWPORT_HEIGHT}px`;
@@ -183,9 +186,6 @@
         webviews.forEach(applyPermanentWebviewBase);
 
         if (stateName === "p1-overflow-1x1") {
-          host.style.width = "1px";
-          host.style.height = "1px";
-          host.style.overflow = "hidden";
           return state();
         }
 

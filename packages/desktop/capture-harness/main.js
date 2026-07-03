@@ -13,15 +13,15 @@ const CAPTURE_RETRY_INTERVAL_MS = 200;
 const REPEAT_COUNT = 5;
 const FRESH_REPEAT_COUNT = 3;
 const SOAK_MS = Number(process.env.PASEO_CAPTURE_HARNESS_SOAK_MS || 75000);
-const HARNESS_GROUP = process.env.PASEO_CAPTURE_HARNESS_GROUP || "all";
+const HARNESS_GROUP = process.env.PASEO_CAPTURE_HARNESS_GROUP || "permanent-parking";
 const PERMANENT_STATE_FILTER = new Set(
-  (process.env.PASEO_CAPTURE_HARNESS_STATES || "")
+  (process.env.PASEO_CAPTURE_HARNESS_STATES || "P1")
     .split(",")
     .map((state) => state.trim())
     .filter(Boolean),
 );
 const PERMANENT_VARIANT_FILTER = new Set(
-  (process.env.PASEO_CAPTURE_HARNESS_VARIANTS || "")
+  (process.env.PASEO_CAPTURE_HARNESS_VARIANTS || "attach-off")
     .split(",")
     .map((variant) => variant.trim())
     .filter(Boolean),
@@ -377,14 +377,8 @@ async function readGuestMetrics(contents) {
 }
 
 async function capturePageSequence(contents) {
-  const previousBackgroundThrottling = contents.getBackgroundThrottling();
-  contents.setBackgroundThrottling(false);
-  try {
-    contents.invalidate();
-    return await withTimeout(contents.capturePage(undefined, { stayHidden: false }), "capturePage");
-  } finally {
-    contents.setBackgroundThrottling(previousBackgroundThrottling);
-  }
+  contents.invalidate();
+  return await withTimeout(contents.capturePage(undefined, { stayHidden: false }), "capturePage");
 }
 
 async function captureFullPage(contents) {
@@ -426,14 +420,8 @@ async function captureFullPage(contents) {
 }
 
 async function captureFullPageSequence(contents) {
-  const previousBackgroundThrottling = contents.getBackgroundThrottling();
-  contents.setBackgroundThrottling(false);
-  try {
-    contents.invalidate();
-    return await captureFullPage(contents);
-  } finally {
-    contents.setBackgroundThrottling(previousBackgroundThrottling);
-  }
+  contents.invalidate();
+  return await captureFullPage(contents);
 }
 
 function installHarnessWebviewGuards(win) {
@@ -1099,6 +1087,10 @@ async function runPermanentParkingGroup() {
     }
   } finally {
     await closeHarnessWindow(keeper);
+  }
+  const failedResults = results.filter((result) => !result.pass);
+  if (failedResults.length > 0) {
+    fail(`permanent parking failed ${failedResults.length}/${results.length} checks`);
   }
   return results;
 }

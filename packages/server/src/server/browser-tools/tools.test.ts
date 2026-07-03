@@ -410,14 +410,14 @@ const brokerErrorCases = [
       ok: false,
       error: {
         code: "screenshot_no_frame",
-        message: "The browser tab has no painted frame. Focus the tab in the app, then try again.",
-        retryable: false,
+        message: "The tab has not painted yet. Retry the screenshot.",
+        retryable: true,
       },
     },
     content: [
       {
         type: "text",
-        text: "The browser tab has no painted frame. Focus the tab in the app, then try again.",
+        text: "The tab has not painted yet. Retry the screenshot.",
       },
     ],
     context: {

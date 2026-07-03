@@ -24,17 +24,9 @@ export interface TabContents {
   goForward(): void;
   reload(): void;
   capturePage(options?: TabCapturePageOptions): Promise<TabImage>;
-  prepareForPixelCapture(): Promise<TabPixelCapturePreparation>;
-  restorePixelCapture(preparation: TabPixelCapturePreparation): Promise<void>;
   invalidate(): void;
-  isBackgroundThrottlingAllowed(): boolean;
-  setBackgroundThrottling(allowed: boolean): void;
   getConsoleMessages?(): BrowserAutomationConsoleLogEntry[];
   sendDebugCommand?(command: string, params?: Record<string, unknown>): Promise<unknown>;
-}
-
-export interface TabPixelCapturePreparation {
-  token: string;
 }
 
 export interface TabImage {
@@ -62,9 +54,7 @@ const DEFAULT_WAIT_TIMEOUT_MS = 5_000;
 const WAIT_POLL_INTERVAL_MS = 25;
 const PIXEL_CAPTURE_TIMEOUT_MS = 5_000;
 const PIXEL_CAPTURE_RETRY_INTERVAL_MS = 200;
-const SCREENSHOT_NO_FRAME_MESSAGE =
-  "The browser tab has no painted frame. Focus the tab in the app, then try again.";
-const SCREENSHOT_PREP_UNAVAILABLE_PREFIX = "Browser screenshot prep_unavailable:";
+const SCREENSHOT_NO_FRAME_MESSAGE = "The tab has not painted yet. Retry the screenshot.";
 const ALLOWED_PAGE_URL_PROTOCOLS = new Set(["http:", "https:"]);
 let pixelCaptureQueue: Promise<void> = Promise.resolve();
 
@@ -92,7 +82,7 @@ function screenshotNoFrameFailure(
   requestId: string,
   error: ScreenshotNoFrameError,
 ): FailurePayload {
-  return fail(requestId, "screenshot_no_frame", error.message);
+  return fail(requestId, "screenshot_no_frame", error.message, true);
 }
 
 async function withPixelCaptureTimeout<T>(
@@ -138,26 +128,7 @@ async function runSerializedPixelCapture<T>(capture: () => Promise<T>): Promise<
   }
 }
 
-async function prepareForPixelCapture(contents: TabContents): Promise<TabPixelCapturePreparation> {
-  try {
-    return await withPixelCaptureTimeout(contents.prepareForPixelCapture());
-  } catch (error) {
-    throw screenshotPreparationError(error);
-  }
-}
-
-async function restorePixelCapture(
-  contents: TabContents,
-  preparation: TabPixelCapturePreparation,
-): Promise<void> {
-  try {
-    await withPixelCaptureTimeout(contents.restorePixelCapture(preparation));
-  } catch {
-    throw new ScreenshotNoFrameError();
-  }
-}
-
-async function capturePreparedPixelFrame<T>(
+async function capturePixelFrameWithRetry<T>(
   contents: TabContents,
   capture: () => Promise<T>,
 ): Promise<T> {
@@ -179,26 +150,6 @@ async function capturePreparedPixelFrame<T>(
   throw new ScreenshotNoFrameError();
 }
 
-function screenshotPreparationError(error: unknown): ScreenshotNoFrameError {
-  const message = error instanceof Error ? error.message : String(error);
-  if (isScreenshotNoFrameError(error)) {
-    return new ScreenshotNoFrameError(
-      `${SCREENSHOT_PREP_UNAVAILABLE_PREFIX} the app renderer did not acknowledge capture preparation before the timeout.`,
-    );
-  }
-  if (message.includes(SCREENSHOT_PREP_UNAVAILABLE_PREFIX)) {
-    return new ScreenshotNoFrameError(message);
-  }
-  if (
-    message.includes("Browser pixel capture preparation is unavailable.") ||
-    message.includes("Browser host renderer is not available.") ||
-    message.includes("is not mounted.")
-  ) {
-    return new ScreenshotNoFrameError(`${SCREENSHOT_PREP_UNAVAILABLE_PREFIX} ${message}`);
-  }
-  return new ScreenshotNoFrameError(`${SCREENSHOT_PREP_UNAVAILABLE_PREFIX} ${message}`);
-}
-
 function isKnownNoFrameCaptureError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return (
@@ -208,34 +159,15 @@ function isKnownNoFrameCaptureError(error: unknown): boolean {
   );
 }
 
-async function runPreparedPixelCapture<T>(
+async function runPaintedPixelCapture<T>(
   contents: TabContents,
   capture: () => Promise<T>,
 ): Promise<T> {
-  return runSerializedPixelCapture(async () => {
-    const previousBackgroundThrottling = contents.isBackgroundThrottlingAllowed();
-    let preparation: TabPixelCapturePreparation | null = null;
-    try {
-      // Offscreen-parked webview guests have no compositor surface for
-      // capturePage/CDP to copy. The renderer must briefly make the host
-      // paintable before capture; see docs/browser-capture-harness.md.
-      preparation = await prepareForPixelCapture(contents);
-      contents.setBackgroundThrottling(false);
-      return await capturePreparedPixelFrame(contents, capture);
-    } finally {
-      try {
-        if (preparation) {
-          await restorePixelCapture(contents, preparation);
-        }
-      } finally {
-        contents.setBackgroundThrottling(previousBackgroundThrottling);
-      }
-    }
-  });
+  return runSerializedPixelCapture(() => capturePixelFrameWithRetry(contents, capture));
 }
 
 async function capturePaintedViewport(contents: TabContents): Promise<TabImage> {
-  return runPreparedPixelCapture(contents, () => contents.capturePage({ stayHidden: false }));
+  return runPaintedPixelCapture(contents, () => contents.capturePage({ stayHidden: false }));
 }
 
 function tabInfoFromContents(
@@ -966,7 +898,7 @@ async function executeFullPageScreenshot(
   let width = 0;
   let height = 0;
   try {
-    screenshot = await runPreparedPixelCapture(target.contents, async () => {
+    screenshot = await runPaintedPixelCapture(target.contents, async () => {
       const metrics = await getCdpLayoutMetrics(target.contents);
       width = metrics.contentWidth;
       height = metrics.contentHeight;
