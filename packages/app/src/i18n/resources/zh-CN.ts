@@ -1387,6 +1387,7 @@ export const zhCN: TranslationResources = {
     },
     backToWorkspace: "返回",
     addHost: "添加主机",
+    enableBuiltInDaemon: "启用内置 daemon",
     projects: "项目",
     projectList: {
       hostLoadFailed: "无法从 Host {{hostName}} 加载 projects：{{message}}",
@@ -1395,7 +1396,6 @@ export const zhCN: TranslationResources = {
     groupInfo: "关于 {{title}}",
     sections: {
       general: "通用",
-      daemon: "Daemon",
       appearance: "外观",
       shortcuts: "快捷键",
       integrations: "集成",
@@ -1410,7 +1410,7 @@ export const zhCN: TranslationResources = {
       providers: "Providers",
       usage: "使用情况",
       terminals: "Terminals",
-      host: "Host",
+      host: "概览",
     },
     general: {
       title: "通用",
