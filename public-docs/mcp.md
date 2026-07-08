@@ -3,7 +3,7 @@ title: Paseo MCP
 description: Paseo MCP tools injected into agents.
 nav: Paseo MCP
 order: 30
-category: Automation
+category: Orchestration
 ---
 
 # Paseo MCP
