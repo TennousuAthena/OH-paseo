@@ -1453,6 +1453,10 @@ export const zhCN: TranslationResources = {
         description: "内置终端缓冲区保留的行数",
         accessibilityLabel: "终端回滚行数",
       },
+      autoExpandReasoning: {
+        label: "始终展开推理过程",
+        description: "默认情况下完全展开 AI 的思考和推理过程",
+      },
       language: {
         label: "语言",
         description: "应用语言",
@@ -1533,6 +1537,9 @@ export const zhCN: TranslationResources = {
           ghostty: "Ghostty",
           auto: "系统",
         },
+      },
+      detailLevel: {
+        title: "详细程度",
       },
       fonts: {
         title: "字体",

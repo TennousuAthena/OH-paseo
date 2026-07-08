@@ -1514,6 +1514,10 @@ export const fr: TranslationResources = {
         description: "Lignes conservées dans le tampon du terminal intégré",
         accessibilityLabel: "Lignes de défilementTerminal",
       },
+      autoExpandReasoning: {
+        label: "Toujours afficher le raisonnement",
+        description: "Afficher le raisonnement de l'agent entièrement développé par défaut",
+      },
       language: {
         label: "Langue",
         description: "Langue de l'application",
@@ -1595,6 +1599,9 @@ export const fr: TranslationResources = {
           ghostty: "Fantôme",
           auto: "Système",
         },
+      },
+      detailLevel: {
+        title: "Niveau de détail",
       },
       fonts: {
         title: "Polices",

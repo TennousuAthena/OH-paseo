@@ -1496,6 +1496,11 @@ export const ptBR: TranslationResources = {
         description: "Linhas mantidas no buffer do terminal integrado",
         accessibilityLabel: "Linhas do scrollback do terminal",
       },
+      autoExpandReasoning: {
+        label: "Sempre expandir raciocínio",
+        description:
+          "Mostrar os blocos de pensamento e raciocínio do agente totalmente expandidos por padrão",
+      },
       language: {
         label: "Idioma",
         description: "Idioma do app",
@@ -1576,6 +1581,9 @@ export const ptBR: TranslationResources = {
           ghostty: "Ghostty",
           auto: "Sistema",
         },
+      },
+      detailLevel: {
+        title: "Nível de detalhe",
       },
       fonts: {
         title: "Fontes",

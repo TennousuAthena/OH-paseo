@@ -3038,6 +3038,8 @@ interface ToolCallProps {
   onInlineDetailsHoverChange?: (hovered: boolean) => void;
   onInlineDetailsExpandedChange?: (expanded: boolean) => void;
   onOpenFilePath?: (filePath: string) => void;
+  defaultExpanded?: boolean;
+  forceInline?: boolean;
 }
 
 export const ToolCall = memo(function ToolCall({
@@ -3054,11 +3056,14 @@ export const ToolCall = memo(function ToolCall({
   onInlineDetailsHoverChange,
   onInlineDetailsExpandedChange,
   onOpenFilePath,
+  defaultExpanded,
+  forceInline = false,
 }: ToolCallProps) {
   const { openToolCall } = useToolCallSheet();
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded ?? false);
 
   const isMobile = useIsCompactFormFactor();
+  const shouldRenderInline = !isMobile || forceInline;
 
   const effectiveDetail = useMemo<ToolCallDetail | undefined>(() => {
     if (detail) {
@@ -3096,7 +3101,7 @@ export const ToolCall = memo(function ToolCall({
   }, [presentation.openFilePath, onOpenFilePath]);
 
   const handleToggle = useCallback(() => {
-    if (isMobile) {
+    if (!shouldRenderInline) {
       openToolCall({
         displayName: presentation.displayName,
         summary: presentation.summary,
@@ -3109,7 +3114,7 @@ export const ToolCall = memo(function ToolCall({
       setIsExpanded((prev) => !prev);
     }
   }, [
-    isMobile,
+    shouldRenderInline,
     openToolCall,
     presentation.displayName,
     presentation.summary,
@@ -3120,22 +3125,22 @@ export const ToolCall = memo(function ToolCall({
   ]);
 
   useEffect(() => {
-    if (!onInlineDetailsHoverChange || isMobile || isExpanded) {
+    if (!onInlineDetailsHoverChange || !shouldRenderInline || isExpanded) {
       return;
     }
     onInlineDetailsHoverChange(false);
-  }, [isExpanded, isMobile, onInlineDetailsHoverChange]);
+  }, [isExpanded, shouldRenderInline, onInlineDetailsHoverChange]);
 
   useEffect(() => {
     if (!onInlineDetailsExpandedChange) {
       return;
     }
-    if (isMobile) {
+    if (!shouldRenderInline) {
       onInlineDetailsExpandedChange(false);
       return;
     }
     onInlineDetailsExpandedChange(isExpanded);
-  }, [isExpanded, isMobile, onInlineDetailsExpandedChange]);
+  }, [isExpanded, shouldRenderInline, onInlineDetailsExpandedChange]);
 
   useEffect(() => {
     if (!onInlineDetailsExpandedChange) {
@@ -3148,7 +3153,7 @@ export const ToolCall = memo(function ToolCall({
 
   // Render inline details for desktop
   const renderDetails = useCallback(() => {
-    if (isMobile) return null;
+    if (!shouldRenderInline) return null;
     return (
       <ToolCallDetailsContent
         detail={effectiveDetail}
@@ -3157,7 +3162,7 @@ export const ToolCall = memo(function ToolCall({
         showLoadingSkeleton={presentation.isLoadingDetails}
       />
     );
-  }, [isMobile, effectiveDetail, presentation.errorText, presentation.isLoadingDetails]);
+  }, [shouldRenderInline, effectiveDetail, presentation.errorText, presentation.isLoadingDetails]);
 
   if (presentation.isPlan && effectiveDetail?.type === "plan") {
     return (
@@ -3175,10 +3180,10 @@ export const ToolCall = memo(function ToolCall({
       label={presentation.displayName}
       secondaryLabel={presentation.summary}
       icon={presentation.icon}
-      isExpanded={!isMobile && isExpanded}
+      isExpanded={shouldRenderInline && isExpanded}
       onToggle={presentation.canOpenDetails ? handleToggle : undefined}
       onOpenFile={handleOpenFile}
-      renderDetails={presentation.canOpenDetails && !isMobile ? renderDetails : undefined}
+      renderDetails={presentation.canOpenDetails && shouldRenderInline ? renderDetails : undefined}
       isLoading={status === "running" || status === "executing"}
       isError={status === "failed"}
       isLastInSequence={isLastInSequence}
@@ -3200,5 +3205,7 @@ function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.isLastInSequence !== next.isLastInSequence) return false;
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
   if (previous.onOpenFilePath !== next.onOpenFilePath) return false;
+  if (previous.defaultExpanded !== next.defaultExpanded) return false;
+  if (previous.forceInline !== next.forceInline) return false;
   return true;
 }

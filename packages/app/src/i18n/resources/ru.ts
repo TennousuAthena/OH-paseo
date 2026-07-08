@@ -1501,6 +1501,11 @@ export const ru: TranslationResources = {
         description: "Строки, хранящиеся во встроенном буфере терминала.",
         accessibilityLabel: "Линии прокрутки Terminal",
       },
+      autoExpandReasoning: {
+        label: "Всегда разворачивать размышления",
+        description:
+          "По умолчанию показывать блоки размышлений и логики агента полностью развернутыми",
+      },
       language: {
         label: "Язык",
         description: "Язык приложения",
@@ -1582,6 +1587,9 @@ export const ru: TranslationResources = {
           ghostty: "Призрачный",
           auto: "Система",
         },
+      },
+      detailLevel: {
+        title: "Уровень детализации",
       },
       fonts: {
         title: "Шрифты",
