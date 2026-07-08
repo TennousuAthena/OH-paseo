@@ -738,6 +738,8 @@ export const fr: TranslationResources = {
         wrapLongLines: "Enroulez les longues lignes",
         collapseAll: "Réduire tous les fichiers",
         expandAll: "Développer tous les fichiers",
+        collapseAllFolders: "Réduire tous les dossiers",
+        expandAllFolders: "Développer tous les dossiers",
         refreshing: "Rafraîchissant",
         refresh: "Rafraîchir",
         refreshState: "Actualiser l'état de git etGitHub",

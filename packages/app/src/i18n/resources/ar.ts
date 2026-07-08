@@ -712,6 +712,8 @@ export const ar: TranslationResources = {
         wrapLongLines: "لف الخطوط الطويلة",
         collapseAll: "طي كافة الملفات",
         expandAll: "قم بتوسيع كافة الملفات",
+        collapseAllFolders: "طي كافة المجلدات",
+        expandAllFolders: "توسيع كافة المجلدات",
         refreshing: "منعش",
         refresh: "ينعش",
         refreshState: "تحديث بوابة وحالة GitHub",

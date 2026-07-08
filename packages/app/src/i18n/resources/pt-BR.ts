@@ -730,6 +730,8 @@ export const ptBR: TranslationResources = {
         wrapLongLines: "Quebrar linhas longas",
         collapseAll: "Recolher todos os arquivos",
         expandAll: "Expandir todos os arquivos",
+        collapseAllFolders: "Recolher todas as pastas",
+        expandAllFolders: "Expandir todas as pastas",
         refreshing: "Atualizando",
         refresh: "Atualizar",
         refreshState: "Atualizar estado do git e do GitHub",
