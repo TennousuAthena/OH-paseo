@@ -1131,7 +1131,7 @@ export const fr: TranslationResources = {
     },
   },
   projectPicker: {
-    placeholder: "Tapez un chemin de répertoire...",
+    placeholder: "Tapez pour rechercher...",
     browse: "Parcourir…",
     opening: "Projet d'ouverture...",
     searching: "Recherche en cours...",
