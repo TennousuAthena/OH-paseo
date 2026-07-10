@@ -336,6 +336,7 @@ export function ProjectPickerModal() {
         <View style={panelStyle}>
           <View style={headerStyle}>
             <TextInput
+              testID="project-picker-input"
               ref={inputRef}
               value={query}
               onChangeText={handleChangeQuery}

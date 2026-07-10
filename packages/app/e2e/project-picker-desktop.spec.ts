@@ -38,7 +38,7 @@ test("Browse owns Enter without opening the active typed path", async ({
   await gotoAppShell(page);
 
   await page.getByTestId("sidebar-add-project").click();
-  const input = page.getByPlaceholder("Type a directory path...");
+  const input = page.getByTestId("project-picker-input");
   await expect(input).toBeVisible({ timeout: 30_000 });
   await input.fill(projectPickerFixture.projectPath);
 

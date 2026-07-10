@@ -51,7 +51,7 @@ async function removeProjectFromSidebar(page: Page, projectId: string): Promise<
 async function addProjectFromPicker(page: Page, projectPath: string): Promise<string> {
   await page.getByTestId("sidebar-add-project").click();
 
-  const input = page.getByPlaceholder("Type a directory path...");
+  const input = page.getByTestId("project-picker-input");
   await expect(input).toBeVisible({ timeout: 30_000 });
   await input.fill(projectPath);
   await page.keyboard.press("Enter");
@@ -83,7 +83,7 @@ test.describe("Project picker search", () => {
     await waitForSidebarProjectListReady(page);
     await page.getByTestId("sidebar-add-project").click();
 
-    const input = page.getByPlaceholder("Type a directory path...");
+    const input = page.getByTestId("project-picker-input");
     await expect(input).toBeVisible({ timeout: 30_000 });
     await input.fill(projectPickerFixture.fuzzyQuery);
 
@@ -102,7 +102,7 @@ test.describe("Project picker search", () => {
     await waitForSidebarProjectListReady(page);
     await page.getByTestId("sidebar-add-project").click();
 
-    const input = page.getByPlaceholder("Type a directory path...");
+    const input = page.getByTestId("project-picker-input");
     await expect(input).toBeVisible({ timeout: 30_000 });
     await input.fill("paseo-loading-state-no-match");
 
