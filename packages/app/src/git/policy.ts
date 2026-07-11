@@ -23,7 +23,7 @@ export type GitActionId =
   | "disable-pr-auto-merge"
   | "merge-branch"
   | "merge-from-base"
-  | "archive-worktree";
+  | "archive-workspace";
 
 export interface GitAction {
   id: GitActionId;
@@ -189,10 +189,6 @@ export function narrowPullRequestState(state: string | null | undefined): "open"
 }
 
 export function buildGitActions(input: BuildGitActionsInput): GitActions {
-  if (!input.isGit) {
-    return { primary: null, secondary: [], menu: [] };
-  }
-
   const allActions = new Map<GitActionId, GitAction>();
 
   allActions.set("commit", {
@@ -282,43 +278,39 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     handler: input.runtime["merge-from-base"].handler,
   });
 
-  allActions.set("archive-worktree", {
-    id: "archive-worktree",
+  allActions.set("archive-workspace", {
+    id: "archive-workspace",
     label: i18n.t("workspace.git.actions.archive.label"),
     pendingLabel: i18n.t("workspace.git.actions.archive.pending"),
     successLabel: i18n.t("workspace.git.actions.archive.success"),
-    disabled: input.runtime["archive-worktree"].disabled,
-    status: input.runtime["archive-worktree"].status,
-    unavailableMessage:
-      input.runtime["archive-worktree"].disabled || input.isPaseoOwnedWorktree
-        ? undefined
-        : i18n.t("workspace.git.actions.unavailable.archiveNotWorktree"),
-    icon: input.runtime["archive-worktree"].icon,
+    disabled: input.runtime["archive-workspace"].disabled,
+    status: input.runtime["archive-workspace"].status,
+    icon: input.runtime["archive-workspace"].icon,
     startsGroup: true,
-    handler: input.runtime["archive-worktree"].handler,
+    handler: input.runtime["archive-workspace"].handler,
   });
 
   const primaryActionId = getPrimaryActionId(input);
   const primary = primaryActionId ? (allActions.get(primaryActionId) ?? null) : null;
 
-  const secondaryIds = [...REMOTE_ACTION_IDS];
-  if (!input.isOnBaseBranch) {
+  const secondaryIds = input.isGit ? [...REMOTE_ACTION_IDS] : [];
+  if (input.isGit && !input.isOnBaseBranch) {
     secondaryIds.push(...getFeatureActionIds(input));
   }
-  if (input.isPaseoOwnedWorktree) {
-    secondaryIds.push("archive-worktree");
-  }
+  secondaryIds.push("archive-workspace");
 
   return {
     primary,
-    secondary: secondaryIds.map((id) => allActions.get(id)!),
+    secondary: secondaryIds
+      .filter((id) => id !== "archive-workspace" || primaryActionId !== "archive-workspace")
+      .map((id) => allActions.get(id)!),
     menu: [],
   };
 }
 
 function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
-  if (input.shouldPromoteArchive && input.isPaseoOwnedWorktree) {
-    return "archive-worktree";
+  if (input.shouldPromoteArchive) {
+    return "archive-workspace";
   }
   if (input.hasUncommittedChanges) {
     return "commit";
@@ -350,7 +342,7 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
   if (input.githubFeaturesEnabled && input.hasPullRequest && input.pullRequestUrl) {
     return "pr";
   }
-  return null;
+  return "archive-workspace";
 }
 
 function getPullRequestActionIds(filter: {

@@ -62,7 +62,7 @@ import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { SplitContainer } from "@/components/split-container";
 import { RetainedPanel } from "@/components/retained-panel";
 import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
-import { WorkspaceGitActions } from "@/git/workspace-actions";
+import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
@@ -3276,56 +3276,56 @@ function WorkspaceScreenContent({
             hideLabels
           />
         ) : null}
-        {!isMobile && isGitCheckout ? (
+        {!isMobile && workspaceDirectory ? (
           <>
-            {workspaceDirectory ? (
-              <WorkspaceGitActions
-                serverId={normalizedServerId}
-                cwd={workspaceDirectory}
-                hideLabels={showCompactButtonLabels}
-              />
-            ) : null}
-            <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-              <TooltipTrigger asChild>
-                <Pressable
-                  testID="workspace-explorer-toggle"
-                  onPress={handleToggleExplorer}
-                  accessibilityRole="button"
-                  accessibilityLabel={explorerToggleLabel}
-                  accessibilityState={explorerToggleAccessibilityState}
-                  style={explorerToggleStyle}
+            <WorkspaceActions
+              serverId={normalizedServerId}
+              cwd={workspaceDirectory}
+              hideLabels={showCompactButtonLabels}
+            />
+            {isGitCheckout ? (
+              <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+                <TooltipTrigger asChild>
+                  <Pressable
+                    testID="workspace-explorer-toggle"
+                    onPress={handleToggleExplorer}
+                    accessibilityRole="button"
+                    accessibilityLabel={explorerToggleLabel}
+                    accessibilityState={explorerToggleAccessibilityState}
+                    style={explorerToggleStyle}
+                  >
+                    {({ hovered, pressed }) => {
+                      const active = isExplorerOpen || hovered || pressed;
+                      const colorMapping = active ? foregroundColorMapping : mutedColorMapping;
+                      return (
+                        <>
+                          <ThemedSourceControlPanelIcon size={16} uniProps={colorMapping} />
+                          {workspaceDescriptor?.diffStat ? (
+                            <DiffStat
+                              additions={workspaceDescriptor.diffStat.additions}
+                              deletions={workspaceDescriptor.diffStat.deletions}
+                            />
+                          ) : null}
+                        </>
+                      );
+                    }}
+                  </Pressable>
+                </TooltipTrigger>
+                <TooltipContent
+                  testID="workspace-explorer-toggle-tooltip"
+                  side="left"
+                  align="center"
+                  offset={8}
                 >
-                  {({ hovered, pressed }) => {
-                    const active = isExplorerOpen || hovered || pressed;
-                    const colorMapping = active ? foregroundColorMapping : mutedColorMapping;
-                    return (
-                      <>
-                        <ThemedSourceControlPanelIcon size={16} uniProps={colorMapping} />
-                        {workspaceDescriptor?.diffStat ? (
-                          <DiffStat
-                            additions={workspaceDescriptor.diffStat.additions}
-                            deletions={workspaceDescriptor.diffStat.deletions}
-                          />
-                        ) : null}
-                      </>
-                    );
-                  }}
-                </Pressable>
-              </TooltipTrigger>
-              <TooltipContent
-                testID="workspace-explorer-toggle-tooltip"
-                side="left"
-                align="center"
-                offset={8}
-              >
-                <View style={styles.explorerTooltipRow}>
-                  <Text style={styles.explorerTooltipText}>
-                    {t("workspace.tabs.explorer.toggle")}
-                  </Text>
-                  <Shortcut keys={EXPLORER_TOGGLE_KEYS} style={styles.explorerTooltipShortcut} />
-                </View>
-              </TooltipContent>
-            </Tooltip>
+                  <View style={styles.explorerTooltipRow}>
+                    <Text style={styles.explorerTooltipText}>
+                      {t("workspace.tabs.explorer.toggle")}
+                    </Text>
+                    <Shortcut keys={EXPLORER_TOGGLE_KEYS} style={styles.explorerTooltipShortcut} />
+                  </View>
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
           </>
         ) : null}
         {!isMobile && !isGitCheckout ? (

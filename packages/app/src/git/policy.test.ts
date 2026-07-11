@@ -122,7 +122,7 @@ function createInput(overrides: Partial<BuildGitActionsInput> = {}): BuildGitAct
         status: "idle",
         handler: () => undefined,
       },
-      "archive-worktree": {
+      "archive-workspace": {
         disabled: false,
         status: "idle",
         handler: () => undefined,
@@ -272,6 +272,7 @@ describe("git-actions-policy", () => {
       "merge-pr-squash",
       "merge-pr-merge",
       "merge-pr-rebase",
+      "archive-workspace",
     ]);
     expect(
       actions.secondary.some((action) => action.id === "pr" && action.label === "View PR"),
@@ -352,12 +353,16 @@ describe("git-actions-policy", () => {
     );
   });
 
-  it("only shows archive worktree for paseo worktrees", () => {
-    const hidden = buildGitActions(createInput());
-    const shown = buildGitActions(createInput({ isPaseoOwnedWorktree: true }));
+  it("offers archive workspace regardless of its backing", () => {
+    const directory = buildGitActions(createInput({ isGit: false }));
+    const localCheckout = buildGitActions(createInput({ hasUncommittedChanges: true }));
+    const worktree = buildGitActions(
+      createInput({ hasUncommittedChanges: true, isPaseoOwnedWorktree: true }),
+    );
 
-    expect(hidden.secondary.some((action) => action.id === "archive-worktree")).toBe(false);
-    expect(shown.secondary.some((action) => action.id === "archive-worktree")).toBe(true);
+    expect(directory.primary?.id).toBe("archive-workspace");
+    expect(localCheckout.secondary.some((action) => action.id === "archive-workspace")).toBe(true);
+    expect(worktree.secondary.some((action) => action.id === "archive-workspace")).toBe(true);
   });
 
   it("promotes squash-and-merge when an open PR is mergeable and the branch is in sync", () => {
@@ -541,6 +546,7 @@ describe("git-actions-policy", () => {
       "merge-pr-squash",
       "merge-pr-merge",
       "merge-pr-rebase",
+      "archive-workspace",
     ]);
   });
 
@@ -717,6 +723,7 @@ describe("git-actions-policy", () => {
       "merge-pr-squash",
       "merge-pr-merge",
       "merge-pr-rebase",
+      "archive-workspace",
     ]);
   });
 
@@ -757,6 +764,7 @@ describe("git-actions-policy", () => {
       "merge-branch",
       "pr",
       "enable-pr-auto-merge-squash",
+      "archive-workspace",
     ]);
     expect(
       actions.secondary.some((action) =>
@@ -899,6 +907,7 @@ describe("git-actions-policy", () => {
       "merge-branch",
       "pr",
       "merge-pr-merge",
+      "archive-workspace",
     ]);
   });
 
@@ -952,7 +961,7 @@ describe("git-actions-policy", () => {
       .filter((action) => !action.startsGroup)
       .map((action) => action.id);
 
-    expect(groupStarters).toEqual(["merge-from-base", "merge-pr-squash", "archive-worktree"]);
+    expect(groupStarters).toEqual(["merge-from-base", "merge-pr-squash", "archive-workspace"]);
     expect(nonGroupStarters).toEqual([
       "pull",
       "push",
