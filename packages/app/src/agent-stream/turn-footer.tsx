@@ -18,6 +18,7 @@ import {
 } from "@/components/message";
 import type { TurnFooterHost } from "./layout";
 import { SyncedLoader } from "@/components/synced-loader";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const workingIndicatorColorMapping = (theme: Theme) => ({
@@ -35,23 +36,18 @@ export type AssistantTurnForkHandler = (input: {
 
 export const TurnFooter = memo(function TurnFooter({
   isRunning,
-  isActive,
   inFlightTurnStartedAt,
   host,
   strategy,
   onForkAssistantTurn,
 }: {
   isRunning: boolean;
-  isActive: boolean;
   inFlightTurnStartedAt: Date | null;
   host: TurnFooterHost | null;
   strategy: TurnContentStrategy;
   onForkAssistantTurn?: AssistantTurnForkHandler;
 }) {
   if (isRunning) {
-    if (!isActive) {
-      return null;
-    }
     return (
       <TurnFooterRow>
         <RunningTurnFooter inFlightTurnStartedAt={inFlightTurnStartedAt} />
@@ -103,6 +99,7 @@ const WorkingIndicator = memo(function WorkingIndicator({
 }: {
   inFlightTurnStartedAt?: Date | null;
 }) {
+  const active = useRetainedPanelActive();
   return (
     <View style={stylesheet.turnFooterContent}>
       <View style={stylesheet.workingLoader}>
@@ -111,6 +108,7 @@ const WorkingIndicator = memo(function WorkingIndicator({
       {inFlightTurnStartedAt ? (
         <LiveElapsed
           startedAt={inFlightTurnStartedAt}
+          active={active}
           style={stylesheet.workingElapsed}
           testID="turn-working-elapsed"
         />
