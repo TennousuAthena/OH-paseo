@@ -189,6 +189,10 @@ export function narrowPullRequestState(state: string | null | undefined): "open"
 }
 
 export function buildGitActions(input: BuildGitActionsInput): GitActions {
+  if (!input.isGit) {
+    return { primary: null, secondary: [], menu: [] };
+  }
+
   const allActions = new Map<GitActionId, GitAction>();
 
   allActions.set("commit", {
@@ -293,8 +297,8 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
   const primaryActionId = getPrimaryActionId(input);
   const primary = primaryActionId ? (allActions.get(primaryActionId) ?? null) : null;
 
-  const secondaryIds = input.isGit ? [...REMOTE_ACTION_IDS] : [];
-  if (input.isGit && !input.isOnBaseBranch) {
+  const secondaryIds = [...REMOTE_ACTION_IDS];
+  if (!input.isOnBaseBranch) {
     secondaryIds.push(...getFeatureActionIds(input));
   }
   secondaryIds.push("archive-workspace");

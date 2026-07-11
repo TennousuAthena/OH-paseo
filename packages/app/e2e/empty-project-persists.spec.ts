@@ -161,10 +161,7 @@ test.describe("Project with no workspaces persists", () => {
         timeout: 30_000,
       });
       await workspaceRow.click();
-      await expect(page.getByTestId("changes-primary-cta")).toHaveAttribute(
-        "aria-label",
-        "Archive workspace",
-      );
+      await expect(page.getByTestId("changes-primary-cta")).toHaveCount(0);
 
       await archiveWorkspaceFromSidebar(page, workspace.workspaceId);
 

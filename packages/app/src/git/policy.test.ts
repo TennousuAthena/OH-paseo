@@ -353,14 +353,18 @@ describe("git-actions-policy", () => {
     );
   });
 
-  it("offers archive workspace regardless of its backing", () => {
+  it("hides Git actions for a non-Git workspace", () => {
     const directory = buildGitActions(createInput({ isGit: false }));
+
+    expect(directory).toEqual({ primary: null, secondary: [], menu: [] });
+  });
+
+  it("offers archive workspace for Git checkouts and worktrees", () => {
     const localCheckout = buildGitActions(createInput({ hasUncommittedChanges: true }));
     const worktree = buildGitActions(
       createInput({ hasUncommittedChanges: true, isPaseoOwnedWorktree: true }),
     );
 
-    expect(directory.primary?.id).toBe("archive-workspace");
     expect(localCheckout.secondary.some((action) => action.id === "archive-workspace")).toBe(true);
     expect(worktree.secondary.some((action) => action.id === "archive-workspace")).toBe(true);
   });
