@@ -346,7 +346,14 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
   if (input.githubFeaturesEnabled && input.hasPullRequest && input.pullRequestUrl) {
     return "pr";
   }
-  return "archive-workspace";
+
+  // Only Paseo-owned worktrees get Archive as a fallback primary action.
+  // Regular Git checkouts should not show the destructive archive CTA by default.
+  if (input.isPaseoOwnedWorktree) {
+    return "archive-workspace";
+  }
+
+  return null;
 }
 
 function getPullRequestActionIds(filter: {

@@ -140,7 +140,13 @@ describe("git-actions-policy", () => {
   it("shows only remote sync actions on the base branch", () => {
     const actions = buildGitActions(createInput({ hasRemote: true }));
 
-    expect(actions.secondary.map((action) => action.id)).toEqual(["pull", "push", "pull-and-push"]);
+    expect(actions.primary).toBeNull();
+    expect(actions.secondary.map((action) => action.id)).toEqual([
+      "pull",
+      "push",
+      "pull-and-push",
+      "archive-workspace",
+    ]);
   });
 
   it("prioritizes pull when the branch is behind origin", () => {
@@ -367,6 +373,19 @@ describe("git-actions-policy", () => {
 
     expect(localCheckout.secondary.some((action) => action.id === "archive-workspace")).toBe(true);
     expect(worktree.secondary.some((action) => action.id === "archive-workspace")).toBe(true);
+  });
+
+  it("does not promote archive to primary for an idle regular Git checkout", () => {
+    const actions = buildGitActions(createInput());
+
+    expect(actions.primary).toBeNull();
+    expect(actions.secondary.some((action) => action.id === "archive-workspace")).toBe(true);
+  });
+
+  it("still promotes archive as primary for an idle Paseo-owned worktree", () => {
+    const actions = buildGitActions(createInput({ isPaseoOwnedWorktree: true }));
+
+    expect(actions.primary).toMatchObject({ id: "archive-workspace" });
   });
 
   it("promotes squash-and-merge when an open PR is mergeable and the branch is in sync", () => {
