@@ -58,6 +58,7 @@ import {
   AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS,
   AgentStreamCoalescer,
 } from "./agent-stream-coalescer.js";
+import { limitAgentTimelineItemContent } from "./agent-timeline-content.js";
 import { ForegroundRunState, type ForegroundTurnWaiter } from "./foreground-run-state.js";
 import { getAgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
@@ -493,7 +494,7 @@ function buildImportedTimelineRows(entries: readonly ImportedTimelineEntry[]): A
     rows.push({
       seq: rows.length + 1,
       timestamp: entry.timestamp ?? new Date().toISOString(),
-      item: entry.item,
+      item: limitAgentTimelineItemContent(entry.item),
     });
   }
   return rows;
@@ -1752,6 +1753,7 @@ export class AgentManager {
 
   async appendTimelineItem(agentId: string, item: AgentTimelineItem): Promise<void> {
     const agent = this.requireAgent(agentId);
+    item = limitAgentTimelineItemContent(item);
     this.touchUpdatedAt(agent);
     const row = this.recordTimeline(agentId, item);
     this.dispatchStream(
@@ -2990,17 +2992,22 @@ export class AgentManager {
       agent.historyPrimed = true;
 
       for (const event of historyEvents) {
+        const item = limitAgentTimelineItemContent(event.item);
         const row = this.recordTimeline(
           agent.id,
-          event.item,
+          item,
           event.timestamp ? { timestamp: event.timestamp } : undefined,
         );
         if (options?.broadcast) {
-          this.dispatchStream(agent.id, event, {
-            seq: row.seq,
-            epoch: this.timelineStore.getEpoch(agent.id),
-            timestamp: row.timestamp,
-          });
+          this.dispatchStream(
+            agent.id,
+            { ...event, item },
+            {
+              seq: row.seq,
+              epoch: this.timelineStore.getEpoch(agent.id),
+              timestamp: row.timestamp,
+            },
+          );
         }
       }
       this.touchUpdatedAt(agent);
@@ -3057,6 +3064,12 @@ export class AgentManager {
     event: AgentStreamEvent,
     options?: HandleStreamEventOptions,
   ): Promise<boolean> {
+    if (event.type === "timeline") {
+      event = {
+        ...event,
+        item: limitAgentTimelineItemContent(event.item),
+      };
+    }
     const eventTurnId = getAgentStreamEventTurnId(event);
     const isForegroundEvent = Boolean(eventTurnId && agent.activeForegroundTurnId === eventTurnId);
     this.traceHandleStreamEventStart(agent, event, eventTurnId, isForegroundEvent);
@@ -3553,6 +3566,7 @@ export class AgentManager {
     item: AgentTimelineItem,
     options?: { timestamp?: string },
   ): AgentTimelineRow {
+    item = limitAgentTimelineItemContent(item);
     const row = this.timelineStore.append(agentId, item, options);
     this.enqueueDurableTimelineAppend(agentId, row);
     return row;
@@ -3742,6 +3756,12 @@ export class AgentManager {
     event: AgentStreamEvent,
     metadata?: { seq?: number; epoch?: string; timestamp?: string },
   ): void {
+    if (event.type === "timeline") {
+      event = {
+        ...event,
+        item: limitAgentTimelineItemContent(event.item),
+      };
+    }
     const agent = this.agents.get(agentId);
     this.logger.trace(
       {
