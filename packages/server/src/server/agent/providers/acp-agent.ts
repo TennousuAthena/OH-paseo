@@ -1331,6 +1331,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
+  private fallbackAssistantMessageId: string | null = null;
   private closed = false;
   private historyPending = false;
   private replayingHistory = false;
@@ -1475,6 +1476,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     const turnId = randomUUID();
     const messageId = options?.messageId ?? randomUUID();
     this.activeForegroundTurnId = turnId;
+    this.fallbackAssistantMessageId = null;
     this.activeSubmittedUserMessage = null;
     this.emitBootstrapThreadEvent();
     this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
@@ -2443,6 +2445,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private translateSessionUpdate(update: SessionUpdate): AgentStreamEvent[] {
     switch (update.sessionUpdate) {
       case "user_message_chunk": {
+        this.fallbackAssistantMessageId = null;
         const item = this.createMessageTimelineItem("user_message", update);
         if (!item) {
           return [];
@@ -2460,10 +2463,12 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         return item ? [this.wrapTimeline(item)] : [];
       }
       case "agent_thought_chunk": {
+        this.fallbackAssistantMessageId = null;
         const item = this.createMessageTimelineItem("reasoning", update);
         return item ? [this.wrapTimeline(item)] : [];
       }
       case "tool_call":
+        this.fallbackAssistantMessageId = null;
         return this.handleToolCallUpdate(update.toolCallId, update, undefined);
       case "tool_call_update":
         return this.handleToolCallUpdate(
@@ -2472,6 +2477,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
           this.toolCalls.get(update.toolCallId),
         );
       case "plan":
+        this.fallbackAssistantMessageId = null;
         return [this.wrapTimeline(mapPlanToTimeline(update))];
       case "current_mode_update":
         this.handleCurrentModeUpdate(update);
@@ -2526,7 +2532,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     >,
   ):
     | { type: "user_message"; text: string; messageId?: string }
-    | { type: "assistant_message"; text: string }
+    | { type: "assistant_message"; text: string; messageId: string }
     | { type: "reasoning"; text: string }
     | null {
     const chunkText = contentBlockToText(update.content);
@@ -2542,9 +2548,22 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       return { type: "user_message", text: state.text, messageId: update.messageId ?? undefined };
     }
     if (type === "assistant_message") {
-      return { type: "assistant_message", text: chunkText };
+      return {
+        type: "assistant_message",
+        text: chunkText,
+        messageId: this.resolveAssistantMessageId(update.messageId),
+      };
     }
     return { type: "reasoning", text: chunkText };
+  }
+
+  private resolveAssistantMessageId(messageId: string | null | undefined): string {
+    if (messageId) {
+      this.fallbackAssistantMessageId = null;
+      return messageId;
+    }
+    this.fallbackAssistantMessageId ??= randomUUID();
+    return this.fallbackAssistantMessageId;
   }
 
   private messageAssemblyKey(
@@ -2701,6 +2720,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     event: Extract<AgentStreamEvent, { type: "turn_completed" | "turn_failed" | "turn_canceled" }>,
   ): void {
     this.activeForegroundTurnId = null;
+    this.fallbackAssistantMessageId = null;
     if (this.activeSubmittedUserMessage?.turnId === event.turnId) {
       this.activeSubmittedUserMessage = null;
     }

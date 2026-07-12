@@ -427,9 +427,18 @@ describe("PiRpcAgentSession", () => {
 
     await session.startTurn("hello");
     fakeSession.emit({
+      type: "message_start",
+      message: { role: "assistant", content: [], responseId: "response-1" },
+    });
+    fakeSession.emit({
       type: "message_update",
-      message: { role: "assistant", content: [] },
-      assistantMessageEvent: { type: "text_delta", delta: "hello" },
+      message: { role: "assistant", content: [], responseId: "response-1" },
+      assistantMessageEvent: { type: "text_delta", delta: "hel" },
+    });
+    fakeSession.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [], responseId: "response-1" },
+      assistantMessageEvent: { type: "text_delta", delta: "lo" },
     });
     fakeSession.emit({
       type: "message_update",
@@ -454,7 +463,8 @@ describe("PiRpcAgentSession", () => {
     await events.nextTurnCompletion();
 
     expect(events.timelineItems()).toEqual([
-      { type: "assistant_message", text: "hello" },
+      { type: "assistant_message", text: "hel", messageId: "response-1" },
+      { type: "assistant_message", text: "lo", messageId: "response-1" },
       { type: "reasoning", text: "thinking" },
       {
         type: "tool_call",
@@ -471,6 +481,60 @@ describe("PiRpcAgentSession", () => {
         status: "completed",
         detail: { type: "shell", command: "echo hi", output: "hi\n", exitCode: 0 },
         error: null,
+      },
+    ]);
+  });
+
+  test("keeps one generated message id when Pi omits message start and response id", async () => {
+    const { pi, session, events } = await createSession();
+    const fakeSession = pi.latestSession();
+
+    await session.startTurn("hello");
+    fakeSession.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [] },
+      assistantMessageEvent: { type: "text_delta", delta: "hel" },
+    });
+    fakeSession.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [] },
+      assistantMessageEvent: { type: "text_delta", delta: "lo" },
+    });
+
+    const [firstChunk, secondChunk] = events.timelineItems();
+    expect(firstChunk).toMatchObject({
+      type: "assistant_message",
+      text: "hel",
+      messageId: expect.any(String),
+    });
+    const firstMessageId = (firstChunk as { messageId: string }).messageId;
+    expect(secondChunk).toEqual({
+      type: "assistant_message",
+      text: "lo",
+      messageId: firstMessageId,
+    });
+  });
+
+  test("uses a response id that first appears on the assistant update", async () => {
+    const { pi, session, events } = await createSession();
+    const fakeSession = pi.latestSession();
+
+    await session.startTurn("hello");
+    fakeSession.emit({
+      type: "message_start",
+      message: { role: "assistant", content: [] },
+    });
+    fakeSession.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [], responseId: "late-response-id" },
+      assistantMessageEvent: { type: "text_delta", delta: "hello" },
+    });
+
+    expect(events.timelineItems()).toEqual([
+      {
+        type: "assistant_message",
+        text: "hello",
+        messageId: "late-response-id",
       },
     ]);
   });
