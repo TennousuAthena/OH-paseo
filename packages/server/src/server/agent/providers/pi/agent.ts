@@ -1996,6 +1996,7 @@ export class PiRpcAgentClient implements AgentClient {
         model: config.model,
         thinkingOptionId:
           normalizePiThinkingOption(config.thinkingOptionId) ?? DEFAULT_PI_THINKING_LEVEL,
+        noSession: config.internal === true,
         systemPrompt: composeSystemPromptParts(
           config.systemPrompt,
           config.daemonAppendSystemPrompt,
