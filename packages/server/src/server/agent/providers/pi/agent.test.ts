@@ -138,6 +138,13 @@ class SessionEvents {
     );
   }
 
+  nextTurnCancellation(): Promise<Extract<AgentStreamEvent, { type: "turn_canceled" }>> {
+    return this.nextEvent(
+      (event): event is Extract<AgentStreamEvent, { type: "turn_canceled" }> =>
+        event.type === "turn_canceled",
+    );
+  }
+
   nextPermissionRequest(): Promise<Extract<AgentStreamEvent, { type: "permission_requested" }>> {
     return this.nextEvent(
       (event): event is Extract<AgentStreamEvent, { type: "permission_requested" }> =>
@@ -506,6 +513,38 @@ describe("PiRpcAgentSession", () => {
       },
       { type: "turn_completed" },
     ]);
+  });
+
+  test("canceling a silent Pi extension command leaves the session usable", async () => {
+    const { pi, session, events } = await createSession();
+    const fakeSession = pi.latestSession();
+
+    fakeSession.holdNextPrompt();
+    const firstTurn = await session.startTurn("/silent-search");
+    fakeSession.emit({
+      type: "extension_ui_request",
+      id: "notify-1",
+      method: "notify",
+      message: "Search finished",
+    });
+    await session.interrupt();
+    const cancellation = await events.nextTurnCancellation();
+    await session.startTurn("next request");
+    await fakeSession.failHeldPrompt(new Error("Canceled prompt timed out"));
+
+    expect(cancellation).toEqual({
+      type: "turn_canceled",
+      provider: "pi",
+      reason: "interrupted",
+      turnId: firstTurn.turnId,
+    });
+    expect(fakeSession.prompts).toEqual([
+      { message: "/silent-search", imageCount: 0 },
+      { message: "next request", imageCount: 0 },
+    ]);
+    await expect(session.startTurn("overlapping request")).rejects.toThrow(
+      "A Pi turn is already active",
+    );
   });
 
   test("adds Pi assistant context to generic provider finish errors", async () => {
