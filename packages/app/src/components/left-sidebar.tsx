@@ -41,9 +41,10 @@ import {
   type SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarModel } from "@/components/sidebar/sidebar-model";
+import type { PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import type { StatusGroup } from "@/hooks/sidebar-status-view-model";
-import { type SidebarGroupMode } from "@/stores/sidebar-view-store";
+import { type SidebarGroupMode, useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
@@ -78,6 +79,7 @@ type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 interface SidebarSharedProps {
   theme: SidebarTheme;
   statusGroups: StatusGroup[];
+  pinnedGroups: PinnedSidebarGroups;
   projects: SidebarProjectEntry[];
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   projectNamesByKey: Map<string, string>;
@@ -143,6 +145,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
     isRevalidating,
     refreshAll,
     statusGroups,
+    pinnedGroups,
     collapsedProjectKeys,
     toggleProjectCollapsed,
     groupMode,
@@ -240,6 +243,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
   const sharedProps = {
     theme,
     statusGroups,
+    pinnedGroups,
     projects,
     workspaceEntriesByKey,
     projectNamesByKey,
@@ -536,6 +540,7 @@ function SidebarFooter({
 function MobileSidebar({
   theme,
   statusGroups,
+  pinnedGroups,
   projects,
   workspaceEntriesByKey,
   projectNamesByKey,
@@ -561,6 +566,7 @@ function MobileSidebar({
   handleViewSchedulesNavigate,
 }: MobileSidebarProps) {
   const pathname = usePathname();
+  const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
   const { gesture: closeGesture, gestureRef: closeGestureRef } = useCloseAgentListGesture();
@@ -620,7 +626,6 @@ function MobileSidebar({
             variant="compact"
           />
         </View>
-        <WorkspacesSectionHeader />
         <Pressable
           style={styles.mobileCloseButton}
           onPress={closeSidebar}
@@ -639,7 +644,7 @@ function MobileSidebar({
           )}
         </Pressable>
 
-        {isInitialLoad ? (
+        {isInitialLoad && !hasActiveHostFilter ? (
           <SidebarAgentListSkeleton />
         ) : (
           <SidebarWorkspaceList
@@ -648,6 +653,7 @@ function MobileSidebar({
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             statusGroups={statusGroups}
+            pinnedGroups={pinnedGroups}
             projects={projects}
             workspaceEntriesByKey={workspaceEntriesByKey}
             projectNamesByKey={projectNamesByKey}
@@ -656,6 +662,7 @@ function MobileSidebar({
             onWorkspacePress={handleWorkspacePress}
             onAddProject={handleOpenProject}
             parentGestureRef={closeGestureRef}
+            listHeaderComponent={workspacesSectionHeaderElement}
           />
         )}
 
@@ -676,6 +683,7 @@ function MobileSidebar({
 function DesktopSidebar({
   theme,
   statusGroups,
+  pinnedGroups,
   projects,
   workspaceEntriesByKey,
   projectNamesByKey,
@@ -700,6 +708,7 @@ function DesktopSidebar({
   handleViewSchedules,
 }: DesktopSidebarProps) {
   const pathname = usePathname();
+  const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
   const padding = useWindowControlsPadding("sidebar");
@@ -791,9 +800,8 @@ function DesktopSidebar({
             />
           </View>
         </View>
-        <WorkspacesSectionHeader />
 
-        {isInitialLoad ? (
+        {isInitialLoad && !hasActiveHostFilter ? (
           <SidebarAgentListSkeleton />
         ) : (
           <SidebarWorkspaceList
@@ -802,12 +810,14 @@ function DesktopSidebar({
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             statusGroups={statusGroups}
+            pinnedGroups={pinnedGroups}
             projects={projects}
             workspaceEntriesByKey={workspaceEntriesByKey}
             projectNamesByKey={projectNamesByKey}
             isRefreshing={isManualRefresh && isRevalidating}
             onRefresh={handleRefresh}
             onAddProject={handleOpenProject}
+            listHeaderComponent={workspacesSectionHeaderElement}
           />
         )}
 
@@ -887,6 +897,10 @@ function WorkspacesSectionHeader() {
   );
 }
 
+// Stable element so the sidebar list's listHeaderComponent prop keeps identity across
+// renders (WorkspacesSectionHeader takes no props).
+const workspacesSectionHeaderElement = <WorkspacesSectionHeader />;
+
 // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
 // avoid the "Unable to find node on an unmounted component" crash when Unistyles
 // tries to patch the native node that Reanimated also manages.
@@ -912,15 +926,11 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[2],
-    // Align the title with the compact rows' icons and the project icons below
-    // (listContent + projectRow inner padding both spacing[2]).
-    paddingLeft: theme.spacing[2] + theme.spacing[2],
-    // Align the trailing action pill's right edge with the New workspace and
-    // project row pills (both 8px from the sidebar edge).
-    paddingRight: theme.spacing[2],
-    // Less than sidebarHeaderGroup's paddingBottom: the 28px-tall action buttons
-    // center the title and add their own offset above it, so equal padding reads
-    // as a larger gap than History's. Trim paddingTop to balance it visually.
+    // Rendered inside the scroll's listContent (paddingHorizontal spacing[2]), so the
+    // title lands at spacing[2] left to align with project icons, and the trailing
+    // pill sits flush with the list edge on the right.
+    paddingLeft: theme.spacing[2],
+    paddingRight: 0,
     paddingTop: theme.spacing[1],
     paddingBottom: theme.spacing[1],
   },

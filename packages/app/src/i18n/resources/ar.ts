@@ -774,6 +774,9 @@ export const ar: TranslationResources = {
     },
   },
   sidebar: {
+    pinned: {
+      title: "المثبتة",
+    },
     host: {
       noHost: "لا مضيف",
       switchTitle: "تبديل المضيف",
@@ -835,6 +838,8 @@ export const ar: TranslationResources = {
         copyPath: "نسخ المسار",
         copyBranchName: "انسخ اسم الفرع",
         rename: "إعادة تسمية مساحة العمل",
+        pin: "تثبيت في الأعلى",
+        unpin: "إلغاء التثبيت",
         archive: "أرشيف",
         archiveWorkspace: "أرشفة مساحة العمل",
         hideFromSidebar: "إخفاء من الشريط الجانبي",
