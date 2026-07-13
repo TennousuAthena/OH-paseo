@@ -46,8 +46,10 @@ import {
 } from "@/runtime/host-runtime";
 import { useHostFeature, useHostFeatureMap } from "@/runtime/host-features";
 import type { HostProfile } from "@/types/host-connection";
-import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
-import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import {
+  navigateToWorkspace,
+  useLastWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { buildNewWorkspaceDraftKey, generateDraftId } from "@/stores/draft-keys";
@@ -65,7 +67,6 @@ import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
-import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import {
   getHostProjectSourceDirectory,
   hostProjectFromRoute,
@@ -1172,7 +1173,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
     ...(submission.featureValues ? { featureValues: submission.featureValues } : {}),
     allowEmptyText: true,
   });
-  navigateToPreparedWorkspaceTab({
+  navigateToWorkspace({
     serverId,
     workspaceId,
     target: submission.target,
@@ -2044,7 +2045,7 @@ export function NewWorkspaceScreen({
             ensureWorkspace,
             serverId: selectedServerId,
             navigate: (targetServerId, workspaceId) =>
-              navigateToWorkspace(targetServerId, workspaceId),
+              navigateToWorkspace({ serverId: targetServerId, workspaceId }),
           });
           return;
         }
