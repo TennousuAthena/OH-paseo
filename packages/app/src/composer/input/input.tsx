@@ -66,7 +66,12 @@ import {
   resolveVoiceAccessibilityLabel,
   resolveVoiceTooltipText,
 } from "./labels";
-import { computeCanStartDictation, runAlternateSendAction, runDefaultSendAction } from "./state";
+import {
+  computeCanStartDictation,
+  runAlternateSendAction,
+  runDefaultSendAction,
+  stopRealtimeVoice,
+} from "./state";
 
 const DEFAULT_SEND_KEYS: ShortcutKey[][] = [["Enter"]];
 
@@ -929,31 +934,6 @@ async function startDictationIfAvailableImpl(ctx: StartDictationContext): Promis
   await ctx.startDictation();
 }
 
-interface StopRealtimeVoiceContext {
-  voice: { stopVoice: () => Promise<unknown> } | null | undefined;
-  isRealtimeVoiceForCurrentAgent: boolean;
-  isAgentRunning: boolean;
-  client: { cancelAgent: (agentId: string) => Promise<unknown> } | null;
-  voiceAgentId: string | undefined;
-}
-
-async function stopRealtimeVoiceImpl(ctx: StopRealtimeVoiceContext): Promise<void> {
-  if (!ctx.voice || !ctx.isRealtimeVoiceForCurrentAgent) return;
-
-  const tasks: Promise<unknown>[] = [];
-  if (ctx.isAgentRunning && ctx.client && ctx.voiceAgentId) {
-    tasks.push(ctx.client.cancelAgent(ctx.voiceAgentId));
-  }
-  tasks.push(ctx.voice.stopVoice());
-
-  const results = await Promise.allSettled(tasks);
-  results.forEach((result) => {
-    if (result.status === "rejected") {
-      console.error("[MessageInput] Failed to stop realtime voice", result.reason);
-    }
-  });
-}
-
 interface VoicePressContext {
   isRealtimeVoiceForCurrentAgent: boolean;
   voice: { toggleMute: () => void } | null | undefined;
@@ -1502,17 +1482,23 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       discardFailedDictation();
     }, [discardFailedDictation]);
 
-    const handleStopRealtimeVoice = useCallback(
-      () =>
-        stopRealtimeVoiceImpl({
+    const handleStopRealtimeVoice = useCallback(async () => {
+      try {
+        await stopRealtimeVoice({
           voice,
           isRealtimeVoiceForCurrentAgent,
           isAgentRunning,
           client,
           voiceAgentId,
-        }),
-      [client, isAgentRunning, isRealtimeVoiceForCurrentAgent, voice, voiceAgentId],
-    );
+        });
+      } catch (error) {
+        console.error("[MessageInput] Failed to stop realtime voice", error);
+        const message = extractErrorMessage(error);
+        if (message && message.trim().length > 0) {
+          toast.error(message);
+        }
+      }
+    }, [client, isAgentRunning, isRealtimeVoiceForCurrentAgent, toast, voice, voiceAgentId]);
 
     const handleToggleRealtimeVoiceShortcut = useCallback(() => {
       toggleRealtimeVoiceImpl({

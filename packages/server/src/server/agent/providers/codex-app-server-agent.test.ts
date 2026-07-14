@@ -32,6 +32,7 @@ import {
   type FakeCodexAppServer,
   waitForNextPermission,
   waitForNextTimelineItem,
+  waitForProviderSubagent,
   waitForTimelineToolCall,
 } from "./codex/test-utils/fake-app-server.js";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
@@ -2455,6 +2456,158 @@ describe("Codex app-server provider", () => {
       msg: { type: "task_complete" },
     });
     expect(events.filter((event) => event.type === "turn_completed")).toHaveLength(1);
+  });
+
+  test("discovers a MultiAgentV2 child from a legacy-only lifecycle notification", async () => {
+    const appServer = createFakeCodexAppServer();
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+
+    try {
+      const resultPromise = session.run("Delegate the investigation.");
+      await appServer.waitForTurnStart();
+      const child = waitForProviderSubagent(session, "legacy-only-child-thread");
+      const spawn = waitForTimelineToolCall(session, "spawn-legacy-only-child");
+
+      appServer.startsTurn({ threadId: "thread-1", turnId: "turn-with-legacy-only-child" });
+      appServer.startsLegacyOnlySubAgent({
+        callId: "spawn-legacy-only-child",
+        threadId: "legacy-only-child-thread",
+        agentPath: "/root/legacy-only-child",
+      });
+
+      await expect(child).resolves.toMatchObject({
+        type: "provider_subagent",
+        provider: "codex",
+        turnId: "codex-turn-0",
+        event: {
+          type: "upsert",
+          id: "legacy-only-child-thread",
+          status: "running",
+        },
+      });
+      await expect(spawn).resolves.toMatchObject({
+        type: "timeline",
+        provider: "codex",
+        turnId: "codex-turn-0",
+        item: {
+          type: "tool_call",
+          callId: "spawn-legacy-only-child",
+          status: "running",
+          detail: {
+            type: "sub_agent",
+            description: "/root/legacy-only-child",
+          },
+        },
+      });
+
+      appServer.completeTurn();
+      await resultPromise;
+      appServer.assertNoErrors();
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("reports when Codex rejects a foreground turn interrupt", async () => {
+    const appServer = createFakeCodexAppServer({
+      "turn/interrupt": async () => {
+        throw new Error("A foreground turn is already active");
+      },
+    });
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+
+    try {
+      const resultPromise = session.run("Wait for the child.");
+      await appServer.waitForTurnStart();
+      appServer.startsTurn({ threadId: "thread-1", turnId: "turn-waiting-for-child" });
+
+      await expect(session.interrupt()).rejects.toThrow("A foreground turn is already active");
+
+      appServer.completeTurn();
+      await resultPromise;
+      appServer.assertNoErrors();
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("rejects an interrupt until Codex identifies the accepted turn", async () => {
+    const appServer = createFakeCodexAppServer();
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+
+    try {
+      const resultPromise = session.run("Start working.");
+      await appServer.waitForTurnStart();
+
+      await expect(session.interrupt()).rejects.toThrow(
+        "Cannot interrupt Codex before turn/started identifies the active turn",
+      );
+
+      appServer.startsTurn({ threadId: "thread-1", turnId: "turn-identified-late" });
+      appServer.completeTurn();
+      await resultPromise;
+      appServer.assertNoErrors();
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("rejects an interrupt before Codex initializes the thread", async () => {
+    const appServer = createFakeCodexAppServer();
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+
+    await expect(session.interrupt()).rejects.toThrow(
+      "Cannot interrupt Codex before the active thread is initialized",
+    );
+
+    await session.close();
+  });
+
+  test("interrupts an autonomous Codex turn identified by live notifications", async () => {
+    const session = createSession();
+    const requests: Array<{ method: string; params: unknown }> = [];
+    session.activeForegroundTurnId = null;
+    session.client = {
+      request: async (method, params) => {
+        requests.push({ method, params });
+        return {};
+      },
+    };
+
+    asInternals(session).handleNotification("turn/started", {
+      threadId: "test-thread",
+      turn: { id: "autonomous-turn" },
+    });
+
+    await session.interrupt();
+
+    expect(requests).toContainEqual({
+      method: "turn/interrupt",
+      params: {
+        threadId: "test-thread",
+        turnId: "autonomous-turn",
+      },
+    });
   });
 
   test("never replaces the root identity with an early child thread start", () => {
