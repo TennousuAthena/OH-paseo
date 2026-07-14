@@ -341,14 +341,14 @@ describe("appearance settings", () => {
     expect((await loadAppSettingsFromStorage(deps)).toolCallDetailLevel).toBe("overview");
   });
 
-  it("loads an explicit tool call detail level", async () => {
+  it("maps an unrecognized tool call detail level to overview", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ toolCallDetailLevel: "concise" }),
+        [APP_SETTINGS_KEY]: JSON.stringify({ toolCallDetailLevel: "unknown" }),
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).toolCallDetailLevel).toBe("concise");
+    expect((await loadAppSettingsFromStorage(deps)).toolCallDetailLevel).toBe("overview");
   });
 
   it("clamps the UI font size into range and rejects non-numeric values", async () => {

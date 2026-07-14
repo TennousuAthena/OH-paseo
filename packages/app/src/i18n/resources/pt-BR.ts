@@ -1418,8 +1418,6 @@ export const ptBR: TranslationResources = {
     output: "Saída",
   },
   toolCallGroup: {
-    title: "Ferramentas",
-    accessibilityLabel: "Ferramentas, {{count}} chamadas",
     editedFiles: {
       one: "editou {{count}} arquivo",
       other: "editou {{count}} arquivos",
@@ -1546,13 +1544,12 @@ export const ptBR: TranslationResources = {
           "Mostrar os blocos de pensamento e raciocínio do agente totalmente expandidos por padrão",
       },
       toolCallDetail: {
-        label: "Detalhe das chamadas de ferramentas",
-        description: "Como a atividade das ferramentas aparece na linha do tempo do agente",
-        accessibilityLabel: "Selecionar detalhe das ferramentas ({{value}})",
+        label: "Exibição de chamadas de ferramentas",
+        description: "Como as chamadas de ferramentas aparecem na linha do tempo",
+        accessibilityLabel: "Selecionar exibição de chamadas de ferramentas ({{value}})",
         options: {
-          overview: "Visão geral",
-          concise: "Conciso",
-          detailed: "Detalhado",
+          overview: "Resumo",
+          detailed: "Detalhes completos",
         },
       },
       language: {

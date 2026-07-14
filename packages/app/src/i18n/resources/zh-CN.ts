@@ -1377,8 +1377,6 @@ export const zhCN: TranslationResources = {
     output: "输出",
   },
   toolCallGroup: {
-    title: "工具",
-    accessibilityLabel: "工具，{{count}} 次调用",
     editedFiles: {
       one: "编辑了 {{count}} 个文件",
       other: "编辑了 {{count}} 个文件",
@@ -1503,13 +1501,12 @@ export const zhCN: TranslationResources = {
         description: "默认情况下完全展开 AI 的思考和推理过程",
       },
       toolCallDetail: {
-        label: "工具调用详情",
-        description: "工具活动在智能体时间线中的显示方式",
-        accessibilityLabel: "选择工具调用详情（{{value}}）",
+        label: "工具调用显示",
+        description: "工具调用在时间线中的显示方式",
+        accessibilityLabel: "选择工具调用显示方式（{{value}}）",
         options: {
-          overview: "概览",
-          concise: "简洁",
-          detailed: "详细",
+          overview: "摘要",
+          detailed: "完整详情",
         },
       },
       language: {

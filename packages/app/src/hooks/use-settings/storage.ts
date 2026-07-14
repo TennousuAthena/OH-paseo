@@ -12,16 +12,12 @@ export type SendBehavior = "interrupt" | "queue";
 export type ReleaseChannel = "stable" | "beta";
 export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 export type WorkspaceTitleSource = "title" | "branch";
-export type ToolCallDetailLevel = "overview" | "concise" | "detailed";
+export type ToolCallDetailLevel = "overview" | "detailed";
 
 const VALID_THEMES = new Set<string>([...Object.keys(THEME_TO_UNISTYLES), "auto"]);
 const VALID_SERVICE_URL_BEHAVIORS = new Set<ServiceUrlBehavior>(["ask", "in-app", "external"]);
 const VALID_WORKSPACE_TITLE_SOURCES = new Set<WorkspaceTitleSource>(["title", "branch"]);
-const VALID_TOOL_CALL_DETAIL_LEVELS = new Set<ToolCallDetailLevel>([
-  "overview",
-  "concise",
-  "detailed",
-]);
+const VALID_TOOL_CALL_DETAIL_LEVELS = new Set<ToolCallDetailLevel>(["overview", "detailed"]);
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
@@ -172,11 +168,16 @@ export function normalizeAppSettings(value: unknown): AppSettings {
 }
 
 function parseToolCallDetailLevel(stored: StoredAppSettings): ToolCallDetailLevel | null {
-  if (
-    typeof stored.toolCallDetailLevel === "string" &&
-    VALID_TOOL_CALL_DETAIL_LEVELS.has(stored.toolCallDetailLevel)
-  ) {
-    return stored.toolCallDetailLevel;
+  if (stored.toolCallDetailLevel !== undefined) {
+    if (
+      typeof stored.toolCallDetailLevel === "string" &&
+      VALID_TOOL_CALL_DETAIL_LEVELS.has(stored.toolCallDetailLevel)
+    ) {
+      return stored.toolCallDetailLevel;
+    }
+    // COMPAT(toolCallDetailLevelConcise): removed in v0.1.107; legacy "concise" values
+    // deliberately follow the unknown-value fallback. Remove after 2027-01-14.
+    return "overview";
   }
   if (typeof stored.compactToolCalls === "boolean") {
     // COMPAT(compactToolCalls): migrated in v0.1.105, remove after 2027-01-12.

@@ -214,9 +214,8 @@ function AutoExpandReasoningRow({ value, onChange }: AutoExpandReasoningRowProps
 
 const TOOL_CALL_DETAIL_ROW_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 const TOOL_CALL_DETAIL_LEVELS: readonly AppSettings["toolCallDetailLevel"][] = [
-  "overview",
-  "concise",
   "detailed",
+  "overview",
 ];
 
 function getToolCallDetailLevelLabel(

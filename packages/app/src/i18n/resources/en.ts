@@ -1401,8 +1401,6 @@ export const en = {
     output: "Output",
   },
   toolCallGroup: {
-    title: "Tools",
-    accessibilityLabel: "Tools, {{count}} calls",
     editedFiles: {
       one: "edited {{count}} file",
       other: "edited {{count}} files",
@@ -1527,13 +1525,12 @@ export const en = {
         description: "Show agent thinking and chain-of-thought blocks fully expanded by default",
       },
       toolCallDetail: {
-        label: "Tool call detail",
-        description: "How tool activity appears in agent timelines",
-        accessibilityLabel: "Select tool call detail ({{value}})",
+        label: "Tool call display",
+        description: "How tool calls appear in the timeline",
+        accessibilityLabel: "Select tool call display ({{value}})",
         options: {
-          overview: "Overview",
-          concise: "Concise",
-          detailed: "Detailed",
+          overview: "Summary",
+          detailed: "Full detail",
         },
       },
       language: {

@@ -57,8 +57,11 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { ToolCallDetailsContent } from "@/components/tool-call-details";
 import { QuestionFormCard } from "@/components/question-form-card";
 import { ToolCallSheetProvider } from "@/components/tool-call-sheet";
-import { ToolCallGroup } from "@/components/tool-call-group";
-import { compactToolCallRuns } from "@/tool-calls/grouping";
+import {
+  prepareToolCallHistory,
+  projectToolCallDetailLevel,
+} from "@/tool-calls/detail-level/projection";
+import { OverviewToolCallGroupView } from "@/tool-calls/detail-level/overview/view";
 import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
@@ -259,6 +262,7 @@ const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
 ];
 
 const EMPTY_STREAM_HEAD: StreamItem[] = [];
+const GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT = 200;
 
 function buildChatHistoryAttachment(input: {
   draftId: string;
@@ -544,25 +548,38 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     }
     const effectiveStreamItems = isActive ? streamItems : frozenStreamItemsRef.current;
     const effectiveStreamHead = isActive ? streamHead : frozenStreamHeadRef.current;
-    const compactedToolCalls = useMemo(
+    // Keep retained history outside the 48ms live-head flush path.
+    const preparedToolCallHistory = useMemo(
+      () => prepareToolCallHistory(toolCallDetailLevel, effectiveStreamItems),
+      [effectiveStreamItems, toolCallDetailLevel],
+    );
+    const projectedToolCalls = useMemo(
       () =>
-        compactToolCallRuns({
+        projectToolCallDetailLevel({
+          level: toolCallDetailLevel,
           tail: effectiveStreamItems,
           head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
-          enabled: toolCallDetailLevel !== "detailed",
+          preparedHistory: preparedToolCallHistory,
+          isTurnActive: context.status === "running",
         }),
-      [effectiveStreamHead, effectiveStreamItems, toolCallDetailLevel],
+      [
+        context.status,
+        effectiveStreamHead,
+        effectiveStreamItems,
+        preparedToolCallHistory,
+        toolCallDetailLevel,
+      ],
     );
 
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
         agentStatus: context.status,
-        tail: compactedToolCalls.tail,
-        head: compactedToolCalls.head,
+        tail: projectedToolCalls.tail,
+        head: projectedToolCalls.head,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
       });
-    }, [context.status, isMobile, compactedToolCalls.head, compactedToolCalls.tail]);
+    }, [context.status, isMobile, projectedToolCalls.head, projectedToolCalls.tail]);
     const streamLayout = useMemo(
       () =>
         layoutStream({
@@ -691,7 +708,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const renderSingleToolCallItem = useCallback(
-      (item: Extract<StreamItem, { kind: "tool_call" }>, isLastInSequence: boolean) => {
+      (
+        item: Extract<StreamItem, { kind: "tool_call" }>,
+        isLastInSequence: boolean,
+        maxDetailHeight?: number,
+      ) => {
         const { payload } = item;
 
         if (payload.source === "agent") {
@@ -720,6 +741,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               metadata={data.metadata}
               isLastInSequence={isLastInSequence}
               onOpenFilePath={handleToolCallOpenFile}
+              maxDetailHeight={maxDetailHeight}
             />
           );
         }
@@ -735,6 +757,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             status={data.status}
             isLastInSequence={isLastInSequence}
             onOpenFilePath={handleToolCallOpenFile}
+            maxDetailHeight={maxDetailHeight}
           />
         );
       },
@@ -743,32 +766,43 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const renderToolCallItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "tool_call" }>) => {
-        const group = compactedToolCalls.groupsByHostId.get(item.id);
+        const group = projectedToolCalls.groupsByHostId.get(item.id);
         if (!group) {
           return renderSingleToolCallItem(item, layoutItem.isLastInToolSequence);
         }
-        const expanded = expandedToolCallGroupIds.has(group.id);
+        const expanded = expandedToolCallGroupIds.has(group.run.id);
         return (
-          <ToolCallGroup
+          <OverviewToolCallGroupView
             group={group}
-            presentation={toolCallDetailLevel === "concise" ? "concise" : "overview"}
             expanded={expanded}
+            isCompact={isMobile}
+            isLastInSequence={layoutItem.isLastInToolSequence}
             onExpandedChange={setToolCallGroupExpanded}
+            cwd={context.cwd}
+            onOpenFilePath={handleToolCallOpenFile}
           >
-            {group.calls.map((call, index) => (
-              <React.Fragment key={call.id}>
-                {renderSingleToolCallItem(call, index === group.calls.length - 1)}
-              </React.Fragment>
-            ))}
-          </ToolCallGroup>
+            {expanded
+              ? group.run.calls.map((call, index) => (
+                  <React.Fragment key={call.id}>
+                    {renderSingleToolCallItem(
+                      call,
+                      index === group.run.calls.length - 1,
+                      GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT,
+                    )}
+                  </React.Fragment>
+                ))
+              : null}
+          </OverviewToolCallGroupView>
         );
       },
       [
-        compactedToolCalls.groupsByHostId,
+        projectedToolCalls.groupsByHostId,
+        context.cwd,
         expandedToolCallGroupIds,
+        handleToolCallOpenFile,
+        isMobile,
         renderSingleToolCallItem,
         setToolCallGroupExpanded,
-        toolCallDetailLevel,
       ],
     );
 
@@ -960,6 +994,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const streamScrollEnabled =
       !streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion() ||
       expandedInlineToolCallIds.size === 0;
+    const historyRowRevision = useMemo(
+      () => ({
+        contentById: projectedToolCalls.historyGroupUpdatesByHostId,
+        displayStateById: expandedToolCallGroupIds,
+        globalDisplayState: isMobile,
+      }),
+      [expandedToolCallGroupIds, isMobile, projectedToolCalls.historyGroupUpdatesByHostId],
+    );
 
     return (
       <ToolCallSheetProvider>
@@ -968,6 +1010,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             {streamRenderStrategy.render({
               agentId,
               segments: renderModel.segments,
+              historyRowRevision,
+              liveHeadRowRevision: expandedToolCallGroupIds,
               boundary,
               renderers,
               listEmptyComponent,
