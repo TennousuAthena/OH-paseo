@@ -9,7 +9,7 @@ import { useToolCallSheet } from "@/components/tool-call-sheet";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
 import { describeToolCall } from "../grouping";
-import { resolveOverviewHeader, type OverviewSummary, type OverviewToolCallGroup } from "./model";
+import { type OverviewSummary, type OverviewToolCallGroup } from "./model";
 
 interface OverviewGroupProps {
   group: OverviewToolCallGroup;
@@ -18,7 +18,6 @@ interface OverviewGroupProps {
   isLastInSequence: boolean;
   onExpandedChange: (groupId: string, expanded: boolean) => void;
   cwd?: string;
-  onOpenFilePath?: (filePath: string) => void;
   children: ReactNode;
 }
 
@@ -66,17 +65,14 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
   isLastInSequence,
   onExpandedChange,
   cwd,
-  onOpenFilePath,
   children,
 }: OverviewGroupProps) {
   const { t } = useTranslation();
   const { openToolCall } = useToolCallSheet();
   const scrollRef = useRef<ScrollView>(null);
   const aggregateSummary = useOverviewSummary(group.summary);
-  const header = resolveOverviewHeader(group, expanded);
-  const latestCall = header.kind === "latest" ? header.call : group.run.latest;
   const latest = useMemo(() => {
-    const descriptor = describeToolCall(latestCall);
+    const descriptor = describeToolCall(group.run.latest);
     return {
       detail: descriptor.detail,
       presentation: buildToolCallPresentation({
@@ -89,16 +85,8 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
         resolveIcon: resolveToolCallIcon,
       }),
     };
-  }, [cwd, latestCall]);
-  const showsLatest = header.kind === "latest";
+  }, [cwd, group.run.latest]);
   const opensSingleCallSheet = isCompact && group.run.calls.length === 1;
-  const openLatestFile = useMemo(() => {
-    const path = latest.presentation.openFilePath;
-    if (!showsLatest || !path || !onOpenFilePath) {
-      return undefined;
-    }
-    return () => onOpenFilePath(path);
-  }, [showsLatest, latest.presentation.openFilePath, onOpenFilePath]);
   const failedSummary =
     group.failedCount > 0 ? t("toolCallGroup.failed", { count: group.failedCount }) : undefined;
   const scrollToLatest = useCallback(() => {
@@ -147,15 +135,14 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
   return (
     <ExpandableBadge
       testID="tool-call-group"
-      label={showsLatest ? latest.presentation.displayName : aggregateSummary}
-      secondaryLabel={showsLatest ? latest.presentation.summary : failedSummary}
-      icon={showsLatest ? latest.presentation.icon : Wrench}
+      label={aggregateSummary}
+      secondaryLabel={failedSummary}
+      icon={Wrench}
       isLoading={group.isLoading}
       isError={group.failedCount > 0}
       isExpanded={opensSingleCallSheet ? false : expanded}
       isLastInSequence={isLastInSequence}
       onToggle={canExpand ? toggle : undefined}
-      onOpenFile={openLatestFile}
       renderDetails={canExpand && !opensSingleCallSheet ? renderDetails : undefined}
       borderlessWhenExpanded
     />

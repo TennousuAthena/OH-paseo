@@ -519,6 +519,7 @@ function SidebarFooter({
           icon={Home}
           theme={theme}
         />
+        <SidebarHelpMenu />
         <FooterIconButton
           onPress={handleSettings}
           testID="sidebar-settings"
@@ -527,7 +528,6 @@ function SidebarFooter({
           shortcutKeys={settingsKeys}
           theme={theme}
         />
-        <SidebarHelpMenu />
       </View>
     </View>
   );

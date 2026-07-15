@@ -21,21 +21,6 @@ export interface OverviewToolCallGroup {
   isLoading: boolean;
 }
 
-export type OverviewHeader = { kind: "latest"; call: ToolCallRun["latest"] } | { kind: "summary" };
-
-export function resolveOverviewHeader(
-  group: OverviewToolCallGroup,
-  expanded: boolean,
-): OverviewHeader {
-  if (group.run.calls.length === 1) {
-    return { kind: "latest", call: group.run.latest };
-  }
-  if (expanded || group.run.isSealed) {
-    return { kind: "summary" };
-  }
-  return { kind: "latest", call: group.run.latest };
-}
-
 function isPaseoCall(name: string, normalizedName: string): boolean {
   return isPaseoToolName(name) || normalizedName.startsWith(DIRECT_PASEO_TOOL_PREFIX);
 }
