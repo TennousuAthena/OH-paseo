@@ -157,7 +157,7 @@ describe("project command-center protocol", () => {
     ).toBe(" paseo ");
   });
 
-  it("keeps both feature flags optional for older server_info payloads", () => {
+  it("keeps project command feature flags optional for older server_info payloads", () => {
     const parsed = parseServerInfoStatusPayload({
       status: "server_info",
       serverId: "server-old",
@@ -165,6 +165,7 @@ describe("project command-center protocol", () => {
     });
 
     expect(parsed.features?.workspaceGithubRepositorySearch).toBeUndefined();
+    expect(parsed.features?.projectGithubClone).toBeUndefined();
     expect(parsed.features?.projectCreateDirectory).toBeUndefined();
   });
 });

@@ -179,4 +179,22 @@ describe("Add Project options", () => {
       },
     ]);
   });
+
+  it("shows equivalent absolute-home and tilde destinations only once", () => {
+    expect(
+      buildCloneLocationOptions({
+        parents: ["/Users/moboudra/dev", "~/dev"],
+        repositoryName: "dotfiles",
+        existingPaths: [],
+      }),
+    ).toEqual([
+      {
+        id: "/Users/moboudra/dev",
+        path: "/Users/moboudra/dev",
+        displayPath: "/Users/moboudra/dev/dotfiles",
+        secondaryText: "Parent directory: /Users/moboudra/dev",
+        disabled: false,
+      },
+    ]);
+  });
 });

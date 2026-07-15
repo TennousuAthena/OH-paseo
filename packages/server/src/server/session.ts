@@ -1650,8 +1650,8 @@ export class Session {
         return this.handleProjectCreateDirectoryRequest(msg);
       case "workspace.github.search_repositories.request":
         return this.handleWorkspaceGithubSearchRepositoriesRequest(msg);
-      case "workspace.github.clone.request":
-        return this.handleWorkspaceGithubCloneRequest(msg);
+      case "project.github.clone.request":
+        return this.handleProjectGithubCloneRequest(msg);
       case "archive_workspace_request":
         return this.handleArchiveWorkspaceRequest(msg);
       case "project.remove.request":
@@ -4910,8 +4910,8 @@ export class Session {
     }
   }
 
-  private async handleWorkspaceGithubCloneRequest(
-    request: Extract<SessionInboundMessage, { type: "workspace.github.clone.request" }>,
+  private async handleProjectGithubCloneRequest(
+    request: Extract<SessionInboundMessage, { type: "project.github.clone.request" }>,
   ): Promise<void> {
     let normalizedRepo = request.repo;
     let checkoutPath: string | null = null;
@@ -4956,31 +4956,16 @@ export class Session {
         throw error;
       }
 
-      const workspace =
-        await this.workspaceProvisioning.findOrCreateWorkspaceForDirectory(checkoutPath);
-      await this.syncWorkspaceGitObserverForWorkspace(workspace);
-      const descriptor = await this.describeWorkspaceRecord(workspace);
-      await this.emitWorkspaceUpdateForWorkspaceId(workspace.workspaceId);
-      void this.workspaceGitService
-        .getSnapshot(workspace.cwd, {
-          force: true,
-          includeGitHub: true,
-          reason: "open_project",
-        })
-        .catch((error) => {
-          this.sessionLogger.warn(
-            { err: error, cwd: workspace.cwd },
-            "Background snapshot refresh failed after workspace.github.clone",
-          );
-        });
+      const project =
+        await this.workspaceProvisioning.findOrCreateProjectForDirectory(checkoutPath);
 
       this.emit({
-        type: "workspace.github.clone.response",
+        type: "project.github.clone.response",
         payload: {
           requestId: request.requestId,
           repo: repo.displayName,
           checkoutPath,
-          workspace: descriptor,
+          project: this.buildProjectDescriptor(project),
           error: null,
         },
       });
@@ -4988,15 +4973,15 @@ export class Session {
       const message = error instanceof Error ? error.message : "Failed to clone GitHub repo";
       this.sessionLogger.error(
         { err: error, repo: request.repo, targetDirectory: request.targetDirectory },
-        "Failed to clone GitHub workspace",
+        "Failed to clone GitHub project",
       );
       this.emit({
-        type: "workspace.github.clone.response",
+        type: "project.github.clone.response",
         payload: {
           requestId: request.requestId,
           repo: normalizedRepo,
           checkoutPath,
-          workspace: null,
+          project: null,
           error: message,
         },
       });

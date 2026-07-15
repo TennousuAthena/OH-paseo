@@ -3,6 +3,7 @@ import {
   parseGitHubRemoteUrl,
   parseGitRemoteLocation,
 } from "@getpaseo/protocol/git-remote";
+import { shortenPath } from "@/utils/shorten-path";
 import type { AddProjectHost, GithubRepositoryChoice } from "./model";
 
 export type AddProjectMethodId = "directory-search" | "browse" | "github" | "new-directory";
@@ -150,15 +151,29 @@ export function buildCloneLocationOptions(input: {
   repositoryName: string;
   existingPaths: string[];
 }): AddProjectPathOption[] {
-  const existing = new Set(input.existingPaths);
-  return input.parents.map((parent) => {
+  const existing = new Set(input.existingPaths.map(pathIdentity));
+  const seen = new Set<string>();
+  return input.parents.flatMap((parent) => {
     const path = joinDirectoryPath(parent, input.repositoryName);
-    return {
-      id: parent,
-      path: parent,
-      displayPath: path,
-      secondaryText: existing.has(path) ? "Already exists" : `Parent directory: ${parent}`,
-      disabled: existing.has(path),
-    };
+    const identity = pathIdentity(path);
+    if (seen.has(identity)) return [];
+    seen.add(identity);
+    const pathExists = existing.has(identity);
+    return [
+      {
+        id: parent,
+        path: parent,
+        displayPath: path,
+        secondaryText: pathExists ? "Already exists" : `Parent directory: ${parent}`,
+        disabled: pathExists,
+      },
+    ];
   });
+}
+
+function pathIdentity(path: string): string {
+  const normalized = shortenPath(path.trim()).replace(/\\/g, "/").replace(/\/+$/u, "");
+  return /^[A-Za-z]:\//u.test(normalized) || normalized.startsWith("//")
+    ? normalized.toLowerCase()
+    : normalized;
 }

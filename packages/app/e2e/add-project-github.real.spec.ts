@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "./fixtures";
@@ -8,12 +8,14 @@ import {
   addProjectFlowInput,
   chooseAddProjectMethod,
   expectAddProjectPage,
+  expectNewWorkspaceForAddedProject,
   openAddProjectFlow,
 } from "./helpers/add-project-flow";
 import { gotoAppShell } from "./helpers/app";
 import { createTempGithubRepo, hasGithubAuth, type GhRepoFixture } from "./helpers/github-fixtures";
 import { expectOpenedProject } from "./helpers/project-picker-ui";
 import { connectSeedClient } from "./helpers/seed-client";
+import { getServerId } from "./helpers/server-id";
 
 test.describe("Add Project GitHub flow", () => {
   test.describe.configure({ timeout: 300_000 });
@@ -56,8 +58,27 @@ test.describe("Add Project GitHub flow", () => {
       await expectAddProjectPage(page, "github-location");
       await expect(addProjectFlowInput(page)).toHaveValue(parentDirectory);
 
+      await mkdir(checkoutPath);
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("add-project-flow-error")).toHaveText(
+        `Checkout path already exists: ${checkoutPath}`,
+      );
+
+      await rm(checkoutPath, { recursive: true });
       await page.keyboard.press("Enter");
       projectId = await expectOpenedProject(page, repository.name);
+      await expectNewWorkspaceForAddedProject(page, {
+        serverId: getServerId(),
+        projectId,
+        projectName: repository.name,
+        projectPath: checkoutPath,
+      });
+      const client = await connectSeedClient();
+      try {
+        expect((await client.fetchWorkspaces({ filter: { projectId } })).entries).toEqual([]);
+      } finally {
+        await client.close();
+      }
       await expect.poll(async () => (await stat(checkoutPath)).isDirectory()).toBe(true);
     } finally {
       if (projectId) {

@@ -72,3 +72,24 @@ export async function chooseAddProjectMethod(page: Page, method: AddProjectMetho
     await expectAddProjectPage(page, METHOD_DESTINATIONS[method]);
   }
 }
+
+export async function expectNewWorkspaceForAddedProject(
+  page: Page,
+  input: {
+    serverId: string;
+    projectId: string;
+    projectName: string;
+    projectPath: string;
+  },
+): Promise<void> {
+  await expect(page).toHaveURL(/\/new\?.*projectId=/u, { timeout: 30_000 });
+  const url = new URL(page.url());
+  expect(url.pathname).toBe("/new");
+  expect(url.searchParams.get("serverId")).toBe(input.serverId);
+  expect(url.searchParams.get("projectId")).toBe(input.projectId);
+  expect(url.searchParams.get("dir")).toBe(input.projectPath);
+  await expect(page.getByRole("button", { name: "Workspace project" })).toContainText(
+    input.projectName,
+    { timeout: 30_000 },
+  );
+}

@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
-import { useAddProjectFlowStore } from "@/stores/add-project-flow-store";
+import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import {
   clearCommandCenterFocusRestoreElement,
   takeCommandCenterFocusRestoreElement,
@@ -146,9 +146,7 @@ export function useCommandCenter() {
   const { overrides } = useKeyboardShortcutOverrides();
   const open = useKeyboardShortcutsStore((s) => s.commandCenterOpen);
   const setOpen = useKeyboardShortcutsStore((s) => s.setCommandCenterOpen);
-  const addProjectRequest = useAddProjectFlowStore((state) => state.request);
-  const openAddProjectFlow = useAddProjectFlowStore((state) => state.open);
-  const closeAddProjectFlow = useAddProjectFlowStore((state) => state.close);
+  const openAddProject = useOpenAddProject();
   const inputRef = useRef<TextInput>(null);
   const didNavigateRef = useRef(false);
   const prevOpenRef = useRef(open);
@@ -323,19 +321,19 @@ export function useCommandCenter() {
 
   const handleSelectAction = useCallback(
     (action: CommandCenterActionItem) => {
-      if (action.id === "new-agent") {
-        openAddProjectFlow();
-        return;
-      }
       clearCommandCenterFocusRestoreElement();
       setOpen(false);
+      if (action.id === "new-agent") {
+        openAddProject();
+        return;
+      }
       if (!action.route) {
         return;
       }
       didNavigateRef.current = true;
       router.push(action.route);
     },
-    [openAddProjectFlow, setOpen],
+    [openAddProject, setOpen],
   );
 
   const handleSelectItem = useCallback(
@@ -374,7 +372,6 @@ export function useCommandCenter() {
     prevOpenRef.current = open;
 
     if (!open) {
-      closeAddProjectFlow();
       setQuery("");
       setActiveIndex(0);
 
@@ -405,7 +402,7 @@ export function useCommandCenter() {
       inputRef.current?.focus();
     }, 0);
     return () => clearTimeout(id);
-  }, [closeAddProjectFlow, open]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -416,7 +413,7 @@ export function useCommandCenter() {
 
   const handleKeyEvent = useCallback(
     (key: string): boolean => {
-      if (!open || addProjectRequest) return false;
+      if (!open) return false;
       const currentItems = itemsRef.current;
 
       if (key === "Escape") {
@@ -445,11 +442,11 @@ export function useCommandCenter() {
 
       return false;
     },
-    [addProjectRequest, open],
+    [open],
   );
 
   useEffect(() => {
-    if (!open || addProjectRequest || !isWeb) return;
+    if (!open || !isWeb) return;
 
     const handler = (event: KeyboardEvent) => {
       if (
@@ -468,7 +465,7 @@ export function useCommandCenter() {
     // react-native-web can stop propagation on key events, so listen in capture phase.
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [addProjectRequest, open, handleKeyEvent]);
+  }, [open, handleKeyEvent]);
 
   return {
     open,

@@ -11,6 +11,7 @@ import {
   addProjectFlowMethod,
   chooseAddProjectMethod,
   expectAddProjectPage,
+  expectNewWorkspaceForAddedProject,
   openAddProjectFlow,
   waitForConnectedHost,
 } from "./helpers/add-project-flow";
@@ -20,6 +21,7 @@ import { addOfflineHostAndReload } from "./helpers/hosts";
 import { type IsolatedHostDaemon, startIsolatedHostDaemon } from "./helpers/isolated-host-daemon";
 import { expectOpenedProject } from "./helpers/project-picker-ui";
 import { connectSeedClient } from "./helpers/seed-client";
+import { getServerId } from "./helpers/server-id";
 
 const EXTRA_HOSTS_KEY = "@paseo:e2e-extra-hosts";
 const SECONDARY_HOST_ID = "add-project-flow-secondary";
@@ -57,6 +59,16 @@ async function removeCreatedProject(
       projectId = result.project?.projectId ?? null;
     }
     if (projectId) await client.removeProject(projectId).catch(() => undefined);
+  } finally {
+    await client.close();
+  }
+}
+
+async function expectProjectHasNoWorkspaces(projectId: string): Promise<void> {
+  const client = await connectSeedClient();
+  try {
+    const result = await client.fetchWorkspaces({ filter: { projectId } });
+    expect(result.entries).toEqual([]);
   } finally {
     await client.close();
   }
@@ -218,7 +230,14 @@ test.describe("Add Project command-center flow", () => {
         await page.keyboard.type(directoryName);
         await page.keyboard.press("Enter");
 
-        await expectOpenedProject(page, directoryName);
+        const projectId = await expectOpenedProject(page, directoryName);
+        await expectNewWorkspaceForAddedProject(page, {
+          serverId: SECONDARY_HOST_ID,
+          projectId,
+          projectName: directoryName,
+          projectPath: directoryPath,
+        });
+        await expect(page.getByTestId("host-picker-trigger")).toContainText(SECONDARY_HOST_LABEL);
         await expectProjectDirectory(directoryPath);
       } finally {
         await rm(parentDirectory, { recursive: true, force: true });
@@ -243,6 +262,13 @@ test.describe("Add Project command-center flow", () => {
 
     const projectId = await expectOpenedProject(page, projectPickerFixture.projectName);
     projectPickerFixture.rememberProjectId(projectId);
+    await expectNewWorkspaceForAddedProject(page, {
+      serverId: getServerId(),
+      projectId,
+      projectName: projectPickerFixture.projectName,
+      projectPath: projectPickerFixture.projectPath,
+    });
+    await expectProjectHasNoWorkspaces(projectId);
   });
 
   test("the current daemon advertises Clone from GitHub and New directory", async ({ page }) => {
@@ -266,9 +292,10 @@ test.describe("Add Project command-center flow", () => {
     await page.keyboard.press("Enter");
 
     await expectAddProjectPage(page, "github-location");
-    await expect(addProjectFlow(page).getByTestId("add-project-flow-title")).toContainText(
-      "manual",
-    );
+    const title = addProjectFlow(page).getByTestId("add-project-flow-title");
+    await expect(title.getByText("Choose destination", { exact: true })).toBeVisible();
+    await expect(title.getByText("localhost", { exact: true })).toBeVisible();
+    await expect(title).not.toContainText("Where should Paseo create");
     await addProjectFlowBack(page).click();
     await expect(addProjectFlowInput(page)).toHaveValue(remote);
   });
@@ -307,6 +334,13 @@ test.describe("Add Project command-center flow", () => {
       await page.keyboard.press("Enter");
 
       projectId = await expectOpenedProject(page, directoryName);
+      await expectNewWorkspaceForAddedProject(page, {
+        serverId: getServerId(),
+        projectId,
+        projectName: directoryName,
+        projectPath: directoryPath,
+      });
+      await expectProjectHasNoWorkspaces(projectId);
       await expectProjectDirectory(directoryPath);
     } finally {
       await removeCreatedProject(directoryPath, projectId).catch(() => undefined);

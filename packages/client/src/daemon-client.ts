@@ -58,8 +58,8 @@ import type {
   ProjectCreateDirectoryResponse,
   OpenProjectResponseMessage,
   WorkspaceGithubSearchRepositoriesResponse,
-  WorkspaceGithubCloneProtocol,
-  WorkspaceGithubCloneResponse,
+  ProjectGithubCloneProtocol,
+  ProjectGithubCloneResponse,
   ArchiveWorkspaceResponseMessage,
   WorkspaceSetupStatusResponseMessage,
   ListCommandsResponse,
@@ -152,7 +152,7 @@ const perfNow: () => number =
     ? () => performance.now()
     : () => Date.now();
 
-const WORKSPACE_GITHUB_CLONE_TIMEOUT_MS = 5 * 60 * 1000;
+const PROJECT_GITHUB_CLONE_TIMEOUT_MS = 5 * 60 * 1000;
 
 interface ImportAgentInputBase {
   cwd?: string;
@@ -768,7 +768,7 @@ type ProjectAddPayload = ProjectAddResponse["payload"];
 export type ProjectCreateDirectoryPayload = ProjectCreateDirectoryResponse["payload"];
 export type WorkspaceGithubSearchRepositoriesPayload =
   WorkspaceGithubSearchRepositoriesResponse["payload"];
-type WorkspaceGithubClonePayload = WorkspaceGithubCloneResponse["payload"];
+type ProjectGithubClonePayload = ProjectGithubCloneResponse["payload"];
 type ArchiveWorkspacePayload = ArchiveWorkspaceResponseMessage["payload"];
 type WorkspaceSetupStatusPayload = WorkspaceSetupStatusResponseMessage["payload"];
 
@@ -2029,20 +2029,20 @@ export class DaemonClient {
     );
   }
 
-  async cloneGithubWorkspace(
-    input: { repo: string; targetDirectory: string; cloneProtocol?: WorkspaceGithubCloneProtocol },
+  async cloneGithubProject(
+    input: { repo: string; targetDirectory: string; cloneProtocol?: ProjectGithubCloneProtocol },
     requestId?: string,
-  ): Promise<WorkspaceGithubClonePayload> {
+  ): Promise<ProjectGithubClonePayload> {
     const message = {
-      type: "workspace.github.clone.request",
+      type: "project.github.clone.request",
       repo: input.repo,
       targetDirectory: input.targetDirectory,
       ...(input.cloneProtocol ? { cloneProtocol: input.cloneProtocol } : {}),
     } as const;
-    return this.sendNamespacedCorrelatedSessionRequest<"workspace.github.clone.response">({
+    return this.sendNamespacedCorrelatedSessionRequest<"project.github.clone.response">({
       requestId,
       message,
-      timeout: WORKSPACE_GITHUB_CLONE_TIMEOUT_MS,
+      timeout: PROJECT_GITHUB_CLONE_TIMEOUT_MS,
     });
   }
 

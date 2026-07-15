@@ -22,6 +22,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { CommandCenter } from "@/components/command-center";
+import { AddProjectFlowHost } from "@/components/add-project-flow-host";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
@@ -548,6 +549,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <UpdateCalloutSource />
       <WorktreeSetupCalloutSource />
       <CommandCenter />
+      <AddProjectFlowHost />
       <HostChooserModal />
       <ProviderSettingsHost />
       <WorkspaceSetupDialog />

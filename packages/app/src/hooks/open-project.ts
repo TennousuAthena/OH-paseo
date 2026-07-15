@@ -1,27 +1,20 @@
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type {
+  ProjectGithubCloneProtocol,
   ProjectAddResponse,
-  WorkspaceGithubCloneProtocol,
   WorkspaceProjectDescriptorPayload,
 } from "@getpaseo/protocol/messages";
 import {
   normalizeEmptyProjectDescriptor as normalizeProjectWithoutWorkspacesDescriptor,
-  normalizeWorkspaceDescriptor,
   type EmptyProjectDescriptor as ProjectWithoutWorkspacesDescriptor,
-  type WorkspaceDescriptor,
 } from "@/stores/session-store";
-import { generateDraftId } from "@/stores/draft-keys";
-import type { NavigateToWorkspaceInput } from "@/stores/navigation-active-workspace-store";
-import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 
 type OpenProjectPayload = ProjectAddResponse["payload"];
 type OpenProjectErrorCode = NonNullable<OpenProjectPayload["errorCode"]>;
-type WorkspaceOpenPayload =
-  | Awaited<ReturnType<DaemonClient["openProject"]>>
-  | Awaited<ReturnType<DaemonClient["cloneGithubWorkspace"]>>;
 
 export interface OpenProjectSuccess {
   ok: true;
+  project: WorkspaceProjectDescriptorPayload;
 }
 
 export interface OpenProjectFailure {
@@ -32,7 +25,7 @@ export interface OpenProjectFailure {
 
 export type OpenProjectResult = OpenProjectSuccess | OpenProjectFailure;
 export type OpenProjectFailureReason = "directory_not_found" | "open_failed";
-export type { WorkspaceGithubCloneProtocol };
+export type { ProjectGithubCloneProtocol };
 
 export function getOpenProjectFailureReason(
   result: OpenProjectResult,
@@ -58,12 +51,11 @@ export interface OpenProjectDirectlyInput {
   setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
 }
 
-interface WorkspaceOpenCallbacks {
+interface ProjectRegistrationCallbacks {
   serverId: string;
   isConnected: boolean;
-  mergeWorkspaces: (serverId: string, workspaces: Iterable<WorkspaceDescriptor>) => void;
+  addEmptyProject: (serverId: string, project: ProjectWithoutWorkspacesDescriptor) => void;
   setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
-  navigateToWorkspace: (input: NavigateToWorkspaceInput) => string;
 }
 
 export interface RegisterProjectDescriptorInput {
@@ -81,11 +73,11 @@ export function registerProjectDescriptor(input: RegisterProjectDescriptorInput)
   return true;
 }
 
-export interface OpenGithubRepoDirectlyInput extends WorkspaceOpenCallbacks {
+export interface CloneGithubProjectDirectlyInput extends ProjectRegistrationCallbacks {
   repo: string;
   targetDirectory: string;
-  cloneProtocol?: WorkspaceGithubCloneProtocol;
-  client: Pick<DaemonClient, "cloneGithubWorkspace"> | null;
+  cloneProtocol?: ProjectGithubCloneProtocol;
+  client: Pick<DaemonClient, "cloneGithubProject"> | null;
 }
 
 export async function openProjectDirectly(
@@ -114,44 +106,20 @@ export async function openProjectDirectly(
     };
   }
 
-  registerProjectDescriptor({
+  const registered = registerProjectDescriptor({
     serverId: normalizedServerId,
     project: payload.project,
     addEmptyProject: input.addEmptyProject,
     setHasHydratedWorkspaces: input.setHasHydratedWorkspaces,
   });
-  return { ok: true };
+  return registered
+    ? { ok: true, project: payload.project }
+    : { ok: false, errorCode: null, error: "Unable to register project" };
 }
 
-function finishWorkspaceOpen(
-  input: WorkspaceOpenCallbacks,
-  payload: WorkspaceOpenPayload,
-): boolean {
-  const normalizedServerId = input.serverId.trim();
-  if (!normalizedServerId || payload.error || !payload.workspace) {
-    return false;
-  }
-
-  const workspace = normalizeWorkspaceDescriptor(payload.workspace);
-  const workspaceKey = buildWorkspaceTabPersistenceKey({
-    serverId: normalizedServerId,
-    workspaceId: workspace.id,
-  });
-  if (!workspaceKey) {
-    return false;
-  }
-
-  input.mergeWorkspaces(normalizedServerId, [workspace]);
-  input.setHasHydratedWorkspaces(normalizedServerId, true);
-  input.navigateToWorkspace({
-    serverId: normalizedServerId,
-    workspaceId: workspace.id,
-    target: { kind: "draft", draftId: generateDraftId() },
-  });
-  return true;
-}
-
-export async function openGithubRepoDirectly(input: OpenGithubRepoDirectlyInput): Promise<boolean> {
+export async function cloneGithubProjectDirectly(
+  input: CloneGithubProjectDirectlyInput,
+): Promise<OpenProjectResult> {
   const normalizedServerId = input.serverId.trim();
   const trimmedRepo = input.repo.trim();
   const trimmedTargetDirectory = input.targetDirectory.trim();
@@ -162,13 +130,25 @@ export async function openGithubRepoDirectly(input: OpenGithubRepoDirectlyInput)
     !input.client ||
     !input.isConnected
   ) {
-    return false;
+    return { ok: false, errorCode: null, error: null };
   }
 
-  const payload = await input.client.cloneGithubWorkspace({
+  const payload = await input.client.cloneGithubProject({
     repo: trimmedRepo,
     targetDirectory: trimmedTargetDirectory,
     ...(input.cloneProtocol ? { cloneProtocol: input.cloneProtocol } : {}),
   });
-  return finishWorkspaceOpen(input, payload);
+  if (payload.error || !payload.project) {
+    return { ok: false, errorCode: null, error: payload.error };
+  }
+
+  const registered = registerProjectDescriptor({
+    serverId: normalizedServerId,
+    project: payload.project,
+    addEmptyProject: input.addEmptyProject,
+    setHasHydratedWorkspaces: input.setHasHydratedWorkspaces,
+  });
+  return registered
+    ? { ok: true, project: payload.project }
+    : { ok: false, errorCode: null, error: "Unable to register project" };
 }
