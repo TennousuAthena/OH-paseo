@@ -100,13 +100,12 @@ import {
   type TimelineProjectionMode,
 } from "./agent/timeline-projection.js";
 import { buildAgentForkContextAttachment } from "./agent/activity-curator.js";
+import { buildAgentPrompt } from "./agent/prompt-attachments.js";
 import type { StructuredGenerationDaemonConfig } from "./agent/structured-generation-providers.js";
 import {
   getAgentStreamEventTurnId,
   type AgentPersistenceHandle,
   type AgentPermissionResponse,
-  type AgentPromptContentBlock,
-  type AgentPromptInput,
   type AgentRunOptions,
   type AgentSessionConfig,
 } from "./agent/agent-sdk-types.js";
@@ -1025,33 +1024,6 @@ export class Session {
    */
   public async sendInitialState(): Promise<void> {
     // No unsolicited agent list hydration. Callers must use fetch_agents_request.
-  }
-
-  /**
-   * Normalize a user prompt (with optional image metadata) for AgentManager
-   */
-  private buildAgentPrompt(
-    text: string,
-    images?: Array<{ data: string; mimeType: string }>,
-    attachments?: AgentAttachment[],
-  ): AgentPromptInput {
-    const normalized = text?.trim() ?? "";
-    const hasImages = Boolean(images && images.length > 0);
-    const hasAttachments = Boolean(attachments && attachments.length > 0);
-    if (!hasImages && !hasAttachments) {
-      return normalized;
-    }
-    const blocks: AgentPromptContentBlock[] = [];
-    if (normalized.length > 0) {
-      blocks.push({ type: "text", text: normalized });
-    }
-    for (const image of images ?? []) {
-      blocks.push({ type: "image", data: image.data, mimeType: image.mimeType });
-    }
-    for (const attachment of attachments ?? []) {
-      blocks.push(attachment);
-    }
-    return blocks;
   }
 
   /**
@@ -2439,7 +2411,7 @@ export class Session {
     );
 
     const promptText = options?.spokenInput ? wrapSpokenInput(text) : text;
-    const prompt = this.buildAgentPrompt(promptText, images, attachments);
+    const prompt = buildAgentPrompt(promptText, images, attachments);
 
     try {
       await sendPromptToAgent({
@@ -5522,12 +5494,15 @@ export class Session {
         logger: this.sessionLogger,
       });
       const agentPayload = await this.buildAgentPayload(snapshot);
-      const rows = this.agentManager.fetchTimeline(msg.agentId, {
+      const timeline = this.agentManager.fetchTimeline(msg.agentId, {
         direction: "tail",
         limit: 0,
-      }).rows;
+      });
       const forkContext = buildAgentForkContextAttachment({
-        rows,
+        rows: timeline.rows,
+        cursorBoundary: msg.boundaryCursor
+          ? { timelineEpoch: timeline.epoch, cursor: msg.boundaryCursor }
+          : null,
         boundaryMessageId: msg.boundaryMessageId,
         agentTitle: agentPayload.title,
         cwd: snapshot.cwd,
@@ -5540,6 +5515,7 @@ export class Session {
           agentId: msg.agentId,
           attachment: forkContext.attachment,
           itemCount: forkContext.itemCount,
+          boundaryCursor: forkContext.boundaryCursor,
           boundaryMessageId: forkContext.boundaryMessageId,
           error: null,
         },
@@ -5556,6 +5532,7 @@ export class Session {
           agentId: msg.agentId,
           attachment: null,
           itemCount: 0,
+          boundaryCursor: msg.boundaryCursor ?? null,
           boundaryMessageId: msg.boundaryMessageId ?? null,
           error: error instanceof Error ? error.message : String(error),
         },
@@ -5583,7 +5560,7 @@ export class Session {
     try {
       const agentId = resolved.agentId;
 
-      const prompt = this.buildAgentPrompt(msg.text, msg.images, msg.attachments);
+      const prompt = buildAgentPrompt(msg.text, msg.images, msg.attachments);
       this.sessionLogger.trace(
         {
           agentId,
