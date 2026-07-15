@@ -1847,6 +1847,60 @@ describe("Codex app-server provider", () => {
     });
   });
 
+  test("updates a registered child with its later native activity name", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("item/completed", {
+      threadId: "test-thread",
+      item: {
+        type: "collabAgentToolCall",
+        id: "call-native-name-later",
+        tool: "spawnAgent",
+        status: "completed",
+        prompt: "Inspect the repository.",
+        receiverThreadIds: ["child-native-name-later"],
+        agentsStates: {
+          "child-native-name-later": { status: "pendingInit", message: null },
+        },
+      },
+    });
+    asInternals(session).handleNotification("item/started", {
+      threadId: "test-thread",
+      item: {
+        type: "subAgentActivity",
+        id: "activity-native-name-later",
+        kind: "started",
+        agentThreadId: "child-native-name-later",
+        agentPath: "/root/research/investigator",
+      },
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider_subagent",
+        provider: "codex",
+        event: expect.objectContaining({
+          type: "upsert",
+          id: "child-native-name-later",
+          title: "Research / Investigator",
+        }),
+      }),
+    );
+    expect(events.at(-1)).toMatchObject({
+      type: "timeline",
+      item: {
+        callId: "call-native-name-later",
+        detail: {
+          type: "sub_agent",
+          subAgentType: "Research / Investigator",
+          description: "Inspect the repository.",
+        },
+      },
+    });
+  });
+
   test("renders child MCP image results in the provider subagent timeline", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];
@@ -2500,7 +2554,7 @@ describe("Codex app-server provider", () => {
           status: "running",
           detail: {
             type: "sub_agent",
-            description: "/root/legacy-only-child",
+            description: "legacy-only-child",
           },
         },
       });
@@ -2881,6 +2935,13 @@ describe("Codex app-server provider", () => {
                   },
                   {
                     type: "subAgentActivity",
+                    id: "legacy-native-name-history",
+                    kind: "started",
+                    agentThreadId: "legacy-child-thread",
+                    agentPath: "/root/sentinel_child",
+                  },
+                  {
+                    type: "subAgentActivity",
                     id: "v2-spawn-history",
                     kind: "started",
                     agentThreadId: "v2-child-thread",
@@ -2905,7 +2966,12 @@ describe("Codex app-server provider", () => {
         event.type === "provider_subagent" && event.event.type === "upsert" ? [event.event] : [],
       ),
     ).toMatchObject([
-      { type: "upsert", id: "legacy-child-thread", status: "completed" },
+      {
+        type: "upsert",
+        id: "legacy-child-thread",
+        status: "completed",
+        title: "Sentinel child",
+      },
       { type: "upsert", id: "v2-child-thread", status: "completed" },
     ]);
     expect(
@@ -2940,12 +3006,16 @@ describe("Codex app-server provider", () => {
       {
         callId: "legacy-spawn-history",
         status: "completed",
-        detail: { type: "sub_agent", description: "Legacy child" },
+        detail: {
+          type: "sub_agent",
+          description: "Legacy child",
+          subAgentType: "Sentinel child",
+        },
       },
       {
         callId: "v2-spawn-history",
         status: "completed",
-        detail: { type: "sub_agent", description: "/root/v2-child" },
+        detail: { type: "sub_agent", description: "v2-child" },
       },
     ]);
 
@@ -3067,7 +3137,7 @@ describe("Codex app-server provider", () => {
           status: "canceled",
           detail: expect.objectContaining({
             type: "sub_agent",
-            description: "/root/history-child",
+            description: "history-child",
           }),
         }),
       },
