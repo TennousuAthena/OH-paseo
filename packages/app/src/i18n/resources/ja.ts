@@ -1505,6 +1505,17 @@ export const ja: TranslationResources = {
     },
     general: {
       title: "一般",
+      browserData: {
+        title: "ブラウザーデータ",
+        siteData: "Cookie とサイトデータ",
+        description: "ブラウザータブ間でログイン情報とサイトデータが共有されます。",
+        clear: "ブラウザーデータを消去",
+        clearing: "消去中...",
+        confirmTitle: "ブラウザーデータを消去しますか？",
+        confirmMessage: "サイトからログアウトし、開いているブラウザータブを再読み込みします。",
+        success: "ブラウザーデータを消去しました。",
+        error: "ブラウザーデータを消去できませんでした。",
+      },
       defaultSend: {
         label: "デフォルトの送信",
         descriptions: {

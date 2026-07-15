@@ -21,6 +21,7 @@ import {
   protocol,
   screen,
   session,
+  webContents,
 } from "electron";
 import { createDaemonCommandHandlers, registerDaemonManager } from "./daemon/daemon-manager.js";
 import { parsePassthroughCliArgsFromArgv, runPassthroughCli } from "./daemon/cli/passthrough.js";
@@ -52,13 +53,22 @@ import {
   getPaseoBrowserWebContents,
   handleBrowserWindowOpenRequest,
   listRegisteredPaseoBrowserIds,
-  readBrowserIdFromWebviewAttach,
+  isPaseoBrowserWebviewAttach,
+  preparePaseoBrowserWebContents,
+  PendingBrowserWindowOpenRequests,
   registerBrowserWebviewNavigationGuards,
   unregisterPaseoBrowser,
-  registerPaseoBrowserWorkspace,
-  registerPaseoBrowserWebContents,
+  registerAttachedPaseoBrowser,
   setWorkspaceActivePaseoBrowserId,
 } from "./features/browser-webviews/index.js";
+import {
+  clearPaseoBrowserProfile,
+  getLegacyPaseoBrowserProfileSession,
+  getPaseoBrowserProfileSession,
+  getPaseoBrowserProfileSessions,
+  listPaseoBrowserProfileGuests,
+  readLegacyPaseoBrowserIds,
+} from "./features/browser-profile.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
 import { PendingOpenProjectStore } from "./pending-open-project-store.js";
 import { getDesktopSettingsStore } from "./settings/desktop-settings-electron.js";
@@ -80,6 +90,7 @@ const APP_SCHEME = "paseo";
 const PASEO_DEBUG = process.env.PASEO_DEBUG === "1";
 const DISABLE_SINGLE_INSTANCE_LOCK = process.env.PASEO_DISABLE_SINGLE_INSTANCE_LOCK === "1";
 const APP_NAME = process.env.PASEO_TEST_APP_NAME?.trim() || "Paseo";
+const pendingBrowserWindowOpenRequests = new PendingBrowserWindowOpenRequests();
 
 const BROWSER_SHORTCUT_EVENT = "paseo:event:browser-shortcut";
 const BROWSER_FORWARDED_KEY_EVENT = "paseo:event:browser-forwarded-key";
@@ -114,9 +125,13 @@ const DESKTOP_SMOKE_ENV = "PASEO_DESKTOP_SMOKE";
 const DESKTOP_SMOKE_STOP_REQUEST = "paseo-smoke-stop";
 app.setName(APP_NAME);
 
-function readBrowserWorkspaceInput(
-  input: unknown,
-): { browserId: string; workspaceId: string } | null {
+interface AttachedBrowserInput {
+  browserId: string;
+  workspaceId: string;
+  webContentsId: number;
+}
+
+function readAttachedBrowserInput(input: unknown): AttachedBrowserInput | null {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     return null;
   }
@@ -127,7 +142,18 @@ function readBrowserWorkspaceInput(
   if (typeof record.workspaceId !== "string" || record.workspaceId.trim().length === 0) {
     return null;
   }
-  return { browserId: record.browserId.trim(), workspaceId: record.workspaceId.trim() };
+  if (
+    typeof record.webContentsId !== "number" ||
+    !Number.isInteger(record.webContentsId) ||
+    record.webContentsId <= 0
+  ) {
+    return null;
+  }
+  return {
+    browserId: record.browserId.trim(),
+    workspaceId: record.workspaceId.trim(),
+    webContentsId: record.webContentsId,
+  };
 }
 
 function readActiveBrowserInput(
@@ -143,8 +169,6 @@ function readActiveBrowserInput(
   const browserId = typeof record.browserId === "string" ? record.browserId.trim() : null;
   return { workspaceId: record.workspaceId.trim(), browserId: browserId || null };
 }
-
-const pendingBrowserWebviewIds: string[] = [];
 
 function isBrowserRefreshInput(input: Electron.Input): boolean {
   if (input.type !== "keyDown" || input.alt || input.shift) {
@@ -322,16 +346,53 @@ function normalizeBrowserCaptureRect(
   };
 }
 
-ipcMain.handle("paseo:browser:register-workspace-browser", (_event, rawInput: unknown) => {
-  const input = readBrowserWorkspaceInput(rawInput);
-  if (input) {
-    registerPaseoBrowserWorkspace(input);
+ipcMain.handle("paseo:browser:register-attached", (event, rawInput: unknown) => {
+  const input = readAttachedBrowserInput(rawInput);
+  if (!input) {
+    throw new Error("Invalid attached browser registration");
+  }
+  const registered = registerAttachedPaseoBrowser({
+    ...input,
+    sender: event.sender,
+    profileSession: getPaseoBrowserProfileSession(session),
+    findWebContents: (webContentsId) => webContents.fromId(webContentsId) ?? null,
+  });
+  if (!registered) {
+    throw new Error("Attached browser registration was rejected");
+  }
+  log.info("[browser-webview] registered", {
+    browserId: input.browserId,
+    webContentsId: input.webContentsId,
+    registeredBrowserIds: listRegisteredPaseoBrowserIds(),
+  });
+  for (const url of pendingBrowserWindowOpenRequests.take(input.webContentsId)) {
+    event.sender.send(BROWSER_NEW_TAB_REQUEST_EVENT, {
+      sourceBrowserId: input.browserId,
+      url,
+    });
   }
 });
 
-ipcMain.handle("paseo:browser:unregister-workspace-browser", (_event, browserId: unknown) => {
+ipcMain.handle("paseo:browser:unregister-workspace-browser", async (_event, browserId: unknown) => {
   if (typeof browserId === "string" && browserId.trim().length > 0) {
-    unregisterPaseoBrowser(browserId.trim());
+    const normalizedBrowserId = browserId.trim();
+    unregisterPaseoBrowser(normalizedBrowserId);
+    // COMPAT(browserProfile): added in v0.1.108; remove after 2027-01-15.
+    const legacyProfile = getLegacyPaseoBrowserProfileSession(session, normalizedBrowserId);
+    if (legacyProfile) {
+      try {
+        await clearPaseoBrowserProfile({
+          profileSessions: [legacyProfile],
+          listGuests: () => [],
+          logReloadError: () => {},
+        });
+      } catch (error) {
+        log.warn("[browser-profile] failed to clear legacy tab profile", {
+          browserId: normalizedBrowserId,
+          error,
+        });
+      }
+    }
   }
 });
 
@@ -383,12 +444,23 @@ ipcMain.handle("paseo:browser:open-devtools", (_event, browserId: unknown) => {
   return result;
 });
 
-ipcMain.handle("paseo:browser:clear-partition", async (_event, browserId: unknown) => {
-  if (typeof browserId !== "string" || browserId.trim().length === 0) {
-    return;
-  }
-  const partition = `persist:paseo-browser-${browserId}`;
-  await session.fromPartition(partition).clearStorageData();
+ipcMain.handle("paseo:browser:clear-profile", async (_event, rawLegacyBrowserIds: unknown) => {
+  const profileSessions = getPaseoBrowserProfileSessions(
+    session,
+    readLegacyPaseoBrowserIds(rawLegacyBrowserIds),
+  );
+  const profileSession = profileSessions[0];
+  await clearPaseoBrowserProfile({
+    profileSessions,
+    listGuests: () =>
+      listPaseoBrowserProfileGuests({
+        profileSession,
+        webContents: webContents.getAllWebContents(),
+      }),
+    logReloadError: (webContentsId, error) => {
+      log.warn("[browser-profile] failed to reload guest", { webContentsId, error });
+    },
+  });
 });
 
 ipcMain.handle(
@@ -599,12 +671,10 @@ async function createWindow(
   setupDefaultContextMenu(mainWindow);
   setupDragDropPrevention(mainWindow);
   mainWindow.webContents.on("will-attach-webview", (event, webPreferences, params) => {
-    const browserId = readBrowserIdFromWebviewAttach(params);
-    if (!browserId) {
+    if (!isPaseoBrowserWebviewAttach(params)) {
       event.preventDefault();
       return;
     }
-    pendingBrowserWebviewIds.push(browserId);
     webPreferences.nodeIntegration = false;
     webPreferences.nodeIntegrationInSubFrames = false;
     webPreferences.nodeIntegrationInWorker = false;
@@ -619,15 +689,10 @@ async function createWindow(
     delete (params as { preloadURL?: string }).preloadURL;
   });
   mainWindow.webContents.on("did-attach-webview", (_event, contents) => {
-    const browserId = pendingBrowserWebviewIds.shift() ?? null;
-    if (browserId) {
-      registerPaseoBrowserWebContents(contents, browserId);
-      log.info("[browser-webview] registered", {
-        browserId,
-        webContentsId: contents.id,
-        registeredBrowserIds: listRegisteredPaseoBrowserIds(),
-      });
-    }
+    preparePaseoBrowserWebContents(contents);
+    contents.once("destroyed", () => {
+      pendingBrowserWindowOpenRequests.delete(contents.id);
+    });
     contents.on("before-input-event", (event, input) => {
       if (isBrowserRefreshInput(input)) {
         event.preventDefault();
@@ -659,15 +724,19 @@ async function createWindow(
         });
       }
     });
-    contents.setWindowOpenHandler(({ url }) =>
-      handleBrowserWindowOpenRequest({
+    contents.setWindowOpenHandler(({ url }) => {
+      const sourceBrowserId = getPaseoBrowserIdForWebContents(contents);
+      if (!sourceBrowserId) {
+        pendingBrowserWindowOpenRequests.add(contents.id, url);
+      }
+      return handleBrowserWindowOpenRequest({
         url,
-        sourceBrowserId: getPaseoBrowserIdForWebContents(contents),
+        sourceBrowserId,
         requestNewTab: (payload) => {
           mainWindow.webContents.send(BROWSER_NEW_TAB_REQUEST_EVENT, payload);
         },
-      }),
-    );
+      });
+    });
     contents.on("context-menu", (_contextMenuEvent, params) => {
       showBrowserWebviewContextMenu(mainWindow, contents, params);
     });
