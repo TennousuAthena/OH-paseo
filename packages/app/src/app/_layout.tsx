@@ -482,10 +482,10 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     requestedExplorerWidth: explorerWidth,
     viewportWidth,
   });
-  const desktopSidebarRendered =
+  const desktopSidebarMounted = chromeEnabled && !isFocusModeEnabled;
+  const desktopSidebarVisible =
     !isCompactLayout &&
-    chromeEnabled &&
-    !isFocusModeEnabled &&
+    desktopSidebarMounted &&
     isDesktopAgentListOpen &&
     canDesktopAppSidebarShare({
       contentMinimumWidth: appContentMinimumWidth,
@@ -494,13 +494,14 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     });
   const hasTopLeftWindowControls = useHasWindowChromeObstruction("top-left");
   const appChromeLayout = resolveDesktopAppChromeLayout({
-    desktopSidebarRendered,
+    desktopSidebarRendered: desktopSidebarVisible,
     hasTopLeftWindowControls,
     sidebarControlsEnabled: chromeEnabled && !isFocusModeEnabled,
   });
   const sidebarChrome = (
     <SidebarChrome
-      showSidebar={isCompactLayout ? chromeEnabled : desktopSidebarRendered}
+      mounted={isCompactLayout ? chromeEnabled : desktopSidebarMounted}
+      visible={isCompactLayout ? chromeEnabled : desktopSidebarVisible}
       keyboardShortcutsEnabled={keyboardShortcutsEnabled}
     />
   );
@@ -567,19 +568,22 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
 }
 
 function SidebarChrome({
-  showSidebar,
+  mounted,
+  visible,
   keyboardShortcutsEnabled,
 }: {
-  showSidebar: boolean;
+  mounted: boolean;
+  visible: boolean;
   keyboardShortcutsEnabled: boolean;
 }) {
   const isCompactLayout = useIsCompactFormFactor();
   const isOpen = usePanelStore((state) =>
     selectIsAgentListOpen(state, { isCompact: isCompactLayout }),
   );
+  const active = visible && isOpen;
   return (
-    <SidebarModelProvider active={showSidebar && isOpen}>
-      {showSidebar ? <LeftSidebar /> : null}
+    <SidebarModelProvider active={active}>
+      {mounted ? <LeftSidebar active={active} /> : null}
       <WorkspaceShortcutTargetsSubscriber enabled={keyboardShortcutsEnabled} />
     </SidebarModelProvider>
   );
