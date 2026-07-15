@@ -4,20 +4,13 @@ import { useTranslation } from "react-i18next";
 import { Wrench } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { ExpandableBadge } from "@/components/message";
-import { ToolCallDetailsContent } from "@/components/tool-call-details";
-import { useToolCallSheet } from "@/components/tool-call-sheet";
-import { buildToolCallPresentation } from "@/tool-calls/presentation";
-import { resolveToolCallIcon } from "@/utils/tool-call-icon";
-import { describeToolCall } from "../grouping";
 import { type OverviewSummary, type OverviewToolCallGroup } from "./model";
 
 interface OverviewGroupProps {
   group: OverviewToolCallGroup;
   expanded: boolean;
-  isCompact: boolean;
   isLastInSequence: boolean;
   onExpandedChange: (groupId: string, expanded: boolean) => void;
-  cwd?: string;
   children: ReactNode;
 }
 
@@ -61,63 +54,23 @@ function useOverviewSummary(summary: OverviewSummary): string {
 export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView({
   group,
   expanded,
-  isCompact,
   isLastInSequence,
   onExpandedChange,
-  cwd,
   children,
 }: OverviewGroupProps) {
   const { t } = useTranslation();
-  const { openToolCall } = useToolCallSheet();
   const scrollRef = useRef<ScrollView>(null);
   const aggregateSummary = useOverviewSummary(group.summary);
-  const latest = useMemo(() => {
-    const descriptor = describeToolCall(group.run.latest);
-    return {
-      detail: descriptor.detail,
-      presentation: buildToolCallPresentation({
-        toolName: descriptor.name,
-        status: descriptor.status,
-        error: descriptor.error,
-        detail: descriptor.detail,
-        metadata: descriptor.metadata,
-        cwd,
-        resolveIcon: resolveToolCallIcon,
-      }),
-    };
-  }, [cwd, group.run.latest]);
-  const opensSingleCallSheet = isCompact && group.run.calls.length === 1;
   const failedSummary =
     group.failedCount > 0 ? t("toolCallGroup.failed", { count: group.failedCount }) : undefined;
   const scrollToLatest = useCallback(() => {
     scrollRef.current?.scrollToEnd({ animated: false });
   }, []);
   const toggle = useCallback(() => {
-    if (opensSingleCallSheet) {
-      openToolCall({
-        displayName: latest.presentation.displayName,
-        summary: latest.presentation.summary,
-        detail: latest.detail,
-        errorText: latest.presentation.errorText,
-        icon: latest.presentation.icon,
-        showLoadingSkeleton: latest.presentation.isLoadingDetails,
-      });
-      return;
-    }
     onExpandedChange(group.run.id, !expanded);
-  }, [expanded, group.run.id, latest, onExpandedChange, openToolCall, opensSingleCallSheet]);
-  const renderDetails = useCallback(() => {
-    if (group.run.calls.length === 1) {
-      return (
-        <ToolCallDetailsContent
-          detail={latest.detail}
-          errorText={latest.presentation.errorText}
-          maxHeight={TOOL_CALL_GROUP_MAX_HEIGHT}
-          showLoadingSkeleton={latest.presentation.isLoadingDetails}
-        />
-      );
-    }
-    return (
+  }, [expanded, group.run.id, onExpandedChange]);
+  const renderDetails = useCallback(
+    () => (
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
@@ -128,9 +81,9 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
       >
         {children}
       </ScrollView>
-    );
-  }, [children, group.run.calls.length, latest, scrollToLatest]);
-  const canExpand = group.run.calls.length > 1 || latest.presentation.canOpenDetails;
+    ),
+    [children, scrollToLatest],
+  );
 
   return (
     <ExpandableBadge
@@ -140,10 +93,10 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
       icon={Wrench}
       isLoading={group.isLoading}
       isError={group.failedCount > 0}
-      isExpanded={opensSingleCallSheet ? false : expanded}
+      isExpanded={expanded}
       isLastInSequence={isLastInSequence}
-      onToggle={canExpand ? toggle : undefined}
-      renderDetails={canExpand && !opensSingleCallSheet ? renderDetails : undefined}
+      onToggle={toggle}
+      renderDetails={renderDetails}
       borderlessWhenExpanded
     />
   );

@@ -775,10 +775,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           <OverviewToolCallGroupView
             group={group}
             expanded={expanded}
-            isCompact={isMobile}
             isLastInSequence={layoutItem.isLastInToolSequence}
             onExpandedChange={setToolCallGroupExpanded}
-            cwd={context.cwd}
           >
             {expanded
               ? group.run.calls.map((call, index) => (
@@ -796,9 +794,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       },
       [
         projectedToolCalls.groupsByHostId,
-        context.cwd,
         expandedToolCallGroupIds,
-        isMobile,
         renderSingleToolCallItem,
         setToolCallGroupExpanded,
       ],
