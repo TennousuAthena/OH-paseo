@@ -1620,6 +1620,10 @@ export class Session {
     switch (msg.type) {
       case "checkout_status_request":
         return this.checkoutSession.handleStatusRequest(msg);
+      case "checkout.commits.list.request":
+        return this.checkoutSession.handleCommitsListRequest(msg);
+      case "checkout.commits.file_diff.request":
+        return this.checkoutSession.handleCommitFileDiffRequest(msg);
       case "validate_branch_request":
         return this.checkoutSession.handleValidateBranchRequest(msg);
       case "branch_suggestions_request":

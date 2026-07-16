@@ -767,6 +767,17 @@ export const fr: TranslationResources = {
         base: "base",
         newFile: "Nouveau",
         deletedFile: "Supprimé",
+        commits: {
+          title: "Commits",
+          legendLocal: "local",
+          legendRemote: "sur le distant",
+          countLabel: "{{count}} commits en avance sur la base",
+          fileDiffEmpty: "Aucune modification à afficher",
+          fileDiffError: "Échec du chargement du diff du fichier",
+          loading: "Chargement des commits…",
+          loadError: "Échec du chargement des commits",
+          empty: "Aucun commit en avance sur la base",
+        },
       },
       openInEditor: {
         open: "Ouvrir",
@@ -1436,6 +1447,15 @@ export const fr: TranslationResources = {
       binaryPreviewUnavailable: "Aperçu binaire indisponible",
       failedToLoad: "Échec du chargement du fichier",
       failedToLoadPreview: "Échec du chargement de l'aperçu du fichier",
+    },
+    diff: {
+      changesLabel: "Modifications",
+      changesSubtitle: "Différences de l'arbre de travail",
+      commitSubtitle: "Différences du commit",
+      directoryMissing: "Répertoire Workspace introuvable.",
+      empty: "Aucune modification",
+      loadError: "Échec du chargement des différences",
+      capabilityMissing: "Mettez à jour l'hôte pour voir les différences des commits.",
     },
   },
   toolCallDetails: {
