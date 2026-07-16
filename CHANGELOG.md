@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.110 - 2026-07-16
+
+### Fixed
+
+- Kimi and other ACP agents now stay marked as running while a response is actively streaming ([#2148](https://github.com/getpaseo/paseo/pull/2148))
+
 ## 0.1.109 - 2026-07-16
 
 > **Important update notice**
