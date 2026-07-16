@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_DESKTOP_SETTINGS } from "../settings/desktop-settings";
 import {
@@ -23,151 +23,96 @@ describe("quit-lifecycle", () => {
   });
 
   it("short-circuits without inspecting the daemon when keep-running is on", async () => {
-    const events: string[] = [];
+    const isDesktopManagedDaemonRunning = vi.fn(() => true);
+    const stopDaemon = vi.fn(async () => undefined);
+    const showShutdownFeedback = vi.fn();
 
     const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
       settingsStore: { get: async () => SETTINGS_KEEP_RUNNING },
-      isDesktopManagedDaemonRunning: () => {
-        events.push("inspect");
-        return true;
-      },
-      stopDaemon: async () => {
-        events.push("stop");
-      },
-      showShutdownFeedback: () => {
-        events.push("feedback");
-      },
+      isDesktopManagedDaemonRunning,
+      stopDaemon,
+      showShutdownFeedback,
     });
 
     expect(stopped).toBe(false);
-    expect(events).toEqual([]);
+    expect(isDesktopManagedDaemonRunning).not.toHaveBeenCalled();
+    expect(stopDaemon).not.toHaveBeenCalled();
+    expect(showShutdownFeedback).not.toHaveBeenCalled();
   });
 
   it("does not stop a manually started daemon on quit", async () => {
-    const events: string[] = [];
+    const stopDaemon = vi.fn(async () => undefined);
+    const showShutdownFeedback = vi.fn();
 
     const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
       settingsStore: { get: async () => SETTINGS_STOP_ON_QUIT },
       isDesktopManagedDaemonRunning: () => false,
-      stopDaemon: async () => {
-        events.push("stop");
-      },
-      showShutdownFeedback: () => {
-        events.push("feedback");
-      },
+      stopDaemon,
+      showShutdownFeedback,
     });
 
     expect(stopped).toBe(false);
-    expect(events).toEqual([]);
+    expect(stopDaemon).not.toHaveBeenCalled();
+    expect(showShutdownFeedback).not.toHaveBeenCalled();
   });
 
   it("shows feedback then stops a desktop-managed daemon", async () => {
-    const events: string[] = [];
+    const stopDaemon = vi.fn(async () => undefined);
+    const showShutdownFeedback = vi.fn();
 
     const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
       settingsStore: { get: async () => SETTINGS_STOP_ON_QUIT },
       isDesktopManagedDaemonRunning: () => true,
-      stopDaemon: async () => {
-        events.push("stop");
-      },
-      showShutdownFeedback: () => {
-        events.push("feedback");
-      },
+      stopDaemon,
+      showShutdownFeedback,
     });
 
     expect(stopped).toBe(true);
-    expect(events).toEqual(["feedback", "stop"]);
+    expect(showShutdownFeedback).toHaveBeenCalledTimes(1);
+    expect(stopDaemon).toHaveBeenCalledTimes(1);
+    expect(showShutdownFeedback.mock.invocationCallOrder[0]).toBeLessThan(
+      stopDaemon.mock.invocationCallOrder[0],
+    );
   });
 
-  it("revalidates updates after daemon shutdown before exiting", async () => {
+  it("preventDefaults the first quit, runs the async stop decision, then exits hard", async () => {
     let resolveStopDecision: (() => void) | null = null;
-    let resolveUpdateDecision: (() => void) | null = null;
-    const events: string[] = [];
+    const app = { exit: vi.fn() };
+    const closeTransportSessions = vi.fn();
+    const onStopError = vi.fn();
+    const preventDefault = vi.fn();
+    const secondPreventDefault = vi.fn();
 
     const handleBeforeQuit = createBeforeQuitHandler({
-      app: {
-        exit: (code) => {
-          events.push(`exit:${code}`);
-        },
-      },
-      closeTransportSessions: () => {
-        events.push("close-transports");
-      },
-      stopDesktopManagedDaemonIfNeeded: () =>
-        new Promise<boolean>((resolve) => {
-          resolveStopDecision = () => {
-            events.push("daemon-stopped");
-            resolve(false);
-          };
-        }),
-      installAppUpdateOnQuit: () =>
-        new Promise<boolean>((resolve) => {
-          resolveUpdateDecision = () => {
-            events.push("update-checked");
-            resolve(false);
-          };
-        }),
-      onStopError: () => {
-        events.push("stop-error");
-      },
-      onUpdateError: () => {
-        events.push("update-error");
-      },
+      app,
+      closeTransportSessions,
+      stopDesktopManagedDaemonIfNeeded: vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolveStopDecision = () => resolve(false);
+          }),
+      ),
+      onStopError,
     });
 
-    handleBeforeQuit({
-      preventDefault: () => {
-        events.push("prevent-default");
-      },
-    });
+    handleBeforeQuit({ preventDefault });
 
-    expect(events).toEqual(["close-transports", "prevent-default"]);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(closeTransportSessions).toHaveBeenCalledTimes(1);
+    expect(app.exit).not.toHaveBeenCalled();
     expect(resolveStopDecision).not.toBeNull();
 
     resolveStopDecision?.();
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(events).toEqual(["close-transports", "prevent-default", "daemon-stopped"]);
-    expect(resolveUpdateDecision).not.toBeNull();
+    expect(app.exit).toHaveBeenCalledWith(0);
+    expect(onStopError).not.toHaveBeenCalled();
 
-    resolveUpdateDecision?.();
-    await Promise.resolve();
-    await Promise.resolve();
+    handleBeforeQuit({ preventDefault: secondPreventDefault });
 
-    expect(events).toEqual([
-      "close-transports",
-      "prevent-default",
-      "daemon-stopped",
-      "update-checked",
-      "exit:0",
-    ]);
-
-    handleBeforeQuit({
-      preventDefault: () => {
-        events.push("second-prevent-default");
-      },
-    });
-
-    expect(events.at(-1)).toBe("close-transports");
-    expect(events).not.toContain("second-prevent-default");
-  });
-
-  it("lets the updater own process exit when a validated update is installing", async () => {
-    const exits: number[] = [];
-    const handleBeforeQuit = createBeforeQuitHandler({
-      app: { exit: (code) => exits.push(code) },
-      closeTransportSessions: () => {},
-      stopDesktopManagedDaemonIfNeeded: async () => false,
-      installAppUpdateOnQuit: async () => true,
-      onStopError: () => {},
-      onUpdateError: () => {},
-    });
-
-    handleBeforeQuit({ preventDefault: () => {} });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(exits).toEqual([]);
+    expect(secondPreventDefault).not.toHaveBeenCalled();
+    expect(closeTransportSessions).toHaveBeenCalledTimes(2);
+    expect(app.exit).toHaveBeenCalledTimes(1);
   });
 });
