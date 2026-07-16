@@ -366,6 +366,7 @@
   font-weight: 600;
 }
 
+.changelog-release-notes blockquote,
 .docs-prose blockquote {
   background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
@@ -376,10 +377,12 @@
   color: rgba(255, 255, 255, 0.8);
 }
 
+.changelog-release-notes blockquote > :first-child,
 .docs-prose blockquote > :first-child {
   margin-top: 0;
 }
 
+.changelog-release-notes blockquote > :last-child,
 .docs-prose blockquote > :last-child {
   margin-bottom: 0;
 }
