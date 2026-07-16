@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.109 - 2026-07-16
+
+### Fixed
+
+- Paseo Desktop no longer gets stuck connecting or loses native window controls after updating ([#2111](https://github.com/getpaseo/paseo/pull/2111) by [@cleiter](https://github.com/cleiter))
+
 ## 0.1.108 - 2026-07-16
 
 ### Added
