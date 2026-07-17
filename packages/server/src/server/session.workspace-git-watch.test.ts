@@ -472,7 +472,6 @@ describe("workspace git watch targets", () => {
         onBranchChanged: handleBranchChange,
       },
     );
-    const sessionAny = session as unknown as SessionInternals;
     seedGitWorkspace({
       projects,
       workspaces,
@@ -482,7 +481,7 @@ describe("workspace git watch targets", () => {
       name: "old-branch",
     });
 
-    syncGitObserver(session, "/tmp/repo", "ws-10");
+    await session.syncWorkspaceGitObserversForExternalWorkspaceIds(["ws-10"]);
 
     subscriptions[0]?.listener(
       createWorkspaceRuntimeSnapshot("/tmp/repo", {
@@ -498,16 +497,6 @@ describe("workspace git watch targets", () => {
         scriptName: "app",
       }),
     ]);
-    expect(sessionAny.buildWorkspaceScriptPayloadSnapshot("ws-10", "/tmp/repo")).toEqual([
-      expect.objectContaining({
-        scriptName: "app",
-        hostname: "app--new-branch--paseo.localhost",
-        localProxyUrl: "http://app--new-branch--paseo.localhost:6767",
-        publicProxyUrl: null,
-        proxyUrl: "http://app--new-branch--paseo.localhost:6767",
-      }),
-    ]);
-
     await session.cleanup();
   });
 

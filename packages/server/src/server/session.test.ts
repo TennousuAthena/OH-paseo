@@ -24,6 +24,7 @@ import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentManagerEvent } from "./agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import { createPersistedProjectRecord } from "./workspace-registry.js";
 import type { SessionOptions } from "./session.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "./messages.js";
 import {
@@ -294,6 +295,7 @@ interface SessionForTestOptions {
     resolveRepoRoot?: ReturnType<typeof vi.fn>;
     resolveForge?: ReturnType<typeof vi.fn>;
     getWorkspaceGitMetadata?: ReturnType<typeof vi.fn>;
+    getProjectSlug?: ReturnType<typeof vi.fn>;
   };
   workspaceRegistry?: { get: ReturnType<typeof vi.fn> };
   projectRegistry?: Partial<SessionOptions["projectRegistry"]>;
@@ -342,6 +344,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     // Mirror production: invalidateForge resolves the forge and busts the
     // adapter's cache. The resolved forge here is github, so delegate to it.
     invalidateForge: vi.fn((cwd: string) => github.invalidate({ cwd })),
+    getProjectSlug: vi.fn(),
     ...options.workspaceGitService,
   };
   const messages = options.messages ?? [];
@@ -369,14 +372,16 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
       list: vi.fn().mockResolvedValue([]),
       ...options.agentStorage,
     }),
-    projectRegistry: options.projectRegistry ?? {
+    projectRegistry: {
       list: vi.fn().mockResolvedValue([]),
       get: vi.fn(),
+      getOrCreateActiveByRoot: vi.fn(),
       upsert: vi.fn(),
       archive: vi.fn(),
       remove: vi.fn(),
       initialize: vi.fn(),
       existsOnDisk: vi.fn(),
+      ...options.projectRegistry,
     },
     workspaceRegistry: options.workspaceRegistry ?? {
       get: vi.fn(),
@@ -525,12 +530,20 @@ describe("project command-center RPCs", () => {
     const parentDirectory = realpathSync(mkdtempSync(join(tmpdir(), "paseo-project-session-")));
     const directoryPath = join(parentDirectory, "new-project");
     const messages: SessionOutboundMessage[] = [];
-    const projectUpsert = vi.fn().mockResolvedValue(undefined);
+    const projectAllocation = vi.fn(async (input) =>
+      createPersistedProjectRecord({
+        projectId: "prj_created_directory",
+        rootPath: input.rootPath,
+        kind: input.kind,
+        displayName: input.displayName,
+        createdAt: input.timestamp,
+        updatedAt: input.timestamp,
+      }),
+    );
     const session = createSessionForTest({
       messages,
       projectRegistry: {
-        list: vi.fn().mockResolvedValue([]),
-        upsert: projectUpsert,
+        getOrCreateActiveByRoot: projectAllocation,
       },
       workspaceGitService: {
         getCheckout: vi.fn(async (cwd: string) => ({
@@ -554,7 +567,12 @@ describe("project command-center RPCs", () => {
       });
 
       expect(existsSync(directoryPath)).toBe(true);
-      expect(projectUpsert).toHaveBeenCalledOnce();
+      expect(projectAllocation).toHaveBeenCalledWith({
+        rootPath: directoryPath,
+        kind: "non_git",
+        displayName: "new-project",
+        timestamp: expect.any(String),
+      });
       expect(messages).toEqual([
         {
           type: "project.create_directory.response",
@@ -562,7 +580,7 @@ describe("project command-center RPCs", () => {
             requestId: "req-create-directory",
             directoryPath,
             project: {
-              projectId: directoryPath,
+              projectId: "prj_created_directory",
               projectDisplayName: "new-project",
               projectCustomName: null,
               projectRootPath: directoryPath,
@@ -585,8 +603,7 @@ describe("project command-center RPCs", () => {
     const session = createSessionForTest({
       messages,
       projectRegistry: {
-        list: vi.fn().mockResolvedValue([]),
-        upsert: vi.fn().mockRejectedValue(new Error("registry unavailable")),
+        getOrCreateActiveByRoot: vi.fn().mockRejectedValue(new Error("registry unavailable")),
       },
       workspaceGitService: {
         getCheckout: vi.fn(async (cwd: string) => ({
@@ -4041,17 +4058,17 @@ describe("session paseo worktree creation handling", () => {
 });
 
 describe("session workspace script handling", () => {
-  test("passes service-owned git metadata into workspace script spawning", async () => {
+  test("passes the project slug and cached branch into workspace script spawning", async () => {
     const messages: unknown[] = [];
-    const workspaceGitService = {
-      peekSnapshot: vi.fn(() => null),
-      getWorkspaceGitMetadata: vi.fn().mockResolvedValue({
-        projectKind: "git",
-        projectDisplayName: "getpaseo/paseo",
-        workspaceDisplayName: "feature/service-scripts",
-        projectSlug: "paseo",
+    const snapshot = createWorkspaceGitSnapshot("/tmp/repo", {
+      git: {
         currentBranch: "feature/service-scripts",
-      }),
+        remoteUrl: "https://github.com/getpaseo/paseo.git",
+      },
+    });
+    const workspaceGitService = {
+      peekSnapshot: vi.fn(() => snapshot),
+      getProjectSlug: vi.fn().mockResolvedValue("paseo"),
     };
     const workspaceRegistry = {
       get: vi.fn().mockResolvedValue({
@@ -4084,8 +4101,6 @@ describe("session workspace script handling", () => {
       requestId: "request-script",
     });
 
-    expect(workspaceGitService.getWorkspaceGitMetadata).toHaveBeenCalledTimes(1);
-    expect(workspaceGitService.getWorkspaceGitMetadata).toHaveBeenCalledWith("/tmp/repo");
     expect(spawnMocks.spawnWorkspaceScript).toHaveBeenCalledWith(
       expect.objectContaining({
         repoRoot: "/tmp/repo",
@@ -4768,6 +4783,39 @@ test("keeps selective delivery scoped per socket when a retained session also ha
       message: expect.objectContaining({
         type: "agent_stream",
         payload: expect.objectContaining({ agentId: "not-viewed-agent" }),
+      }),
+    },
+  ]);
+});
+
+test("sends project updates only to capable sockets in a retained session", () => {
+  const messages: SessionOutboundMessage[] = [];
+  const targetedMessages: Array<{ source: object; message: SessionOutboundMessage }> = [];
+  const session = createSessionForTest({ messages, targetedMessages });
+  const legacySocket = {};
+  const capableSocket = {};
+  session.updateClientCapabilities(null, legacySocket);
+  session.updateClientCapabilities({ [CLIENT_CAPS.projectUpdates]: true }, capableSocket);
+
+  session.emitProjectUpdate({
+    kind: "upsert",
+    project: createPersistedProjectRecord({
+      projectId: "project-capable-socket",
+      rootPath: "/tmp/project-capable-socket",
+      kind: "git",
+      displayName: "project-capable-socket",
+      createdAt: "2026-07-17T00:00:00.000Z",
+      updatedAt: "2026-07-17T00:00:00.000Z",
+    }),
+  });
+
+  expect(messages).toEqual([]);
+  expect(targetedMessages).toEqual([
+    {
+      source: capableSocket,
+      message: expect.objectContaining({
+        type: "project.update",
+        payload: expect.objectContaining({ kind: "upsert" }),
       }),
     },
   ]);
