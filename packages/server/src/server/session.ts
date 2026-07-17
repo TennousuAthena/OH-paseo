@@ -152,6 +152,9 @@ import { AgentConfigSession } from "./session/agent-config/agent-config-session.
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
+import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
+import { HubExecutionController } from "./hub/execution-controller.js";
+import type { HubExecutionAgents } from "./hub/daemon-executions.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
 import {
@@ -381,6 +384,7 @@ type AgentMcpTransportFactory = () => Promise<unknown>;
 
 export interface SessionOptions {
   clientId: string;
+  scopes: readonly string[];
   appVersion?: string | null;
   clientCapabilities?: Record<string, unknown> | null;
   onMessage: (msg: SessionOutboundMessage) => void;
@@ -418,6 +422,8 @@ export interface SessionOptions {
   terminalManager: TerminalManager | null;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
+  hubExecutionAgents?: HubExecutionAgents;
+  hubRelationships?: HubRelationshipManagement;
   serviceProxy?: ServiceProxySubsystem;
   scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
   workspaceSetupSnapshots?: Map<string, WorkspaceSetupSnapshot>;
@@ -481,6 +487,34 @@ function parseClientCapabilities(
   return new Set(result);
 }
 
+export function isSessionRpcAllowed(scopes: readonly string[], rpcName: string): boolean {
+  return scopes.some((scope) => {
+    if (scope === "*" || scope === rpcName) {
+      return true;
+    }
+    if (!scope.endsWith(".*")) {
+      return false;
+    }
+    return rpcName.startsWith(scope.slice(0, -1));
+  });
+}
+
+function sessionRequestId(message: SessionInboundMessage): string | null {
+  if ("requestId" in message && typeof message.requestId === "string") {
+    return message.requestId;
+  }
+  if (
+    "payload" in message &&
+    typeof message.payload === "object" &&
+    message.payload !== null &&
+    "requestId" in message.payload &&
+    typeof message.payload.requestId === "string"
+  ) {
+    return message.payload.requestId;
+  }
+  return null;
+}
+
 interface AgentTimelineProjectionSelection {
   timeline: AgentTimelineFetchResult;
   entries: TimelineProjectionEntry[];
@@ -510,6 +544,7 @@ function describeRegistryTransition(record: ArchivedRecordSnapshot | null): Regi
  */
 export class Session {
   private readonly clientId: string;
+  private scopes: readonly string[];
   private appVersion: string | null;
   private clientCapabilities: ReadonlySet<ClientCapability>;
   private readonly sessionId: string;
@@ -579,12 +614,14 @@ export class Session {
   private readonly agentConfigSession: AgentConfigSession;
   private readonly projectConfigSession: ProjectConfigSession;
   private readonly daemonSession: DaemonSession;
+  private readonly hubExecutionController: HubExecutionController | null;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
 
   constructor(options: SessionOptions) {
     const {
       clientId,
+      scopes,
       appVersion,
       clientCapabilities,
       onMessage,
@@ -635,6 +672,7 @@ export class Session {
       getWebSocketRuntimeMetrics,
     } = options;
     this.clientId = clientId;
+    this.scopes = [...scopes];
     this.appVersion = appVersion ?? null;
     this.clientCapabilities = parseClientCapabilities(clientCapabilities);
     this.sessionId = uuidv4();
@@ -800,7 +838,14 @@ export class Session {
       listProjects: () => this.projectRegistry.list(),
       listWorkspaces: () => this.workspaceRegistry.list(),
       logger: this.sessionLogger,
+      hubRelationships: options.hubRelationships,
     });
+    this.hubExecutionController = options.hubExecutionAgents
+      ? new HubExecutionController({
+          agents: options.hubExecutionAgents,
+          send: (message) => this.emit(message),
+        })
+      : null;
     this.daemonConfigStore = daemonConfigStore;
     this.terminalManager = terminalManager;
     this.terminalController = new TerminalSessionController({
@@ -1506,6 +1551,21 @@ export class Session {
         },
         "agent.session.inbound",
       );
+      if (!isSessionRpcAllowed(this.scopes, msg.type)) {
+        const requestId = sessionRequestId(msg);
+        if (requestId) {
+          this.emit({
+            type: "rpc_error",
+            payload: {
+              requestId,
+              requestType: msg.type,
+              error: `Session is not authorized for ${msg.type}`,
+              code: "access_denied",
+            },
+          });
+        }
+        return;
+      }
       try {
         await this.dispatchInboundMessage(msg, source);
       } catch (error) {
@@ -1545,12 +1605,17 @@ export class Session {
     }
   }
 
+  public setScopes(scopes: readonly string[]): void {
+    this.scopes = [...scopes];
+  }
+
   private async dispatchInboundMessage(msg: SessionInboundMessage, source?: object): Promise<void> {
     const promise =
       this.dispatchVoiceAndControlMessage(msg) ??
       this.dispatchAgentRewindMessage(msg) ??
       this.dispatchAgentRelationshipMessage(msg) ??
       this.dispatchAgentTimelineMessage(msg, source) ??
+      this.dispatchHubExecutionMessage(msg) ??
       this.dispatchAgentLifecycleMessage(msg) ??
       this.dispatchAgentConfigMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
@@ -1667,6 +1732,12 @@ export class Session {
     }
   }
 
+  private dispatchHubExecutionMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    return msg.type === "hub.execution.agent.create.request"
+      ? this.hubExecutionController?.createAgent(msg)
+      : undefined;
+  }
+
   private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "fetch_agents_request":
@@ -1730,6 +1801,10 @@ export class Session {
         return this.daemonSession.handleGetStatusRequest(msg);
       case "daemon.get_pairing_offer.request":
         return this.daemonSession.handleGetPairingOfferRequest(msg);
+      case "hub.management.daemon.connect.request":
+      case "hub.management.daemon.get_status.request":
+      case "hub.management.daemon.disconnect.request":
+        return this.daemonSession.handleHubRelationshipRequest(msg);
       case "diagnostics.request":
         return this.daemonSession.handleDiagnosticsRequest(msg);
       case "daemon.update.request":
@@ -2731,6 +2806,10 @@ export class Session {
     let createdWorktreeForCleanup: CreatePaseoWorktreeWorkflowResult | null = null;
     let createdAgentId: string | null = null;
     try {
+      const requestedCwd = resolve(config.cwd);
+      if (!(await this.filesystem.isDirectory(requestedCwd))) {
+        throw new Error(`Working directory does not exist or is not a directory: ${requestedCwd}`);
+      }
       const trimmedPrompt = initialPrompt?.trim();
       const { provisionalTitle } = resolveCreateAgentTitles({
         configTitle: config.title,
@@ -6108,6 +6187,9 @@ export class Session {
    * Emit a message to the client
    */
   private emit(msg: SessionOutboundMessage): void {
+    if (msg.type !== "rpc_error" && !isSessionRpcAllowed(this.scopes, msg.type)) {
+      return;
+    }
     // JSON.stringify(msg) is only computed when trace is enabled — it runs for
     // every outbound message otherwise, and trace is disabled by default.
     // Optional-chained because test logger stubs don't implement isLevelEnabled.
@@ -6145,6 +6227,7 @@ export class Session {
       this.unsubscribeAgentEvents = null;
     }
     this.agentUpdates.dispose();
+    await this.hubExecutionController?.cleanup();
     if (this.unsubscribeTerminalWorkspaceContributionEvents) {
       this.unsubscribeTerminalWorkspaceContributionEvents();
       this.unsubscribeTerminalWorkspaceContributionEvents = null;

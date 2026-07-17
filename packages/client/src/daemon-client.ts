@@ -4269,6 +4269,33 @@ export class DaemonClient {
     });
   }
 
+  async connectHub(hubUrl: string, token: string, requestId?: string) {
+    this.requireHubRelationshipSupport();
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "hub.management.daemon.connect.request", hubUrl, token },
+      responseType: "hub.management.daemon.connect.response",
+    });
+  }
+
+  async getHubStatus(requestId?: string) {
+    this.requireHubRelationshipSupport();
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "hub.management.daemon.get_status.request" },
+      responseType: "hub.management.daemon.get_status.response",
+    });
+  }
+
+  async disconnectHub(force = false, requestId?: string) {
+    this.requireHubRelationshipSupport();
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "hub.management.daemon.disconnect.request", force },
+      responseType: "hub.management.daemon.disconnect.response",
+    });
+  }
+
   async getDaemonPairingOffer(
     options?: DaemonPairingOfferOptions,
   ): Promise<DaemonPairingOfferPayload> {
@@ -5087,6 +5114,13 @@ export class DaemonClient {
 
   getLastServerInfoMessage(): ServerInfoStatusPayload | null {
     return this.lastServerInfoMessage;
+  }
+
+  private requireHubRelationshipSupport(): void {
+    // COMPAT(hubRelationship): added in v0.1.X, drop the gate when floor >= v0.1.X.
+    if (this.lastServerInfoMessage?.features?.hubRelationship !== true) {
+      throw new Error("Update the host to use Hub relationship management.");
+    }
   }
 
   private resolveTransportUrlForAttempt(): string {

@@ -14,7 +14,7 @@ import type {
   FirstAgentContext,
   SessionOutboundMessage,
 } from "../messages.js";
-import type { AgentManager } from "./agent-manager.js";
+import type { AgentManager, AgentSubscriber, SubscribeOptions } from "./agent-manager.js";
 import type { AgentStorage } from "./agent-storage.js";
 
 interface CreateAgentLifecycleDispatchDependencies {
@@ -37,6 +37,16 @@ interface CreateAgentLifecycleDispatchDependencies {
   killTerminalsForWorkspace: (workspaceId: string) => Promise<void>;
   logger: pino.Logger;
 }
+
+export interface LifecycleRegistration {
+  cancel(): Promise<void>;
+}
+
+interface AgentLifecycleEvents {
+  subscribe(callback: AgentSubscriber, options?: SubscribeOptions): () => void;
+}
+
+const inactiveRegistration: LifecycleRegistration = { cancel: async () => undefined };
 
 type AutoArchiveTarget =
   | { kind: "agent-only" }
@@ -67,12 +77,12 @@ export class CreateAgentLifecycleDispatch {
     autoArchive: boolean | undefined;
     agentId: string;
     createdWorktree: CreatePaseoWorktreeWorkflowResult | null;
-  }): void {
+  }): LifecycleRegistration {
     if (input.autoArchive !== true) {
-      return;
+      return inactiveRegistration;
     }
 
-    this.registerAutoArchiveOnTerminalState(
+    return this.registerAutoArchiveOnTerminalState(
       input.agentId,
       toAutoArchiveTarget(input.createdWorktree),
     );
@@ -142,24 +152,15 @@ export class CreateAgentLifecycleDispatch {
     }
   }
 
-  private registerAutoArchiveOnTerminalState(agentId: string, target: AutoArchiveTarget): void {
-    const unsubscribe = this.dependencies.agentManager.subscribe(
-      (event) => {
-        if (event.type !== "agent_stream") {
-          return;
-        }
-        if (
-          event.event.type !== "turn_completed" &&
-          event.event.type !== "turn_failed" &&
-          event.event.type !== "turn_canceled"
-        ) {
-          return;
-        }
-        unsubscribe();
-        void this.autoArchiveAgentOnce(agentId, target);
-      },
-      { agentId, replayState: false },
-    );
+  private registerAutoArchiveOnTerminalState(
+    agentId: string,
+    target: AutoArchiveTarget,
+  ): LifecycleRegistration {
+    return registerAgentAutoArchive({
+      agentManager: this.dependencies.agentManager,
+      agentId,
+      archive: () => this.autoArchiveAgentOnce(agentId, target),
+    });
   }
 
   private async autoArchiveAgentOnce(agentId: string, target: AutoArchiveTarget): Promise<void> {
@@ -224,6 +225,43 @@ export class CreateAgentLifecycleDispatch {
       this.dependencies.emitAgentRemove(options.agentId);
     }
   }
+}
+
+export function registerAgentAutoArchive(input: {
+  agentManager: AgentLifecycleEvents;
+  agentId: string;
+  archive: () => Promise<unknown>;
+}): LifecycleRegistration {
+  let unsubscribe: (() => void) | null = null;
+  let archiveTask: Promise<unknown> | null = null;
+  const release = () => {
+    if (!unsubscribe) return;
+    const subscribed = unsubscribe;
+    unsubscribe = null;
+    subscribed();
+  };
+  const registration: LifecycleRegistration = {
+    async cancel() {
+      release();
+      await archiveTask;
+    },
+  };
+  unsubscribe = input.agentManager.subscribe(
+    (event) => {
+      if (event.type !== "agent_stream") return;
+      if (
+        event.event.type !== "turn_completed" &&
+        event.event.type !== "turn_failed" &&
+        event.event.type !== "turn_canceled"
+      ) {
+        return;
+      }
+      release();
+      archiveTask = input.archive();
+    },
+    { agentId: input.agentId, replayState: false },
+  );
+  return registration;
 }
 
 function toAutoArchiveTarget(

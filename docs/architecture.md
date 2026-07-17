@@ -134,6 +134,11 @@ Enables remote access when the daemon is behind a firewall.
 
 See [SECURITY.md](../SECURITY.md) for the full threat model.
 
+### Paseo Hub
+
+The optional Hub relationship is daemon-outbound and does not use the relay. Its connection,
+authorization, ownership, persistence, and lifecycle contract is documented in [hub.md](hub.md).
+
 ### `packages/desktop` — Desktop app (Electron)
 
 Electron wrapper for macOS, Linux, and Windows.

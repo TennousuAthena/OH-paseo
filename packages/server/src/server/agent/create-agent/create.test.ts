@@ -328,6 +328,58 @@ test("mcp create stamps the new worktree's workspaceId, not the parent's", async
   }
 });
 
+test("mcp create exposes the created worktree before dispatching the initial prompt", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "create-agent-worktree-callback-test-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const agentManager = createRealAgentManager(storage);
+  const createdWorktree = await fakeWorktreeCreator({
+    repoRoot: workdir,
+    createdWorkspaceId: "ws-created-worktree",
+  })();
+  let observed:
+    | {
+        createdWorktree: CreatePaseoWorktreeWorkflowResult | null;
+        lifecycle: ManagedAgent["lifecycle"] | null;
+      }
+    | undefined;
+
+  try {
+    await createAgentCommand(
+      {
+        agentManager,
+        agentStorage: storage,
+        logger,
+        providerSnapshotManager: {
+          async resolveCreateConfig() {
+            return {};
+          },
+        },
+        createPaseoWorktree: async () => createdWorktree,
+      },
+      {
+        kind: "mcp",
+        provider: "codex",
+        cwd: workdir,
+        title: "worktree callback",
+        initialPrompt: "Say done.",
+        background: true,
+        notifyOnFinish: false,
+        worktree: { worktreeName: "feature", baseBranch: "main" },
+        onCreated: ({ agentId, createdWorktree: callbackWorktree }) => {
+          observed = {
+            createdWorktree: callbackWorktree,
+            lifecycle: agentManager.getAgent(agentId)?.lifecycle ?? null,
+          };
+        },
+      },
+    );
+
+    expect(observed).toEqual({ createdWorktree, lifecycle: "idle" });
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
 test("session create keeps the prompt title after the initial prompt settles", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "create-agent-title-test-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);
