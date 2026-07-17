@@ -189,7 +189,7 @@ Client liveness checks use the top-level JSON `ping`/`pong` envelope, not a sess
 
 Client session RPC waits default to 60s so slow relay or mobile networks do not turn a live but delayed daemon response into a false operation failure. Keep connect timeouts, app-level grace windows, explicit diagnostic latency probes, liveness ping timers, and genuinely long-running RPCs separate from this default.
 
-New session RPCs use dotted names with `.request` and `.response` suffixes, such as `checkout.github.set_auto_merge.request` and `checkout.github.set_auto_merge.response`. See [rpc-namespacing.md](rpc-namespacing.md) for the convention and migration rules for older flat RPC names.
+New session RPCs use dotted names with `.request` and `.response` suffixes, such as `checkout.forge.set_auto_merge.request` and `checkout.forge.set_auto_merge.response`. See [rpc-namespacing.md](rpc-namespacing.md) for the convention and migration rules for older flat RPC names.
 
 **Notable session message types:**
 
@@ -271,14 +271,14 @@ Two workspaces can share the same `cwd` (e.g. a `directory` workspace and a `loc
 
 **Directory-backed (shared by same-`cwd` workspaces) — keyed by `(serverId, cwd)`, never by `workspaceId`:**
 
-| Surface                | Key                                                      | Source                                                  |
-| ---------------------- | -------------------------------------------------------- | ------------------------------------------------------- |
-| Git status             | `checkoutStatusQueryKey(serverId, cwd)`                  | `packages/app/src/git/query-keys.ts`                    |
-| Git diff               | `checkoutDiffQueryKey(serverId, cwd, mode, baseRef, ws)` | `packages/app/src/git/query-keys.ts`                    |
-| GitHub PR status       | `checkoutPrStatusQueryKey(serverId, cwd)`                | `packages/app/src/git/query-keys.ts`                    |
-| PR pane timeline       | `prPaneTimelineQueryKey({ serverId, cwd, prNumber })`    | `packages/app/src/git/pull-request-panel/query-keys.ts` |
-| File preview content   | `["workspaceFile", serverId, cwd, path]`                 | `packages/app/src/components/file-pane.tsx`             |
-| File explorer listings | fetched via `listDirectory(workspaceRoot, path)`         | `packages/app/src/hooks/use-file-explorer-actions.ts`   |
+| Surface                 | Key                                                      | Source                                                  |
+| ----------------------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| Git status              | `checkoutStatusQueryKey(serverId, cwd)`                  | `packages/app/src/git/query-keys.ts`                    |
+| Git diff                | `checkoutDiffQueryKey(serverId, cwd, mode, baseRef, ws)` | `packages/app/src/git/query-keys.ts`                    |
+| Forge change request    | `checkoutPrStatusQueryKey(serverId, cwd)`                | `packages/app/src/git/query-keys.ts`                    |
+| Change request timeline | `prPaneTimelineQueryKey({ serverId, cwd, prNumber })`    | `packages/app/src/git/pull-request-panel/query-keys.ts` |
+| File preview content    | `["workspaceFile", serverId, cwd, path]`                 | `packages/app/src/components/file-pane.tsx`             |
+| File explorer listings  | fetched via `listDirectory(workspaceRoot, path)`         | `packages/app/src/hooks/use-file-explorer-actions.ts`   |
 
 **Workspace-owned (independent per workspace) — keyed by `workspaceId` (falling back to `cwd` only when no `workspaceId` exists):**
 
