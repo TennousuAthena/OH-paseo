@@ -1752,6 +1752,7 @@ export const ru: TranslationResources = {
     },
     shortcuts: {
       dialogTitle: "Ярлыки",
+      searchPlaceholder: "Поиск сочетаний клавиш",
       unavailableOnMobile: "Сочетания клавиш доступны только на рабочем столе.",
       capturePrompt: "Нажмите ярлык...",
       actions: {

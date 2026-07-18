@@ -1713,6 +1713,7 @@ export const ar: TranslationResources = {
     },
     shortcuts: {
       dialogTitle: "الاختصارات",
+      searchPlaceholder: "البحث في الاختصارات",
       unavailableOnMobile: "اختصارات لوحة المفاتيح متاحة فقط على سطح المكتب",
       capturePrompt: "اضغط على الاختصار...",
       actions: {

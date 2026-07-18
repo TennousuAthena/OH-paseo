@@ -1731,6 +1731,7 @@ export const ja: TranslationResources = {
     },
     shortcuts: {
       dialogTitle: "ショートカット",
+      searchPlaceholder: "ショートカットを検索",
       unavailableOnMobile: "キーボードショートカットはデスクトップでのみ利用できます",
       capturePrompt: "ショートカットを押してください...",
       actions: {
