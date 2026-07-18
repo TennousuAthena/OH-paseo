@@ -35,6 +35,7 @@ import type {
   AgentStreamEvent,
   AgentTimelineItem,
   ImportProviderSessionInput,
+  ResolveAgentDefaultModeInput,
 } from "./agent-sdk-types.js";
 import type { PaseoToolCatalog } from "./tools/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
@@ -111,10 +112,14 @@ function expectArchivedAgentRecord(
 }
 
 class TestAgentClient implements AgentClient {
-  readonly provider = "codex" as const;
+  readonly provider: AgentProvider;
   readonly capabilities = TEST_CAPABILITIES;
   readonly createdConfigs: AgentSessionConfig[] = [];
   readonly resumeOverrides: Array<Partial<AgentSessionConfig> | undefined> = [];
+
+  constructor(provider: AgentProvider = "codex") {
+    this.provider = provider;
+  }
 
   async isAvailable(): Promise<boolean> {
     return true;
@@ -129,18 +134,18 @@ class TestAgentClient implements AgentClient {
     return {
       models: [
         {
-          provider: "codex",
+          provider: this.provider,
           id: "gpt-5.4",
           label: "GPT-5.4",
           isDefault: true,
         },
         {
-          provider: "codex",
+          provider: this.provider,
           id: "gpt-5.4-mini",
           label: "GPT-5.4 Mini",
         },
         {
-          provider: "codex",
+          provider: this.provider,
           id: "gpt-5.2-codex",
           label: "GPT-5.2 Codex",
         },
@@ -156,7 +161,7 @@ class TestAgentClient implements AgentClient {
   ): Promise<AgentSession> {
     this.resumeOverrides.push(config);
     return new TestAgentSession({
-      provider: "codex",
+      provider: this.provider,
       cwd: config?.cwd ?? process.cwd(),
       daemonAppendSystemPrompt: config?.daemonAppendSystemPrompt,
     });
@@ -935,7 +940,41 @@ test("normalizeConfig injects the provider default model when omitted", async ()
   );
 
   expect(snapshot.config.model).toBe("gpt-5.4");
+  expect(snapshot.config.modeId).toBe("auto-review");
+});
+
+test("normalizeConfig injects Claude's automatic approval default when omitted", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-claude-default-test-"));
+  const manager = new AgentManager({
+    clients: { claude: new TestAgentClient("claude") },
+    logger,
+  });
+
+  const snapshot = await manager.createAgent({ provider: "claude", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
   expect(snapshot.config.modeId).toBe("auto");
+});
+
+test("normalizeConfig uses a capability-aware provider mode default", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-mode-default-test-"));
+  class CapabilityAwareClient extends TestAgentClient {
+    override async resolveDefaultModeId(input: ResolveAgentDefaultModeInput): Promise<string> {
+      return input.env?.CLAUDE_CODE_USE_BEDROCK === "1" ? "default" : "auto";
+    }
+  }
+  const manager = new AgentManager({
+    clients: { codex: new CapabilityAwareClient() },
+    logger,
+  });
+
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+    env: { CLAUDE_CODE_USE_BEDROCK: "1" },
+  });
+
+  expect(snapshot.config.modeId).toBe("default");
 });
 
 test("createAgent forwards request env into the spawned provider process", async () => {
@@ -997,7 +1036,7 @@ test("normalizeConfig strips legacy 'default' model id", async () => {
   );
 
   expect(snapshot.config.model).toBe("gpt-5.4");
-  expect(snapshot.config.modeId).toBe("auto");
+  expect(snapshot.config.modeId).toBe("auto-review");
 });
 
 test("listDraftCommands returns no commands without guessing a missing model", async () => {
@@ -1094,7 +1133,7 @@ test("listDraftCommands uses explicit model config without default model fetchin
       provider: "codex",
       cwd: workdir,
       model: "gpt-5.4",
-      modeId: "auto",
+      modeId: "auto-review",
     },
   ]);
 });
@@ -1194,7 +1233,7 @@ test("listDraftFeatures uses explicit model config without default model fetchin
       provider: "codex",
       cwd: workdir,
       model: "gpt-5.4",
-      modeId: "auto",
+      modeId: "auto-review",
     },
   ]);
 });
@@ -1651,7 +1690,7 @@ test("createAgent passes daemon launch env through the provider launch context",
     provider: "codex",
     cwd: workdir,
     model: "gpt-5.4",
-    modeId: "auto",
+    modeId: "auto-review",
   });
   expect(client.lastLaunchContext).toEqual({
     agentId: snapshot.id,
@@ -2448,7 +2487,7 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
   });
   expect(client.lastResumeOverrides).toMatchObject({
     model: "gpt-5.4",
-    modeId: "auto",
+    modeId: "auto-review",
     systemPrompt: "new prompt",
     mcpServers: {
       paseo: {
