@@ -711,7 +711,7 @@ function ErrorSection({ errorText, ds }: { errorText: string; ds: DetailStyles }
   const { t } = useTranslation();
   return (
     <View style={styles.section}>
-      <Text style={SECTION_TITLE_ERROR_STYLE}>{t("toolCallDetails.error")}</Text>
+      <Text style={[styles.sectionTitle, styles.errorText]}>{t("toolCallDetails.error")}</Text>
       <ScrollView
         horizontal
         nestedScrollEnabled
@@ -719,7 +719,11 @@ function ErrorSection({ errorText, ds }: { errorText: string; ds: DetailStyles }
         contentContainerStyle={styles.jsonContent}
         showsHorizontalScrollIndicator={true}
       >
-        <Text selectable style={SCROLL_TEXT_ERROR_STYLE} dataSet={CODE_SURFACE_DATASET}>
+        <Text
+          selectable
+          style={[styles.scrollText, styles.errorText]}
+          dataSet={CODE_SURFACE_DATASET}
+        >
           {errorText}
         </Text>
       </ScrollView>
@@ -948,6 +952,3 @@ const styles = StyleSheet.create((theme) => {
     },
   };
 });
-
-const SECTION_TITLE_ERROR_STYLE = [styles.sectionTitle, styles.errorText];
-const SCROLL_TEXT_ERROR_STYLE = [styles.scrollText, styles.errorText];
