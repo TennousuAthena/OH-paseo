@@ -1962,6 +1962,13 @@ export class Session {
     switch (msg.type) {
       case "file_explorer_request":
         return this.workspaceFilesSession.handleFileExplorerRequest(msg);
+      case "fs.file.subscribe.request":
+        return this.workspaceFilesSession.handleFileSubscribeRequest(msg);
+      case "fs.file.unsubscribe.request":
+        this.workspaceFilesSession.handleFileUnsubscribeRequest(msg);
+        return undefined;
+      case "fs.file.write.request":
+        return this.workspaceFilesSession.handleFileWriteRequest(msg);
       case "project_icon_request":
         return this.workspaceFilesSession.handleProjectIconRequest(msg);
       case "file_download_token_request":
@@ -6321,6 +6328,7 @@ export class Session {
     this.checkoutSession.cleanup();
 
     this.workspaceGitObserver.dispose();
+    this.workspaceFilesSession.dispose();
   }
 }
 
