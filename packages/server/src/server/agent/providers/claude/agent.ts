@@ -34,7 +34,11 @@ import {
   getClaudeModelsWithSettings,
   normalizeClaudeRuntimeModelId,
 } from "./models.js";
-import { CLAUDE_ULTRACODE_THINKING_OPTION_ID } from "./model-manifest.js";
+import {
+  CLAUDE_DISABLED_THINKING_OPTION_ID,
+  CLAUDE_ULTRACODE_THINKING_OPTION_ID,
+  resolveClaudeDisabledThinkingForModel,
+} from "./model-manifest.js";
 import { parsePartialJsonObject } from "./partial-json.js";
 import { ClaudeSidechainTracker } from "./sidechain-tracker.js";
 import { buildClaudeFeatures, claudeModelSupportsFastMode } from "./feature-definitions.js";
@@ -375,7 +379,10 @@ interface ClaudeAgentSessionOptions {
 }
 
 type ClaudeThinkingEffort = "low" | "medium" | "high" | "xhigh" | "max";
-type ClaudeThinkingOption = ClaudeThinkingEffort | typeof CLAUDE_ULTRACODE_THINKING_OPTION_ID;
+type ClaudeThinkingOption =
+  | ClaudeThinkingEffort
+  | typeof CLAUDE_DISABLED_THINKING_OPTION_ID
+  | typeof CLAUDE_ULTRACODE_THINKING_OPTION_ID;
 
 function resolvePathEnvKey(): "Path" | "PATH" | null {
   if (process.env["Path"] !== undefined) return "Path";
@@ -423,7 +430,26 @@ function isClaudeThinkingEffort(value: string | null | undefined): value is Clau
 }
 
 function isClaudeThinkingOption(value: string | null | undefined): value is ClaudeThinkingOption {
-  return value === CLAUDE_ULTRACODE_THINKING_OPTION_ID || isClaudeThinkingEffort(value);
+  return (
+    value === CLAUDE_DISABLED_THINKING_OPTION_ID ||
+    value === CLAUDE_ULTRACODE_THINKING_OPTION_ID ||
+    isClaudeThinkingEffort(value)
+  );
+}
+
+function assertClaudeThinkingOptionSupported(
+  modelId: string | null | undefined,
+  thinkingOptionId: string | null | undefined,
+): void {
+  if (
+    thinkingOptionId !== CLAUDE_DISABLED_THINKING_OPTION_ID ||
+    resolveClaudeDisabledThinkingForModel(modelId).supported
+  ) {
+    return;
+  }
+  throw new Error(
+    `Thinking option '${thinkingOptionId}' is not available for model '${modelId ?? "default"}'`,
+  );
 }
 
 interface ClaudeOptionsLogSummary {
@@ -1946,6 +1972,7 @@ class ClaudeAgentSession implements AgentSession {
 
   constructor(config: ClaudeAgentConfig, options: ClaudeAgentSessionOptions) {
     this.config = config;
+    assertClaudeThinkingOptionSupported(config.model, config.thinkingOptionId);
     this.launchEnv = options.launchEnv;
     this.agentId = options.agentId;
     this.defaults = options.defaults;
@@ -2203,6 +2230,7 @@ class ClaudeAgentSession implements AgentSession {
     const activeQuery = await this.ensureQuery();
     await activeQuery.setModel(normalizedModelId ?? undefined);
     this.config.model = normalizedModelId ?? undefined;
+    this.reconcileThinkingOptionForModel(normalizedModelId);
     if (!claudeModelSupportsFastMode(this.config.model) && this.config.featureValues?.fast_mode) {
       await this.applyFastModeFeature(false, activeQuery);
     }
@@ -2216,6 +2244,26 @@ class ClaudeAgentSession implements AgentSession {
     this.persistence = null;
   }
 
+  private reconcileThinkingOptionForModel(modelId: string | null): void {
+    const thinkingOptionId = this.config.thinkingOptionId;
+    if (thinkingOptionId !== CLAUDE_DISABLED_THINKING_OPTION_ID) {
+      return;
+    }
+
+    const resolution = resolveClaudeDisabledThinkingForModel(modelId);
+    if (resolution.supported) {
+      return;
+    }
+
+    this.config.thinkingOptionId = resolution.fallbackThinkingOptionId;
+    this.queryRestartNeeded = true;
+    this.pushEvent({
+      type: "thinking_option_changed",
+      provider: "claude",
+      thinkingOptionId: this.config.thinkingOptionId ?? null,
+    });
+  }
+
   async setThinkingOption(thinkingOptionId: string | null): Promise<void | AgentProviderNotice> {
     const normalizedThinkingOptionId =
       typeof thinkingOptionId === "string" && thinkingOptionId.trim().length > 0
@@ -2225,6 +2273,7 @@ class ClaudeAgentSession implements AgentSession {
     if (!normalizedThinkingOptionId || normalizedThinkingOptionId === "default") {
       this.config.thinkingOptionId = undefined;
     } else if (isClaudeThinkingOption(normalizedThinkingOptionId)) {
+      assertClaudeThinkingOptionSupported(this.config.model, normalizedThinkingOptionId);
       this.config.thinkingOptionId = normalizedThinkingOptionId;
     } else {
       throw new Error(`Unknown thinking option: ${normalizedThinkingOptionId}`);
@@ -2899,6 +2948,10 @@ class ClaudeAgentSession implements AgentSession {
       this.config.thinkingOptionId && this.config.thinkingOptionId !== "default"
         ? this.config.thinkingOptionId
         : undefined;
+    assertClaudeThinkingOptionSupported(this.config.model, thinkingOptionId);
+    if (thinkingOptionId === CLAUDE_DISABLED_THINKING_OPTION_ID) {
+      return { thinking: { type: "disabled" }, effort: undefined, ultracode: false };
+    }
     if (thinkingOptionId === CLAUDE_ULTRACODE_THINKING_OPTION_ID) {
       return { thinking: { type: "adaptive" }, effort: "xhigh", ultracode: true };
     }
