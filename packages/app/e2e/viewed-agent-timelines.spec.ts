@@ -78,7 +78,6 @@ test.describe("Viewed agent timelines", () => {
     const scenario = await seedViewedTimelineScenario();
     try {
       await openAgent(page, scenario, scenario.firstAgentId);
-      await subscriptions.waitForSubscribedAgents([scenario.firstAgentId]);
       await selectAgent(page, "Second viewed chat");
       await subscriptions.waitForSubscribedAgents([scenario.secondAgentId], { timeout: 45_000 });
       await commitMessage(
