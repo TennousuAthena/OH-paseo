@@ -799,8 +799,6 @@ export const ja: TranslationResources = {
         deletedFile: "削除済み",
         commits: {
           title: "コミット",
-          legendLocal: "ローカル",
-          legendRemote: "リモート",
           countLabel: "ベースより先のコミット数: {{count}}",
           fileDiffEmpty: "表示する変更はありません",
           fileDiffError: "ファイル差分の読み込みに失敗しました",

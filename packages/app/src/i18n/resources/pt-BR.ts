@@ -810,8 +810,6 @@ export const ptBR: TranslationResources = {
         deletedFile: "Excluído",
         commits: {
           title: "Commits",
-          legendLocal: "local",
-          legendRemote: "no remoto",
           countLabel: "{{count}} commits à frente da base",
           fileDiffEmpty: "Nenhuma alteração para exibir",
           fileDiffError: "Falha ao carregar diff do arquivo",

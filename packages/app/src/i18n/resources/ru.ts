@@ -810,8 +810,6 @@ export const ru: TranslationResources = {
         deletedFile: "Удалено",
         commits: {
           title: "Коммиты",
-          legendLocal: "локально",
-          legendRemote: "на удалённом",
           countLabel: "{{count}} коммитов впереди базы",
           fileDiffEmpty: "Нет изменений для отображения",
           fileDiffError: "Не удалось загрузить различия файла",

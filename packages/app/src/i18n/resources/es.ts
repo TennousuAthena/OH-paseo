@@ -819,8 +819,6 @@ export const es: TranslationResources = {
         deletedFile: "Eliminado",
         commits: {
           title: "Commits",
-          legendLocal: "local",
-          legendRemote: "en remoto",
           countLabel: "{{count}} commits por delante de la base",
           fileDiffEmpty: "No hay cambios para mostrar",
           fileDiffError: "Error al cargar el diff del archivo",

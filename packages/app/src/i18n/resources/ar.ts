@@ -788,8 +788,6 @@ export const ar: TranslationResources = {
         deletedFile: "تم الحذف",
         commits: {
           title: "الإيداعات",
-          legendLocal: "محلي",
-          legendRemote: "على المستودع البعيد",
           countLabel: "{{count}} إيداعات قبل الأساس",
           fileDiffEmpty: "لا توجد تغييرات لعرضها",
           fileDiffError: "تعذّر تحميل فروق الملف",
