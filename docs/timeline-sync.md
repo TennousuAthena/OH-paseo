@@ -87,11 +87,10 @@ its completion advances `seqEnd`, followed by a merged assistant message. The ap
 remaining page through the existing stream reducer. It must not append full projected text to a
 live prefix.
 
-Optimistic user prompts are presentation state rather than canonical history. Incremental catch-up
-temporarily separates them, applies canonical entries, lets canonical user rows reconcile through
-the existing optimistic-message rules, then restores any unmatched prompts after the caught-up
-history. This keeps late history before a newly submitted prompt without duplicating an
-acknowledged prompt.
+Optimistic user prompts occupy stable timeline slots. Catch-up never extracts, delays, or reinserts
+them. A canonical user row replaces its matching slot in place; an unmatched prompt stays exactly
+where the user submitted it. Other canonical rows are applied after the already-present timeline
+instead of relocating visible user messages around newly fetched history.
 
 Canonical submitted user rows carry the provider's `messageId` and Paseo's optional
 `clientMessageId`. Clients reconcile optimistic prompts by `clientMessageId`. Content matching is

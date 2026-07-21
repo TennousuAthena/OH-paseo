@@ -1242,6 +1242,7 @@ describe("turn lifecycle events", () => {
           type: "user_message",
           text: "server-rendered attachment text",
           messageId: "provider-owned-canonical",
+          clientMessageId: optimistic.id,
         },
       },
       new Date("2025-01-01T15:03:11Z"),
