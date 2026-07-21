@@ -67,11 +67,11 @@ The app chooses one delivery policy from `server_info.features.selectiveAgentTim
 
 - Selective daemons receive the union of agents visible in every pane. Additions subscribe and
   catch up immediately. Every visibility-driven removal, including app backgrounding, stays
-  subscribed for a short grace period so brief tab, pane, route, and app switches do not repeatedly
+  subscribed for a 30-second grace period so brief tab, pane, route, and app switches do not repeatedly
   unsubscribe and catch up. Losing window keyboard focus does not make a selected pane invisible.
   Disconnecting and disposal clear pending grace because the subscription itself no longer exists.
-  After grace has expired, a retained timeline stays covered when revisited until authoritative
-  catch-up completes; cached partial output is never presented as current history.
+  After grace has expired, revisiting a retained timeline displays its cached state immediately and
+  authoritative catch-up advances it to the current tail.
 - Legacy daemons keep globally streaming agent timelines. Visibility still triggers the existing
   authoritative catch-up, but the app does not issue selective-subscription RPCs.
 
