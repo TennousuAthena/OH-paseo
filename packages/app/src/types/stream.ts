@@ -365,7 +365,10 @@ function appendUserMessage(
   const chunkSeed = chunk.trim() || chunk;
   const entryId = messageId ?? createUniqueTimelineId(state, "user", chunkSeed, timestamp);
   const optimisticIndex = state.findIndex(
-    (entry) => entry.kind === "user_message" && entry.optimistic,
+    (entry) =>
+      entry.kind === "user_message" &&
+      entry.optimistic &&
+      (clientMessageId === undefined || entry.id === clientMessageId),
   );
   const optimistic = optimisticIndex >= 0 ? (state[optimisticIndex] as UserMessageItem) : null;
 
