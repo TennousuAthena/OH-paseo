@@ -789,6 +789,8 @@ export const es: TranslationResources = {
         },
       },
       diff: {
+        openChangesTab: "Abrir la pestaña Cambios",
+        closeChangesTab: "Cerrar la pestaña Cambios",
         binaryFile: "archivo binario",
         tooLarge: "La diferencia es demasiado grande para mostrarse",
         unified: "Diferencia unificada",
@@ -1537,6 +1539,8 @@ export const es: TranslationResources = {
       changesLabel: "Cambios",
       changesSubtitle: "Diferencias del árbol de trabajo",
       commitSubtitle: "Diferencias del commit",
+      uncommittedSubtitle: "Cambios sin confirmar",
+      baseSubtitle: "Comparado con {{baseRef}}",
       directoryMissing: "No se encontró el directorio de Workspace.",
       empty: "Sin cambios",
       loadError: "No se pudieron cargar las diferencias",
