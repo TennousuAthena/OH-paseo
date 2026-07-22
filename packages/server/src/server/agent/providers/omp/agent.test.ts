@@ -74,6 +74,18 @@ describe("OMP agent client and session", () => {
     expect(omp.launchConfiguration().argv).toEqual(expect.arrayContaining(["--thinking", "max"]));
   });
 
+  test("launches with write approval mode", async () => {
+    const omp = new OmpHarness();
+    await omp.start({ modeId: "write" });
+
+    expect(omp.launchConfiguration()).toEqual({
+      cwd: "/tmp/paseo-omp-agent-test",
+      protocolMode: "rpc-ui",
+      modeId: "write",
+      argv: ["omp", "--mode", "rpc-ui", "--approval-mode", "write", "--thinking", "medium"],
+    });
+  });
+
   test("streams a prompt through completion", async () => {
     const omp = new OmpHarness();
     await omp.start();
@@ -282,6 +294,7 @@ describe("OMP agent client and session", () => {
 
     await expect(omp.availableModes()).resolves.toEqual([
       expect.objectContaining({ id: "full" }),
+      expect.objectContaining({ id: "write" }),
       expect.objectContaining({ id: "ask" }),
     ]);
     await expect(omp.commands()).resolves.toEqual(
