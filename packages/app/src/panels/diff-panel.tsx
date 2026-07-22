@@ -374,7 +374,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
+    paddingRight: theme.spacing[2],
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
     flexShrink: 0,
@@ -383,7 +383,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: theme.spacing[2],
+    gap: theme.spacing[1],
   },
   body: {
     flex: 1,

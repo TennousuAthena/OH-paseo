@@ -1613,7 +1613,7 @@ export function DiffOptionsMenu({
   onToggleWrapLines,
 }: DiffOptionsMenuProps) {
   const { t } = useTranslation();
-  const defaultToggleStyle = useMemo(() => buildExpandAllButtonStyle(), []);
+  const defaultToggleStyle = useMemo(() => buildOverflowButtonStyle(), []);
   const whitespaceLabel = hideWhitespace
     ? t("workspace.git.diff.showWhitespace")
     : t("workspace.git.diff.hideWhitespace");
