@@ -12,7 +12,7 @@ import type {
 } from "../../../agent-sdk-types.js";
 import type { PaseoToolCatalog } from "../../../tools/types.js";
 import { OmpAgentClient, OmpAgentSession, type OmpProviderIdleScheduler } from "../agent.js";
-import type { OmpRpcSlashCommand } from "../rpc-types.js";
+import type { OmpAgentMessage, OmpRpcSlashCommand } from "../rpc-types.js";
 import { FakeOmp } from "./fake-omp.js";
 
 const CWD = "/tmp/paseo-omp-agent-test";
@@ -151,6 +151,24 @@ export class OmpHarness {
     runtime.queueStateReports(
       providerStatesAfterEnd.map((state) => ({ ...runtime.state, ...state })),
     );
+    runtime.finishTurn();
+    return await run;
+  }
+
+  async runPromptWithCustomMessage(
+    input: string,
+    customMessage: Extract<OmpAgentMessage, { role: "custom" }>,
+    output: string,
+  ): Promise<unknown> {
+    const session = this.requireSession();
+    const promptStarted = this.omp.latestSession().nextPrompt();
+    const run = session.run(input);
+    await promptStarted;
+    const runtime = this.omp.latestSession();
+    runtime.beginTurn();
+    runtime.acceptPrompt(input, "user-1");
+    runtime.emit({ type: "message_end", message: customMessage });
+    runtime.streamAssistantText(output);
     runtime.finishTurn();
     return await run;
   }

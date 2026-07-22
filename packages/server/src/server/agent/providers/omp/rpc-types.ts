@@ -114,7 +114,7 @@ const OmpContextUsageSchema = z
 export const OmpSessionStateSchema = z
   .object({
     model: OmpModelSchema.nullable().optional(),
-    thinkingLevel: OmpThinkingLevelSchema,
+    thinkingLevel: OmpThinkingLevelSchema.optional(),
     isStreaming: z.boolean(),
     isCompacting: z.boolean(),
     autoCompactionEnabled: z.boolean().optional(),

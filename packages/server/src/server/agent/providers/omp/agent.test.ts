@@ -88,6 +88,50 @@ describe("OMP agent client and session", () => {
     expect(omp.completedTurnCount()).toBe(1);
   });
 
+  test("streams OMP advisor messages as distinct tool-call blocks", async () => {
+    const omp = new OmpHarness();
+    await omp.start();
+
+    await omp.runPromptWithCustomMessage(
+      "review this",
+      {
+        role: "custom",
+        content: '<advisory severity="concern">Exercise the failure path.</advisory>',
+        customType: "advisor",
+        id: "advisor-live-1",
+        display: true,
+        details: {
+          notes: [{ note: "Exercise the failure path.", severity: "concern" }],
+        },
+      },
+      "fixed",
+    );
+
+    expect(omp.timeline()).toEqual([
+      { type: "user_message", text: "review this", messageId: "user-1" },
+      {
+        type: "tool_call",
+        callId: "omp-advisor:advisor-live-1",
+        name: "advisor",
+        status: "completed",
+        detail: {
+          type: "plain_text",
+          label: "Advisor · 1 note",
+          text: "[concern] Exercise the failure path.",
+          icon: "brain",
+        },
+        metadata: {
+          synthetic: true,
+          source: "omp_advisor",
+          noteCount: 1,
+          blockerCount: 0,
+        },
+        error: null,
+      },
+      { type: "assistant_message", text: "fixed", messageId: "omp-assistant-1" },
+    ]);
+  });
+
   test("does not accept a follow-up until OMP reports stable idle", async () => {
     const omp = new OmpHarness();
     await omp.start();
