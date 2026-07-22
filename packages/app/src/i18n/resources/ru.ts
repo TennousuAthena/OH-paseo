@@ -369,6 +369,13 @@ export const ru: TranslationResources = {
       copyBranchName: "Копировать имя ветки",
       copied: "Скопировано",
     },
+    fileActions: {
+      openFile: "Открыть файл",
+      copyPath: "Копировать путь",
+      download: "Скачать",
+      addToChat: "Добавить в чат…",
+      moreActions: "Дополнительные действия",
+    },
     fileExplorer: {
       sort: {
         name: "Имя",
@@ -378,8 +385,6 @@ export const ru: TranslationResources = {
       context: {
         size: "Размер",
         modified: "Модифицированный",
-        copyPath: "Копировать путь",
-        download: "Скачать",
       },
       actions: {
         back: "Назад",
