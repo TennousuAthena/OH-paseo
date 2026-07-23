@@ -313,6 +313,9 @@ export function resolveWaitForFinishError(options: {
 export interface SessionRuntimeMetrics {
   terminalDirectorySubscriptionCount: number;
   terminalSubscriptionCount: number;
+  workspaceGitWatchedDirectoryCount: number;
+  workspaceGitWorkspaceRecordCount: number;
+  workspaceGitSubscriptionCount: number;
   inflightRequests: number;
   peakInflightRequests: number;
 }
@@ -1260,9 +1263,13 @@ export class Session {
 
   public getRuntimeMetrics(): SessionRuntimeMetrics {
     const terminalMetrics = this.terminalController.getMetrics();
+    const workspaceGitMetrics = this.workspaceGitObserver.getMetrics();
     return {
       terminalDirectorySubscriptionCount: terminalMetrics.directorySubscriptionCount,
       terminalSubscriptionCount: terminalMetrics.streamSubscriptionCount,
+      workspaceGitWatchedDirectoryCount: workspaceGitMetrics.watchedDirectoryCount,
+      workspaceGitWorkspaceRecordCount: workspaceGitMetrics.workspaceRecordCount,
+      workspaceGitSubscriptionCount: workspaceGitMetrics.subscriptionCount,
       inflightRequests: this.inflightRequests,
       peakInflightRequests: this.peakInflightRequests,
     };
