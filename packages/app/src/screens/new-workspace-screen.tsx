@@ -1381,6 +1381,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
         open={project.openState}
         onOpenChange={project.onOpenChange}
         desktopPlacement="bottom-start"
+        desktopMinWidth={360}
         anchorRef={project.anchorRef}
         emptyText="No projects available."
         renderOption={project.renderOption}
@@ -1401,6 +1402,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
         searchable={false}
         title="Host"
         desktopPlacement="bottom-start"
+        desktopMinWidth={200}
         hostOptionTestID={newWorkspaceHostOptionTestID}
       >
         <Pressable
