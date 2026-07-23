@@ -2150,6 +2150,14 @@ describe("ACPAgentSession", () => {
         content: { type: "text", text: "lo" },
       } as SessionUpdate,
     });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "assistant-2",
+        content: { type: "text", text: "" },
+      } as SessionUpdate,
+    });
 
     const timeline = events
       .filter((event) => event.type === "timeline")
@@ -2161,7 +2169,6 @@ describe("ACPAgentSession", () => {
       { type: "assistant_message", text: " How are you?", messageId: "assistant-1" },
       { type: "reasoning", text: "Thinking" },
       { type: "reasoning", text: " more" },
-      { type: "user_message", text: "hel", messageId: "user-1" },
       { type: "user_message", text: "hello", messageId: "user-1" },
     ]);
   });
@@ -2528,6 +2535,102 @@ describe("ACPAgentSession", () => {
     ]);
   });
 
+  test("startTurn dedupes a provider-owned user echo streamed as text and image chunks", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    await session.startTurn(
+      [
+        { type: "text", text: "hey" },
+        { type: "image", data: "AA==", mimeType: "image/png" },
+      ],
+      { clientMessageId: "msg-client-1" },
+    );
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        messageId: "msg-provider-1",
+        content: { type: "text", text: "hey" },
+      } as SessionUpdate,
+    });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        messageId: "msg-provider-1",
+        content: { type: "image", data: "AA==", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "user_message"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: {
+          type: "user_message",
+          text: "hey",
+          messageId: "msg-client-1",
+          clientMessageId: "msg-client-1",
+        },
+        turnId: expect.any(String),
+      },
+    ]);
+  });
+
+  test("startTurn keeps an image-only provider echo when no canonical user message was emitted", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    await session.startTurn([{ type: "image", data: "AA==", mimeType: "image/png" }], {
+      clientMessageId: "msg-client-1",
+    });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "image", data: "AA==", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "assistant-1",
+        content: { type: "text", text: "I see it" },
+      } as SessionUpdate,
+    });
+
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "user_message"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: { type: "user_message", text: "[image]" },
+        turnId: expect.any(String),
+      },
+    ]);
+  });
+
   test("startTurn converts background prompt rejections into turn_failed events", async () => {
     const session = createSession();
     const events: Array<{ type: string; turnId?: string; error?: string }> = [];
@@ -2559,6 +2662,49 @@ describe("ACPAgentSession", () => {
       error: "prompt failed",
     });
     expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
+  });
+
+  test("flushes an image-only provider echo before a rejected turn finishes", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    let rejectPrompt!: (error: Error) => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((_, reject) => {
+          rejectPrompt = reject;
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+    session.subscribe((event) => events.push(event));
+
+    const { turnId } = await session.startTurn([
+      { type: "image", data: "AA==", mimeType: "image/png" },
+    ]);
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "image", data: "AA==", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+
+    rejectPrompt(new Error("prompt failed"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(
+      events.filter((event) => event.type === "timeline" || event.type === "turn_failed"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: { type: "user_message", text: "[image]" },
+        turnId,
+      },
+      expect.objectContaining({ type: "turn_failed", turnId, error: "prompt failed" }),
+    ]);
   });
 
   test("startTurn preserves JSON-RPC error details from a real ACP prompt response", async () => {
@@ -2661,6 +2807,32 @@ async function startTerminal(
 describe("ACPAgentSession close() tree-kill", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  test("close() flushes a buffered provider-owned user message before unsubscribing", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    asInternals<ACPCloseInternals>(session).sessionId = "session-1";
+
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "image", data: "AA==", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+    expect(events).toEqual([]);
+
+    await session.close();
+
+    expect(events).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: { type: "user_message", text: "[image]" },
+      },
+    ]);
   });
 
   test("close() terminates the main child process via the process tree", async () => {
@@ -2978,6 +3150,68 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
         item: {
           type: "assistant_message",
           text: "Welcome back",
+          messageId: "assistant-replay-1",
+        },
+      },
+    ]);
+  });
+
+  test("coalesces an ID-less text and image user message during loadSession replay", async () => {
+    let session!: ACPAgentSession;
+    const loadSession = async () => {
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: "hey" },
+        } as SessionUpdate,
+      });
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "user_message_chunk",
+          content: { type: "image", data: "AA==", mimeType: "image/png" },
+        } as SessionUpdate,
+      });
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          messageId: "assistant-replay-1",
+          content: { type: "text", text: "Hello" },
+        } as SessionUpdate,
+      });
+      return {
+        sessionId: "session-1",
+        modes: null,
+        models: null,
+        configOptions: [],
+      };
+    };
+    ({ session } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-1", provider: "test-acp" },
+      loadSession,
+    }));
+
+    await session.initializeResumedSession();
+
+    const history: AgentStreamEvent[] = [];
+    for await (const event of session.streamHistory()) {
+      history.push(event);
+    }
+    expect(history).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: { type: "user_message", text: "hey[image]" },
+      },
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: {
+          type: "assistant_message",
+          text: "Hello",
           messageId: "assistant-replay-1",
         },
       },
