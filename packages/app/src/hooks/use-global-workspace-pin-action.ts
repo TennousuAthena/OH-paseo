@@ -5,7 +5,7 @@ import type { KeyboardActionId } from "@/keyboard/keyboard-action-dispatcher";
 import { useHostFeature } from "@/runtime/host-features";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
-import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 
 const WORKSPACE_PIN_ACTIONS: readonly KeyboardActionId[] = ["workspace.pin"];
 
