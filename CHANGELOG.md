@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 - 2026-07-24
+
+### Added
+
+- Claude Opus 5 is available
+
 ## 0.2.0 - 2026-07-24
 
 ### Added
