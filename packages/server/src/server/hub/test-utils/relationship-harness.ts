@@ -1322,7 +1322,9 @@ export class HubRelationshipHarness {
   }
 
   private async removeRoot(): Promise<void> {
-    const retryableCodes = new Set(["EBUSY", "ENOTEMPTY"]);
+    // Daemon may still flush into .paseo/projects during teardown; recursive rm
+    // can race and hit ENOTEMPTY/EBUSY/EPERM. Observed on Linux CI as well as macOS/Windows.
+    const retryableCodes = new Set(["ENOTEMPTY", "EBUSY", "EPERM"]);
     const attempts = 10;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
