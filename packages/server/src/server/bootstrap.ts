@@ -200,7 +200,7 @@ import {
   createAgentCommand,
   type CreateAgentCommandDependencies,
 } from "./agent/create-agent/create.js";
-import { archiveAgentCommand } from "./agent/lifecycle-command.js";
+import { archiveAgentCommand, cancelAgentRunCommand } from "./agent/lifecycle-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
 import {
   HubRelationshipController,
@@ -1044,6 +1044,27 @@ export async function createPaseoDaemon(
   };
   const createAgent = (input: Parameters<typeof createAgentCommand>[1]) =>
     createAgentCommand(createAgentCommandDependencies, input);
+  const archiveWorkspaceByIdExternal = (workspaceId: string, requestId: string) =>
+    archiveByScope(
+      {
+        paseoHome: config.paseoHome,
+        paseoWorktreesBaseRoot: config.worktreesRoot,
+        github,
+        workspaceGitService,
+        agentManager,
+        agentStorage,
+        findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
+        listActiveWorkspaces: listActiveWorkspacesExternal,
+        archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
+        emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
+        markWorkspaceArchiving: markWorkspaceArchivingExternal,
+        clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
+        killTerminalsForWorkspace: (workspaceIdToKill) =>
+          killTerminalsForWorkspace({ terminalManager, sessionLogger: logger }, workspaceIdToKill),
+        sessionLogger: logger,
+      },
+      { scope: { kind: "workspace", workspaceId }, requestId },
+    );
   const hubAgentLifecycle = new CreateAgentLifecycleDispatch({
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
@@ -1085,12 +1106,11 @@ export async function createPaseoDaemon(
         agentManager,
         agentStorage,
         createAgent,
-        registerAutoArchive: ({ agentId, createdWorktree }) =>
-          hubAgentLifecycle.registerAutoArchiveIfRequested({
-            autoArchive: true,
-            agentId,
-            createdWorktree,
-          }),
+        interruptAgent: (agentId) => cancelAgentRunCommand({ agentManager, logger }, agentId),
+        archiveAgent: (agentId) =>
+          archiveAgentCommand({ agentManager, agentStorage, logger }, agentId),
+        listActiveWorkspaces: listActiveWorkspacesExternal,
+        archiveWorkspace: archiveWorkspaceByIdExternal,
         cleanupFailedCreate: (input) =>
           hubAgentLifecycle.cleanupCreatedWorktreeAfterFailedAgentCreate(input),
       }),

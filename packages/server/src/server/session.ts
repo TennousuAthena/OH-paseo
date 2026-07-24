@@ -1898,9 +1898,13 @@ export class Session {
   }
 
   private dispatchHubExecutionMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    return msg.type === "hub.execution.agent.create.request"
-      ? this.hubExecutionController?.createAgent(msg)
-      : undefined;
+    if (msg.type === "hub.execution.agent.create.request") {
+      return this.hubExecutionController?.createAgent(msg);
+    }
+    if (msg.type === "hub.execution.control.request") {
+      return this.hubExecutionController?.controlExecution(msg);
+    }
+    return undefined;
   }
 
   private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
