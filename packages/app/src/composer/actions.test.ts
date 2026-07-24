@@ -333,6 +333,26 @@ describe("pickAndPersistImages", () => {
 });
 
 describe("dispatchComposerAgentMessage", () => {
+  it("removes the optimistic prompt when the host rejects it", async () => {
+    const rejection = new Error("Host rejected prompt");
+    const client = createFakeSendClient({ rejection });
+    const stream = createFakeStream();
+
+    await expect(
+      dispatchComposerAgentMessage({
+        client,
+        agentId: "agent",
+        text: "rejected prompt",
+        attachments: [],
+        encodeImages: passthroughEncodeImages,
+        stream,
+      }),
+    ).rejects.toBe(rejection);
+
+    expect(stream.head.get("agent")).toBeUndefined();
+    expect(stream.tail.get("agent") ?? []).toEqual([]);
+  });
+
   it("sends text + image data + structured attachments and appends user_message to the tail when head is empty", async () => {
     const client = createFakeSendClient();
     const stream = createFakeStream();
