@@ -359,6 +359,11 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
 
   const handleMomentumScrollEnd = useStableEvent(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      // Android can emit momentum-end after a programmatic anchor correction.
+      // Only momentum that still owns the user gesture may settle scroll intent.
+      if (!isUserScrollActiveRef.current) {
+        return;
+      }
       const isNearBottom = isScrollEventNearBottom(event);
       clearPendingUserScrollEnd();
       isUserScrollActiveRef.current = false;
