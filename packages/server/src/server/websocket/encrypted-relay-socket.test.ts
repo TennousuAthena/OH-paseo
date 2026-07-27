@@ -40,10 +40,11 @@ class BlockingChannel implements EncryptedRelayChannel {
 test("negotiated binary ciphertext accepts the exact hard bound and rejects one byte over", async () => {
   const channel = new BlockingChannel();
   let terminations = 0;
+  let transportBufferedAmount = 0;
   const socket = createEncryptedRelaySocket({
     channel,
     emitter: new EventEmitter(),
-    getTransportBufferedAmount: () => 0,
+    getTransportBufferedAmount: () => transportBufferedAmount,
     terminateTransport: () => {
       terminations += 1;
     },
@@ -51,9 +52,11 @@ test("negotiated binary ciphertext accepts the exact hard bound and rejects one 
 
   socket.send(new Uint8Array(MAX_PHYSICAL_SOCKET_BUFFERED_BYTES - 40));
   expect(channel.sent).toHaveLength(1);
+  transportBufferedAmount = MAX_PHYSICAL_SOCKET_BUFFERED_BYTES;
   expect(socket.bufferedAmount).toBe(MAX_PHYSICAL_SOCKET_BUFFERED_BYTES);
 
-  socket.send(new Uint8Array(1));
+  const rejected = socket.send(new Uint8Array(1));
+  await expect(rejected).rejects.toThrow("outbound high-water mark");
 
   expect(channel.sent).toHaveLength(1);
   expect(terminations).toBe(1);
@@ -64,7 +67,7 @@ test("negotiated binary ciphertext accepts the exact hard bound and rejects one 
   await Promise.resolve();
 });
 
-test("underlying relay backpressure rejects binary before encryption and terminates physically", () => {
+test("underlying relay backpressure rejects binary before encryption and terminates physically", async () => {
   const channel = new BlockingChannel();
   let terminations = 0;
   const socket = createEncryptedRelaySocket({
@@ -76,33 +79,11 @@ test("underlying relay backpressure rejects binary before encryption and termina
     },
   });
 
-  socket.send(new Uint8Array(1));
+  const rejected = socket.send(new Uint8Array(1));
+  await expect(rejected).rejects.toThrow("outbound high-water mark");
 
   expect(channel.sent).toEqual([]);
   expect(channel.closes).toEqual([]);
-  expect(terminations).toBe(1);
-});
-
-test("pending encryption and underlying relay backpressure share one hard bound", () => {
-  const channel = new BlockingChannel();
-  let transportBufferedAmount = 3 * 1024 * 1024;
-  let terminations = 0;
-  const socket = createEncryptedRelaySocket({
-    channel,
-    emitter: new EventEmitter(),
-    getTransportBufferedAmount: () => transportBufferedAmount,
-    terminateTransport: () => {
-      terminations += 1;
-    },
-  });
-
-  socket.send(new Uint8Array(3 * 1024 * 1024));
-  expect(channel.sent).toHaveLength(1);
-
-  transportBufferedAmount = 6 * 1024 * 1024;
-  socket.send(new Uint8Array(1));
-
-  expect(channel.sent).toHaveLength(1);
   expect(terminations).toBe(1);
 });
 
@@ -123,4 +104,43 @@ test("explicit encrypted-socket termination forcibly terminates the relay transp
   expect(terminations).toBe(1);
   expect(channel.closes).toEqual([]);
   expect(socket.readyState).toBe(3);
+});
+
+test("encrypted sends report physical completion through the returned promise", async () => {
+  const channel = new BlockingChannel();
+  const socket = createEncryptedRelaySocket({
+    channel,
+    emitter: new EventEmitter(),
+    getTransportBufferedAmount: () => 0,
+    terminateTransport: () => undefined,
+  });
+  let completed = false;
+
+  const sending = socket.send(new Uint8Array([1]));
+  if (!sending) throw new Error("Expected an awaitable encrypted send");
+  void sending.then(() => (completed = true));
+  await Promise.resolve();
+  expect(completed).toBe(false);
+
+  channel.drain();
+  await sending;
+  expect(completed).toBe(true);
+  expect(socket.bufferedAmount).toBe(0);
+});
+
+test("encrypted sockets do not double-count bytes already buffered by the transport", () => {
+  const channel = new BlockingChannel();
+  let transportBufferedAmount = 0;
+  const socket = createEncryptedRelaySocket({
+    channel,
+    emitter: new EventEmitter(),
+    getTransportBufferedAmount: () => transportBufferedAmount,
+    terminateTransport: () => undefined,
+  });
+  const payload = new Uint8Array(3 * 1024 * 1024);
+
+  void socket.send(payload);
+  transportBufferedAmount = payload.byteLength + 40;
+
+  expect(socket.bufferedAmount).toBe(payload.byteLength + 40);
 });

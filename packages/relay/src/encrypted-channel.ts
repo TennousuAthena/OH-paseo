@@ -19,7 +19,7 @@ import {
 import { arrayBufferToBase64, base64ToArrayBuffer } from "./base64.js";
 
 export interface Transport {
-  send(data: string | ArrayBuffer): void;
+  send(data: string | ArrayBuffer): void | Promise<void>;
   close(code?: number, reason?: string): void;
   onmessage: ((message: TransportMessage) => void) | null;
   onclose: ((code: number, reason: string) => void) | null;
@@ -169,7 +169,10 @@ export async function createClientChannel(
   };
   const sendHello = () => {
     try {
-      transport.send(helloText);
+      const result = transport.send(helloText);
+      if (result) {
+        void result.catch(emitSendError);
+      }
       return true;
     } catch (error) {
       // This can happen during daemon restarts while the socket transitions
@@ -263,11 +266,7 @@ export async function createDaemonChannel(
         const sharedKey = deriveSharedKey(daemonKeyPair.secretKey, clientPublicKey);
 
         const binaryCiphertext = supportsBinaryCiphertext(msg);
-        const channel = new EncryptedChannel(transport, sharedKey, events, {
-          daemonKeyPair,
-          binaryCiphertext,
-        });
-        transport.send(
+        await transport.send(
           JSON.stringify({
             type: "e2ee_ready",
             ...(binaryCiphertext
@@ -276,6 +275,10 @@ export async function createDaemonChannel(
           } satisfies E2EEReadyMessage),
         );
 
+        const channel = new EncryptedChannel(transport, sharedKey, events, {
+          daemonKeyPair,
+          binaryCiphertext,
+        });
         channel.setState("open");
         events.onopen?.();
 
@@ -354,7 +357,14 @@ export class EncryptedChannel {
           this.state = "open";
           this.events.onopen?.();
           for (const cb of this.onOpenCallbacks) cb();
-          await this.flushPendingSends();
+          try {
+            await this.flushPendingSends();
+          } catch (error) {
+            const err = error instanceof Error ? error : new Error(String(error));
+            this.events.onerror?.(err);
+            this.state = "closed";
+            this.transport.close(1011, err.message);
+          }
         }
       } catch {
         // ignore non-ready handshake traffic
@@ -455,12 +465,12 @@ export class EncryptedChannel {
 
     const ciphertext = encrypt(this.sharedKey, data);
     if (this.options.binaryCiphertext && data instanceof ArrayBuffer) {
-      this.transport.send(ciphertext);
+      await this.transport.send(ciphertext);
       return;
     }
     // COMPAT(binaryCiphertext): added in v0.2.3, remove base64 binary sends
     // after 2027-01-27 once the supported peer floor includes negotiation.
-    this.transport.send(arrayBufferToBase64(ciphertext));
+    await this.transport.send(arrayBufferToBase64(ciphertext));
   }
 
   outboundWireByteLength(data: string | ArrayBuffer): number {
@@ -489,7 +499,7 @@ export class EncryptedChannel {
     // "ready" but do not re-key. Re-keying here would desync
     // the channel and cause decrypt failures.
     if (keysEqual(nextSharedKey, this.sharedKey)) {
-      this.transport.send(
+      await this.transport.send(
         JSON.stringify({
           type: "e2ee_ready",
           ...(this.options.binaryCiphertext
