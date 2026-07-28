@@ -36,6 +36,8 @@ export const MOCK_LOAD_TEST_DEFAULT_MODEL_ID = "five-minute-stream";
 const MOCK_LOAD_TEST_MODE_ID = "load-test";
 const MOCK_LOAD_TEST_DURATION_MS = 5 * 60 * 1000;
 const MOCK_LOAD_TEST_INTERVAL_MS = 40;
+const ONE_PIXEL_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl4Kj8AAAAASUVORK5CYII=";
 
 const CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -154,6 +156,13 @@ function shouldEmitPlanApprovalPrompt(prompt: AgentPromptInput): boolean {
 
 function shouldEmitTurnFailure(prompt: AgentPromptInput): boolean {
   return /emit\s+(?:a\s+)?synthetic\s+turn\s+failure/i.test(promptToText(prompt));
+}
+
+function parseSettledAssistantImageMarkdown(prompt: AgentPromptInput): string | null {
+  const match = /^emit settled assistant image markdown:\s*(!\[[^\]\r\n]*\]\(.+\))\s*$/i.exec(
+    promptToText(prompt),
+  );
+  return match?.[1] ?? null;
 }
 
 function parseMockQuestionPrompt(prompt: AgentPromptInput): MockQuestionPromptRequest | null {
@@ -669,10 +678,13 @@ export class MockLoadTestAgentSession implements AgentSession {
     const stress = parseAgentStreamStressPrompt(prompt);
     const questionPrompt = parseMockQuestionPrompt(prompt);
     const structuredBranchName = parseStructuredBranchNamePrompt(prompt);
+    const settledAssistantImageMarkdown = parseSettledAssistantImageMarkdown(prompt);
     if (shouldEmitTurnFailure(prompt)) {
       this.scheduleFailedTurn(turn);
     } else if (structuredBranchName) {
-      this.scheduleStructuredJsonTurn(turn, structuredBranchName);
+      this.scheduleSettledAssistantTurn(turn, JSON.stringify(structuredBranchName));
+    } else if (settledAssistantImageMarkdown) {
+      this.scheduleSettledAssistantTurn(turn, settledAssistantImageMarkdown);
     } else if (shouldEmitPlanApprovalPrompt(prompt)) {
       this.schedulePlanApprovalTurn(turn);
     } else if (questionPrompt) {
@@ -887,14 +899,14 @@ export class MockLoadTestAgentSession implements AgentSession {
     turn.timer.unref?.();
   }
 
-  private scheduleStructuredJsonTurn(turn: ActiveTurn, result: Record<string, string>): void {
+  private scheduleSettledAssistantTurn(turn: ActiveTurn, finalText: string): void {
     turn.timer = setTimeout(() => {
-      this.emitStructuredJsonTurn(turn, result);
+      this.emitSettledAssistantTurn(turn, finalText);
     }, 0);
     turn.timer.unref?.();
   }
 
-  private emitStructuredJsonTurn(turn: ActiveTurn, result: Record<string, string>): void {
+  private emitSettledAssistantTurn(turn: ActiveTurn, finalText: string): void {
     if (this.activeTurn !== turn) {
       return;
     }
@@ -906,7 +918,6 @@ export class MockLoadTestAgentSession implements AgentSession {
       turnId: turn.turnId,
     });
 
-    const finalText = JSON.stringify(result);
     this.emitTimeline(turn.turnId, {
       type: "assistant_message",
       text: finalText,
@@ -1117,9 +1128,14 @@ export class MockLoadTestAgentSession implements AgentSession {
         }),
       );
     } else {
+      const imageBytes = Buffer.from(ONE_PIXEL_PNG_BASE64, "base64");
+      const imagePayload = Buffer.concat([
+        imageBytes,
+        Buffer.alloc(Math.max(0, largePayload.bytes - imageBytes.length)),
+      ]).toString("base64");
       this.emitTimeline(turn.turnId, {
         type: "assistant_message",
-        text: `data:image/png;base64,${payload}`,
+        text: `![Synthetic image](data:image/png;base64,${imagePayload})`,
         messageId: turn.assistantMessageId,
       });
     }

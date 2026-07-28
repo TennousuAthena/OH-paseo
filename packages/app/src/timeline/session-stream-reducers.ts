@@ -1,5 +1,5 @@
 import type { AgentStreamEventPayload } from "@getpaseo/protocol/messages";
-import { useSessionStore } from "@/stores/session-store";
+import { selectAgentTimelineState, useSessionStore } from "@/stores/session-store";
 import type { AssistantMessageItem, StreamItem } from "@/types/stream";
 import {
   applyStreamEvent,
@@ -89,6 +89,7 @@ export interface ProcessTimelineResponseInput {
   hasActiveInitDeferred: boolean;
   initRequestDirection: InitRequestDirection;
   sendingClientMessageIds: readonly string[];
+  hasAuthoritativeBaseline: boolean;
 }
 
 export interface ProcessTimelineResponseOutput {
@@ -233,6 +234,10 @@ function applyTimelineReplacePath(args: {
     previousHead: currentHead,
     sendingClientMessageIds,
     preserveLiveHead,
+    canonicalCoverage: {
+      epoch: payload.epoch,
+      endSeq: payload.endCursor?.seq ?? null,
+    },
   });
   const cursor: TimelineCursor | null =
     payload.startCursor && payload.endCursor
@@ -255,7 +260,6 @@ function applyTimelineReplacePath(args: {
     acknowledgedClientMessageIds,
   };
 }
-
 interface IncrementalAcceptResult {
   acceptedUnits: TimelineUnit[];
   cursor: TimelineCursor | undefined;
@@ -406,16 +410,15 @@ function mergePrependedCanonicalTail(olderTail: StreamItem[], currentTail: Strea
     return [...olderTail, ...currentTail];
   }
 
-  return [
-    ...olderTail.slice(0, -1),
-    {
-      ...olderLast,
-      text: `${olderLast.text}${currentFirst.text}`,
-      timestamp: currentFirst.timestamp,
-      ...(currentFirst.timelineCursor ? { timelineCursor: currentFirst.timelineCursor } : {}),
-    },
-    ...currentTail.slice(1),
-  ];
+  const mergedAssistant: AssistantMessageItem = {
+    ...currentFirst,
+    text: `${olderLast.text}${currentFirst.text}`,
+  };
+  if (mergedAssistant.messageId === undefined && olderLast.messageId !== undefined) {
+    mergedAssistant.messageId = olderLast.messageId;
+  }
+
+  return [...olderTail.slice(0, -1), mergedAssistant, ...currentTail.slice(1)];
 }
 
 function replaceLiveAssistantWithProjectedText(params: {
@@ -820,6 +823,7 @@ export function processTimelineResponse(
     hasActiveInitDeferred,
     initRequestDirection,
     sendingClientMessageIds,
+    hasAuthoritativeBaseline,
   } = input;
 
   // ------------------------------------------------------------------
@@ -891,7 +895,8 @@ export function processTimelineResponse(
         currentTail,
         currentHead,
         sendingClientMessageIds,
-        preserveLiveHead: currentCursor?.epoch === payload.epoch,
+        preserveLiveHead:
+          currentCursor?.epoch === payload.epoch || (!payload.reset && !hasAuthoritativeBaseline),
         toHydratedEvents,
       })
     : applyTimelineIncrementalPath({
@@ -955,6 +960,7 @@ export interface ProcessAgentStreamEventInput {
   currentTail: StreamItem[];
   currentHead: StreamItem[];
   currentCursor: TimelineCursor | undefined;
+  hasAuthoritativeBaseline?: boolean;
   timestamp: Date;
 }
 
@@ -989,6 +995,7 @@ export interface ProcessAgentStreamEventsInput {
   currentTail: StreamItem[];
   currentHead: StreamItem[];
   currentCursor: TimelineCursor | undefined;
+  hasAuthoritativeBaseline?: boolean;
 }
 
 export type AgentStreamReducerSnapshot = Omit<ProcessAgentStreamEventsInput, "events">;
@@ -1017,8 +1024,9 @@ function processTimelineSequencingGate(input: {
   seq: number | undefined;
   epoch: string | undefined;
   currentCursor: TimelineCursor | undefined;
+  hasAuthoritativeBaseline: boolean;
 }): TimelineSequencingGateResult {
-  const { event, seq, epoch, currentCursor } = input;
+  const { event, seq, epoch, currentCursor, hasAuthoritativeBaseline } = input;
   const base: TimelineSequencingGateResult = {
     shouldApplyStreamEvent: true,
     nextTimelineCursor: null,
@@ -1027,6 +1035,9 @@ function processTimelineSequencingGate(input: {
     sideEffects: [],
   };
   if (event.type !== "timeline" || typeof seq !== "number" || typeof epoch !== "string") {
+    return base;
+  }
+  if (!hasAuthoritativeBaseline) {
     return base;
   }
 
@@ -1085,9 +1096,24 @@ function processTimelineSequencingGate(input: {
 export function processAgentStreamEvent(
   input: ProcessAgentStreamEventInput,
 ): ProcessAgentStreamEventOutput {
-  const { event, seq, epoch, currentTail, currentHead, currentCursor, timestamp } = input;
+  const {
+    event,
+    seq,
+    epoch,
+    currentTail,
+    currentHead,
+    currentCursor,
+    timestamp,
+    hasAuthoritativeBaseline = true,
+  } = input;
 
-  const sequencing = processTimelineSequencingGate({ event, seq, epoch, currentCursor });
+  const sequencing = processTimelineSequencingGate({
+    event,
+    seq,
+    epoch,
+    currentCursor,
+    hasAuthoritativeBaseline,
+  });
   const timelineCursor =
     event.type === "timeline" && seq !== undefined && epoch !== undefined
       ? { epoch, seq }
@@ -1096,30 +1122,61 @@ export function processAgentStreamEvent(
   // ------------------------------------------------------------------
   // Apply stream event to tail/head
   // ------------------------------------------------------------------
-  const applied = sequencing.shouldApplyStreamEvent
-    ? applyStreamEvent({
-        tail: sequencing.resetLiveTimeline ? [] : currentTail,
-        head: sequencing.resetLiveTimeline ? [] : currentHead,
+  let streamResult: ReturnType<typeof applyStreamEvent>;
+  if (!sequencing.shouldApplyStreamEvent) {
+    streamResult = {
+      tail: currentTail,
+      head: currentHead,
+      changedTail: false,
+      changedHead: false,
+    };
+  } else if (!hasAuthoritativeBaseline) {
+    if (event.type === "timeline" && event.item.type === "user_message") {
+      streamResult = applyStreamEvent({
+        tail: currentTail,
+        head: currentHead,
         event,
         timestamp,
         source: "live",
         timelineCursor,
-      })
-    : {
+        unmatchedUserMessageInsert: "head",
+      });
+    } else {
+      const overlay = applyStreamEvent({
+        tail: currentHead,
+        head: [],
+        event,
+        timestamp,
+        source: "live",
+        timelineCursor,
+      });
+      streamResult = {
         tail: currentTail,
-        head: currentHead,
+        head: [...overlay.tail, ...overlay.head],
         changedTail: false,
-        changedHead: false,
+        changedHead: overlay.changedTail || overlay.changedHead,
       };
+    }
+  } else {
+    streamResult = applyStreamEvent({
+      tail: sequencing.resetLiveTimeline ? [] : currentTail,
+      head: sequencing.resetLiveTimeline ? [] : currentHead,
+      event,
+      timestamp,
+      source: "live",
+      timelineCursor,
+    });
+  }
+  const { tail, head, changedTail, changedHead } = streamResult;
 
   return {
-    tail: applied.tail,
-    head: applied.head,
-    changedTail: applied.changedTail,
-    changedHead: applied.changedHead,
+    tail,
+    head,
+    changedTail,
+    changedHead,
     cursor: sequencing.nextTimelineCursor,
     cursorChanged: sequencing.cursorChanged,
-    acknowledgedClientMessageIds: applied.acknowledgedClientMessageIds ?? [],
+    acknowledgedClientMessageIds: streamResult.acknowledgedClientMessageIds ?? [],
     sideEffects: sequencing.sideEffects,
   };
 }
@@ -1144,6 +1201,7 @@ export function processAgentStreamEvents(
       currentTail: tail,
       currentHead: head,
       currentCursor: cursor,
+      hasAuthoritativeBaseline: input.hasAuthoritativeBaseline,
       timestamp: reducerEvent.timestamp,
     });
 
@@ -1281,10 +1339,12 @@ export function createSessionAgentStreamReducerQueue(
   return createAgentStreamReducerQueue({
     getSnapshot: (agentId) => {
       const session = useSessionStore.getState().sessions[serverId];
+      const timeline = selectAgentTimelineState(session, agentId);
       return {
-        currentTail: session?.agentStreamTail.get(agentId) ?? [],
+        currentTail: timeline.status === "cold" ? [] : timeline.items,
         currentHead: session?.agentStreamHead.get(agentId) ?? [],
-        currentCursor: session?.agentTimelineCursor.get(agentId),
+        currentCursor: timeline.status === "synced" ? (timeline.range ?? undefined) : undefined,
+        hasAuthoritativeBaseline: timeline.status === "synced",
       };
     },
     commit: (agentId, result, events) => {
