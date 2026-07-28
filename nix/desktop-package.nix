@@ -17,9 +17,47 @@
   paseo,
 }:
 
-buildNpmPackage rec {
-  pname = "paseo-desktop";
+let
   version = (builtins.fromJSON (builtins.readFile ../package.json)).version;
+  darwinInfoPlist = builtins.toFile "Paseo-Info.plist" (
+    lib.generators.toPlist { escape = true; } {
+      CFBundleDisplayName = "Paseo";
+      CFBundleExecutable = "Paseo";
+      CFBundleIconFile = "Paseo.icns";
+      CFBundleIdentifier = "sh.paseo.desktop";
+      CFBundleInfoDictionaryVersion = "6.0";
+      CFBundleName = "Paseo";
+      CFBundlePackageType = "APPL";
+      CFBundleShortVersionString = version;
+      CFBundleURLTypes = [
+        {
+          CFBundleURLName = "Paseo agent link";
+          CFBundleURLSchemes = [ "paseo" ];
+        }
+      ];
+      CFBundleVersion = version;
+      LSApplicationCategoryType = "public.app-category.developer-tools";
+      LSEnvironment.MallocNanoZone = "0";
+      LSMinimumSystemVersion = "12.0";
+      NSAppTransportSecurity.NSAllowsArbitraryLoads = true;
+      NSAudioCaptureUsageDescription = "Paseo needs access to audio capture for voice input.";
+      NSBluetoothAlwaysUsageDescription = "Paseo needs access to Bluetooth audio devices.";
+      NSBluetoothPeripheralUsageDescription = "Paseo needs access to Bluetooth audio devices.";
+      NSCameraUsageDescription = "Paseo needs access to the camera for image attachments.";
+      NSHighResolutionCapable = true;
+      NSMainNibFile = "MainMenu";
+      NSMicrophoneUsageDescription = "Paseo needs access to the microphone for voice input.";
+      NSPrefersDisplaySafeAreaCompatibilityMode = false;
+      NSPrincipalClass = "AtomApplication";
+      NSQuitAlwaysKeepsWindows = false;
+      NSRequiresAquaSystemAppearance = false;
+      NSSupportsAutomaticGraphicsSwitching = true;
+    }
+  );
+in
+buildNpmPackage {
+  pname = "paseo-desktop";
+  inherit version;
 
   src = lib.cleanSourceWith {
     src = ./..;
@@ -66,14 +104,15 @@ buildNpmPackage rec {
   # npm rebuild. We manually rebuild only node-pty in buildPhase.
   npmRebuildFlags = [ "--ignore-scripts" ];
 
-  nativeBuildInputs = [
-    python3 # for node-gyp (node-pty)
-    makeWrapper
-    copyDesktopItems
-  ]
-  ++ lib.optionals stdenv.hostPlatform.isLinux [
-    autoPatchelfHook
-  ];
+  nativeBuildInputs =
+    [
+      python3 # for node-gyp (node-pty)
+      makeWrapper
+    ]
+    ++ lib.optionals stdenv.hostPlatform.isLinux [
+      autoPatchelfHook
+      copyDesktopItems
+    ];
 
   buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
     libuv
@@ -153,31 +192,52 @@ buildNpmPackage rec {
       cp -a skills $out/share/paseo-desktop/
     fi
 
-    # Hicolor icon for desktop environments
-    install -Dm644 packages/desktop/assets/icon.png \
-      $out/share/icons/hicolor/512x512/apps/paseo-desktop.png
+    ${lib.optionalString stdenv.hostPlatform.isLinux ''
+      # Hicolor icon for desktop environments
+      install -Dm644 packages/desktop/assets/icon.png \
+        $out/share/icons/hicolor/512x512/apps/paseo-desktop.png
 
-    # Launcher wraps nixpkgs electron.
-    # --no-sandbox: Chromium's setuid sandbox can't live in /nix/store
-    # (immutable, no setuid). Acceptable for v1; a follow-up can wire
-    # `security.wrappers` via a NixOS module for users who want the sandbox.
-    #
-    # EXPO_DEV_URL: We run unpackaged via `electron path/to/main.js`, so
-    # `app.isPackaged` is false. In that mode main.ts loads `DEV_SERVER_URL`
-    # (defaults to http://localhost:8081 — the Expo dev server, which doesn't
-    # exist here). Point it at the `paseo://` protocol handler instead, which
-    # serves from `__dirname/../../app/dist` (our install layout matches).
-    makeWrapper ${electron}/bin/electron $out/bin/paseo-desktop \
-      --add-flags "$out/share/paseo-desktop/packages/desktop/dist/main.js" \
-      --add-flags "--no-sandbox" \
-      --set EXPO_DEV_URL "paseo://app/"
+      # Chromium's setuid sandbox cannot live in the immutable Nix store.
+      makeWrapper ${electron}/bin/electron $out/bin/paseo-desktop \
+        --add-flags "$out/share/paseo-desktop/packages/desktop/dist/main.js" \
+        --add-flags "--no-sandbox" \
+        --set EXPO_DEV_URL "paseo://app/"
 
-    copyDesktopItems
+      copyDesktopItems
+    ''}
+
+    ${lib.optionalString stdenv.hostPlatform.isDarwin ''
+      app="$out/Applications/Paseo.app"
+      mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+
+      # Reuse nixpkgs' Electron framework through store symlinks so the Paseo
+      # output stays small while still presenting a normal application bundle
+      # to LaunchServices.
+      ln -s ${electron}/Applications/Electron.app/Contents/Frameworks \
+        "$app/Contents/Frameworks"
+      ln -s ${electron}/Applications/Electron.app/Contents/MacOS/Electron \
+        "$app/Contents/MacOS/Electron"
+      for resource in ${electron}/Applications/Electron.app/Contents/Resources/*; do
+        ln -s "$resource" "$app/Contents/Resources/$(basename "$resource")"
+      done
+
+      cp ${darwinInfoPlist} "$app/Contents/Info.plist"
+      cp ${electron}/Applications/Electron.app/Contents/PkgInfo "$app/Contents/PkgInfo"
+      cp packages/desktop/assets/icon.icns "$app/Contents/Resources/Paseo.icns"
+
+      # Keep the same unpackaged runtime layout as the Linux Nix package. The
+      # outer .app supplies native macOS identity, icon, and URL handling while
+      # the wrapper points Electron at the immutable built main process.
+      makeWrapper "$app/Contents/MacOS/Electron" "$app/Contents/MacOS/Paseo" \
+        --add-flags "$out/share/paseo-desktop/packages/desktop/dist/main.js" \
+        --set EXPO_DEV_URL "paseo://app/"
+      ln -s ../Applications/Paseo.app/Contents/MacOS/Paseo "$out/bin/paseo-desktop"
+    ''}
 
     runHook postInstall
   '';
 
-  desktopItems = [
+  desktopItems = lib.optionals stdenv.hostPlatform.isLinux [
     (makeDesktopItem {
       name = "paseo-desktop";
       desktopName = "Paseo";
@@ -195,6 +255,6 @@ buildNpmPackage rec {
     homepage = "https://github.com/getpaseo/paseo";
     license = lib.licenses.agpl3Plus;
     mainProgram = "paseo-desktop";
-    platforms = lib.platforms.linux;
+    platforms = lib.platforms.linux ++ lib.platforms.darwin;
   };
 }
