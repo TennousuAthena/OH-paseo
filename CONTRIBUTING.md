@@ -40,6 +40,8 @@ Due to the volume and my limited bandwidth, I may not participate in all the dis
 
 Anyone can open a pull request, but there are no guarantees of it getting merged, only submit one if you're okay with it being closed.
 
+Open it as a draft if the work isn't ready for review, if you want to run the checks against it, or if you want feedback on the direction before you finish it. Mark it ready when you want it looked at.
+
 Here is the criteria I use to decide:
 
 ✅ Likely to be accepted
