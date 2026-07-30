@@ -10,28 +10,18 @@ Given Paseo's scope, contributing to to it takes a lot of context that is very h
 
 I pick what to build based on whether it fits the product, how many workflows it improves, whether it keeps things composable, whether we can hold the quality bar, and whether I want to build it.
 
-## Submit bugs in GitHub issues or Discord
+## Report bugs in GitHub issues or Discord
 
 Open an [issue](https://github.com/getpaseo/paseo/issues) or post in [Discord](https://discord.gg/jz8T2uahpH).
 
 > [!IMPORTANT]
 > Feature requests opened as issues will get closed automatically
 
-Include:
+If you used an agent to investigate, paste the raw evidence and repro steps it collected, not its diagnosis.
 
-- What you did, what you expected, what happened instead
-- Steps to reproduce
-- Paseo version, OS, and agent provider
-- Logs, command output, screenshots. A video if it's about interaction, animation, or timing
-- Redact secrets, keep the technical details
+You may submit a PR to fix a bug, please read the PR guidelines below.
 
-Try the latest release first and search for the same symptom. You can submit a pull request with the fix, it's not required.
-
-If you used an agent to investigate, submit the raw evidence like logs, commands, and repro steps it collected.
-
-Do not just submit your agent's findings, those usually don't have enough information, and the diagnosis is likely to be incorrect.
-
-## Start a product discussion in GitHub Discussions or Discord
+## Product discussions go in GitHub Discussions or Discord
 
 There's no feature request backlog. Open a product discussion in [Discussions](https://github.com/getpaseo/paseo/discussions) or `#product` in [Discord](https://discord.gg/jz8T2uahpH), and frame it as a workflow:
 
@@ -44,7 +34,7 @@ There's no feature request backlog. Open a product discussion in [Discussions](h
 
 A discussion also lets other people add their own version of the same problem, and that's what I read when I decide what to build.
 
-Due to the volume and my limited bandwidth, I may not participate in all the discussions, if something gains interest it will definitely make it's way to me.
+Due to the volume and my limited bandwidth, I may not participate in all the discussions, if something gains interest it will make it's way to me.
 
 ## Pull requests
 
