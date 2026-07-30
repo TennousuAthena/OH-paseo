@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- The Linux desktop app launches correctly again after `.deb` installation ([#2654](https://github.com/getpaseo/paseo/pull/2654) by [@Neumannzc](https://github.com/Neumannzc))
+- Fixed the Linux Debian package ([#2654](https://github.com/getpaseo/paseo/pull/2654) by [@Neumannzc](https://github.com/Neumannzc))
 
 ## 0.2.4 - 2026-07-30
 
