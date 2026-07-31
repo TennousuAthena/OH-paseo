@@ -35,14 +35,14 @@ export function hostProjectFromRoute(route: HostProjectRouteContext): HostProjec
     viewKey: createProjectViewKey({ kind: "placement", serverId: route.serverId, projectId }),
     projectKey: null,
     projectName: trimOptional(route.displayName) || projectId,
-    projectKind: "git",
+    projectKind: "unknown",
     iconWorkingDir,
     hosts: [
       {
         serverId: route.serverId,
         projectId,
         iconWorkingDir,
-        canCreateWorktree: true,
+        worktreeSupport: "unknown",
       },
     ],
     workspaceKeys: [],
@@ -80,7 +80,7 @@ export function hostProjectFromWorkspace(input: {
         serverId: input.serverId,
         projectId: input.workspace.projectId,
         iconWorkingDir,
-        canCreateWorktree: canCreate,
+        worktreeSupport: canCreate ? "supported" : "unsupported",
       },
     ],
     workspaceKeys: [`${input.serverId}:${input.workspace.id}`],
@@ -88,7 +88,7 @@ export function hostProjectFromWorkspace(input: {
 }
 
 function projectCanCreateWorktree(project: HostProjectListItem): boolean {
-  return project.hosts.some((h) => h.canCreateWorktree);
+  return project.hosts.some((host) => host.worktreeSupport !== "unsupported");
 }
 
 function getHostProjectPlacement(
@@ -99,6 +99,13 @@ function getHostProjectPlacement(
     if (host.serverId === serverId) return host;
   }
   return null;
+}
+
+export function getWorktreeSupportForHostProject(input: {
+  project: HostProjectListItem;
+  serverId: string;
+}): WorkspaceStructureHostPlacement["worktreeSupport"] {
+  return getHostProjectPlacement(input.project, input.serverId)?.worktreeSupport ?? "unknown";
 }
 
 export function getHostProjectSourceDirectory(
@@ -121,7 +128,7 @@ export function canCreateWorkspaceForHostProject(input: {
   if (!host) {
     return false;
   }
-  return input.allowAllProjects || host.canCreateWorktree;
+  return input.allowAllProjects || host.worktreeSupport !== "unsupported";
 }
 
 export function filterWorkspaceProjectsForHost(input: {

@@ -8,7 +8,7 @@ import ReanimatedAnimated from "react-native-reanimated";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { createNameId } from "mnemonic-id";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Folder, FolderPlus, GitBranch, GitPullRequest } from "lucide-react-native";
 import { Composer } from "@/composer";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
@@ -31,6 +31,8 @@ import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import { useForgeSearchQuery } from "@/git/use-forge-search-query";
+import { useCheckoutStatusQuery } from "@/git/use-status-query";
+import { ensureCheckoutStatus } from "@/git/checkout-status-cache";
 import {
   useHostRuntimeClient,
   useHostRuntimeConnectionStatuses,
@@ -67,6 +69,7 @@ import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-disp
 import {
   getHostProjectSourceDirectory,
   getHostProjectId,
+  getWorktreeSupportForHostProject,
   hostProjectFromRoute,
   hostProjectFromWorkspace,
   useHostProjects,
@@ -87,7 +90,7 @@ import {
   remapDraftCwdToWorkspace,
 } from "./new-workspace-fork-context";
 import {
-  pickerItemToCheckoutRequest,
+  resolveCheckoutRequest,
   type PickerCheckoutRequest,
   type PickerItem,
 } from "./new-workspace-picker-item";
@@ -108,19 +111,6 @@ const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.for
 const addProjectIcon = (
   <ThemedFolderPlus size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
 );
-
-function resolveCheckoutRequest(
-  selectedItem: PickerItem | null,
-  currentBranch: string | null,
-): PickerCheckoutRequest | undefined {
-  const selectedCheckoutRequest = pickerItemToCheckoutRequest(selectedItem);
-  if (selectedCheckoutRequest) return selectedCheckoutRequest;
-  if (!currentBranch) return undefined;
-  return {
-    action: "branch-off",
-    refName: currentBranch,
-  };
-}
 
 function useIsNewWorkspaceDraftHandoffActive(input: {
   draftId: string | undefined;
@@ -564,7 +554,8 @@ function NewWorkspaceProjectPickerOption({
       active={active}
       disabled={
         isPending ||
-        (!supportsWorkspaceMultiplicity && !project.hosts.some((host) => host.canCreateWorktree))
+        (!supportsWorkspaceMultiplicity &&
+          !project.hosts.some((host) => host.worktreeSupport !== "unsupported"))
       }
       onPress={onPress}
     />
@@ -697,21 +688,20 @@ interface WorkspaceIsolationState {
   showRefPicker: boolean;
 }
 
-// Worktree isolation only makes sense for a git checkout. The effective isolation
-// falls back to local whenever the selected directory isn't git so the flow
-// never submits an impossible request.
+// Preserve the user's worktree choice while route metadata is provisional. Once
+// the authoritative placement arrives, unsupported projects fall back to local.
 function useWorkspaceIsolation(input: {
   supportsMultiplicity: boolean;
-  selectedIsGit: boolean;
+  worktreeSupport: "supported" | "unsupported" | "unknown";
 }): WorkspaceIsolationState {
-  const { supportsMultiplicity, selectedIsGit } = input;
+  const { supportsMultiplicity, worktreeSupport } = input;
   // The last isolation choice is remembered alongside the other New Workspace
   // form preferences (provider, model, mode). A manual in-screen pick overrides
   // the remembered default until the screen remounts.
   const { preferences, updatePreferences } = useFormPreferences();
   const [manualIsolation, setManualIsolation] = useState<"local" | "worktree" | null>(null);
   const isolation = manualIsolation ?? preferences.isolation ?? "local";
-  const canCreateWorktree = supportsMultiplicity && selectedIsGit;
+  const canCreateWorktree = supportsMultiplicity && worktreeSupport !== "unsupported";
   const isWorktree = isolation === "worktree" && canCreateWorktree;
 
   const setIsolation = useCallback(
@@ -812,8 +802,7 @@ async function createMultiplicityWorkspace(input: {
   isolation: "local" | "worktree";
   project: HostProjectListItem;
   sourceDirectory: string;
-  selectedItem: PickerItem | null;
-  currentBranch: string | null;
+  checkoutRequest: PickerCheckoutRequest | undefined;
   withInitialAgent: boolean;
   prompt: string;
   attachments: AgentAttachment[];
@@ -827,9 +816,6 @@ async function createMultiplicityWorkspace(input: {
   const projectId = getHostProjectId(input.project, input.serverId);
   if (!projectId) throw new Error("Project is not available on the selected host");
   const isWorktree = input.isolation === "worktree";
-  const checkoutRequest = isWorktree
-    ? resolveCheckoutRequest(input.selectedItem, input.currentBranch)
-    : undefined;
   const firstAgentContext = buildFirstAgentContext({
     prompt: input.prompt,
     attachments: input.attachments,
@@ -841,7 +827,7 @@ async function createMultiplicityWorkspace(input: {
           cwd: input.sourceDirectory,
           projectId,
           worktreeSlug: createNameId(),
-          ...checkoutRequest,
+          ...input.checkoutRequest,
         }
       : {
           kind: "directory",
@@ -1518,6 +1504,7 @@ export function NewWorkspaceScreen({
   displayName: displayNameProp,
   draftId,
 }: NewWorkspaceScreenProps) {
+  const queryClient = useQueryClient();
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -1567,7 +1554,6 @@ export function NewWorkspaceScreen({
   }, [pickerSearchQuery]);
 
   const workspace = createdWorkspace;
-  const isPending = isNewWorkspacePending({ pendingAction, isDraftHandoffActive });
   const client = useHostRuntimeClient(selectedServerId);
   const isConnected = useHostRuntimeIsConnected(selectedServerId);
   const {
@@ -1646,27 +1632,20 @@ export function NewWorkspaceScreen({
   const hasSelectedSourceDirectory = selectedSourceDirectory !== null;
   const pickerQueryEnabled = pickerOpen && clientReady && hasSelectedSourceDirectory;
 
-  const checkoutStatusQuery = useQuery({
-    queryKey: ["checkout-status", selectedServerId, selectedSourceDirectory],
-    queryFn: async () => {
-      if (!selectedSourceDirectory) {
-        throw new Error("Choose a project");
-      }
-      const connectedClient = withConnectedClient();
-      return connectedClient.getCheckoutStatus(selectedSourceDirectory);
-    },
-    enabled: clientReady && hasSelectedSourceDirectory,
-    staleTime: Infinity,
-    refetchOnMount: false,
-    refetchOnReconnect: false,
-    refetchOnWindowFocus: false,
+  const { status: checkoutStatus } = useCheckoutStatusQuery({
+    serverId: selectedServerId,
+    cwd: selectedSourceDirectory ?? "",
   });
 
-  const currentBranch = checkoutStatusQuery.data?.currentBranch ?? null;
+  const currentBranch = checkoutStatus?.currentBranch ?? null;
+  const worktreeSupport = selectedProject
+    ? getWorktreeSupportForHostProject({ project: selectedProject, serverId: selectedServerId })
+    : "unsupported";
+  const isPending = isNewWorkspacePending({ pendingAction, isDraftHandoffActive });
   const { effectiveIsolation, setIsolation, canCreateWorktree, showRefPicker } =
     useWorkspaceIsolation({
       supportsMultiplicity: supportsWorkspaceMultiplicity,
-      selectedIsGit: checkoutStatusQuery.data?.isGit === true,
+      worktreeSupport,
     });
 
   const branchSuggestionsQuery = useQuery({
@@ -1885,6 +1864,7 @@ export function NewWorkspaceScreen({
       cwd: string;
       prompt: string;
       attachments: AgentAttachment[];
+      checkoutRequest: PickerCheckoutRequest | undefined;
     }): CreatePaseoWorktreeInput => {
       if (!selectedProject) {
         throw new Error("Choose a project");
@@ -1892,7 +1872,6 @@ export function NewWorkspaceScreen({
       if (!selectedSourceDirectory) {
         throw new Error("Choose a host for this project");
       }
-      const checkoutRequest = resolveCheckoutRequest(selectedItem, currentBranch);
       const firstAgentContext = buildFirstAgentContext(input);
       const hostProjectId = getHostProjectId(selectedProject, selectedServerId);
       if (!hostProjectId) {
@@ -1904,10 +1883,10 @@ export function NewWorkspaceScreen({
         projectId: hostProjectId,
         worktreeSlug: createNameId(),
         ...(firstAgentContext ? { firstAgentContext } : {}),
-        ...checkoutRequest,
+        ...input.checkoutRequest,
       };
     },
-    [currentBranch, selectedItem, selectedProject, selectedServerId, selectedSourceDirectory],
+    [selectedProject, selectedServerId, selectedSourceDirectory],
   );
 
   const ensureWorkspace = useCallback(
@@ -1926,14 +1905,26 @@ export function NewWorkspaceScreen({
       if (!selectedSourceDirectory) {
         throw new Error("Choose a host for this project");
       }
+      const connectedClient = withConnectedClient();
+      const createsWorktree = !supportsWorkspaceMultiplicity || effectiveIsolation === "worktree";
+      const checkoutRequest = createsWorktree
+        ? resolveCheckoutRequest(
+            selectedItem,
+            await ensureCheckoutStatus({
+              queryClient,
+              client: connectedClient,
+              serverId: selectedServerId,
+              cwd: selectedSourceDirectory,
+            }),
+          )
+        : undefined;
       const normalizedWorkspace = supportsWorkspaceMultiplicity
         ? await createMultiplicityWorkspace({
-            client: withConnectedClient(),
+            client: connectedClient,
             isolation: effectiveIsolation,
             project: selectedProject,
             sourceDirectory: selectedSourceDirectory,
-            selectedItem,
-            currentBranch,
+            checkoutRequest,
             withInitialAgent: input.withInitialAgent,
             prompt: input.prompt,
             attachments: input.attachments,
@@ -1942,8 +1933,8 @@ export function NewWorkspaceScreen({
             createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
           })
         : await createAndMergeWorkspace({
-            client: withConnectedClient(),
-            createInput: buildCreateWorktreeInput(input),
+            client: connectedClient,
+            createInput: buildCreateWorktreeInput({ ...input, checkoutRequest }),
             mergeWorkspaces,
             serverId: selectedServerId,
             createFailedMessage: t("newWorkspace.errors.createWorktreeFailed"),
@@ -1954,9 +1945,9 @@ export function NewWorkspaceScreen({
     [
       buildCreateWorktreeInput,
       createdWorkspace,
-      currentBranch,
       effectiveIsolation,
       mergeWorkspaces,
+      queryClient,
       selectedItem,
       selectedProject,
       selectedServerId,

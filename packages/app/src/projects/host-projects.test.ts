@@ -4,6 +4,7 @@ import {
   canCreateWorkspaceForHostProject,
   getHostProjectId,
   getHostProjectSourceDirectory,
+  getWorktreeSupportForHostProject,
   hostProjectFromRoute,
 } from "./host-project-model";
 
@@ -19,13 +20,13 @@ function project(): HostProjectListItem {
         serverId: "host-a",
         projectId: "prj_a",
         iconWorkingDir: "/repo/a",
-        canCreateWorktree: true,
+        worktreeSupport: "supported" as const,
       },
       {
         serverId: "host-b",
         projectId: "prj_b",
         iconWorkingDir: "/repo/b",
-        canCreateWorktree: true,
+        worktreeSupport: "supported" as const,
       },
     ],
     workspaceKeys: [],
@@ -47,6 +48,38 @@ describe("host project lookups", () => {
         allowAllProjects: false,
       }),
     ).toBe(true);
+  });
+
+  test("checks worktree capability against the selected host placement", () => {
+    const groupedProject = project();
+    groupedProject.hosts[1] = {
+      ...groupedProject.hosts[1]!,
+      worktreeSupport: "unsupported" as const,
+    };
+
+    expect(getWorktreeSupportForHostProject({ project: groupedProject, serverId: "host-a" })).toBe(
+      "supported",
+    );
+    expect(getWorktreeSupportForHostProject({ project: groupedProject, serverId: "host-b" })).toBe(
+      "unsupported",
+    );
+    expect(getWorktreeSupportForHostProject({ project: groupedProject, serverId: "missing" })).toBe(
+      "unknown",
+    );
+  });
+
+  test("marks route placeholder worktree support as unknown", () => {
+    const routeProject = hostProjectFromRoute({
+      serverId: "host-a",
+      projectId: "prj_a",
+      displayName: "App",
+      sourceDirectory: "/repo/a",
+    });
+    expect(routeProject).not.toBeNull();
+    expect(routeProject!.projectKind).toBe("unknown");
+    expect(getWorktreeSupportForHostProject({ project: routeProject!, serverId: "host-a" })).toBe(
+      "unknown",
+    );
   });
 
   test("builds an unhydrated route project around the routed project id", () => {
