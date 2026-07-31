@@ -1,7 +1,7 @@
 <!--
 Please follow this template. The PR template applies whether you opened the PR via the web UI, `gh pr create`, or any other tool.
 
-See CONTRIBUTING.md.
+You MUST read CONTRIBUTING.md before sending a PR.
 -->
 
 ### Linked issue
