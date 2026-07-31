@@ -12,7 +12,8 @@ Closes #
 
 - [ ] Bug fix
 - [ ] New feature
-- [ ] Refactor / code improvement
+- [ ] Enhancement
+- [ ] Refactor
 - [ ] Docs
 
 ### What does this PR do
