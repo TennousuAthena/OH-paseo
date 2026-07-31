@@ -5,6 +5,7 @@
   nodejs_22,
   python3,
   makeWrapper,
+  autoPatchelfHook,
   copyDesktopItems,
   makeDesktopItem,
   electron,
@@ -69,9 +70,15 @@ buildNpmPackage rec {
     python3 # for node-gyp (node-pty)
     makeWrapper
     copyDesktopItems
+  ]
+  ++ lib.optionals stdenv.hostPlatform.isLinux [
+    autoPatchelfHook
   ];
 
-  buildInputs = lib.optionals stdenv.hostPlatform.isLinux [ libuv ];
+  buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
+    libuv
+    stdenv.cc.cc.lib # libstdc++ for sherpa-onnx prebuilt binaries
+  ];
 
   dontNpmBuild = true;
 
@@ -108,19 +115,38 @@ buildNpmPackage rec {
 
     mkdir -p $out/share/paseo-desktop $out/bin
 
-    # Preserve the monorepo layout so main.js's dev-mode path resolution
-    # (`__dirname/../../app/dist`, `__dirname/../assets/icon.png`) works
-    # without patching: invoked unpackaged via `electron path/to/main.js`,
-    # `app.isPackaged` is false, so these relative paths are used.
-    #
-    # Copy the entire packages/ tree (not just built artifacts) because npm
-    # creates workspace symlinks from node_modules/@getpaseo/* into packages/*.
-    # Missing any workspace package leaves dangling symlinks and fails the
-    # noBrokenSymlinks output check. The cleanSourceWith filter above already
-    # drops the big platform-specific things (android/ios, website, tests).
+    # Materialize only the desktop and daemon runtime graphs. Copying the
+    # complete monorepo used to ship every build-time dependency (including
+    # Electron, Expo tooling, and cross-platform builder binaries), making the
+    # desktop output larger than 2 GiB.
+    PASEO_TRACE_DESKTOP=1 node scripts/trace-daemon.mjs > desktop-files.txt
+
+    while IFS= read -r path; do
+      [ -z "$path" ] && continue
+      mkdir -p "$out/share/paseo-desktop/$(dirname "$path")"
+      cp -a "$path" "$out/share/paseo-desktop/$path"
+    done < desktop-files.txt
+
+    # Keep the same unpackaged monorepo layout expected by main.js.
     cp package.json $out/share/paseo-desktop/
-    cp -a packages $out/share/paseo-desktop/
-    cp -a node_modules $out/share/paseo-desktop/
+    mkdir -p $out/share/paseo-desktop/packages/app
+    cp -a packages/app/dist $out/share/paseo-desktop/packages/app/
+
+    for runtime_path in \
+      packages/desktop/dist/main.js \
+      packages/desktop/dist/preload.js \
+      packages/desktop/dist/features/browser-keyboard/guest-preload.js \
+      packages/desktop/package.json; do
+      if [ ! -e "$out/share/paseo-desktop/$runtime_path" ]; then
+        echo "desktop runtime trace omitted $runtime_path" >&2
+        exit 1
+      fi
+    done
+
+    if [ -e $out/share/paseo-desktop/node_modules/electron ]; then
+      echo "desktop runtime trace included npm Electron" >&2
+      exit 1
+    fi
 
     # Skills directory referenced at runtime by some agents
     if [ -d skills ]; then
