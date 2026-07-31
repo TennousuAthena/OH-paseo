@@ -122,6 +122,7 @@ test.describe("Model B sidebar shape", () => {
       repoPrefix: "model-b-status-active-",
       title: "Working workspace",
       initialPrompt: "stay busy",
+      model: "one-minute-stream",
     });
 
     try {
@@ -151,6 +152,14 @@ test.describe("Model B sidebar shape", () => {
       // Only workspace rows are shown — no tab/agent/terminal leaves leak into
       // the status view.
       await expect(sidebar.locator('[data-testid^="workspace-tab-"]')).toHaveCount(0);
+
+      // Status mode drops the project grouping, so each row leads its subtitle
+      // with the project's icon to keep projects distinguishable.
+      for (const workspaceId of [idleProject.workspaceId, activeMock.workspaceId]) {
+        await expect(
+          page.getByTestId(`sidebar-row-project-icon-${getServerId()}:${workspaceId}`).first(),
+        ).toBeVisible({ timeout: 60_000 });
+      }
 
       // The busy workspace is grouped under Working, the idle one under Done:
       // changing one workspace's status moved only that row.

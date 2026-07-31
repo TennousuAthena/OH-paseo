@@ -43,6 +43,19 @@ export function resolveSidebarProjectIconTarget(
   return null;
 }
 
+export interface SidebarProjectIconTarget extends SidebarProjectHostTarget {
+  projectKey: string;
+}
+
+export function resolveSidebarProjectIconTargets(
+  projects: readonly SidebarProjectEntry[],
+): SidebarProjectIconTarget[] {
+  return projects.flatMap((project) => {
+    const target = resolveSidebarProjectIconTarget(project);
+    return target ? [{ projectKey: project.projectKey, ...target }] : [];
+  });
+}
+
 export function resolveSidebarProjectLocalPath(
   project: SidebarProjectEntry,
   localServerId: string | null,
