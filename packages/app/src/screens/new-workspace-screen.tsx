@@ -75,7 +75,7 @@ import {
   useHostProjects,
   type HostProjectListItem,
 } from "@/projects/host-projects";
-import { useProjectIconDataByProjectViewKey } from "@/projects/project-icons";
+import { useProjectIcons } from "@/projects/icons";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { ComposerAttachment } from "@/attachments/types";
 import { useDraftWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
@@ -1578,12 +1578,22 @@ export function NewWorkspaceScreen({
         if (!iconWorkingDir) {
           return [];
         }
-        return [{ projectViewKey: project.viewKey, serverId: selectedServerId, iconWorkingDir }];
+        const host = project.hosts.find((candidate) => candidate.serverId === selectedServerId);
+        if (!host) return [];
+        return [
+          {
+            projectViewKey: project.viewKey,
+            projectId: host.projectId,
+            serverId: selectedServerId,
+            iconWorkingDir,
+            customIconRevision: host.customIconRevision,
+          },
+        ];
       }),
     [projects, selectedServerId],
   );
 
-  const projectIconDataByProjectViewKey = useProjectIconDataByProjectViewKey({
+  const projectIconDataByProjectViewKey = useProjectIcons({
     projects: projectIconTargets,
   });
   const draftKey = buildNewWorkspaceDraftKey(draftId);

@@ -57,7 +57,7 @@ import {
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import { useHostFeatureMap } from "@/runtime/host-features";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { useProjectIconDataByProjectViewKey } from "@/projects/project-icons";
+import { useProjectIcons } from "@/projects/icons";
 import {
   buildNewWorkspaceRoute,
   buildProjectSettingsRoute,
@@ -1958,7 +1958,7 @@ export function SidebarWorkspaceList({
     () => (groupMode === "status" ? resolveSidebarProjectIconTargets(projects) : []),
     [groupMode, projects],
   );
-  const statusProjectIconByProjectViewKey = useProjectIconDataByProjectViewKey({
+  const statusProjectIconByProjectViewKey = useProjectIcons({
     projects: statusProjectIconTargets,
   });
 
@@ -2127,7 +2127,7 @@ function ProjectModeList({
     [parentGestureRef],
   );
 
-  const projectIconByProjectViewKey = useProjectIconDataByProjectViewKey({
+  const projectIconByProjectViewKey = useProjectIcons({
     projects: projectIconTargets,
   });
 

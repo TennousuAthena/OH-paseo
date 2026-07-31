@@ -262,11 +262,13 @@ function createNoopProjectRegistry(): ProjectRegistry {
       displayName: input.displayName,
       projectKey: input.projectKey ?? null,
       customName: null,
+      customIconRevision: null,
       createdAt: input.timestamp,
       updatedAt: input.timestamp,
       archivedAt: null,
     }),
     upsert: async () => {},
+    update: async () => null,
     archive: async () => {},
     remove: async () => {},
   };
@@ -1581,6 +1583,8 @@ export class VoiceAssistantWebSocketServer {
         stableProjectIdentity: true,
         // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
         workspaceScriptManagement: true,
+        // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
+        projectCustomIcon: true,
       },
     };
   }

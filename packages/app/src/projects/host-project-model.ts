@@ -81,6 +81,7 @@ export function hostProjectFromWorkspace(input: {
         projectId: input.workspace.projectId,
         iconWorkingDir,
         worktreeSupport: canCreate ? "supported" : "unsupported",
+        customIconRevision: input.workspace.projectCustomIconRevision,
       },
     ],
     workspaceKeys: [`${input.serverId}:${input.workspace.id}`],

@@ -6,6 +6,7 @@ export interface WorkspaceStructureHostPlacement {
   projectId: string;
   iconWorkingDir: string;
   worktreeSupport: "supported" | "unsupported" | "unknown";
+  customIconRevision?: string | null;
 }
 
 export interface WorkspaceStructureProject {
@@ -158,6 +159,7 @@ function addProjectToView(input: {
     projectId: project.projectId,
     iconWorkingDir: project.projectRootPath,
     worktreeSupport: project.projectKind === "git" ? "supported" : "unsupported",
+    customIconRevision: project.projectCustomIconRevision,
   };
   const draft = byProject.get(viewKey);
   if (!draft) {
