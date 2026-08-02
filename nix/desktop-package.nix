@@ -10,6 +10,7 @@
   makeDesktopItem,
   electron,
   libuv,
+  buildVersion,
   # Reuse the daemon's prebuilt npm-deps FOD. Same lockfile, same content —
   # without this, the desktop drv produces a separately-named store path
   # (`paseo-desktop-<v>-npm-deps`) and refetches the entire registry. Override
@@ -126,6 +127,7 @@ buildNpmPackage {
             --mac \
             --publish never \
             --config.electronDist="$electron_dist" \
+            --config.buildVersion=${lib.escapeShellArg buildVersion} \
             --config.mac.identity=null \
             --config.mac.hardenedRuntime=false \
             --config.mac.notarize=false
