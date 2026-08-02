@@ -190,6 +190,7 @@ export const ptBR: TranslationResources = {
   agentStream: {
     empty: "Comece a conversar com este agente...",
     scrollToBottom: "Rolar para o fim",
+    historyLoadFailed: "Não foi possível carregar o histórico do agente",
     permission: {
       plan: "Plano",
       required: "Permissão necessária",
@@ -1811,6 +1812,10 @@ export const ptBR: TranslationResources = {
       },
       detailLevel: {
         title: "Nível de detalhe",
+      },
+      chatOutline: {
+        title: "Estrutura do chat",
+        description: "Mostrar uma estrutura para navegar entre prompts",
       },
       fonts: {
         title: "Fontes",

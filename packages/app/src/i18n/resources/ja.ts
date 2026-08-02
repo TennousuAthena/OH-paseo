@@ -190,6 +190,7 @@ export const ja: TranslationResources = {
   agentStream: {
     empty: "このエージェントとチャットを始めましょう...",
     scrollToBottom: "下にスクロール",
+    historyLoadFailed: "エージェントの履歴を読み込めませんでした",
     permission: {
       plan: "プラン",
       required: "権限が必要です",
@@ -1795,6 +1796,10 @@ export const ja: TranslationResources = {
       },
       detailLevel: {
         title: "詳細レベル",
+      },
+      chatOutline: {
+        title: "チャットのアウトライン",
+        description: "プロンプト間を移動するためのアウトラインを表示します",
       },
       fonts: {
         title: "フォント",

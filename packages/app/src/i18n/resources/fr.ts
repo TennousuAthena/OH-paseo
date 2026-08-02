@@ -192,6 +192,7 @@ export const fr: TranslationResources = {
   agentStream: {
     empty: "Commencez à discuter avec cet agent...",
     scrollToBottom: "Faire défiler vers le bas",
+    historyLoadFailed: "Impossible de charger l’historique de l’agent",
     permission: {
       plan: "Plan",
       required: "Autorisation requise",
@@ -1830,6 +1831,10 @@ export const fr: TranslationResources = {
       },
       detailLevel: {
         title: "Niveau de détail",
+      },
+      chatOutline: {
+        title: "Plan de la discussion",
+        description: "Afficher un plan pour passer d’une requête à l’autre",
       },
       fonts: {
         title: "Polices",

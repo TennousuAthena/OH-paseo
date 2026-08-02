@@ -190,6 +190,7 @@ export const zhCN: TranslationResources = {
   agentStream: {
     empty: "开始和这个 Agent 对话...",
     scrollToBottom: "滚动到底部",
+    historyLoadFailed: "无法加载智能体历史记录",
     permission: {
       plan: "Plan",
       required: "需要权限",
@@ -1759,6 +1760,10 @@ export const zhCN: TranslationResources = {
       },
       detailLevel: {
         title: "详细程度",
+      },
+      chatOutline: {
+        title: "聊天大纲",
+        description: "显示用于在提示词之间跳转的大纲",
       },
       fonts: {
         title: "字体",

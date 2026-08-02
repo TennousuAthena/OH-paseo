@@ -190,6 +190,7 @@ export const ar: TranslationResources = {
   agentStream: {
     empty: "ابدأ الدردشة مع هذا الوكيل...",
     scrollToBottom: "قم بالتمرير إلى الأسفل",
+    historyLoadFailed: "تعذر تحميل سجل الوكيل",
     permission: {
       plan: "يخطط",
       required: "الإذن مطلوب",
@@ -1780,6 +1781,10 @@ export const ar: TranslationResources = {
       },
       detailLevel: {
         title: "مستوى التفاصيل",
+      },
+      chatOutline: {
+        title: "مخطط المحادثة",
+        description: "عرض مخطط للتنقل بين المطالبات",
       },
       fonts: {
         title: "الخطوط",
