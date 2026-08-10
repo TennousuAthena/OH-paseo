@@ -2910,6 +2910,8 @@ export const ServerInfoStatusPayloadSchema = z
     features: z
       .object({
         providersSnapshot: z.boolean().optional(),
+        // COMPAT(providersSnapshotCwd): added in v0.3.2, remove gate after 2027-02-10.
+        providersSnapshotCwd: z.boolean().optional(),
         // COMPAT(checkoutForgeSetAutoMerge): added in v0.1.106, remove old
         // checkoutGithubSetAutoMerge fallback after 2026-12-28.
         checkoutForgeSetAutoMerge: z.boolean().optional(),
@@ -5064,6 +5066,7 @@ export const ListAvailableProvidersResponseSchema = z.object({
 export const GetProvidersSnapshotResponseMessageSchema = z.object({
   type: z.literal("get_providers_snapshot_response"),
   payload: z.object({
+    cwd: z.string().optional(),
     entries: z.array(ProviderSnapshotEntrySchema),
     compactSnapshot: CompactProviderSnapshotSchema.optional(),
     snapshotHash: z.string().optional(),
