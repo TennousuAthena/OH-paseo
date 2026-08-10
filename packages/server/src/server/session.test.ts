@@ -34,9 +34,7 @@ import {
   asAgentStorage,
   asDownloadTokenStore,
   asPushTokenStore,
-  asChatService,
   asScheduleService,
-  asLoopService,
   asCheckoutDiffManager,
   asGitHubService,
   asWorkspaceGitService,
@@ -395,9 +393,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
       get: vi.fn(),
       list: vi.fn().mockResolvedValue([]),
     },
-    chatService: asChatService(),
     scheduleService: asScheduleService(),
-    loopService: asLoopService(),
     checkoutDiffManager: asCheckoutDiffManager(checkoutDiffManager),
     github: asGitHubService(github),
     workspaceGitService: asWorkspaceGitService(workspaceGitService),
@@ -4615,57 +4611,12 @@ describe("session pull request timeline handling", () => {
   });
 });
 
-describe("chat/schedule/loop dispatch routing (behavior preservation)", () => {
-  // Each chat/*, loop/*, and schedule/* type must reach its domain handler. The
-  // injected service stubs are unstubbed, so every handler's own try/catch fires
-  // and emits its domain rpc_error code — proving the message routed (a dropped
-  // case would silently no-op and emit nothing). schedule/* historically routed
-  // via the chat dispatcher's fall-through arm; this guards that path explicitly.
+describe("schedule dispatch routing", () => {
+  // Each schedule/* type must reach its domain handler. The injected service stub
+  // is unstubbed, so every handler's own try/catch emits its domain rpc_error code.
   // handleMessage receives already-parsed messages, so these fixtures only need to
   // satisfy the TS union here — zod parsing happens upstream at the transport.
   const routingCases: Array<{ msg: SessionInboundMessage; code: string }> = [
-    {
-      msg: { type: "chat/create", requestId: "rt-chat-create", name: "room" },
-      code: "chat_request_failed",
-    },
-    { msg: { type: "chat/list", requestId: "rt-chat-list" }, code: "chat_request_failed" },
-    {
-      msg: { type: "chat/inspect", requestId: "rt-chat-inspect", room: "room" },
-      code: "chat_request_failed",
-    },
-    {
-      msg: { type: "chat/delete", requestId: "rt-chat-delete", room: "room" },
-      code: "chat_request_failed",
-    },
-    {
-      msg: { type: "chat/post", requestId: "rt-chat-post", room: "room", body: "hi" },
-      code: "chat_request_failed",
-    },
-    {
-      msg: { type: "chat/read", requestId: "rt-chat-read", room: "room" },
-      code: "chat_request_failed",
-    },
-    {
-      msg: { type: "chat/wait", requestId: "rt-chat-wait", room: "room" },
-      code: "chat_request_failed",
-    },
-    {
-      msg: { type: "loop/run", requestId: "rt-loop-run", prompt: "p", cwd: "/tmp/loop" },
-      code: "loop_request_failed",
-    },
-    { msg: { type: "loop/list", requestId: "rt-loop-list" }, code: "loop_request_failed" },
-    {
-      msg: { type: "loop/inspect", requestId: "rt-loop-inspect", id: "loop-1" },
-      code: "loop_request_failed",
-    },
-    {
-      msg: { type: "loop/logs", requestId: "rt-loop-logs", id: "loop-1" },
-      code: "loop_request_failed",
-    },
-    {
-      msg: { type: "loop/stop", requestId: "rt-loop-stop", id: "loop-1" },
-      code: "loop_request_failed",
-    },
     {
       msg: {
         type: "schedule/create",

@@ -159,9 +159,7 @@ function createHarness(input: {
       },
     }),
     filesystem: { isDirectory: async () => true },
-    chatService: createStub<SessionOptions["chatService"]>({}),
     scheduleService: createStub<SessionOptions["scheduleService"]>({}),
-    loopService: createStub<SessionOptions["loopService"]>({}),
     checkoutDiffManager: createStub<SessionOptions["checkoutDiffManager"]>({
       subscribe: async () => ({
         initial: { cwd: "/tmp", files: [], error: null },
