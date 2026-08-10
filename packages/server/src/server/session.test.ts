@@ -33,7 +33,7 @@ import {
   asAgentManager,
   asAgentStorage,
   asDownloadTokenStore,
-  asPushTokenStore,
+  asPushNotifications,
   asScheduleService,
   asCheckoutDiffManager,
   asGitHubService,
@@ -316,6 +316,7 @@ interface SessionForTestOptions {
   daemonVersion?: SessionOptions["daemonVersion"];
   daemonRuntimeConfig?: SessionOptions["daemonRuntimeConfig"];
   downloadTokenStore?: SessionOptions["downloadTokenStore"];
+  pushNotifications?: SessionOptions["pushNotifications"];
   messages?: unknown[];
   targetedMessages?: Array<{ source: object; message: SessionOutboundMessage }>;
   binaryMessages?: Uint8Array[];
@@ -365,7 +366,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     onBinaryMessage: createBinaryMessageHandler(options.binaryMessages),
     logger,
     downloadTokenStore: options.downloadTokenStore ?? asDownloadTokenStore(),
-    pushTokenStore: asPushTokenStore(),
+    pushNotifications: options.pushNotifications ?? asPushNotifications(),
     paseoHome: options.paseoHome ?? "/tmp/paseo-home",
     agentManager: asAgentManager({
       listAgents: vi.fn(() => []),
@@ -1440,6 +1441,88 @@ describe("project config RPC authorization", () => {
         },
       },
     ]);
+  });
+});
+
+test("push token registration can be revoked by the connected client", async () => {
+  const renewed: string[] = [];
+  const revoked: string[] = [];
+  const messages: unknown[] = [];
+  const session = createSessionForTest({
+    messages,
+    pushNotifications: asPushNotifications({
+      renew: (token: string) => renewed.push(token),
+      revoke: (token: string) => revoked.push(token),
+    }),
+  });
+
+  await session.handleMessage({
+    type: "register_push_token",
+    token: "ExponentPushToken[test-device]",
+  });
+  await session.handleMessage({
+    type: "push.unregister.request",
+    token: "ExponentPushToken[test-device]",
+    requestId: "revoke-1",
+  });
+  await session.handleMessage({
+    type: "client_heartbeat",
+    deviceType: "mobile",
+    focusedAgentId: null,
+    lastActivityAt: "2026-08-10T00:00:00.000Z",
+    appVisible: false,
+  });
+
+  expect(renewed).toEqual(["ExponentPushToken[test-device]"]);
+  expect(revoked).toEqual(["ExponentPushToken[test-device]"]);
+  expect(messages).toEqual([
+    {
+      type: "push.unregister.response",
+      payload: { requestId: "revoke-1" },
+    },
+  ]);
+});
+
+test("push token revocation only acknowledges durable removal", async () => {
+  const renewed: string[] = [];
+  const messages: SessionOutboundMessage[] = [];
+  const session = createSessionForTest({
+    messages,
+    pushNotifications: asPushNotifications({
+      renew: (token: string) => renewed.push(token),
+      revoke: () => {
+        throw new Error("disk full");
+      },
+    }),
+  });
+
+  await session.handleMessage({
+    type: "register_push_token",
+    token: "ExponentPushToken[test-device]",
+  });
+  await session.handleMessage({
+    type: "push.unregister.request",
+    token: "ExponentPushToken[test-device]",
+    requestId: "revoke-failed",
+  });
+  await session.handleMessage({
+    type: "client_heartbeat",
+    deviceType: "mobile",
+    focusedAgentId: null,
+    lastActivityAt: "2026-08-10T00:00:00.000Z",
+    appVisible: false,
+  });
+
+  expect(renewed).toEqual(["ExponentPushToken[test-device]", "ExponentPushToken[test-device]"]);
+  expect(messages.some((message) => message.type === "push.unregister.response")).toBe(false);
+  expect(messages).toContainEqual({
+    type: "rpc_error",
+    payload: {
+      requestId: "revoke-failed",
+      requestType: "push.unregister.request",
+      error: "Request failed: disk full",
+      code: "handler_error",
+    },
   });
 });
 
