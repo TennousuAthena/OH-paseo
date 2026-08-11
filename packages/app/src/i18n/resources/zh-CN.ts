@@ -65,6 +65,8 @@ export const zhCN: TranslationResources = {
       newAgent: "新建 Agent",
       addProject: "添加 project",
       home: "首页",
+      groupByProject: "按项目分组",
+      groupByStatus: "按状态分组",
       modelGroupLabel: "模型",
       modelSearchKeywords: "切换模型 更改模型 设置模型 选择模型",
       thinkingGroupLabel: "思考",

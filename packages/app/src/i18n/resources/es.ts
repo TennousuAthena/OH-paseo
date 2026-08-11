@@ -65,6 +65,8 @@ export const es: TranslationResources = {
       newAgent: "Nuevo agente",
       addProject: "Agregar proyecto",
       home: "Hogar",
+      groupByProject: "Agrupar por proyecto",
+      groupByStatus: "Agrupar por estado",
       modelGroupLabel: "Modelo",
       modelSearchKeywords: "cambiar modelo modificar modelo establecer modelo seleccionar modelo",
       thinkingGroupLabel: "Razonamiento",

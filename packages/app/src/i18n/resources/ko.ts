@@ -65,6 +65,8 @@ export const ko: TranslationResources = {
       newAgent: "새 에이전트",
       addProject: "프로젝트 추가",
       home: "홈",
+      groupByProject: "프로젝트별 그룹화",
+      groupByStatus: "상태별 그룹화",
       modelGroupLabel: "모델",
       modelSearchKeywords: "모델 전환 모델 변경 모델 설정 모델 선택",
       thinkingGroupLabel: "추론",
