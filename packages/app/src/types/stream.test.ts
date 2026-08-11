@@ -1055,7 +1055,7 @@ describe("stream reducer canonical tool calls", () => {
     ]);
   });
 
-  it("preserves compaction trigger when completed update replaces loading marker", () => {
+  it("terminalizes the loading compaction before a completed turn", () => {
     const state = hydrateStreamState([
       {
         event: compactionTimeline("loading", "auto"),
@@ -1064,6 +1064,10 @@ describe("stream reducer canonical tool calls", () => {
       {
         event: compactionTimeline("completed"),
         timestamp: new Date("2025-01-01T10:50:01Z"),
+      },
+      {
+        event: { type: "turn_completed", provider: "codex" },
+        timestamp: new Date("2025-01-01T10:50:02Z"),
       },
     ]);
 
@@ -1074,6 +1078,10 @@ describe("stream reducer canonical tool calls", () => {
     assert.strictEqual(compactions.length, 1);
     assert.strictEqual(compactions[0].status, "completed");
     assert.strictEqual(compactions[0].trigger, "auto");
+    assert.strictEqual(
+      state.some((item) => item.kind === "compaction" && item.status === "loading"),
+      false,
+    );
   });
 
   it("renders Claude TodoWrite as todo_list and suppresses tool call badge", () => {
