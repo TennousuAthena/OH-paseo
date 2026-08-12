@@ -25,6 +25,10 @@ class MemoryStorage implements ReplicaCacheStorage {
     this.writes += 1;
     this.values.set(key, value);
   }
+
+  async removeItem(key: string): Promise<void> {
+    this.values.delete(key);
+  }
 }
 
 function workspace(
@@ -224,6 +228,38 @@ describe("ReplicaCache", () => {
       status: "painted",
       items: [message("message-1", "Cached")],
     });
+  });
+
+  it("clears a cache containing a timeline row that fails its schema", async () => {
+    const storage = new MemoryStorage();
+    const writer = new ReplicaCache(storage);
+    writer.setHosts([SERVER_ID]);
+    seedSession();
+    await writer.flush();
+
+    const payload = JSON.parse(storage.values.get("@paseo:replica-cache") ?? "null") as {
+      hosts: Array<{ timeline: { items: unknown[] } | null }>;
+    };
+    const timeline = payload.hosts[0]?.timeline;
+    if (!timeline) throw new Error("Expected cached timeline");
+    timeline.items = [
+      {
+        kind: "todo_list",
+        id: "legacy-todo",
+        timestamp: { __paseoDate: "2026-08-11T08:02:00.000Z" },
+        provider: "codex",
+        items: [{ text: "Ship it", completed: false }],
+      },
+    ];
+    storage.values.set("@paseo:replica-cache", JSON.stringify(payload));
+    useSessionStore.getState().clearSession(SERVER_ID);
+
+    const reader = new ReplicaCache(storage);
+    reader.setHosts([SERVER_ID]);
+    await reader.restore();
+
+    expect(storage.values.has("@paseo:replica-cache")).toBe(false);
+    expect(useSessionStore.getState().sessions[SERVER_ID]).toBeUndefined();
   });
 
   it("persists only the focused agent view with a short timeline tail", async () => {
