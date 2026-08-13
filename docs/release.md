@@ -464,6 +464,7 @@ No prefix (`v`), no extra text. `Release Notes Sync` matches the `## X.Y.Z` (or 
 ## Changelog ownership
 
 - **The agent running the release writes the changelog entry — beta or stable.** The release context and final wording stay with that agent.
+- **Commit history is only an index of the changes. Never draft the changelog from commit subjects or diffs alone.** For every PR in the release range, read the full PR description and every issue it links to before deciding what changed, why users care, or how changes should be grouped. Use the implementation only to verify the resulting understanding.
 - For the first beta or a direct stable release, draft from the previous stable tag to the release source. For later betas, draft from the previous beta tag to the release source. Promotion replaces the beta series with one entry drafted from the previous stable tag to the release source. Review the result against the changelog policy below, show it to the user, and wait for approval before committing it.
 
 ## Changelog voice
@@ -567,6 +568,7 @@ Each beta entry records what its testers receive. Promotion produces the single 
 ### Beta release
 
 - [ ] The resolved release source is the intended commit (default `origin/main`) and its existing CI is green
+- [ ] Every PR in the release range has been opened, and its full description and every linked issue have been read before drafting the changelog
 - [ ] Add a new `CHANGELOG.md` entry for this beta (heading `## X.Y.Z-beta.N - YYYY-MM-DD`), review it against the changelog policy, get approval, and commit it before cutting the release
 - [ ] The diff from the previous stable to the resolved release source is classified as patch or minor, with the target version and rationale approved
 - [ ] Release preparation stayed local until the approved release command pushed the complete branch and tag
@@ -587,6 +589,7 @@ Each beta entry records what its testers receive. Promotion produces the single 
 - [ ] Run the pre-release sanity check (see above) and address any findings
 - [ ] The diff from the previous stable to the resolved release source is classified as patch or minor, with the target version and rationale approved
 - [ ] The resolved release source is the intended commit (default `origin/main`) and its existing CI is green
+- [ ] Every PR in the release range has been opened, and its full description and every linked issue have been read before drafting the changelog
 - [ ] Ensure the approved release inputs are committed locally and the git worktree is clean before running any release command
 - [ ] Ensure local `npm run typecheck` passes on that exact commit before running any release command
 - [ ] Update `CHANGELOG.md` with user-facing release notes (features, fixes — not refactors). Promotion replaces every `## X.Y.Z-beta.N` entry in the series with one `## X.Y.Z - YYYY-MM-DD` entry covering the full release
