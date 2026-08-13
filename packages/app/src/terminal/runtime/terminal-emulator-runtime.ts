@@ -15,11 +15,14 @@ import {
 } from "@getpaseo/protocol/terminal-input-mode";
 import {
   type PendingTerminalModifiers,
+  hasPendingTerminalModifiers,
   isAppleHandheldPlatform,
+  isMacLikePlatform,
   isTerminalModifierDomKey,
   mergeTerminalModifiers,
   normalizeDomTerminalKey,
   normalizeTerminalTransportKey,
+  resolveMacTerminalEditingShortcut,
   shouldInterceptDomTerminalKey,
 } from "@/utils/terminal-keys";
 import { renderTerminalSnapshotToAnsi } from "./terminal-snapshot";
@@ -140,6 +143,17 @@ declare global {
   interface Window {
     __paseoTerminal?: Terminal;
   }
+}
+
+// Read at call time, not module load: keydown handling consults it per event.
+function detectMacLikePlatform(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    isMacLikePlatform({
+      userAgent: navigator.userAgent,
+      platform: (navigator as Navigator & { platform?: string }).platform,
+    })
+  );
 }
 
 const isAppleHandheld =
@@ -299,7 +313,12 @@ export class TerminalEmulatorRuntime {
   attachKeyEventHandler(
     terminal: Pick<
       Terminal,
-      "attachCustomKeyEventHandler" | "hasSelection" | "getSelection" | "paste"
+      | "attachCustomKeyEventHandler"
+      | "hasSelection"
+      | "getSelection"
+      | "paste"
+      | "input"
+      | "scrollToBottom"
     >,
   ): void {
     terminal.attachCustomKeyEventHandler((event) => {
@@ -337,6 +356,10 @@ export class TerminalEmulatorRuntime {
         }
 
         return true;
+      }
+
+      if (this.maybeSendMacEditingShortcut(terminal, event)) {
+        return false;
       }
 
       const normalizedKey = normalizeDomTerminalKey(event.key);
@@ -424,6 +447,26 @@ export class TerminalEmulatorRuntime {
 
   getInputModeState(): TerminalInputModeState {
     return this.inputModeTracker.getState();
+  }
+
+  private maybeSendMacEditingShortcut(
+    terminal: Pick<Terminal, "input" | "scrollToBottom">,
+    event: KeyboardEvent,
+  ): boolean {
+    if (!detectMacLikePlatform() || hasPendingTerminalModifiers(this.pendingModifiers)) {
+      return false;
+    }
+    const editingShortcutData = resolveMacTerminalEditingShortcut(event);
+    if (editingShortcutData === null) {
+      return false;
+    }
+    // Routed through terminal.input() so the data takes the same path as typed
+    // keys: onData -> callbacks.onInput, selection clearing included.
+    terminal.input(editingShortcutData, true);
+    terminal.scrollToBottom();
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
   }
 
   mount(input: TerminalEmulatorRuntimeMountInput): void {
