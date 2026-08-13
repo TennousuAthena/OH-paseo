@@ -60,6 +60,7 @@ export interface TerminalEmulatorRuntimeMountInput {
   theme: ITheme;
   fontFamily?: string;
   fontSize?: number;
+  isMacLikePlatform?: boolean;
 }
 
 export interface TerminalEmulatorRuntimeCallbacks {
@@ -145,7 +146,6 @@ declare global {
   }
 }
 
-// Read at call time, not module load: keydown handling consults it per event.
 function detectMacLikePlatform(): boolean {
   return (
     typeof navigator !== "undefined" &&
@@ -262,6 +262,7 @@ export class TerminalEmulatorRuntime {
   private hasUngatedWrites = false;
   private readonly inputModeDecoder = new TextDecoder();
   private suppressInput = false;
+  private isMacLikePlatform = false;
   private readonly inputModeTracker = new TerminalInputModeTracker();
   private lastInputModeState: TerminalInputModeState = this.inputModeTracker.getState();
   private themeBackgroundElements: HTMLElement[] = [];
@@ -453,7 +454,7 @@ export class TerminalEmulatorRuntime {
     terminal: Pick<Terminal, "input" | "scrollToBottom">,
     event: KeyboardEvent,
   ): boolean {
-    if (!detectMacLikePlatform() || hasPendingTerminalModifiers(this.pendingModifiers)) {
+    if (!this.isMacLikePlatform || hasPendingTerminalModifiers(this.pendingModifiers)) {
       return false;
     }
     const editingShortcutData = resolveMacTerminalEditingShortcut(event);
@@ -474,6 +475,7 @@ export class TerminalEmulatorRuntime {
 
     input.host.innerHTML = "";
     this.lastSize = null;
+    this.isMacLikePlatform = input.isMacLikePlatform ?? detectMacLikePlatform();
     this.inputModeTracker.reset();
     this.emitInputModeChange();
 
