@@ -1652,6 +1652,7 @@ export const ru: TranslationResources = {
     archiveTooltip: "Архивный субагент",
     archiveFinishedAction: "Архивировать завершенные субагенты",
     archiveFinishedTooltip: "Архивировать завершенные",
+    archiveFinishedRetry: "Повторить ({{failed}}/{{total}})",
   },
   panels: {
     draft: {
