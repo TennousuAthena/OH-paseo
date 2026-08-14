@@ -527,6 +527,8 @@ export const ja: TranslationResources = {
         screenshotCopied: "スクリーンショットをクリップボードにコピーしました",
         elementCopied: "要素をクリップボードにコピーしました",
         screenshotFailed: "スクリーンショットをコピーできませんでした",
+        selectorLoading: "ページの読み込みが完了するまでお待ちください",
+        selectorFailed: "要素セレクターを開始できませんでした",
       },
       annotate: {
         title: "要素に注釈を付ける",

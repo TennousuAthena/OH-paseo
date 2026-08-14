@@ -527,6 +527,8 @@ export const ru: TranslationResources = {
         screenshotCopied: "Снимок скопирован в буфер обмена",
         elementCopied: "Элемент скопирован в буфер обмена",
         screenshotFailed: "Не удалось скопировать снимок",
+        selectorLoading: "Дождитесь окончания загрузки страницы",
+        selectorFailed: "Не удалось запустить выбор элемента",
       },
       annotate: {
         title: "Аннотировать элемент",

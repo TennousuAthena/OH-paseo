@@ -523,6 +523,8 @@ export const zhCN: TranslationResources = {
         screenshotCopied: "已将截图复制到剪贴板",
         elementCopied: "已将元素复制到剪贴板",
         screenshotFailed: "无法复制截图",
+        selectorLoading: "请等待页面加载完成",
+        selectorFailed: "无法启动元素选择器",
       },
       annotate: {
         title: "标注元素",

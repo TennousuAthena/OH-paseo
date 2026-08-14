@@ -522,6 +522,8 @@ export const en = {
         screenshotCopied: "Copied screenshot to clipboard",
         elementCopied: "Copied element to clipboard",
         screenshotFailed: "Couldn't copy screenshot",
+        selectorLoading: "Wait for the page to finish loading",
+        selectorFailed: "Couldn't start element selector",
       },
       annotate: {
         title: "Annotate element",

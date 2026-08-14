@@ -524,6 +524,8 @@ export const ko: TranslationResources = {
         screenshotCopied: "스크린샷을 클립보드에 복사했습니다.",
         elementCopied: "요소를 클립보드에 복사했습니다.",
         screenshotFailed: "스크린샷을 복사할 수 없습니다.",
+        selectorLoading: "페이지 로딩이 끝날 때까지 기다려 주세요.",
+        selectorFailed: "요소 선택기를 시작할 수 없습니다.",
       },
       annotate: {
         title: "요소에 주석 달기",

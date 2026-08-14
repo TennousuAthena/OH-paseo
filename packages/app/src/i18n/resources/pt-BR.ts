@@ -527,6 +527,8 @@ export const ptBR: TranslationResources = {
         screenshotCopied: "Captura copiada para a área de transferência",
         elementCopied: "Elemento copiado para a área de transferência",
         screenshotFailed: "Não foi possível copiar a captura",
+        selectorLoading: "Aguarde o carregamento da página terminar",
+        selectorFailed: "Não foi possível iniciar o seletor de elemento",
       },
       annotate: {
         title: "Anotar elemento",

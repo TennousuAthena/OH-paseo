@@ -527,6 +527,8 @@ export const fr: TranslationResources = {
         screenshotCopied: "Capture d'écran copiée dans le presse-papiers",
         elementCopied: "Élément copié dans le presse-papiers",
         screenshotFailed: "Impossible de copier la capture",
+        selectorLoading: "Attendez la fin du chargement de la page",
+        selectorFailed: "Impossible de démarrer le sélecteur d’élément",
       },
       annotate: {
         title: "Annoter l'élément",

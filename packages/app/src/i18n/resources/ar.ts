@@ -523,6 +523,8 @@ export const ar: TranslationResources = {
         screenshotCopied: "تم نسخ لقطة الشاشة إلى الحافظة",
         elementCopied: "تم نسخ العنصر إلى الحافظة",
         screenshotFailed: "تعذّر نسخ لقطة الشاشة",
+        selectorLoading: "انتظر حتى ينتهي تحميل الصفحة",
+        selectorFailed: "تعذّر بدء محدد العنصر",
       },
       annotate: {
         title: "التعليق على العنصر",
