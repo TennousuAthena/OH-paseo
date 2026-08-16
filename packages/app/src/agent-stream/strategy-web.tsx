@@ -14,6 +14,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import type { Theme } from "@/styles/theme";
 import { WEB_SCROLLBAR_SIZE_PX } from "@/styles/web-scrollbar";
+import { DomOverlayScrollbar } from "@/components/ui/overlay-scrollbar/dom-overlay-scrollbar";
 import { estimateStreamItemHeight } from "./web-virtualization";
 import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./strategy";
 import { createStreamStrategy } from "./strategy";
@@ -1134,14 +1135,25 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     };
   }, [isMobileBreakpoint]);
   const scrollContainerStyle = useMemo((): CSSProperties => {
+    const overlayScrollbarEnabled = scrollEnabled && !isMobileBreakpoint;
     return {
-      flex: 1,
-      minHeight: 0,
+      width: "100%",
+      height: "100%",
       overflowX: "hidden",
       overflowY: scrollEnabled ? "auto" : "hidden",
       overscrollBehaviorY: "contain",
+      scrollbarWidth: overlayScrollbarEnabled ? "none" : undefined,
     };
-  }, [scrollEnabled]);
+  }, [isMobileBreakpoint, scrollEnabled]);
+  const viewportStyle = useMemo(
+    (): CSSProperties => ({
+      position: "relative",
+      flex: 1,
+      minWidth: 0,
+      minHeight: 0,
+    }),
+    [],
+  );
   const virtualRowsContainerStyle = useMemo((): CSSProperties => {
     return {
       position: "relative",
@@ -1202,39 +1214,52 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     !liveAuxiliary;
 
   return (
-    <div
-      ref={handleScrollContainerRef}
-      data-testid="agent-chat-scroll"
-      id={`agent-chat-scroll-${shouldUseVirtualizer ? "web-dom-virtualized" : "web-dom-scroll"}`}
-      style={scrollContainerStyle}
-    >
-      <div ref={handleContentRef} style={contentContainerStyle}>
-        {historyStartSlot}
-        {shouldUseVirtualizer ? (
-          <div style={virtualRowsContainerStyle}>
-            {virtualRows.map((virtualRow) => {
-              const item = segments.historyVirtualized[virtualRow.index];
-              if (!item) {
-                return null;
-              }
-              return (
-                <div
-                  key={virtualRow.key}
-                  data-index={virtualRow.index}
-                  data-history-row-id={item.id}
-                  ref={measureVirtualizedRowElement}
-                  style={renderVirtualRowStyle(virtualRow.start)}
-                >
-                  {renderHistoryVirtualizedRow(item, virtualRow.index, segments.historyVirtualized)}
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-        {mountedRows}
-        {liveAuxiliary}
-        {shouldRenderEmpty ? listEmptyComponent : null}
+    <div style={viewportStyle}>
+      <div
+        ref={handleScrollContainerRef}
+        data-testid="agent-chat-scroll"
+        data-overlay-scrollbar={scrollEnabled && !isMobileBreakpoint ? "true" : undefined}
+        id={`agent-chat-scroll-${shouldUseVirtualizer ? "web-dom-virtualized" : "web-dom-scroll"}`}
+        style={scrollContainerStyle}
+      >
+        <div ref={handleContentRef} style={contentContainerStyle}>
+          {historyStartSlot}
+          {shouldUseVirtualizer ? (
+            <div style={virtualRowsContainerStyle}>
+              {virtualRows.map((virtualRow) => {
+                const item = segments.historyVirtualized[virtualRow.index];
+                if (!item) {
+                  return null;
+                }
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    data-history-row-id={item.id}
+                    ref={measureVirtualizedRowElement}
+                    style={renderVirtualRowStyle(virtualRow.start)}
+                  >
+                    {renderHistoryVirtualizedRow(
+                      item,
+                      virtualRow.index,
+                      segments.historyVirtualized,
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          {mountedRows}
+          {liveAuxiliary}
+          {shouldRenderEmpty ? listEmptyComponent : null}
+        </div>
       </div>
+      {scrollEnabled && !isMobileBreakpoint ? (
+        <DomOverlayScrollbar
+          scrollContainerRef={scrollContainerRef}
+          onUserScrollUp={stopFollowingOutputFromUserIntent}
+        />
+      ) : null}
     </div>
   );
 }

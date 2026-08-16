@@ -27,6 +27,7 @@ vi.hoisted(() => {
 });
 
 vi.mock("react-native-unistyles", () => ({
+  StyleSheet: { create: () => ({}) },
   withUnistyles: (Component: React.ComponentType) => Component,
 }));
 
@@ -150,6 +151,51 @@ describe("createWebStreamStrategy", () => {
 
     expect(rowRenderCount.mock.calls.length).toBeGreaterThan(0);
     expect(rowRenderCount.mock.calls.length).toBeLessThanOrEqual(historyVirtualized.length);
+  });
+
+  it("keeps the timeline width stable with an overlay scrollbar", () => {
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        strategy.render({
+          agentId: "agent",
+          segments: {
+            historyVirtualized: [],
+            historyMounted: [userMessage(1)],
+            liveHead: [],
+          },
+          boundary: {
+            hasVirtualizedHistory: false,
+            hasMountedHistory: true,
+            hasLiveHead: false,
+          },
+          renderers: createRenderers(vi.fn()),
+          listEmptyComponent: null,
+          viewportRef: React.createRef<StreamViewportHandle>(),
+          routeBottomAnchorRequest: null,
+          isAuthoritativeHistoryReady: true,
+          onNearBottomChange: vi.fn(),
+          onNearHistoryStart: vi.fn().mockReturnValue(true),
+          isLoadingOlderHistory: false,
+          hasOlderHistory: false,
+          olderHistoryProgressKey: null,
+          scrollEnabled: true,
+          listStyle: null,
+          baseListContentContainerStyle: null,
+          forwardListContentContainerStyle: null,
+        }),
+      );
+    });
+
+    const scrollContainer = container.querySelector<HTMLElement>(
+      '[data-testid="agent-chat-scroll"]',
+    );
+    expect(scrollContainer?.style.scrollbarWidth).toBe("none");
+    expect(scrollContainer?.dataset.overlayScrollbar).toBe("true");
   });
 
   it("rerenders a stable live-head row when its revision changes", () => {
