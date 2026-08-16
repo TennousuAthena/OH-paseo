@@ -260,6 +260,11 @@ Playwright dispatch lateness. Set `PASEO_PROFILE_TYPING_KEYS`, `PASEO_PROFILE_TY
 `PASEO_PROFILE_CPU_PATH` and `PASEO_PROFILE_TRACE_PATH` captures run separately after the latency
 measurements so profiling overhead does not contaminate them.
 
+Set `PASEO_PROFILE_TYPING_SCENARIO=height-growth` to alternate `Shift+Enter` and printable input.
+That report includes input and composer height changes plus React work grouped into composer,
+stream, and ancestor/root scopes. Ancestor/root timings include descendant work because the Profiler
+boundaries are nested. A printable key after an empty newline should not change either height.
+
 ### Desktop macOS compositor watchdog
 
 macOS display sleep can leave Chromium's GPU-process display link — the vsync

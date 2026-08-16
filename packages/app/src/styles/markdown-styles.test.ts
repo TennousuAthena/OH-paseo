@@ -117,9 +117,14 @@ describe("createMarkdownStyles", () => {
 
     expect(styles.blockquote).toMatchObject({
       backgroundColor: darkTheme.colors.surface1,
+      color: `${darkTheme.colors.foreground}cc`,
       borderLeftColor: darkTheme.colors.surface2,
+      paddingTop: darkTheme.spacing[3],
+      paddingBottom: 0,
       borderTopLeftRadius: 0,
       borderBottomLeftRadius: 0,
     });
+    expect(styles.paragraph.marginBottom).toBe(darkTheme.spacing[3]);
+    expect(styles.text).not.toHaveProperty("color");
   });
 });
