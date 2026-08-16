@@ -1915,9 +1915,9 @@ const styles = StyleSheet.create((theme: Theme) => ({
   textInput: {
     width: "100%",
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
-    lineHeight: theme.fontSize.base * 1.4,
+    lineHeight: theme.fontSize.sm * 1.4,
     ...(isWeb
       ? ({
           outlineStyle: "none",
