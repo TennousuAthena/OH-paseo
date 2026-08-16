@@ -6621,21 +6621,26 @@ export class Session {
             hasOlder: selectedTimeline.hasOlder,
             hasNewer: selectedTimeline.hasNewer,
             ...(msg.mergeWindow === true ? { mergeWindow: true } : {}),
-            entries: selectedTimeline.entries.map((entry) => ({
-              provider: snapshot.provider,
-              item: entry.item,
-              timestamp: entry.timestamp,
-              seqStart: entry.seqStart,
-              seqEnd: entry.seqEnd,
-              sourceSeqRanges: entry.sourceSeqRanges,
-              collapsed: (
-                source
-                  ? this.supportsForSource(CLIENT_CAPS.reasoningMergeEnum, source)
-                  : this.supports(CLIENT_CAPS.reasoningMergeEnum)
-              )
-                ? entry.collapsed
-                : entry.collapsed.filter((value) => value !== "reasoning_merge"),
-            })),
+            entries: selectedTimeline.entries.map((entry) => {
+              const payloadEntry = {
+                provider: snapshot.provider,
+                item: entry.item,
+                timestamp: entry.timestamp,
+                seqStart: entry.seqStart,
+                seqEnd: entry.seqEnd,
+                sourceSeqRanges: entry.sourceSeqRanges,
+                turnId: undefined as string | undefined,
+                collapsed: (
+                  source
+                    ? this.supportsForSource(CLIENT_CAPS.reasoningMergeEnum, source)
+                    : this.supports(CLIENT_CAPS.reasoningMergeEnum)
+                )
+                  ? entry.collapsed
+                  : entry.collapsed.filter((value) => value !== "reasoning_merge"),
+              };
+              payloadEntry.turnId = entry.turnId;
+              return payloadEntry;
+            }),
             error: null,
           },
         },
@@ -6904,11 +6909,12 @@ export class Session {
         {
           agentId,
           messageId: msg.messageId,
+          activeTurnBehavior: msg.activeTurnBehavior,
           textPrefix: msg.text.slice(0, 80),
         },
         "agent.session.send_agent_message",
       );
-      let dispatchResult: { outOfBand: boolean };
+      let dispatchResult: { disposition: "out_of_band" | "steered" | "turn_started" };
       try {
         dispatchResult = await sendPromptToAgent({
           agentManager: this.agentManager,
@@ -6916,6 +6922,7 @@ export class Session {
           agentId,
           prompt,
           messageId: msg.messageId,
+          activeTurnBehavior: msg.activeTurnBehavior ?? "interrupt",
           logger: this.sessionLogger,
         });
       } catch (error) {
@@ -6933,7 +6940,7 @@ export class Session {
         return;
       }
 
-      if (dispatchResult.outOfBand) {
+      if (dispatchResult.disposition !== "turn_started") {
         this.emit({
           type: "send_agent_message_response",
           payload: {
