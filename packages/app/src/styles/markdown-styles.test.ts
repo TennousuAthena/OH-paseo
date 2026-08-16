@@ -111,4 +111,15 @@ describe("createMarkdownStyles", () => {
     });
     expect(compactStyles.code_inline).not.toHaveProperty("lineHeight");
   });
+
+  it("keeps blockquotes quiet with a square left edge", () => {
+    const styles = createMarkdownStyles(darkTheme);
+
+    expect(styles.blockquote).toMatchObject({
+      backgroundColor: darkTheme.colors.surface1,
+      borderLeftColor: darkTheme.colors.surface2,
+      borderTopLeftRadius: 0,
+      borderBottomLeftRadius: 0,
+    });
+  });
 });
