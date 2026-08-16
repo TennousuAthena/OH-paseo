@@ -73,6 +73,7 @@ const ThemedTrailingActionScrimSvg = withUnistyles(TrailingActionScrimSvg);
 const scrimColorMappings: Record<SidebarSurfaceBackdrop, (theme: Theme) => { color: string }> = {
   surfaceSidebar: (theme) => ({ color: theme.colors.surfaceSidebar }),
   surfaceSidebarHover: (theme) => ({ color: theme.colors.surfaceSidebarHover }),
+  surfaceSidebarSelected: (theme) => ({ color: theme.colors.surfaceSidebarSelected }),
   surface2: (theme) => ({ color: theme.colors.surface2 }),
 };
 
