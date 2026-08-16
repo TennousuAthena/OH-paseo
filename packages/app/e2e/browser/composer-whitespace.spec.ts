@@ -1,4 +1,10 @@
 import { expect, test, type Page } from "../support/fixtures";
+import {
+  expectNearBottom,
+  scrollAgentChatToBottom,
+  waitForScrollableChat,
+} from "../support/helpers/agent-bottom-anchor";
+import { awaitAssistantMessage } from "../support/helpers/agent-stream";
 import { composerLocator, expectComposerVisible } from "../support/helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 
@@ -82,6 +88,33 @@ test("blank composer lines remain present and keep their measured height", async
       await expect(composer).toHaveValue("alpha\nbeta\nx");
       expect(filledTrailingLineHeight).toBe(trailingLineHeight);
     });
+  } finally {
+    await agent.cleanup();
+  }
+});
+
+test("composer growth keeps a bottom-pinned chat at the bottom", async ({ page }) => {
+  test.setTimeout(90_000);
+  const agent = await seedMockAgentWorkspace({
+    repoPrefix: "composer-bottom-anchor-",
+    title: "Composer bottom anchor",
+    initialPrompt: "Produce enough content to make the chat scrollable.",
+  });
+
+  try {
+    await openAgentRoute(page, agent);
+    await expectComposerVisible(page);
+    await awaitAssistantMessage(page);
+    await waitForScrollableChat(page, { minScrollableDistance: 200, timeout: 30_000 });
+    await scrollAgentChatToBottom(page);
+
+    const composer = composerLocator(page);
+    await composer.fill("alpha");
+    for (let line = 0; line < 8; line += 1) {
+      await composer.press("Shift+Enter");
+    }
+
+    await expectNearBottom(page);
   } finally {
     await agent.cleanup();
   }
