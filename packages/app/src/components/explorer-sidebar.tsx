@@ -18,7 +18,7 @@ import { usePanelStore, selectIsFileExplorerOpen, type ExplorerTab } from "@/sto
 import { useCloseFileExplorerGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import { HEADER_INNER_HEIGHT } from "@/constants/layout";
-import { GitDiffPane } from "@/git/diff-pane";
+import { ChangesSurface } from "@/git/diff-pane";
 import { FileExplorerPane } from "./file-explorer-pane";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useHasOwnedWindowChromeObstruction, WindowChromeSafeArea } from "@/utils/desktop-window";
@@ -433,7 +433,7 @@ function ChangedFilesPane({
 >) {
   const { addFile, canAddToChat } = useAddFileToChat({ serverId, workspaceId });
   return (
-    <GitDiffPane
+    <ChangesSurface
       host="explorer"
       serverId={serverId}
       workspaceId={workspaceId}

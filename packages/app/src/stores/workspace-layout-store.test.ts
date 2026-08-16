@@ -423,6 +423,25 @@ describe("workspace-layout-store actions", () => {
     expect(findPaneContainingTab(layout.root, "pull_request")?.id).toBe(explorerPaneId);
   });
 
+  it("places an auto-added pull request in the pane containing Changes", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+    store.openTabFocused(workspaceKey, { kind: "working_diff" });
+
+    useWorkspaceLayoutIds("explorer");
+    const explorerPaneId = store.splitPaneEmpty(workspaceKey, {
+      targetPaneId: "main",
+      position: "right",
+    });
+    store.setExplorerPaneId(workspaceKey, explorerPaneId);
+
+    store.observePullRequest(workspaceKey, "url:https://example.test/pulls/1");
+
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    expect(findPaneContainingTab(layout.root, "working_diff")?.id).toBe("main");
+    expect(findPaneContainingTab(layout.root, "pull_request")?.id).toBe("main");
+  });
+
   it("opens assistant files in an ensured explorer pane and reveals it on the next open", () => {
     const workspaceKey = createWorkspaceKey();
     const store = workspaceLayoutStore.getState();

@@ -1007,7 +1007,7 @@ function SplitPaneView({
   buildPaneContentModel,
   onFocusPane,
   onSplitPane: _onSplitPane,
-  onSplitPaneEmpty,
+  onSplitPaneEmpty: _onSplitPaneEmpty,
   onReorderTabsInPane,
   renderPaneEmptyState,
   activeDragTabId,
@@ -1114,15 +1114,6 @@ function SplitPaneView({
     },
     [onReorderTabsInPane, paneId],
   );
-  const handleSplitRight = useCallback(
-    () => onSplitPaneEmpty({ targetPaneId: paneId, position: "right" }),
-    [onSplitPaneEmpty, paneId],
-  );
-  const handleSplitDown = useCallback(
-    () => onSplitPaneEmpty({ targetPaneId: paneId, position: "bottom" }),
-    [onSplitPaneEmpty, paneId],
-  );
-
   return (
     <RenderProfile id={`SplitPaneView:${pane.id}`}>
       <View ref={paneRef} collapsable={false} style={styles.pane}>
@@ -1151,8 +1142,6 @@ function SplitPaneView({
             onCreateBrowserTab={onCreateBrowserTab}
             showCreateBrowserTab={showCreateBrowserTab}
             onReorderTabs={handleReorderTabs}
-            onSplitRight={handleSplitRight}
-            onSplitDown={handleSplitDown}
             externalDndContext
             activeDragTabId={activeDragTabId}
             tabDropPreviewIndex={

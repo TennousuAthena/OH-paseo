@@ -304,7 +304,7 @@ test("changes context menus duplicate files and folders", async ({ page }) => {
     .poll(() => readFileIfPresent(path.join(workspace.repoPath, "src/use-mounted-tab-set copy.ts")))
     .toBe(AFTER);
 
-  await page.getByTestId("changes-toggle-view-mode").click();
+  await page.getByTestId("changes-toggle-tree").click();
   await changesTree(page).getByTestId("diff-folder-src-toggle").click({ button: "right" });
   await page.getByTestId("diff-folder-src-duplicate").click();
   await expect
@@ -317,7 +317,7 @@ test("changes context menu recursively collapses descendant folders", async ({ p
   await useUnwrappedDiffLines(page);
   await openWorkspaceChanges(page, workspace);
 
-  await page.getByTestId("changes-toggle-view-mode").click();
+  await page.getByTestId("changes-toggle-tree").click();
   const tree = changesTree(page);
   await expect(tree.getByTestId("diff-folder-src/zz-folder")).toBeVisible();
   await expect(tree.getByTestId("diff-folder-src/zz-folder/nested")).toBeVisible();
@@ -346,7 +346,7 @@ test("changes context menus expose folder revert and restore a file after confir
   await useUnwrappedDiffLines(page);
   await openWorkspaceChanges(page, workspace);
 
-  await page.getByTestId("changes-toggle-view-mode").click();
+  await page.getByTestId("changes-toggle-tree").click();
   const tree = changesTree(page);
   await tree.getByTestId("diff-folder-src-toggle").click({ button: "right" });
   const folderRevert = page.getByTestId("diff-folder-src-revert");
@@ -357,7 +357,7 @@ test("changes context menus expose folder revert and restore a file after confir
   await expect(folderRevert.locator("svg")).toHaveCSS("stroke", revertLabelColor);
   await page.keyboard.press("Escape");
 
-  await tree.getByTestId("diff-file-0-toggle").click({ button: "right" });
+  await tree.getByTestId("diff-tree-file-0-toggle").click({ button: "right" });
   const cancelledConfirmation = new Promise<string>((resolve) => {
     page.once("dialog", async (dialog) => {
       const message = dialog.message();
@@ -365,14 +365,14 @@ test("changes context menus expose folder revert and restore a file after confir
       resolve(message);
     });
   });
-  await page.getByTestId("diff-file-0-revert").click();
+  await page.getByTestId("diff-tree-file-0-revert").click();
   expect(await cancelledConfirmation).toContain("src/use-mounted-tab-set.ts");
-  await expect(tree.getByTestId("diff-file-0")).toBeVisible();
+  await expect(tree.getByTestId("diff-tree-file-0")).toBeVisible();
   await expect
     .poll(() => readFile(path.join(workspace.repoPath, "src/use-mounted-tab-set.ts"), "utf8"))
     .toBe(AFTER);
 
-  await tree.getByTestId("diff-file-0-toggle").click({ button: "right" });
+  await tree.getByTestId("diff-tree-file-0-toggle").click({ button: "right" });
   const confirmation = new Promise<string>((resolve) => {
     page.once("dialog", async (dialog) => {
       const message = dialog.message();
@@ -380,10 +380,10 @@ test("changes context menus expose folder revert and restore a file after confir
       resolve(message);
     });
   });
-  await page.getByTestId("diff-file-0-revert").click();
+  await page.getByTestId("diff-tree-file-0-revert").click();
   expect(await confirmation).toContain("src/use-mounted-tab-set.ts");
 
-  await expect(tree.getByTestId("diff-file-0")).toHaveCount(0, { timeout: 30_000 });
+  await expect(tree.getByTestId("diff-tree-file-0")).toHaveCount(0, { timeout: 30_000 });
   await expect
     .poll(() => readFile(path.join(workspace.repoPath, "src/use-mounted-tab-set.ts"), "utf8"))
     .toBe(BEFORE);
@@ -482,9 +482,10 @@ test("Changes keeps review navigation and controls inside its workspace tab", as
   await expect(visiblePanel.getByText("use-mounted-tab-set.ts", { exact: true })).toBeVisible();
   await expect(visiblePanel).toContainText("zz-deleted.ts");
   await expect(visiblePanel.getByTestId("changes-open-tab")).toHaveCount(0);
+  await expect(visiblePanel.getByTestId("changes-primary-cta")).toHaveCount(0);
+  await expect(page.getByTestId("changes-primary-cta")).toHaveCount(1);
+  await expect(page.getByTestId("changes-primary-cta")).toContainText("Commit");
   await expect(visiblePanel.getByTestId("diff-file-0-body")).toBeVisible();
-  await visiblePanel.getByTestId("diff-file-0-toggle").click();
-  await expect(visiblePanel.getByTestId("diff-file-0-body")).toHaveCount(0);
   await visiblePanel.getByTestId("diff-file-0-toggle").click();
   await expect(visiblePanel.getByTestId("diff-file-0-body")).toBeVisible();
   const workingDiffLayoutToggle = visiblePanel.getByRole("button", {
@@ -501,10 +502,7 @@ test("Changes keeps review navigation and controls inside its workspace tab", as
   await visiblePanel.getByRole("button", { name: "Diff options" }).click();
   await expect(page.getByText("Scroll long lines", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Expand all files" }).click();
-  await expect(visiblePanel.getByTestId("diff-file-0-body")).toBeVisible();
-  await page.getByRole("button", { name: "Collapse all files" }).click();
-  await expect(visiblePanel.getByTestId(/^diff-file-\d+-body$/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /all files/i })).toHaveCount(0);
   await expect(page.getByTestId(/^workspace-working-diff-close-/)).toHaveCount(1);
 
   await writeFile(path.join(workspace.repoPath, "src/use-mounted-tab-set.ts"), BEFORE);
@@ -520,7 +518,9 @@ test("Changes keeps review navigation and controls inside its workspace tab", as
   await expect(visiblePanel.getByRole("img", { name: "Deleted" })).toBeVisible();
 });
 
-test("changes diff switches between flat and tree file lists", async ({ page }) => {
+test("desktop Changes toggles a navigation tree beside the expanded diff document", async ({
+  page,
+}) => {
   const workspace = await createWorkspaceWithMountedTabDiff();
   await useUnwrappedDiffLines(page);
   await openWorkspaceChanges(page, workspace);
@@ -541,7 +541,7 @@ test("changes diff switches between flat and tree file lists", async ({ page }) 
   await page.keyboard.press("Escape");
 
   await scrollToLowerUnwrappedDiffRows(page);
-  await page.getByTestId("changes-toggle-view-mode").click();
+  await page.getByTestId("changes-toggle-tree").click();
   const tree = changesTree(page);
   const content = changesContent(page);
   await expect(tree.getByTestId("diff-folder-src")).toBeVisible();
@@ -549,9 +549,9 @@ test("changes diff switches between flat and tree file lists", async ({ page }) 
     "user-select",
     "none",
   );
-  await expect(tree.getByTestId("diff-file-0")).toBeVisible();
+  await expect(tree.getByTestId("diff-tree-file-0")).toBeVisible();
   await expect(tree.getByTestId("diff-folder-src-toggle").locator("svg")).toHaveCount(1);
-  await expect(tree.getByTestId("diff-file-0-toggle").locator("svg")).toHaveCount(1);
+  await expect(tree.getByTestId("diff-tree-file-0-toggle").locator("svg")).toHaveCount(1);
   const folderToggleBounds = await tree.getByTestId("diff-folder-src-toggle").boundingBox();
   const folderChevronBounds = await tree
     .getByTestId("diff-folder-src-toggle")
@@ -568,7 +568,7 @@ test("changes diff switches between flat and tree file lists", async ({ page }) 
     .getByText("src", { exact: true })
     .boundingBox();
   const fileLabelBounds = await tree
-    .getByTestId("diff-file-0")
+    .getByTestId("diff-tree-file-0")
     .getByText("use-mounted-tab-set.ts", { exact: true })
     .boundingBox();
   expect(folderLabelBounds).not.toBeNull();
@@ -578,27 +578,31 @@ test("changes diff switches between flat and tree file lists", async ({ page }) 
   const folderToggle = tree.getByTestId("diff-folder-src-toggle");
   await folderToggle.click();
   await expect(folderToggle).toHaveAttribute("aria-selected", "true");
-  await expect(tree.getByTestId("diff-file-0")).toHaveCount(0);
+  await expect(tree.getByTestId("diff-tree-file-0")).toHaveCount(0);
   await folderToggle.click();
   await expect(folderToggle).toHaveAttribute("aria-selected", "true");
-  await expect(tree.getByTestId("diff-file-0")).toBeVisible();
+  await expect(tree.getByTestId("diff-tree-file-0")).toBeVisible();
 
-  const fileToggle = tree.getByTestId("diff-file-0-toggle");
+  const fileToggle = tree.getByTestId("diff-tree-file-0-toggle");
   await fileToggle.click({ button: "right" });
   await expect(fileToggle).toHaveAttribute("aria-selected", "true");
   await expect(folderToggle).toHaveAttribute("aria-selected", "false");
-  await expect(page.getByTestId("diff-file-0-context-menu")).toBeVisible();
+  await expect(page.getByTestId("diff-tree-file-0-context-menu")).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: "Collapse all files" }).click();
-  await expect(content.getByTestId(/^diff-file-\d+-body$/)).toHaveCount(0);
-  await page.getByRole("button", { name: "Expand all files" }).click();
+  await fileToggle.click();
   await expect(content.getByTestId("diff-file-0-body")).toBeVisible();
+  const contentBounds = await content.boundingBox();
+  const focusedFileBounds = await content.getByTestId("diff-file-0").boundingBox();
+  expect(contentBounds).not.toBeNull();
+  expect(focusedFileBounds).not.toBeNull();
+  expect(focusedFileBounds!.y).toBeGreaterThanOrEqual(contentBounds!.y);
+  expect(focusedFileBounds!.y).toBeLessThan(contentBounds!.y + 80);
 
   await tree.getByTestId("diff-folder-src-toggle").click();
-  await expect(tree.getByTestId("diff-file-0")).toHaveCount(0);
+  await expect(tree.getByTestId("diff-tree-file-0")).toHaveCount(0);
 
-  await page.getByTestId("changes-toggle-view-mode").click();
+  await page.getByTestId("changes-toggle-tree").click();
   await expectFlatFileList(page);
 });
 
@@ -649,7 +653,7 @@ async function useUnwrappedDiffLines(page: Page): Promise<void> {
         preferencesKey,
         JSON.stringify({
           layout: "unified",
-          viewMode: "flat",
+          desktopTreeVisible: false,
           wrapLines: false,
           hideWhitespace: false,
         }),

@@ -178,7 +178,6 @@ import { findAdjacentPane } from "@/utils/split-navigation";
 import { useIsCompactFormFactor, supportsDesktopPaneSplits } from "@/constants/layout";
 import { getIsElectron, isNative, isWeb } from "@/constants/platform";
 import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
-import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import {
   buildHostRootRoute,
   buildSettingsHostRoute,
@@ -529,8 +528,6 @@ function WorkspaceDocumentTitleEffect({
 
   return null;
 }
-
-function noop() {}
 
 function switcherTriggerStyle({ pressed }: { pressed?: boolean }) {
   return [styles.switcherTrigger, Boolean(pressed) && styles.switcherTriggerPressed];
@@ -2112,8 +2109,6 @@ function WorkspaceScreenContent({
   );
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const { closingTabIds, closeTab } = useCloseTabs();
-  const { onLayout: onHeaderLayout, isBelow: showCompactButtonLabels } =
-    useContainerWidthBelow(700);
   const closeWorkspaceTabWithCleanup = useCallback(
     function closeWorkspaceTabWithCleanup(input: {
       tabId: string;
@@ -3616,11 +3611,7 @@ function WorkspaceScreenContent({
         ) : null}
         {!isMobile && workspaceDirectory ? (
           <>
-            <WorkspaceActions
-              serverId={normalizedServerId}
-              cwd={workspaceDirectory}
-              hideLabels={showCompactButtonLabels}
-            />
+            <WorkspaceActions serverId={normalizedServerId} cwd={workspaceDirectory} />
             {isGitCheckout ? (
               <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
                 <TooltipTrigger asChild>
@@ -3727,7 +3718,6 @@ function WorkspaceScreenContent({
       handleScriptTerminalStarted,
       handleViewScriptTerminal,
       handleOpenUrlInBrowserTab,
-      showCompactButtonLabels,
       isGitCheckout,
       handleToggleExplorer,
       isExplorerOpen,
@@ -3845,7 +3835,6 @@ function WorkspaceScreenContent({
     <View style={styles.centerColumn}>
       {showScreenHeader && (
         <ScreenHeader
-          onRowLayout={onHeaderLayout}
           left={
             <>
               <SidebarMenuToggle />
@@ -3938,9 +3927,6 @@ function WorkspaceScreenContent({
           disableCreateTerminal={createTerminalMutation.isPending}
           isWaitingOnTerminalReadiness={pendingTerminalCreateInput !== null}
           onReorderTabs={handleReorderTabsInFocusedPane}
-          onSplitRight={noop}
-          onSplitDown={noop}
-          showPaneSplitActions={false}
           focusModeEnabled={desktopFocusModeEnabled}
           onExitFocusMode={toggleFocusMode}
         />

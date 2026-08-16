@@ -183,6 +183,7 @@ export const PanelPersistedStateSchema = z.strictObject({
   explorerTab: ExplorerTabSchema.optional(),
   explorerTabByCheckout: z.record(z.string(), ExplorerTabSchema).optional(),
   expandedPathsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
+  // Accepted only so migration can discard the former per-file diff expansion state.
   diffExpandedPathsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
   diffCollapsedFoldersByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
   sidebarWidth: z.number().optional(),
@@ -290,13 +291,7 @@ export function migratePanelState(
   ) {
     state.expandedPathsByWorkspace = {};
   }
-  if (
-    version < 10 ||
-    typeof state.diffExpandedPathsByWorkspace !== "object" ||
-    !state.diffExpandedPathsByWorkspace
-  ) {
-    state.diffExpandedPathsByWorkspace = {};
-  }
+  delete state.diffExpandedPathsByWorkspace;
   if (
     version < 12 ||
     typeof state.diffCollapsedFoldersByWorkspace !== "object" ||

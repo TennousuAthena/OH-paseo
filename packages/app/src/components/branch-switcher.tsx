@@ -94,7 +94,7 @@ export function BranchSwitcher({
         accessibilityRole="button"
         accessibilityLabel={t("branchSwitcher.currentBranch", { branchName: currentBranchName })}
       >
-        <ThemedGitBranch size={14} uniProps={foregroundMutedIconColorMapping} />
+        <ThemedGitBranch size={12} uniProps={foregroundMutedIconColorMapping} />
         <Text style={styles.branchLabel} numberOfLines={1}>
           {currentBranchName}
         </Text>
@@ -132,8 +132,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     minWidth: 0,
     paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    marginLeft: -theme.spacing[2],
+    paddingHorizontal: theme.spacing[1],
     borderRadius: theme.borderRadius.md,
     flexShrink: 1,
   },
@@ -141,9 +140,9 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   branchLabel: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foreground,
-    fontWeight: theme.fontWeight.medium,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    fontWeight: theme.fontWeight.normal,
     flexShrink: 1,
   },
 }));

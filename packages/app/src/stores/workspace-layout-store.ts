@@ -521,10 +521,17 @@ export function createWorkspaceLayoutStore(
             }
 
             const layout = getWorkspaceLayout(state.layoutByWorkspace, normalizedWorkspaceKey);
+            const workingDiffTab = collectAllTabs(layout.root).find(
+              (tab) => tab.target.kind === "working_diff",
+            );
+            const workingDiffPane = workingDiffTab
+              ? findPaneContainingTab(layout.root, workingDiffTab.tabId)
+              : null;
             const explorerPaneId = state.explorerPaneIdByWorkspace[normalizedWorkspaceKey] ?? null;
             const explorerPane = findPaneById(layout.root, explorerPaneId);
-            const placementLayout = explorerPane
-              ? (focusPaneInLayout({ layout, paneId: explorerPane.id }) ?? layout)
+            const placementPane = workingDiffPane ?? explorerPane;
+            const placementLayout = placementPane
+              ? (focusPaneInLayout({ layout, paneId: placementPane.id }) ?? layout)
               : layout;
             const result = openTabInLayoutFocused({
               layout: placementLayout,

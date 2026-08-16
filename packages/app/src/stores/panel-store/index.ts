@@ -79,7 +79,6 @@ export interface PanelState {
   explorerTab: ExplorerTab;
   explorerTabByCheckout: Record<string, ExplorerTab>;
   expandedPathsByWorkspace: Record<string, string[]>;
-  diffExpandedPathsByWorkspace: Record<string, string[]>;
   // Changes-view folder tree. Inverted semantics vs the fields above:
   // this stores COLLAPSED directory paths (empty = all folders expanded), keyed
   // by full uncompressed dir path, so folders default to expanded and new
@@ -111,7 +110,6 @@ export interface PanelState {
   setExplorerTab: (tab: ExplorerTab) => void;
   setExplorerTabForCheckout: (params: ExplorerCheckoutContext & { tab: ExplorerTab }) => void;
   setExpandedPathsForWorkspace: (workspaceKey: string, paths: ExpandedPathsUpdate) => void;
-  setDiffExpandedPathsForWorkspace: (workspaceKey: string, paths: string[]) => void;
   setDiffCollapsedFoldersForWorkspace: (workspaceKey: string, dirPaths: string[]) => void;
   activateExplorerTabForCheckout: (checkout: ExplorerCheckoutContext) => void;
   setSidebarWidth: (width: number) => void;
@@ -148,7 +146,6 @@ export const usePanelStore = create<PanelState>()(
       explorerTab: "changes",
       explorerTabByCheckout: {},
       expandedPathsByWorkspace: {},
-      diffExpandedPathsByWorkspace: {},
       diffCollapsedFoldersByWorkspace: {},
       sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
       explorerWidth: DEFAULT_EXPLORER_SIDEBAR_WIDTH,
@@ -276,13 +273,6 @@ export const usePanelStore = create<PanelState>()(
             },
           };
         }),
-      setDiffExpandedPathsForWorkspace: (workspaceKey, paths) =>
-        set((state) => ({
-          diffExpandedPathsByWorkspace: {
-            ...state.diffExpandedPathsByWorkspace,
-            [workspaceKey]: paths,
-          },
-        })),
       setDiffCollapsedFoldersForWorkspace: (workspaceKey, dirPaths) =>
         set((state) => ({
           diffCollapsedFoldersByWorkspace: {
@@ -308,7 +298,7 @@ export const usePanelStore = create<PanelState>()(
     }),
     {
       name: "panel-state",
-      version: 13,
+      version: 14,
       storage: createValidatedPersistStorage(AsyncStorage, PanelPersistedStateSchema),
       migrate: (persistedState, version) => migratePanelState(persistedState, version, { isWeb }),
       partialize: (state) => ({
@@ -316,7 +306,6 @@ export const usePanelStore = create<PanelState>()(
         explorerTab: state.explorerTab,
         explorerTabByCheckout: state.explorerTabByCheckout,
         expandedPathsByWorkspace: state.expandedPathsByWorkspace,
-        diffExpandedPathsByWorkspace: state.diffExpandedPathsByWorkspace,
         diffCollapsedFoldersByWorkspace: state.diffCollapsedFoldersByWorkspace,
         sidebarWidth: state.sidebarWidth,
         explorerWidth: state.explorerWidth,
