@@ -29,7 +29,6 @@ export interface FileHeaderProps {
   depth?: number;
   showDir?: boolean;
   interactive?: boolean;
-  showTopBorder?: boolean;
   onActivate?: (path: string) => void;
   onSelect?: (path: string) => void;
   onOpenFile?: (path: string) => void;
@@ -100,9 +99,9 @@ function fileHeaderPressFeedbackStyle(showsBodyState: boolean) {
   return showsBodyState ? styles.documentPressFeedback : workspaceTreeRowStyles.active;
 }
 
-function fileHeaderContainerStyle(showsBodyState: boolean, showTopBorder: boolean) {
+function fileHeaderContainerStyle(showsBodyState: boolean) {
   if (!showsBodyState) return null;
-  return [styles.documentContainer, !showTopBorder && styles.documentContainerWithoutTopBorder];
+  return styles.documentContainer;
 }
 
 function fileHeaderNameStyle(showsBodyState: boolean, isHovered: boolean) {
@@ -189,7 +188,6 @@ export const FileHeader = memo(function FileHeader({
   depth = 0,
   showDir = true,
   interactive = true,
-  showTopBorder = true,
   onActivate,
   onSelect,
   onHeaderHeightChange,
@@ -301,7 +299,7 @@ export const FileHeader = memo(function FileHeader({
   }
   return (
     <View
-      style={[styles.container, fileHeaderContainerStyle(showsBodyState, showTopBorder)]}
+      style={[styles.container, fileHeaderContainerStyle(showsBodyState)]}
       onLayout={interaction.onLayout}
       onPointerEnter={hover.handlePointerEnter}
       onPointerLeave={hover.handlePointerLeave}
@@ -327,12 +325,9 @@ const styles = StyleSheet.create((theme) => ({
   documentContainer: {
     height: 30,
     backgroundColor: theme.colors.surface0,
-    borderTopWidth: theme.borderWidth[1],
-    borderTopColor: theme.colors.borderAccent,
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.borderAccent,
   },
-  documentContainerWithoutTopBorder: { borderTopColor: "transparent" },
   header: {
     flexDirection: "row",
     alignItems: "center",

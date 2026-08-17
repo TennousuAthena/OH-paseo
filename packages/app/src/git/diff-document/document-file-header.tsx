@@ -9,7 +9,6 @@ interface DocumentFileHeaderProps {
   mode: DiffDocumentProps["mode"];
   onToggleFile: (path: string) => void;
   onSelectPath: (path: string) => void;
-  showTopBorder: boolean;
 }
 
 export const DocumentFileHeader = memo(function DocumentFileHeader({
@@ -18,7 +17,6 @@ export const DocumentFileHeader = memo(function DocumentFileHeader({
   mode,
   onToggleFile,
   onSelectPath,
-  showTopBorder,
 }: DocumentFileHeaderProps) {
   const activate = useCallback(
     (path: string) => {
@@ -35,7 +33,6 @@ export const DocumentFileHeader = memo(function DocumentFileHeader({
       bodyVisible={!file.isCollapsed}
       isSelected={selectedPath === file.path}
       interactive={mode.kind === "working"}
-      showTopBorder={showTopBorder}
       workspaceFileDragScope={working?.workspaceFileDragScope}
       onActivate={activate}
       onSelect={onSelectPath}
@@ -82,7 +79,6 @@ function documentFileHeaderIdentityMatches(
     previous.file.file !== next.file.file ||
     previous.file.fileIndex !== next.file.fileIndex ||
     previous.file.isCollapsed !== next.file.isCollapsed ||
-    previous.showTopBorder !== next.showTopBorder ||
     (previous.selectedPath === previous.file.path) !== (next.selectedPath === next.file.path) ||
     previous.onToggleFile !== next.onToggleFile ||
     previous.onSelectPath !== next.onSelectPath ||

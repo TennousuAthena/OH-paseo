@@ -967,7 +967,7 @@ test("the first click after a canvas selection only dismisses the selection", as
   await expect(page.getByTestId("inline-review-editor")).toBeVisible();
 });
 
-test("canvas diff copies exact multiline text forwards and backwards", async ({
+test("canvas diff replaces a selection with forward and backward drags", async ({
   context,
   page,
 }) => {
@@ -975,19 +975,13 @@ test("canvas diff copies exact multiline text forwards and backwards", async ({
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await useUnwrappedDiffLines(page);
   await openSelectionWorkspaceChanges(page, workspace);
-  for (const [start, end] of [
-    [
-      { line: 0, offset: 2 },
-      { line: 1, offset: 3 },
-    ],
-    [
-      { line: 1, offset: 3 },
-      { line: 0, offset: 2 },
-    ],
+  for (const [start, end, expectedText] of [
+    [{ line: 0, offset: 2 }, { line: 1, offset: 3 }, "CDE\nFGH"],
+    [{ line: 1, offset: 5 }, { line: 0, offset: 3 }, "DE\nFGHIJ"],
   ] as const) {
     await dragAddedTextRange(page, { lines: ["ABCDE", "FGHIJ"], start, end });
     await page.keyboard.press("ControlOrMeta+C");
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("CDE\nFGH");
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(expectedText);
   }
 });
 
