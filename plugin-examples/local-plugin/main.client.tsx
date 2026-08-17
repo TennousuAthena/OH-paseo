@@ -1,20 +1,9 @@
+import { useMutation } from "@tanstack/react-query";
+import { type PluginWorkspacePanelProps, useRpc, useWorkspace } from "@paseo/plugin";
 import React, { useCallback, useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
-import { useMutation } from "@tanstack/react-query";
 import { z } from "zod";
-import {
-  defineRpc,
-  type PluginContext,
-  type PluginWorkspacePanelProps,
-  useWorkspace,
-  useRpc,
-} from "@paseo/plugin";
-
-const incrementRpc = defineRpc({
-  name: "increment",
-  input: z.object({ value: z.number() }),
-  output: z.object({ value: z.number(), handledBy: z.string() }),
-});
+import { incrementRpc } from "./increment.shared";
 
 const ExampleThemeSchema = z.object({
   colors: z.object({
@@ -27,7 +16,7 @@ const ExampleThemeSchema = z.object({
   }),
 });
 
-function ExamplePanel({ theme, workspaceId }: PluginWorkspacePanelProps) {
+export function ExamplePanel({ theme, workspaceId }: PluginWorkspacePanelProps) {
   const { colors } = ExampleThemeSchema.parse(theme);
   const workspace = useWorkspace(workspaceId, ({ name }) => ({ name }));
   const callIncrement = useRpc(incrementRpc);
@@ -66,28 +55,4 @@ function ExamplePanel({ theme, workspaceId }: PluginWorkspacePanelProps) {
       {error ? <Text style={styles.error}>{error.message}</Text> : null}
     </View>
   );
-}
-
-export default function contribute(plugin: PluginContext) {
-  plugin.handle(incrementRpc, async (input) => ({
-    value: input.value + 1,
-    handledBy: "plugin subprocess",
-  }));
-  plugin.addWorkspacePanel({
-    id: "counter",
-    title: "Plugin counter",
-    icon: "Blocks",
-    context: "workspace",
-    Component: ExamplePanel,
-  });
-  plugin.addCommandCenterItem({
-    id: "open-counter",
-    title: "Open plugin counter",
-    icon: "Blocks",
-    context: "workspace",
-    onSelect({ openPanel }) {
-      openPanel("counter");
-    },
-  });
-  return () => {};
 }

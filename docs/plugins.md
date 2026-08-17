@@ -1,7 +1,7 @@
 # Local plugins
 
 Local plugins contribute daemon RPCs, native app surfaces, workspace panels, Command Center items,
-and composer attachment sources from one `index.tsx`. Paseo executes the server contribution in a
+and composer attachment sources from one `index.ts`. Paseo executes the server contribution in a
 subprocess and evaluates the client contribution in the app runtime. Plugin code is trusted code;
 this first slice does not sandbox it.
 
@@ -45,13 +45,14 @@ The directory contains an identity-only manifest, one entry point, and local typ
 ```text
 my-plugin/
   paseo-plugin.json
-  index.tsx
+  index.ts
+  main.client.tsx
   paseo-plugin.d.ts
   package.json
   tsconfig.json
 ```
 
-Paseo compiles TSX when loading the plugin, so these packages are development dependencies only.
+Paseo compiles TypeScript and TSX when loading the plugin, so these packages are development dependencies only.
 The generated declaration file supplies `@paseo/plugin` types until the SDK is distributed as a
 public package. Regenerate new plugins with the matching Paseo CLI when the SDK contract changes.
 
@@ -75,68 +76,41 @@ plugin before compiling and starting from disk. A failed reload stays failed; Pa
 the old code. Use `enable`, `disable`, and `remove` to manage one plugin. Remove deletes only its
 configuration, never its source directory. The global `pluginsEnabled` switch remains available.
 
-Server contributions can write to stdout and stderr with normal Node logging. Inspect the recent
-in-memory tail from the host plugin settings or with `paseo plugin logs <id>`. Reload, disable, and
-process failure retain the tail; removing the plugin clears it. Daemon restarts do not retain the
-tail, but structured copies remain in `$PASEO_HOME/daemon.log`. Plugin output can contain secrets,
-so do not log credentials or tokens.
+Server contributions can write to stdout and stderr with normal Node logging. Paseo adds `[paseo]`
+entries for loading, ready, stopping, and stopped transitions. Compilation and load failures are
+recorded as stderr entries before a subprocess exists. Inspect the recent in-memory
+tail from the host plugin settings or with `paseo plugin logs <id>`. Reload, disable, and process
+failure retain the tail; removing the plugin clears it. Daemon restarts do not retain the tail, but
+structured copies remain in `$PASEO_HOME/daemon.log`. Plugin output can contain secrets, so do not
+log credentials or tokens.
 
 ## Contribute behavior and UI
 
-Default export one contribution function. Paseo calls it with a plugin-scoped context. The compiler
-removes UI registrations from the server bundle and RPC registrations from the client bundle before
-resolving dependencies.
+Default export one contribution function from `index.ts`. Keep it to contribution wiring. Runtime
+code lives behind filename boundaries:
 
-```tsx
-import { Text } from "react-native";
-import { useQuery } from "@tanstack/react-query";
-import { z } from "zod";
-import { defineRpc, type PluginContext, usePaseo, useRpc } from "@paseo/plugin";
+| Suffix         | Owns                                                                 |
+| -------------- | -------------------------------------------------------------------- |
+| `*.client.tsx` | React, React Native, hooks, styles, surfaces, panels, and callbacks. |
+| `*.server.ts`  | Node APIs, filesystem and process access, credentials, and handlers. |
+| `*.shared.ts`  | Zod RPC contracts and plain values used by both runtimes.            |
 
-const greetRpc = defineRpc({
-  name: "greet",
-  input: z.object({ name: z.string() }),
-  output: z.object({ message: z.string() }),
-});
+The compiler removes client registrations and imports from the server entry point, and server
+registrations and imports from the client entry point. Importing a `*.server` module from a client
+module, or a `*.client` module from a server module, fails compilation. Top-level React Native calls
+such as `StyleSheet.create` belong in `*.client.tsx`; placing them in `index.ts` executes them in the
+server bundle.
 
-function Greeting() {
-  const paseo = usePaseo();
-  const greet = useRpc(greetRpc);
-  const query = useQuery({
-    queryKey: ["greeting", "Paseo"],
-    queryFn: () => greet({ name: "Paseo" }),
-  });
-  const createWorkspace = () =>
-    paseo.workspaces
-      .create({
-        source: {
-          kind: "worktree",
-          cwd: "/absolute/path/to/project",
-          action: "checkout",
-          checkoutSource: { kind: "change_request", forge: "github", number: 42 },
-        },
-      })
-      .then((workspace) =>
-        workspace.agents.create({
-          config: { provider: "codex/gpt-5" },
-          prompt: "Review PR #42",
-        }),
-      );
-  return <Text onPress={() => void createWorkspace()}>{query.data?.message}</Text>;
-}
+```ts
+import type { PluginContext } from "@paseo/plugin";
+import { Greeting } from "./greeting.client";
+import { createGreeting } from "./greeting.server";
+import { greetRpc } from "./greeting.shared";
 
 export default function contribute(plugin: PluginContext) {
-  plugin.handle(greetRpc, async ({ name }, { paseo }) => {
-    const { config } = await paseo.config.get();
-    return { message: `${name}: ${config.pluginsEnabled ? "enabled" : "disabled"}` };
-  });
+  plugin.handle(greetRpc, createGreeting);
   plugin.addSurface("main", Greeting);
-  plugin.addSidebarItem({
-    id: "main",
-    title: "Greeting",
-    icon: "MessageCircle",
-    surface: "main",
-  });
+  plugin.addSidebarItem({ id: "main", title: "Greeting", icon: "MessageCircle", surface: "main" });
   return () => {};
 }
 ```
@@ -192,36 +166,13 @@ Register a declarative attachment source backed by a plugin RPC. Paseo owns the 
 search picker, drafts, selected pill, and submission. The plugin returns complete text snapshots;
 credentials and vendor API calls stay in the daemon handler.
 
-```tsx
-const searchIssues = defineRpc({
-  name: "issues.search",
-  input: z.object({ query: z.string() }),
-  output: z.object({
-    items: z.array(
-      z.object({
-        id: z.string(),
-        identifier: z.string(),
-        title: z.string(),
-        subtitle: z.string().optional(),
-        url: z.string().url(),
-        text: z.string(),
-        resourceType: z.string(),
-      }),
-    ),
-  }),
-});
-
-const issues = defineAttachmentSource({
-  id: "issues",
-  title: "Acme issue",
-  icon: "CircleDot",
-  pickerTitle: "Attach Acme issue",
-  searchPlaceholder: "Search by identifier or title",
-  search: searchIssues,
-});
+```ts
+import type { PluginContext } from "@paseo/plugin";
+import { search } from "./issues.server";
+import { issues, searchIssues } from "./issues.shared";
 
 export default function contribute(plugin: PluginContext) {
-  plugin.handle(searchIssues, ({ query }) => searchAcmeIssues(query));
+  plugin.handle(searchIssues, search);
   plugin.addAttachmentSource(issues);
   return () => {};
 }

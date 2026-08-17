@@ -26,7 +26,8 @@ Plugin code is trusted and unsandboxed. Client surfaces run in the Paseo app. Ba
 ```text
 my-plugin/
   paseo-plugin.json
-  index.tsx
+  index.ts
+  main.client.tsx
   paseo-plugin.d.ts
   package.json
   tsconfig.json
@@ -42,15 +43,33 @@ Plugin, surface, sidebar-item, workspace-panel, Command Center item, and attachm
 
 The generated declaration file supplies `@paseo/plugin` types for local typechecking. Paseo supplies the runtime modules. Regenerate a fresh project with the matching CLI when the plugin contract changes.
 
+Add runtime-specific files as the plugin grows:
+
+```text
+my-plugin/
+  action.shared.ts
+  action.server.ts
+  panel.client.tsx
+```
+
+| Suffix         | Use it for                                                           |
+| -------------- | -------------------------------------------------------------------- |
+| `*.client.tsx` | React, React Native, hooks, styles, surfaces, panels, and callbacks. |
+| `*.server.ts`  | Node APIs, local resources, credentials, and RPC handlers.           |
+| `*.shared.ts`  | Zod RPC contracts and plain values imported by both runtimes.        |
+
+Paseo rejects imports from `*.server` files into client modules and imports from `*.client` files into server modules. Keep shared modules free of Node and React Native runtime code.
+
 ## Entry point and cleanup
 
-`index.tsx` default-exports one contribution function. It must return cleanup, even when it has nothing to clean:
+`index.ts` wires contributions together and default-exports one contribution function. It must return cleanup, even when it has nothing to clean:
 
-```tsx
+```ts
 import type { PluginContext } from "@paseo/plugin";
+import { Main } from "./main.client";
 
 export default function contribute(plugin: PluginContext) {
-  // Register contributions here.
+  plugin.addSurface("main", Main);
   return () => {};
 }
 ```
@@ -61,13 +80,22 @@ Cleanup can be async. Release timers, watchers, sockets, and other resources cre
 
 Register a component, then point a sidebar item at its surface ID:
 
+`main.client.tsx`:
+
 ```tsx
-import type { PluginContext, PluginSurfaceProps } from "@paseo/plugin";
+import type { PluginSurfaceProps } from "@paseo/plugin";
 import { Text } from "react-native";
 
-function Main({ host, layout }: PluginSurfaceProps) {
+export function Main({ host, layout }: PluginSurfaceProps) {
   return <Text>{`${host.label} · ${layout.platform}`}</Text>;
 }
+```
+
+`index.ts`:
+
+```ts
+import type { PluginContext } from "@paseo/plugin";
+import { Main } from "./main.client";
 
 export default function contribute(plugin: PluginContext) {
   plugin.addSurface("main", Main);
@@ -97,20 +125,24 @@ Client code can import `react`, `react-native`, `@tanstack/react-query`, `zod`, 
 
 Register one panel for workspace or agent context:
 
+`review.client.tsx`:
+
 ```tsx
-import {
-  type PluginContext,
-  type PluginAgentPanelProps,
-  useAgent,
-  useWorkspace,
-} from "@paseo/plugin";
+import { type PluginAgentPanelProps, useAgent, useWorkspace } from "@paseo/plugin";
 import { Text } from "react-native";
 
-function ReviewPanel({ workspaceId, agentId }: PluginAgentPanelProps) {
+export function ReviewPanel({ workspaceId, agentId }: PluginAgentPanelProps) {
   const workspaceName = useWorkspace(workspaceId, (workspace) => workspace.name);
   const agent = useAgent(agentId, ({ id, title }) => ({ id, title }));
   return <Text>{`${workspaceName} · ${agent?.title ?? agent?.id}`}</Text>;
 }
+```
+
+`index.ts`:
+
+```ts
+import type { PluginContext } from "@paseo/plugin";
+import { ReviewPanel } from "./review.client";
 
 export default function contribute(plugin: PluginContext) {
   plugin.addWorkspacePanel({
@@ -279,27 +311,53 @@ Use plugin RPC only for work that is not a normal Paseo operation: reading a ven
 
 Define one contract with Zod, handle it in the subprocess, and call it from the surface:
 
-```tsx
-import { defineRpc, type PluginContext, useRpc } from "@paseo/plugin";
+`greeting.shared.ts`:
+
+```ts
+import { defineRpc } from "@paseo/plugin";
 import { z } from "zod";
 
-const greeting = defineRpc({
+export const greeting = defineRpc({
   name: "greeting.create",
   input: z.object({ name: z.string() }),
   output: z.object({ message: z.string() }),
 });
+```
 
-function GreetingButton() {
+`greeting.client.tsx`:
+
+```tsx
+import { useRpc } from "@paseo/plugin";
+import { greeting } from "./greeting.shared";
+
+export function GreetingButton() {
   const createGreeting = useRpc(greeting);
   // Call createGreeting({ name: "Ada" }) from an event or query.
   return null;
 }
+```
+
+`greeting.server.ts`:
+
+```ts
+import type { output as ZodOutput } from "zod";
+import { greeting } from "./greeting.shared";
+
+export function createGreeting({ name }: ZodOutput<typeof greeting.input>) {
+  return { message: `Hello, ${name}` };
+}
+```
+
+`index.ts`:
+
+```ts
+import type { PluginContext } from "@paseo/plugin";
+import { GreetingButton } from "./greeting.client";
+import { createGreeting } from "./greeting.server";
+import { greeting } from "./greeting.shared";
 
 export default function contribute(plugin: PluginContext) {
-  plugin.handle(greeting, async ({ name }, { paseo }) => {
-    const { config } = await paseo.config.get();
-    return { message: `${name}: plugins are ${config.pluginsEnabled ? "on" : "off"}` };
-  });
+  plugin.handle(greeting, createGreeting);
   plugin.addSurface("main", GreetingButton);
   return () => {};
 }
@@ -318,8 +376,11 @@ console.log("Refreshing issues");
 console.error("Issue refresh failed", error);
 ```
 
-Paseo captures output emitted during initialization, RPC handlers, cleanup, and process failure.
-Protocol traffic uses a separate channel, so `console.log()` cannot corrupt plugin RPCs.
+Paseo adds `[paseo]` entries when the plugin starts loading, becomes ready, starts stopping, and has
+stopped. It records compilation and load failures as stderr entries, including failures that happen
+before the plugin subprocess starts. Paseo also captures output emitted during initialization, RPC
+handlers, cleanup, and process failure. Protocol traffic uses a separate channel, so `console.log()`
+cannot corrupt plugin RPCs.
 
 Open **Settings → Plugins → Logs** for the plugin, or inspect the same recent tail from the daemon
 CLI:
@@ -335,9 +396,9 @@ the command again for newer entries. Each entry includes its timestamp, stdout o
 sequence, and message.
 
 Paseo retains up to 500 entries and 256 KiB per plugin in memory. Individual lines are capped at
-16 KiB. Reload, disable, initialization failure, and process failure retain the tail. Removing the
-plugin clears it, and a daemon restart starts a new tail. Structured copies are also written to the
-daemon log at `$PASEO_HOME/daemon.log`.
+16 KiB. Reload, disable, compilation failure, initialization failure, and process failure retain the
+tail. Removing the plugin clears it, and a daemon restart starts a new tail. Structured copies are
+also written to the daemon log at `$PASEO_HOME/daemon.log`.
 
 Only daemon-side output is captured. Logs from client surfaces remain in the app runtime. Do not log
 credentials, access tokens, or other secrets: connected users can read the retained tail, and the
@@ -347,11 +408,13 @@ daemon log persists it.
 
 An attachment source searches external resources and returns a stable text snapshot for an agent prompt. Keep credentials and vendor calls in the backend handler.
 
-```tsx
-import { defineAttachmentSource, defineRpc, type PluginContext } from "@paseo/plugin";
+`issues.shared.ts`:
+
+```ts
+import { defineAttachmentSource, defineRpc } from "@paseo/plugin";
 import { z } from "zod";
 
-const searchIssues = defineRpc({
+export const searchIssues = defineRpc({
   name: "issues.search",
   input: z.object({ query: z.string() }),
   output: z.object({
@@ -369,7 +432,7 @@ const searchIssues = defineRpc({
   }),
 });
 
-const issues = defineAttachmentSource({
+export const issues = defineAttachmentSource({
   id: "issues",
   title: "Acme issue",
   icon: "CircleDot",
@@ -377,9 +440,28 @@ const issues = defineAttachmentSource({
   searchPlaceholder: "Search by identifier or title",
   search: searchIssues,
 });
+```
+
+`issues.server.ts`:
+
+```ts
+import type { output as ZodOutput } from "zod";
+import { searchIssues } from "./issues.shared";
+
+export function search({ query }: ZodOutput<typeof searchIssues.input>) {
+  return searchAcmeIssues(query);
+}
+```
+
+`index.ts`:
+
+```ts
+import type { PluginContext } from "@paseo/plugin";
+import { search } from "./issues.server";
+import { issues, searchIssues } from "./issues.shared";
 
 export default function contribute(plugin: PluginContext) {
-  plugin.handle(searchIssues, ({ query }) => searchAcmeIssues(query));
+  plugin.handle(searchIssues, search);
   plugin.addAttachmentSource(issues);
   return () => {};
 }

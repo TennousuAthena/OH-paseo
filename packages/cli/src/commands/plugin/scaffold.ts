@@ -206,20 +206,23 @@ const TSCONFIG = {
     esModuleInterop: true,
     allowSyntheticDefaultImports: true,
   },
-  include: ["index.tsx", "paseo-plugin.d.ts"],
+  include: ["**/*.ts", "**/*.tsx"],
 };
 
 const ENTRY = `import type { PluginContext } from "@paseo/plugin";
-import React from "react";
-import { Text } from "react-native";
-
-function MainSurface() {
-  return <Text>Hello from my plugin</Text>;
-}
+import { MainSurface } from "./main.client";
 
 export default function contribute(plugin: PluginContext) {
   plugin.addSurface("main", MainSurface);
   return () => {};
+}
+`;
+
+const CLIENT_SURFACE = `import React from "react";
+import { Text } from "react-native";
+
+export function MainSurface() {
+  return <Text>Hello from my plugin</Text>;
 }
 `;
 
@@ -260,7 +263,8 @@ export async function scaffoldPluginDirectory(
     ["package.json", `${JSON.stringify(packageJson, null, 2)}\n`],
     ["tsconfig.json", `${JSON.stringify(TSCONFIG, null, 2)}\n`],
     ["paseo-plugin.d.ts", SDK_DECLARATIONS],
-    ["index.tsx", ENTRY],
+    ["index.ts", ENTRY],
+    ["main.client.tsx", CLIENT_SURFACE],
   ]);
   await Promise.all(
     [...files].map(([filename, contents]) =>

@@ -32,26 +32,38 @@ cd /absolute/path/to/workspace-plugin
 npm install
 ```
 
-`init` creates a strict TSX project. It does not run the package manager.
+`init` creates a strict TypeScript project. It does not run the package manager. `index.ts` registers contributions; client UI lives in `*.client.tsx` files.
 
-Replace `index.tsx` with:
+Replace `main.client.tsx` with:
 
 ```tsx
-import { type PluginContext, type PluginWorkspacePanelProps, useWorkspace } from "@paseo/plugin";
-import { Text, View } from "react-native";
+import { type PluginWorkspacePanelProps, useWorkspace } from "@paseo/plugin";
+import { StyleSheet, Text, View } from "react-native";
 
-function WorkspaceOverview({ workspaceId }: PluginWorkspacePanelProps) {
+export function WorkspaceOverview({ workspaceId }: PluginWorkspacePanelProps) {
   const workspace = useWorkspace(workspaceId, ({ name, directory }) => ({
     name,
     directory,
   }));
   return (
-    <View style={{ flex: 1, padding: 24, gap: 8 }}>
-      <Text style={{ fontSize: 24 }}>{workspace?.name}</Text>
+    <View style={styles.screen}>
+      <Text style={styles.title}>{workspace?.name}</Text>
       <Text>{workspace?.directory}</Text>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, padding: 24, gap: 8 },
+  title: { fontSize: 24 },
+});
+```
+
+Replace `index.ts` with:
+
+```ts
+import type { PluginContext } from "@paseo/plugin";
+import { WorkspaceOverview } from "./main.client";
 
 export default function contribute(plugin: PluginContext) {
   plugin.addWorkspacePanel({
@@ -74,7 +86,7 @@ export default function contribute(plugin: PluginContext) {
 }
 ```
 
-The icon is a [Lucide](https://lucide.dev/icons/) icon name. The panel uses React Native primitives, so the same contribution works in the desktop, browser, iOS, and Android clients. Panel props contain stable IDs; `useWorkspace` selects the cached fields the component needs without fetching through RPC or re-rendering for unrelated workspace changes.
+The icon is a [Lucide](https://lucide.dev/icons/) icon name. `*.client.tsx` files can use React Native runtime APIs such as `StyleSheet.create`; Paseo excludes them from the daemon bundle. The panel works in the desktop, browser, iOS, and Android clients. Panel props contain stable IDs; `useWorkspace` selects the cached fields the component needs without fetching through RPC or re-rendering for unrelated workspace changes.
 
 ## Check and install it
 
@@ -113,7 +125,8 @@ paseo plugin logs workspace-plugin
 paseo plugin logs workspace-plugin --json
 ```
 
-The log tail survives reloads and crashes, so inspect it when a plugin fails to start or an RPC
+The log tail includes `[paseo]` loading, ready, stopping, and stopped entries, plus compilation and
+load failures. It survives reloads and crashes. Inspect it when a plugin fails to start or an RPC
 rejects. See [Debug backend output](/docs/plugins/reference#debug-backend-output) for retention and
 security behavior.
 
