@@ -24,7 +24,7 @@ import type {
 } from "./types";
 
 export const FILE_HEADER_HEIGHT = 30;
-const BODY_BORDER_HEIGHT = 1;
+export const DIFF_BODY_BORDER_HEIGHT = 1;
 const CODE_HORIZONTAL_PADDING = 16;
 
 interface CellSource {
@@ -84,7 +84,7 @@ export function buildDiffDocumentModel(input: BuildDiffDocumentModelInput): Diff
         documentTop += reusedRow.height;
       }
       maximumHorizontalOverflow = Math.max(0, reusableFile.contentWidth - input.viewportWidth);
-      documentTop += BODY_BORDER_HEIGHT;
+      documentTop += DIFF_BODY_BORDER_HEIGHT;
     } else if (!isCollapsed) {
       if (file.status === "binary" || file.status === "too_large") {
         const height = input.typography.lineHeight + 24;
@@ -139,7 +139,7 @@ export function buildDiffDocumentModel(input: BuildDiffDocumentModelInput): Diff
           documentTop += height;
         }
       }
-      documentTop += BODY_BORDER_HEIGHT;
+      documentTop += DIFF_BODY_BORDER_HEIGHT;
     }
 
     files.push({
@@ -170,6 +170,12 @@ export function buildDiffDocumentModel(input: BuildDiffDocumentModelInput): Diff
     wrapLines: input.wrapLines,
     viewportWidth: input.viewportWidth,
   };
+}
+
+export function finalExpandedBodyBorderTop(model: DiffDocumentModel): number | null {
+  "worklet";
+  const file = model.files[model.files.length - 1];
+  return file && !file.isCollapsed ? file.bottom - DIFF_BODY_BORDER_HEIGHT : null;
 }
 
 export function retainReusableModels(

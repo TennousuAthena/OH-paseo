@@ -209,15 +209,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
   }, [loadedTypography, measurement, props.palette, viewport.height, viewport.width]);
   const schedulePaint = useCallback(
     (force = true) => {
-      if (force) {
-        forcePaintRef.current = true;
-        // Fast Refresh preserves refs. A request owned by the previous module can leave a stale
-        // id behind, which would otherwise prevent every subsequent canvas repaint.
-        if (frameRef.current !== null) {
-          cancelAnimationFrame(frameRef.current);
-          frameRef.current = null;
-        }
-      }
+      if (force) forcePaintRef.current = true;
       if (frameRef.current === null) frameRef.current = requestAnimationFrame(paint);
     },
     [paint],
@@ -267,6 +259,8 @@ export function DiffSurface(props: DiffSurfaceProps) {
   useEffect(
     () => () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      // Fast Refresh preserves refs while rerunning effects. Release ownership of the canceled
+      // request so the refreshed renderer can schedule its first paint.
       frameRef.current = null;
     },
     [],

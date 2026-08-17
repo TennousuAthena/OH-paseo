@@ -5,7 +5,7 @@ import {
   type SkPaint,
   type SkPicture,
 } from "@shopify/react-native-skia";
-import { visibleRowRange } from "./model";
+import { DIFF_BODY_BORDER_HEIGHT, finalExpandedBodyBorderTop, visibleRowRange } from "./model";
 import { nativeTextRuns } from "./native-text-runs";
 import { horizontalOffsetForPath, type DiffHorizontalOffsets } from "./horizontal-offsets";
 import { codeLineNumberTone } from "./palette";
@@ -256,6 +256,18 @@ function paintNativeRange(input: PaintNativeRangeInput): void {
         });
       }
     });
+  }
+  const finalBorderTop = paintsFixedContent ? finalExpandedBodyBorderTop(input.model) : null;
+  if (finalBorderTop !== null) {
+    input.canvas.drawRect(
+      Skia.XYWHRect(
+        0,
+        finalBorderTop - input.scrollTop,
+        input.viewportWidth,
+        DIFF_BODY_BORDER_HEIGHT,
+      ),
+      input.paints.border,
+    );
   }
 }
 

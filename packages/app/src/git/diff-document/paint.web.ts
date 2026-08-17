@@ -1,5 +1,10 @@
 import { selectionRectangles } from "./hit-testing";
-import { fragmentWidthForRange, visibleRowRange } from "./model";
+import {
+  DIFF_BODY_BORDER_HEIGHT,
+  finalExpandedBodyBorderTop,
+  fragmentWidthForRange,
+  visibleRowRange,
+} from "./model";
 import { codeLineNumberTone, codeTextColor } from "./palette";
 import { reviewBackgroundPaint, reviewDividerHeight, reviewGapTop } from "./review-paint";
 import type {
@@ -62,6 +67,17 @@ export function paintWebViewport(input: PaintWebViewportInput): void {
       y,
       horizontalOffset: input.horizontalOffsets.get(row.path) ?? 0,
     });
+  }
+
+  const finalBorderTop = finalExpandedBodyBorderTop(input.model);
+  if (finalBorderTop !== null) {
+    context.fillStyle = input.palette.border;
+    context.fillRect(
+      0,
+      finalBorderTop - input.scrollTop,
+      input.viewportWidth,
+      DIFF_BODY_BORDER_HEIGHT,
+    );
   }
 
   if (input.selection) paintSelection(input, input.selection);

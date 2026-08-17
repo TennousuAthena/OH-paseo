@@ -84,6 +84,54 @@ describe("web diff text shaping", () => {
     expect(fills).toContainEqual({ color: "border", x: 20, y: 0, width: 1, height: 58 });
   });
 
+  it("paints the final expanded file body's bottom border", () => {
+    const fills: Array<{ color: string; x: number; y: number; width: number; height: number }> = [];
+    let fillStyle = "";
+    const context = {
+      setTransform() {},
+      clearRect() {},
+      fillRect(x: number, y: number, width: number, height: number) {
+        fills.push({ color: fillStyle, x, y, width, height });
+      },
+      save() {},
+      restore() {},
+      beginPath() {},
+      rect() {},
+      clip() {},
+      fillText() {},
+      get fillStyle() {
+        return fillStyle;
+      },
+      set fillStyle(value: string | CanvasGradient | CanvasPattern) {
+        fillStyle = String(value);
+      },
+      globalAlpha: 1,
+      font: "",
+      textBaseline: "alphabetic",
+    } as unknown as CanvasRenderingContext2D;
+    const borderedModel: DiffDocumentModel = {
+      ...model,
+      height: 19,
+      files: [{ ...model.files[0]!, bodyHeight: 19, bottom: 19 }],
+    };
+
+    paintWebViewport({
+      context,
+      model: borderedModel,
+      palette,
+      typography: { family: "monospace", size: 12, lineHeight: 18 },
+      measureText: { measure: () => 0 },
+      scrollTop: 0,
+      viewportWidth: 200,
+      viewportHeight: 100,
+      horizontalOffsets: new Map(),
+      selection: null,
+      devicePixelRatio: 1,
+    });
+
+    expect(fills).toContainEqual({ color: "border", x: 0, y: 18, width: 200, height: 1 });
+  });
+
   it("clips a horizontally scrolled unified selection to the code viewport", () => {
     const selectionModel = createSelectionModel("unified");
     const paints = paintSelection(selectionModel, selectionForCell(0));
