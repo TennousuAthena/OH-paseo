@@ -100,10 +100,10 @@ async function expectCommitDiffHeaderGeometry(panel: Locator): Promise<void> {
   expect(content).not.toBeNull();
   expect(name).not.toBeNull();
   expect(stat).not.toBeNull();
-  expect(header!.height).toBeCloseTo(44, 0);
+  expect(header!.height).toBeCloseTo(30, 0);
   expect(content!.x).toBeCloseTo(header!.x, 0);
   expect(content!.width).toBeCloseTo(header!.width, 0);
-  expect(name!.x).toBeGreaterThan(header!.x);
+  expect(name!.x - header!.x).toBeCloseTo(12, 0);
   expect(name!.x + name!.width).toBeLessThan(stat!.x);
   expect(Math.abs(name!.y + name!.height / 2 - (stat!.y + stat!.height / 2))).toBeLessThanOrEqual(
     1,

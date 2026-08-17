@@ -1,39 +1,72 @@
-import { Canvas, Picture, Skia } from "@shopify/react-native-skia";
+import { Canvas, Picture, type SkPicture } from "@shopify/react-native-skia";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ScrollView, StyleSheet, View, type LayoutChangeEvent, type ViewStyle } from "react-native";
+import {
+  ScrollView,
+  StyleSheet,
+  View,
+  type GestureResponderEvent,
+  type LayoutChangeEvent,
+  type ViewStyle,
+} from "react-native";
 import {
   createAnimatedComponent,
+  useAnimatedReaction,
   useAnimatedScrollHandler,
-  useDerivedValue,
+  useAnimatedStyle,
   useSharedValue,
+  type SharedValue,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
+import { InlineReviewThread } from "@/review";
+import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { DocumentFileHeader } from "./document-file-header";
-import { hitTestDiffPagePoint, type SurfaceWindowOrigin } from "./native-hit-testing";
+import { hitTestDiffBodyPoint } from "./native-hit-testing";
 import { HorizontalScroll } from "./horizontal-scroll.native";
 import {
   horizontalOffsetForPath,
   retainHorizontalOffsetsForPaths,
   type DiffHorizontalOffsets,
 } from "./horizontal-offsets";
-import { buildDiffDocumentModel, captureScrollAnchor, resolveScrollAnchor } from "./model";
-import { createNativePaints, paintNativeViewport } from "./paint.native";
-import { createNativeTextLayout, createNativeTextMeasurer } from "./text.native";
-import { InlineReviewThread } from "@/review";
-import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-import type { DiffSurfaceProps, DiffTypography, TextMeasurer } from "./types";
+import { buildDiffDocumentModel, resolveRelayoutScrollTop, retainReusableModels } from "./model";
+import {
+  buildNativeCanvasSlabs,
+  nativeCanvasSlabsForViewport,
+  nativeCanvasWindowBucket,
+  nativeCanvasWindowTop,
+  nativeStickyHeaderIndices,
+  type NativeCanvasSlab,
+} from "./native-slabs";
+import { createNativePaints, recordNativeSlabPictures, type NativePaints } from "./paint.native";
+import {
+  createNativeTextLayoutStore,
+  createNativeTextMeasurer,
+  disposeNativeTextLayout,
+  prepareNativeTextLayout,
+  type NativeTextLayout,
+} from "./text.native";
+import type {
+  DiffDocumentModel,
+  DiffFileSection,
+  DiffSurfaceProps,
+  DiffTypography,
+  TextMeasurer,
+} from "./types";
 
 const AnimatedScrollView = createAnimatedComponent(ScrollView);
+const AnimatedCodeLayer = createAnimatedComponent(View);
 const SYSTEM_MONO = "monospace";
+const CODE_LEFT_PADDING = 8;
 
 export function DiffSurface(props: DiffSurfaceProps) {
   const { t } = useTranslation();
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
-  const touchRef = useRef<{ x: number; y: number; startedAt: number; moved: boolean } | null>(null);
   const scrollRef = useRef<ScrollView>(null);
-  const rootRef = useRef<View>(null);
-  const surfaceOriginRef = useRef<SurfaceWindowOrigin>({ x: 0, y: 0 });
   const previousModelRef = useRef<ReturnType<typeof buildDiffDocumentModel> | null>(null);
+  const reusableModelRef = useRef<{
+    dependencies: readonly unknown[];
+    models: ReturnType<typeof buildDiffDocumentModel>[];
+  } | null>(null);
   const consumedFocusRef = useRef<string | null>(null);
   const scrollTop = useSharedValue(0);
   const horizontalOffsets = useSharedValue<DiffHorizontalOffsets>({});
@@ -51,81 +84,89 @@ export function DiffSurface(props: DiffSurfaceProps) {
     [family, typography.size],
   );
   const reviewActions = props.mode.kind === "working" ? props.mode.reviewActions : undefined;
-  const model = useMemo(
-    () =>
-      buildDiffDocumentModel({
-        files: props.files,
-        collapsedFilePaths: props.collapsedFilePaths,
-        layout: props.displayPreferences.layout,
-        wrapLines: props.displayPreferences.wrapLines,
-        viewportWidth: viewport.width,
-        typography,
-        measureText: measurement,
-        palette: props.palette,
-        reviewActions,
-        labels: {
-          binary: t("workspace.git.diff.binaryFile"),
-          tooLarge: t("workspace.git.diff.tooLarge"),
-        },
-      }),
-    [
-      measurement,
-      props.collapsedFilePaths,
+  const model = useMemo(() => {
+    const dependencies = [
+      props.files,
       props.displayPreferences.layout,
       props.displayPreferences.wrapLines,
-      props.files,
+      viewport.width,
+      typography,
+      measurement,
       props.palette,
       reviewActions,
       t,
+    ] as const;
+    const previous = reusableModelRef.current;
+    const canReuse = previous?.dependencies.every(
+      (dependency, index) => dependency === dependencies[index],
+    );
+    const reuseFrom = canReuse ? previous?.models : undefined;
+    const next = buildDiffDocumentModel({
+      files: props.files,
+      collapsedFilePaths: props.collapsedFilePaths,
+      layout: props.displayPreferences.layout,
+      wrapLines: props.displayPreferences.wrapLines,
+      viewportWidth: viewport.width,
       typography,
-      viewport.width,
-    ],
-  );
+      measureText: measurement,
+      palette: props.palette,
+      reviewActions,
+      labels: {
+        binary: t("workspace.git.diff.binaryFile"),
+        tooLarge: t("workspace.git.diff.tooLarge"),
+      },
+      reuseFrom,
+    });
+    reusableModelRef.current = {
+      dependencies,
+      models: retainReusableModels(reuseFrom, next),
+    };
+    return next;
+  }, [
+    measurement,
+    props.collapsedFilePaths,
+    props.displayPreferences.layout,
+    props.displayPreferences.wrapLines,
+    props.files,
+    props.palette,
+    reviewActions,
+    t,
+    typography,
+    viewport.width,
+  ]);
   const paints = useMemo(() => createNativePaints(props.palette), [props.palette]);
-  const textLayout = useMemo(
+  const textLayoutStore = useMemo(
     () =>
-      createNativeTextLayout({
-        model,
+      createNativeTextLayoutStore({
         configuredFamily: family,
         fontSize: typography.size,
+        lineHeight: typography.lineHeight,
         palette: props.palette,
       }),
-    [family, model, props.palette, typography.size],
+    [family, props.palette, typography.lineHeight, typography.size],
   );
+  const textLayout = useMemo(
+    () => prepareNativeTextLayout(textLayoutStore, model),
+    [model, textLayoutStore],
+  );
+  useEffect(() => () => disposeNativeTextLayout(textLayoutStore), [textLayoutStore]);
+
   const scrollHandler = useAnimatedScrollHandler((event) => {
     scrollTop.value = event.contentOffset.y;
   });
-  const picture = useDerivedValue(() => {
-    const recorder = Skia.PictureRecorder();
-    const canvas = recorder.beginRecording(Skia.XYWHRect(0, 0, viewport.width, viewport.height));
-    paintNativeViewport({
-      canvas,
-      model,
-      viewportWidth: viewport.width,
-      viewportHeight: viewport.height,
-      scrollTop: scrollTop.value,
-      horizontalOffsets: horizontalOffsets.value,
-      textLayout,
-      paints,
-    });
-    return recorder.finishRecordingAsPicture();
-  }, [model, paints, textLayout, viewport.height, viewport.width]);
+
   const layout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
-    setViewport({ width, height });
-    rootRef.current?.measureInWindow((x, y) => {
-      surfaceOriginRef.current = { x, y };
-    });
+    setViewport((current) =>
+      current.width === width && current.height === height ? current : { width, height },
+    );
   }, []);
   useLayoutEffect(() => {
     const previous = previousModelRef.current;
     if (previous && previous !== model) {
-      const anchor = captureScrollAnchor(previous, scrollTop.value);
-      if (anchor) {
-        const nextScrollTop = resolveScrollAnchor(model, anchor);
-        scrollTop.value = nextScrollTop;
-        scrollRef.current?.scrollTo({ y: nextScrollTop, animated: false });
-      }
+      const nextScrollTop = resolveRelayoutScrollTop(previous, model, scrollTop.value);
+      scrollTop.value = nextScrollTop;
+      scrollRef.current?.scrollTo({ y: nextScrollTop, animated: false });
     }
     previousModelRef.current = model;
   }, [model, scrollTop]);
@@ -135,6 +176,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       model.files.map((file) => file.path),
     );
   }, [horizontalOffsets, model.files]);
+
   const mode = props.mode;
   const collapsedFilePaths = props.collapsedFilePaths;
   const onToggleFile = props.onToggleFile;
@@ -147,50 +189,22 @@ export function DiffSurface(props: DiffSurfaceProps) {
     if (collapsedFilePaths.has(focusPath)) onToggleFile(focusPath);
     const file = model.files.find((entry) => entry.path === focusPath);
     if (file) {
+      scrollTop.value = file.top;
       scrollRef.current?.scrollTo({ y: file.top, animated: false });
       consumedFocusRef.current = requestKey;
     }
-  }, [collapsedFilePaths, mode, model.files, onToggleFile]);
-  const touchStart = useCallback((event: { nativeEvent: { pageX: number; pageY: number } }) => {
-    touchRef.current = {
-      x: event.nativeEvent.pageX,
-      y: event.nativeEvent.pageY,
-      startedAt: Date.now(),
-      moved: false,
-    };
-  }, []);
-  const touchMove = useCallback((event: { nativeEvent: { pageX: number; pageY: number } }) => {
-    const touch = touchRef.current;
-    if (
-      touch &&
-      Math.hypot(event.nativeEvent.pageX - touch.x, event.nativeEvent.pageY - touch.y) > 10
-    )
-      touch.moved = true;
-  }, []);
-  const touchEnd = useCallback(
-    (event: { nativeEvent: { pageX: number; pageY: number } }) => {
-      const touch = touchRef.current;
-      touchRef.current = null;
-      if (!touch || touch.moved || Date.now() - touch.startedAt > 500 || !reviewActions) return;
-      const hit = hitTestDiffPagePoint({
-        model,
-        pageX: event.nativeEvent.pageX,
-        pageY: event.nativeEvent.pageY,
-        surfaceOrigin: surfaceOriginRef.current,
-        scrollTop: scrollTop.value,
-        horizontalOffsetForPath: (path) => horizontalOffsetForPath(horizontalOffsets.value, path),
-      });
-      if (hit?.kind === "cell" && hit.target) reviewActions.onStartComment(hit.target);
-    },
-    [horizontalOffsets, model, reviewActions, scrollTop],
+  }, [collapsedFilePaths, mode, model.files, onToggleFile, scrollTop]);
+  const contentStyle = useMemo(
+    () => ({ minHeight: viewport.height, backgroundColor: "transparent" }),
+    [viewport.height],
   );
-  const contentStyle = useMemo(() => ({ minHeight: viewport.height }), [viewport.height]);
+  const stickyHeaderIndices = useMemo(
+    () => nativeStickyHeaderIndices(model.files.length),
+    [model.files.length],
+  );
+
   return (
-    <View
-      ref={rootRef}
-      style={[styles.root, { backgroundColor: props.palette.surface }]}
-      onLayout={layout}
-    >
+    <View style={[styles.root, { backgroundColor: props.palette.surface }]} onLayout={layout}>
       <AnimatedScrollView
         ref={scrollRef}
         style={[StyleSheet.absoluteFill, styles.scroll]}
@@ -198,90 +212,372 @@ export function DiffSurface(props: DiffSurfaceProps) {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator
-        stickyHeaderIndices={model.files.map((_, index) => index * 2)}
+        stickyHeaderIndices={stickyHeaderIndices}
         testID="git-diff-scroll"
-        onTouchStart={touchStart}
-        onTouchMove={touchMove}
-        onTouchEnd={touchEnd}
       >
-        {model.files.flatMap((file) => [
-          <View key={`${file.path}:header`} style={styles.header}>
-            <DocumentFileHeader
-              file={file}
-              selectedPath={props.selectedPath}
-              mode={props.mode}
-              onToggleFile={props.onToggleFile}
-              onSelectPath={props.onSelectPath}
-            />
-          </View>,
-          <View
+        <NativeCanvasSlabLayer
+          model={model}
+          viewportHeight={viewport.height}
+          scrollTop={scrollTop}
+          textLayout={textLayout}
+          paints={paints}
+          horizontalOffsets={horizontalOffsets}
+        />
+        {model.files.flatMap((file, index) => [
+          <NativeStickyFileHeader
+            key={`${file.path}:header`}
+            file={file}
+            showTopBorder={index > 0 && !model.files[index - 1]?.isCollapsed}
+            selectedPath={props.selectedPath}
+            mode={props.mode}
+            onToggleFile={props.onToggleFile}
+            onSelectPath={props.onSelectPath}
+          />,
+          <NativeFileBody
             key={`${file.path}:body`}
-            testID={`diff-file-${file.fileIndex}-body`}
-            style={inlineUnistylesStyle<ViewStyle>({
-              position: "relative",
-              height: file.bodyHeight,
-            })}
-          >
-            {!file.isCollapsed && !model.wrapLines ? (
-              <HorizontalScroll file={file} offsets={horizontalOffsets} />
-            ) : null}
-            {props.mode.kind === "working" && reviewActions
-              ? model.rows.slice(file.rowStart, file.rowEnd).flatMap((row) => {
-                  if (row.kind !== "line" || row.reviewHeight === 0) return [];
-                  const columnWidth = model.viewportWidth / row.cells.length;
-                  return row.cells.flatMap((cell, index) => {
-                    if (!cell?.reviewTarget) return [];
-                    const comments =
-                      reviewActions.commentsByTarget.get(cell.reviewTarget.key) ?? [];
-                    const editor = reviewActions.editor;
-                    const hasEditor =
-                      editor?.target.filePath === cell.reviewTarget.filePath &&
-                      editor.target.side === cell.reviewTarget.side &&
-                      editor.target.lineNumber === cell.reviewTarget.lineNumber;
-                    if (comments.length === 0 && !hasEditor) return [];
-                    return [
-                      <View
-                        key={cell.reviewTarget.key}
-                        style={inlineUnistylesStyle<ViewStyle>({
-                          position: "absolute",
-                          top: row.top - file.bodyTop + row.height - row.reviewHeight,
-                          left: index * columnWidth,
-                          width: columnWidth,
-                          height: row.reviewHeight,
-                          zIndex: 4,
-                        })}
-                      >
-                        <InlineReviewThread
-                          reviewTarget={cell.reviewTarget}
-                          reviewActions={reviewActions}
-                          height={row.reviewHeight}
-                          viewportWidth={columnWidth}
-                          pinToViewport={!model.wrapLines}
-                        />
-                      </View>,
-                    ];
-                  });
-                })
-              : null}
-          </View>,
+            file={file}
+            model={model}
+            mode={props.mode}
+            horizontalOffsets={horizontalOffsets}
+          />,
         ])}
+        <NativeReviewOverlays model={model} mode={props.mode} />
       </AnimatedScrollView>
-      <View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, styles.canvas]}
-        testID="git-diff-canvas"
-      >
+    </View>
+  );
+}
+
+function NativeCanvasSlabLayer({
+  model,
+  viewportHeight,
+  scrollTop,
+  textLayout,
+  paints,
+  horizontalOffsets,
+}: {
+  model: DiffDocumentModel;
+  viewportHeight: number;
+  scrollTop: SharedValue<number>;
+  textLayout: NativeTextLayout;
+  paints: NativePaints;
+  horizontalOffsets: SharedValue<DiffHorizontalOffsets>;
+}) {
+  const [windowTop, setWindowTop] = useState(0);
+  const updateWindow = useCallback((nextTop: number) => {
+    setWindowTop((current) => (current === nextTop ? current : nextTop));
+  }, []);
+  useAnimatedReaction(
+    () => nativeCanvasWindowBucket(scrollTop.value, viewportHeight),
+    (bucket, previous) => {
+      if (bucket !== previous) {
+        scheduleOnRN(updateWindow, nativeCanvasWindowTop(bucket, viewportHeight));
+      }
+    },
+    [updateWindow, viewportHeight],
+  );
+  const descriptors = useMemo(
+    () => buildNativeCanvasSlabs(model, viewportHeight),
+    [model, viewportHeight],
+  );
+  const visible = useMemo(
+    () => nativeCanvasSlabsForViewport(descriptors, windowTop, viewportHeight),
+    [descriptors, viewportHeight, windowTop],
+  );
+  return visible.map((slab) => (
+    <NativeCanvasSlabView
+      key={slab.key}
+      slab={slab}
+      model={model}
+      textLayout={textLayout}
+      paints={paints}
+      horizontalOffsets={horizontalOffsets}
+    />
+  ));
+}
+
+function NativeStickyFileHeader({
+  file,
+  showTopBorder,
+  selectedPath,
+  mode,
+  onToggleFile,
+  onSelectPath,
+}: {
+  file: DiffFileSection;
+  showTopBorder: boolean;
+  selectedPath: DiffSurfaceProps["selectedPath"];
+  mode: DiffSurfaceProps["mode"];
+  onToggleFile: DiffSurfaceProps["onToggleFile"];
+  onSelectPath: DiffSurfaceProps["onSelectPath"];
+}) {
+  return (
+    <View style={styles.header}>
+      <DocumentFileHeader
+        file={file}
+        showTopBorder={showTopBorder}
+        selectedPath={selectedPath}
+        mode={mode}
+        onToggleFile={onToggleFile}
+        onSelectPath={onSelectPath}
+      />
+    </View>
+  );
+}
+
+function NativeFileBody({
+  file,
+  model,
+  mode,
+  horizontalOffsets,
+}: {
+  file: DiffFileSection;
+  model: DiffDocumentModel;
+  mode: DiffSurfaceProps["mode"];
+  horizontalOffsets: SharedValue<DiffHorizontalOffsets>;
+}) {
+  const touchRef = useRef<{ x: number; y: number; startedAt: number; moved: boolean } | null>(null);
+  const reviewActions = mode.kind === "working" ? mode.reviewActions : undefined;
+  const touchStart = useCallback((event: GestureResponderEvent) => {
+    touchRef.current = {
+      x: event.nativeEvent.pageX,
+      y: event.nativeEvent.pageY,
+      startedAt: Date.now(),
+      moved: false,
+    };
+  }, []);
+  const touchMove = useCallback((event: GestureResponderEvent) => {
+    const touch = touchRef.current;
+    if (
+      touch &&
+      Math.hypot(event.nativeEvent.pageX - touch.x, event.nativeEvent.pageY - touch.y) > 10
+    ) {
+      touch.moved = true;
+    }
+  }, []);
+  const touchEnd = useCallback(
+    (event: GestureResponderEvent) => {
+      const touch = touchRef.current;
+      touchRef.current = null;
+      if (!touch || touch.moved || Date.now() - touch.startedAt > 500 || !reviewActions) return;
+      const hit = hitTestDiffBodyPoint({
+        model,
+        file,
+        locationX: event.nativeEvent.locationX,
+        locationY: event.nativeEvent.locationY,
+        horizontalOffset: horizontalOffsetForPath(horizontalOffsets.value, file.path),
+      });
+      if (hit?.kind === "cell" && hit.target) reviewActions.onStartComment(hit.target);
+    },
+    [file, horizontalOffsets, model, reviewActions],
+  );
+  return (
+    <View
+      testID={`diff-file-${file.fileIndex}-body`}
+      style={inlineUnistylesStyle<ViewStyle>({
+        position: "relative",
+        height: file.bodyHeight,
+        zIndex: 2,
+      })}
+      onTouchStart={touchStart}
+      onTouchMove={touchMove}
+      onTouchEnd={touchEnd}
+    >
+      {!file.isCollapsed && !model.wrapLines ? (
+        <HorizontalScroll file={file} offsets={horizontalOffsets} />
+      ) : null}
+    </View>
+  );
+}
+
+function NativeReviewOverlays({
+  model,
+  mode,
+}: {
+  model: DiffDocumentModel;
+  mode: DiffSurfaceProps["mode"];
+}) {
+  if (mode.kind !== "working" || !mode.reviewActions) return null;
+  const reviewActions = mode.reviewActions;
+  return model.rows.flatMap((row) => {
+    if (row.kind !== "line" || row.reviewHeight === 0) return [];
+    const columnWidth = model.viewportWidth / row.cells.length;
+    return row.cells.flatMap((cell, index) => {
+      if (!cell?.reviewTarget) return [];
+      const comments = reviewActions.commentsByTarget.get(cell.reviewTarget.key) ?? [];
+      const editor = reviewActions.editor;
+      const hasEditor =
+        editor?.target.filePath === cell.reviewTarget.filePath &&
+        editor.target.side === cell.reviewTarget.side &&
+        editor.target.lineNumber === cell.reviewTarget.lineNumber;
+      if (comments.length === 0 && !hasEditor) return [];
+      return [
+        <View
+          key={cell.reviewTarget.key}
+          style={inlineUnistylesStyle<ViewStyle>({
+            position: "absolute",
+            top: row.top + row.height - row.reviewHeight,
+            left: index * columnWidth,
+            width: columnWidth,
+            height: row.reviewHeight,
+            zIndex: 6,
+          })}
+        >
+          <InlineReviewThread
+            reviewTarget={cell.reviewTarget}
+            reviewActions={reviewActions}
+            height={row.reviewHeight}
+            viewportWidth={columnWidth}
+            pinToViewport={!model.wrapLines}
+          />
+        </View>,
+      ];
+    });
+  });
+}
+
+function NativeCanvasSlabView({
+  slab,
+  model,
+  textLayout,
+  paints,
+  horizontalOffsets,
+}: {
+  slab: NativeCanvasSlab;
+  model: DiffDocumentModel;
+  textLayout: NativeTextLayout;
+  paints: NativePaints;
+  horizontalOffsets: SharedValue<DiffHorizontalOffsets>;
+}) {
+  const file = model.files[slab.fileIndex];
+  const pictures = useMemo(
+    () =>
+      recordNativeSlabPictures({
+        model,
+        fileIndex: slab.fileIndex,
+        top: slab.top,
+        height: slab.height,
+        viewportWidth: model.viewportWidth,
+        textLayout,
+        paints,
+      }),
+    [model, paints, slab.fileIndex, slab.height, slab.top, textLayout],
+  );
+  const style = useMemo<ViewStyle>(
+    () => ({
+      position: "absolute",
+      top: slab.top,
+      left: 0,
+      right: 0,
+      height: slab.height,
+      zIndex: 3,
+    }),
+    [slab.height, slab.top],
+  );
+  if (!file) return null;
+  const unifiedClip = {
+    x: file.gutterWidth + CODE_LEFT_PADDING,
+    width: model.viewportWidth - file.gutterWidth - CODE_LEFT_PADDING,
+  };
+  const columnWidth = model.viewportWidth / 2;
+  const splitClipWidth = columnWidth - file.gutterWidth - CODE_LEFT_PADDING;
+  return (
+    <View pointerEvents="none" style={style} testID={`git-diff-canvas-${slab.key}`}>
+      <Canvas style={StyleSheet.absoluteFill}>
+        <Picture picture={pictures.fixed} />
+      </Canvas>
+      <NativeSlabCode
+        picture={pictures.content.unified}
+        path={slab.path}
+        horizontalOffsets={horizontalOffsets}
+        wrapLines={model.wrapLines}
+        clipX={unifiedClip.x}
+        clipWidth={unifiedClip.width}
+        contentWidth={file.contentWidth}
+        height={slab.height}
+      />
+      {model.layout === "split" ? (
+        <>
+          <NativeSlabCode
+            picture={pictures.content.left}
+            path={slab.path}
+            horizontalOffsets={horizontalOffsets}
+            wrapLines={model.wrapLines}
+            clipX={file.gutterWidth + CODE_LEFT_PADDING}
+            clipWidth={splitClipWidth}
+            contentWidth={file.contentWidth}
+            height={slab.height}
+          />
+          <NativeSlabCode
+            picture={pictures.content.right}
+            path={slab.path}
+            horizontalOffsets={horizontalOffsets}
+            wrapLines={model.wrapLines}
+            clipX={columnWidth + file.gutterWidth + CODE_LEFT_PADDING}
+            clipWidth={splitClipWidth}
+            contentWidth={file.contentWidth}
+            height={slab.height}
+          />
+        </>
+      ) : null}
+      <Canvas pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <Picture picture={pictures.gutter} />
+      </Canvas>
+    </View>
+  );
+}
+
+function NativeSlabCode({
+  picture,
+  path,
+  horizontalOffsets,
+  wrapLines,
+  clipX,
+  clipWidth,
+  contentWidth,
+  height,
+}: {
+  picture: SkPicture;
+  path: string;
+  horizontalOffsets: SharedValue<DiffHorizontalOffsets>;
+  wrapLines: boolean;
+  clipX: number;
+  clipWidth: number;
+  contentWidth: number;
+  height: number;
+}) {
+  const transform = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: wrapLines ? 0 : -horizontalOffsetForPath(horizontalOffsets.value, path) },
+    ],
+  }));
+  const clipStyle = useMemo<ViewStyle>(
+    () => ({
+      position: "absolute",
+      top: 0,
+      left: clipX,
+      width: clipWidth,
+      height,
+      overflow: "hidden",
+    }),
+    [clipWidth, clipX, height],
+  );
+  const contentStyle = useMemo<ViewStyle>(
+    () => ({ position: "absolute", top: 0, left: -clipX, width: contentWidth, height }),
+    [clipX, contentWidth, height],
+  );
+  return (
+    <View pointerEvents="none" style={clipStyle}>
+      <AnimatedCodeLayer style={[contentStyle, transform]}>
         <Canvas style={StyleSheet.absoluteFill}>
           <Picture picture={picture} />
         </Canvas>
-      </View>
+      </AnimatedCodeLayer>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, minHeight: 0, position: "relative", overflow: "hidden" },
-  canvas: { zIndex: 1 },
-  scroll: { zIndex: 2 },
-  header: { zIndex: 3 },
+  scroll: { backgroundColor: "transparent" },
+  header: { zIndex: 5 },
 });

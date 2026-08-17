@@ -15,7 +15,7 @@ describe("file header interaction arbitration", () => {
         enabled: true,
         native: true,
         pressHandled: false,
-        layoutY: 0,
+        stickyPressFallback: true,
         pressOrigin,
         releasedAt: 1_500,
         pageX: 32,
@@ -27,7 +27,7 @@ describe("file header interaction arbitration", () => {
   it.each([
     ["an already handled long press", { pressHandled: true }],
     ["a non-native release", { native: false }],
-    ["a non-sticky header", { layoutY: 1 }],
+    ["a non-sticky header", { stickyPressFallback: false }],
     ["a held press", { releasedAt: 1_501 }],
     ["a moved press", { pageX: 33 }],
   ])("does not activate %s", (_label, override) => {
@@ -36,7 +36,7 @@ describe("file header interaction arbitration", () => {
         enabled: true,
         native: true,
         pressHandled: false,
-        layoutY: 0,
+        stickyPressFallback: true,
         pressOrigin,
         releasedAt: 1_500,
         pageX: 32,
@@ -63,6 +63,17 @@ describe("file header interaction arbitration", () => {
         { type: "press-in" },
         { type: "press-out", stickyFallbackEligible: true },
         { type: "press" },
+        { type: "fallback" },
+      ]),
+    ).toEqual(["defer-activate", "activate"]);
+  });
+
+  it("keeps a duplicated wrapper press-out eligible for one fallback", () => {
+    expect(
+      run([
+        { type: "press-in" },
+        { type: "press-out", stickyFallbackEligible: true },
+        { type: "press-out", stickyFallbackEligible: true },
         { type: "fallback" },
       ]),
     ).toEqual(["defer-activate", "activate"]);

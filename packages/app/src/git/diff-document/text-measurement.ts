@@ -5,6 +5,12 @@ export interface PrimaryTextFace {
   measure(text: string): number;
 }
 
+const CODE_LIGATURE_CANDIDATE = /(?:===?|!==?|=>|<=|>=|->|::|\+\+|--)/;
+
+export function requiresNativeParagraph(text: string): boolean {
+  return /[^\x20-\x7e\t]/u.test(text) || CODE_LIGATURE_CANDIDATE.test(text);
+}
+
 export function createFallbackAwareTextMeasurer(input: {
   primary: PrimaryTextFace;
   measureWithSystemFallback: (text: string) => number;

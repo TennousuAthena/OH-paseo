@@ -26,19 +26,27 @@ export interface PaintWebViewportInput {
   horizontalOffsets: ReadonlyMap<string, number>;
   selection: DiffSelection | null;
   devicePixelRatio: number;
+  paintTop?: number;
+  paintHeight?: number;
 }
 
 export function paintWebViewport(input: PaintWebViewportInput): void {
   const { context } = input;
   const scale = input.devicePixelRatio;
+  const paintTop = input.paintTop ?? 0;
+  const paintHeight = input.paintHeight ?? input.viewportHeight;
   context.setTransform(scale, 0, 0, scale, 0, 0);
-  context.clearRect(0, 0, input.viewportWidth, input.viewportHeight);
+  context.save();
+  context.beginPath();
+  context.rect(0, paintTop, input.viewportWidth, paintHeight);
+  context.clip();
+  context.clearRect(0, paintTop, input.viewportWidth, paintHeight);
   context.fillStyle = input.palette.surface;
-  context.fillRect(0, 0, input.viewportWidth, input.viewportHeight);
+  context.fillRect(0, paintTop, input.viewportWidth, paintHeight);
   context.font = `${input.typography.size}px ${input.typography.family}`;
   context.textBaseline = "alphabetic";
 
-  const range = visibleRowRange(input.model.rows, input.scrollTop, input.viewportHeight);
+  const range = visibleRowRange(input.model.rows, input.scrollTop + paintTop, paintHeight);
   for (let index = range.start; index < range.end; index += 1) {
     const row = input.model.rows[index];
     if (!row) continue;
@@ -57,6 +65,7 @@ export function paintWebViewport(input: PaintWebViewportInput): void {
   }
 
   if (input.selection) paintSelection(input, input.selection);
+  context.restore();
 }
 
 function paintLine(

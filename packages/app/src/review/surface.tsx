@@ -62,6 +62,35 @@ const ThemedPencil = withUnistyles(Pencil);
 const ThemedPlus = withUnistyles(Plus);
 const ThemedTrash2 = withUnistyles(Trash2);
 
+function InlineReviewAddIcon({ style, testID }: { style?: StyleProp<ViewStyle>; testID?: string }) {
+  return (
+    <View style={[styles.gutterActionVisual, style]} testID={testID}>
+      <ThemedPlus size={16} strokeWidth={2.4} uniProps={accentForegroundIconColorMapping} />
+    </View>
+  );
+}
+
+export function InlineReviewAddButton({
+  onPress,
+  style,
+}: {
+  onPress: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t("review.comment.add")}
+      hitSlop={SMALL_ACTION_HIT_SLOP}
+      onPress={onPress}
+      style={[styles.gutterActionVisual, style]}
+    >
+      <ThemedPlus size={16} strokeWidth={2.4} uniProps={accentForegroundIconColorMapping} />
+    </Pressable>
+  );
+}
+
 export function groupInlineReviewCommentsByTarget(
   comments: readonly ReviewDraftComment[],
 ): Map<string, ReviewDraftComment[]> {
@@ -262,9 +291,7 @@ export function InlineReviewGutterCell({
         <View style={labelStyle}>
           {children}
           {showAction ? (
-            <View style={actionIconStyle} testID={actionTestID}>
-              <ThemedPlus size={16} strokeWidth={2.4} uniProps={accentForegroundIconColorMapping} />
-            </View>
+            <InlineReviewAddIcon style={actionIconStyle} testID={actionTestID} />
           ) : null}
         </View>
       </View>
@@ -541,6 +568,8 @@ const styles = StyleSheet.create((theme) => ({
     position: "absolute",
     right: -10,
     top: Math.floor((theme.lineHeight.diff - 22) / 2),
+  },
+  gutterActionVisual: {
     width: 22,
     height: 22,
     borderRadius: theme.borderRadius.md,

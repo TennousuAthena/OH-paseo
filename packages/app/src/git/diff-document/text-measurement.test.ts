@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createFallbackAwareTextMeasurer, type PrimaryTextFace } from "./text-measurement";
+import {
+  createFallbackAwareTextMeasurer,
+  requiresNativeParagraph,
+  type PrimaryTextFace,
+} from "./text-measurement";
 
 describe.each(["ios", "android"])("%s native text measurement", (platform) => {
   it("routes CJK and emoji missing glyphs through the system fallback shaper", () => {
@@ -23,6 +27,16 @@ describe.each(["ios", "android"])("%s native text measurement", (platform) => {
       measureWithSystemFallback: () => 99,
     });
     expect(measurer.measure("é")).toBe(20);
+  });
+});
+
+describe("native paragraph retention", () => {
+  it("keeps ordinary code on the allocation-free font path", () => {
+    expect(requiresNativeParagraph("const answer = value + 1;")).toBe(false);
+  });
+
+  it.each(["value => next", "中", "e\u0301", "👩‍💻", "مرحبا"])("retains shaping for %s", (text) => {
+    expect(requiresNativeParagraph(text)).toBe(true);
   });
 });
 

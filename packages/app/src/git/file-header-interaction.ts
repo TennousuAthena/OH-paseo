@@ -11,6 +11,7 @@ interface FileHeaderInteractionInput {
   onSelect?: (path: string) => void;
   onActivate?: (path: string) => void;
   onLayout?: (height: number) => void;
+  stickyPressFallback?: boolean;
 }
 
 interface PressPointEvent {
@@ -27,14 +28,14 @@ interface StickyPressReleaseInput {
   enabled: boolean;
   native: boolean;
   pressHandled: boolean;
-  layoutY: number | null;
+  stickyPressFallback: boolean;
   pressOrigin: PressOrigin | null;
   releasedAt: number;
   pageX: number;
   pageY: number;
 }
 
-interface FileHeaderInteraction {
+export interface FileHeaderInteraction {
   activate: () => void;
   select: () => void;
   onLayout: (event: LayoutChangeEvent) => void;
@@ -59,9 +60,12 @@ export function reduceFileHeaderPress(
   if (event.type === "press-in") return { phase: "pressed", effect: "none" };
   if (event.type === "long-press") return { phase: "long", effect: "select" };
   if (event.type === "press-out") {
+    if (phase === "released" || phase === "handled" || phase === "long") {
+      return { phase, effect: "none" };
+    }
     return event.stickyFallbackEligible && phase === "pressed"
       ? { phase: "released", effect: "defer-activate" }
-      : { phase: phase === "long" ? "long" : "idle", effect: "none" };
+      : { phase: "idle", effect: "none" };
   }
   if (event.type === "press") {
     return phase === "long" || phase === "handled"
@@ -78,7 +82,7 @@ export function shouldActivateStickyHeaderPress(input: StickyPressReleaseInput):
     !input.enabled ||
     !input.native ||
     input.pressHandled ||
-    input.layoutY !== 0 ||
+    !input.stickyPressFallback ||
     !input.pressOrigin
   ) {
     return false;
@@ -92,8 +96,14 @@ export function shouldActivateStickyHeaderPress(input: StickyPressReleaseInput):
 }
 
 export function useFileHeaderInteraction(input: FileHeaderInteractionInput): FileHeaderInteraction {
-  const { path, enabled, onSelect, onActivate, onLayout: notifyLayout } = input;
-  const layoutYRef = useRef<number | null>(null);
+  const {
+    path,
+    enabled,
+    onSelect,
+    onActivate,
+    onLayout: notifyLayout,
+    stickyPressFallback = false,
+  } = input;
   const pressHandledRef = useRef(false);
   const pressOriginRef = useRef<PressOrigin | null>(null);
   const phaseRef = useRef<FileHeaderPressPhase>("idle");
@@ -123,7 +133,6 @@ export function useFileHeaderInteraction(input: FileHeaderInteractionInput): Fil
 
   const onLayout = useCallback(
     (event: LayoutChangeEvent) => {
-      layoutYRef.current = event.nativeEvent.layout.y;
       notifyLayout?.(event.nativeEvent.layout.height);
     },
     [notifyLayout],
@@ -157,7 +166,7 @@ export function useFileHeaderInteraction(input: FileHeaderInteractionInput): Fil
         enabled,
         native: isNative,
         pressHandled: pressHandledRef.current,
-        layoutY: layoutYRef.current,
+        stickyPressFallback,
         pressOrigin: pressOriginRef.current,
         releasedAt: Date.now(),
         pageX: event.nativeEvent.pageX,
@@ -182,7 +191,7 @@ export function useFileHeaderInteraction(input: FileHeaderInteractionInput): Fil
         }, 0);
       }
     },
-    [clearFallback, enabled, onActivate, path, select],
+    [clearFallback, enabled, onActivate, path, select, stickyPressFallback],
   );
 
   return { activate, select, onLayout, onPressIn, onPressOut, onLongPress };

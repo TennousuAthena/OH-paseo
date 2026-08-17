@@ -890,6 +890,7 @@ export const ja: TranslationResources = {
         base: "ベース",
         newFile: "新規",
         deletedFile: "削除済み",
+        modifiedFile: "変更済み",
         commits: {
           title: "コミット",
           countLabel: "ワークスペースのコミット数: {{count}}",

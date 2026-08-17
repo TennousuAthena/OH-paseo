@@ -167,6 +167,8 @@ export interface BuildDiffDocumentModelInput {
   palette: DiffPalette;
   reviewActions?: InlineReviewActions;
   labels: { binary: string; tooLarge: string };
+  /** A geometry-compatible model whose unchanged file measurements may be reused. */
+  reuseFrom?: readonly DiffDocumentModel[];
 }
 
 export interface DiffCharacterPosition {

@@ -1,4 +1,5 @@
 import { lineNumberGutterWidth } from "@/components/code-insets";
+import { findClusterBreak } from "@marijn/find-cluster-break";
 import {
   buildSplitDiffRows,
   buildUnifiedDiffLines,
@@ -22,7 +23,7 @@ import type {
   TextMeasurer,
 } from "./types";
 
-export const FILE_HEADER_HEIGHT = 44;
+export const FILE_HEADER_HEIGHT = 30;
 const BODY_BORDER_HEIGHT = 1;
 const CODE_HORIZONTAL_PADDING = 16;
 
@@ -49,7 +50,28 @@ export function buildDiffDocumentModel(input: BuildDiffDocumentModelInput): Diff
     const gutterWidth = lineNumberGutterWidth(maximumLineNumber(file), input.typography.size);
     let maximumHorizontalOverflow = 0;
 
-    if (!isCollapsed) {
+    const reusableModel = input.reuseFrom?.find((candidate) =>
+      candidate.files.some((entry) => entry.file === file && !entry.isCollapsed),
+    );
+    const reusableFile = reusableModel?.files.find(
+      (candidate) => candidate.file === file && !candidate.isCollapsed,
+    );
+
+    if (!isCollapsed && reusableFile) {
+      const reusedRows = reusableModel!.rows.slice(reusableFile.rowStart, reusableFile.rowEnd);
+      for (const reusedRow of reusedRows) {
+        const height = reusedRow.height;
+        rows.push({
+          ...reusedRow,
+          index: rows.length,
+          fileIndex,
+          top: documentTop,
+        });
+        documentTop += height;
+      }
+      maximumHorizontalOverflow = Math.max(0, reusableFile.contentWidth - input.viewportWidth);
+      documentTop += BODY_BORDER_HEIGHT;
+    } else if (!isCollapsed) {
       if (file.status === "binary" || file.status === "too_large") {
         const height = input.typography.lineHeight + 24;
         rows.push({
@@ -134,6 +156,16 @@ export function buildDiffDocumentModel(input: BuildDiffDocumentModelInput): Diff
     wrapLines: input.wrapLines,
     viewportWidth: input.viewportWidth,
   };
+}
+
+export function retainReusableModels(
+  previous: readonly DiffDocumentModel[] | undefined,
+  next: DiffDocumentModel,
+): DiffDocumentModel[] {
+  const fullest = [...(previous ?? []), next].reduce((best, candidate) =>
+    candidate.rows.length > best.rows.length ? candidate : best,
+  );
+  return fullest === next ? [next] : [fullest, next];
 }
 
 function lineSources(
@@ -302,17 +334,19 @@ const TAB_SIZE = 4;
 function segmentGraphemes(text: string): Array<Omit<DiffGrapheme, "width">> {
   const segments: Array<Omit<DiffGrapheme, "width">> = [];
   let column = 0;
-  const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-  for (const segment of segmenter.segment(text)) {
-    const isTab = segment.segment === "\t";
+  for (let index = 0; index < text.length; ) {
+    const end = findClusterBreak(text, index);
+    const segment = text.slice(index, end);
+    const isTab = segment === "\t";
     const spaces = isTab ? TAB_SIZE - (column % TAB_SIZE) : 0;
-    const displayText = isTab ? " ".repeat(spaces) : segment.segment;
+    const displayText = isTab ? " ".repeat(spaces) : segment;
     segments.push({
-      start: segment.index,
-      end: segment.index + segment.segment.length,
+      start: index,
+      end,
       text: displayText,
     });
     column += isTab ? spaces : 1;
+    index = end;
   }
   return segments;
 }
@@ -351,6 +385,7 @@ function measurePrefixAdvances(
 }
 
 export function fragmentTextForRange(fragment: DiffFragment, start: number, end: number): string {
+  "worklet";
   return fragment.graphemes
     .filter((grapheme) => grapheme.start >= start && grapheme.end <= end)
     .map((grapheme) => grapheme.text)
@@ -365,10 +400,9 @@ export function fragmentWidthForRange(fragment: DiffFragment, start: number, end
 
 export function graphemeBoundaries(text: string): number[] {
   const boundaries = [0];
-  const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-  for (const segment of segmenter.segment(text)) {
-    const end = segment.index + segment.segment.length;
-    if (end > boundaries[boundaries.length - 1]) boundaries.push(end);
+  for (let index = 0; index < text.length; ) {
+    index = findClusterBreak(text, index);
+    boundaries.push(index);
   }
   return boundaries;
 }
@@ -499,6 +533,30 @@ export function resolveScrollAnchor(model: DiffDocumentModel, anchor: DiffScroll
       (candidate) => candidate.start <= anchor.cellOffset && anchor.cellOffset < candidate.end,
     ) ?? cell.fragments.at(-1);
   return Math.max(0, row.top + (fragment?.top ?? 0) - anchor.viewportDelta);
+}
+
+export function resolveRelayoutScrollTop(
+  previous: DiffDocumentModel,
+  next: DiffDocumentModel,
+  scrollTop: number,
+): number {
+  const changedFiles = previous.files.filter((file) => {
+    const nextFile = next.files.find((candidate) => candidate.path === file.path);
+    return nextFile && nextFile.isCollapsed !== file.isCollapsed;
+  });
+  if (changedFiles.length === 1) {
+    const previousFile = changedFiles[0]!;
+    const nextFile = next.files.find((candidate) => candidate.path === previousFile.path);
+    if (nextFile) {
+      const headerDelta =
+        previousFile.top <= scrollTop && scrollTop < previousFile.bottom
+          ? 0
+          : previousFile.top - scrollTop;
+      return Math.max(0, nextFile.top - headerDelta);
+    }
+  }
+  const anchor = captureScrollAnchor(previous, scrollTop);
+  return anchor ? resolveScrollAnchor(next, anchor) : scrollTop;
 }
 
 function sameSourceIdentity(left: DiffSourceIdentity, right: DiffSourceIdentity): boolean {

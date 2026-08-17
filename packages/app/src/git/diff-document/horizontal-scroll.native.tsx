@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { ScrollView, type ScrollView as ScrollViewType } from "react-native-gesture-handler";
-import { useAnimatedScrollHandler, type SharedValue } from "react-native-reanimated";
+import {
+  createAnimatedComponent,
+  useAnimatedScrollHandler,
+  type SharedValue,
+} from "react-native-reanimated";
 import { useHorizontalScrollOptional } from "@/contexts/horizontal-scroll-context";
 import { useFileExplorerCloseGestureRef } from "@/mobile-panels/gestures";
 import { horizontalOffsetForPath, type DiffHorizontalOffsets } from "./horizontal-offsets";
 import type { DiffFileSection } from "./types";
+
+const AnimatedHorizontalScrollView = createAnimatedComponent(ScrollView);
 
 export function HorizontalScroll({
   file,
@@ -48,16 +54,33 @@ export function HorizontalScroll({
     },
     [horizontalScroll, scrollId],
   );
+  const beginHorizontalGesture = useCallback(() => {
+    horizontalScroll?.beginHorizontalGesture(horizontalOffsetForPath(offsets.value, file.path));
+  }, [file.path, horizontalScroll, offsets]);
+  const endHorizontalGesture = useCallback(() => {
+    horizontalScroll?.endHorizontalGesture();
+  }, [horizontalScroll]);
   const rootStyle = useMemo(
-    () => ({ position: "absolute" as const, top: 0, left: 0, right: 0, height: file.bodyHeight }),
+    () => ({
+      position: "absolute" as const,
+      top: 0,
+      left: 0,
+      right: 0,
+      height: file.bodyHeight,
+      backgroundColor: "transparent",
+    }),
     [file.bodyHeight],
   );
   const spacerStyle = useMemo(
-    () => ({ width: file.contentWidth, height: file.bodyHeight }),
+    () => ({
+      width: file.contentWidth,
+      height: file.bodyHeight,
+      backgroundColor: "transparent",
+    }),
     [file.bodyHeight, file.contentWidth],
   );
   return (
-    <ScrollView
+    <AnimatedHorizontalScrollView
       ref={scrollRef}
       horizontal
       nestedScrollEnabled
@@ -66,12 +89,15 @@ export function HorizontalScroll({
       style={rootStyle}
       contentContainerStyle={spacerStyle}
       onScroll={handler}
+      onTouchStart={beginHorizontalGesture}
+      onTouchEnd={endHorizontalGesture}
+      onTouchCancel={endHorizontalGesture}
       onScrollEndDrag={reportOffset}
       scrollEventThrottle={16}
       waitFor={isAtLeftEdge && closeGestureRef?.current ? closeGestureRef : undefined}
       onMomentumScrollEnd={reportOffset}
     >
       <View style={spacerStyle} />
-    </ScrollView>
+    </AnimatedHorizontalScrollView>
   );
 }

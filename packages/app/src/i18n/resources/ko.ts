@@ -886,6 +886,7 @@ export const ko: TranslationResources = {
         base: "기준",
         newFile: "신규",
         deletedFile: "삭제됨",
+        modifiedFile: "수정됨",
         commits: {
           title: "커밋",
           countLabel: "워크스페이스 커밋 {{count}}개",

@@ -901,6 +901,7 @@ export const ru: TranslationResources = {
         base: "база",
         newFile: "Новый",
         deletedFile: "Удалено",
+        modifiedFile: "Изменено",
         commits: {
           title: "Коммиты",
           countLabel: "{{count}} коммитов рабочего пространства",

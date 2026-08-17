@@ -1,28 +1,17 @@
 import { hitTestDiffDocument } from "./hit-testing";
-import type { DiffDocumentModel, DiffHit } from "./types";
+import type { DiffDocumentModel, DiffFileSection, DiffHit } from "./types";
 
-export interface SurfaceWindowOrigin {
-  x: number;
-  y: number;
-}
-
-export function hitTestDiffPagePoint(input: {
+export function hitTestDiffBodyPoint(input: {
   model: DiffDocumentModel;
-  pageX: number;
-  pageY: number;
-  surfaceOrigin: SurfaceWindowOrigin;
-  scrollTop: number;
-  horizontalOffsetForPath: (path: string) => number;
+  file: DiffFileSection;
+  locationX: number;
+  locationY: number;
+  horizontalOffset: number;
 }): DiffHit | null {
-  const x = input.pageX - input.surfaceOrigin.x;
-  const documentY = input.pageY - input.surfaceOrigin.y + input.scrollTop;
-  const file = input.model.files.find(
-    (entry) => entry.top <= documentY && documentY < entry.bottom,
-  );
   return hitTestDiffDocument({
     model: input.model,
-    x,
-    documentY,
-    horizontalOffset: file ? input.horizontalOffsetForPath(file.path) : 0,
+    x: input.locationX,
+    documentY: input.file.bodyTop + input.locationY,
+    horizontalOffset: input.horizontalOffset,
   });
 }

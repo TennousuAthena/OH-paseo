@@ -1,24 +1,21 @@
 import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import { describe, expect, it } from "vitest";
 import { buildDiffDocumentModel } from "./model";
-import { hitTestDiffPagePoint } from "./native-hit-testing";
+import { hitTestDiffBodyPoint } from "./native-hit-testing";
 import type { BuildDiffDocumentModelInput } from "./types";
 
-const origin = { x: 80, y: 120 };
-
-describe("native diff page-coordinate hit testing", () => {
-  it("resolves first and later files through the measured surface origin and vertical scroll", () => {
+describe("native diff body-coordinate hit testing", () => {
+  it("resolves first and later files from their body-local coordinates", () => {
     const model = build("unified");
     const rows = model.rows.filter((row) => row.kind === "line" && row.cells[0]?.type === "add");
     for (const row of rows) {
-      const scrollTop = Math.max(0, row.top - 30);
-      const hit = hitTestDiffPagePoint({
+      const file = model.files[row.fileIndex]!;
+      const hit = hitTestDiffBodyPoint({
         model,
-        pageX: origin.x + model.files[row.fileIndex]!.gutterWidth + 18,
-        pageY: origin.y + row.top - scrollTop + 2,
-        surfaceOrigin: origin,
-        scrollTop,
-        horizontalOffsetForPath: () => 0,
+        file,
+        locationX: file.gutterWidth + 18,
+        locationY: row.top - file.bodyTop + 2,
+        horizontalOffset: 0,
       });
       expect(hit?.kind).toBe("cell");
       if (hit?.kind === "cell") expect(hit.position.fileIndex).toBe(row.fileIndex);
@@ -33,18 +30,18 @@ describe("native diff page-coordinate hit testing", () => {
         candidate.path === "src/second.ts" &&
         candidate.cells[0]?.type === "add",
     )!;
-    const hit = hitTestDiffPagePoint({
+    const file = model.files[1]!;
+    const hit = hitTestDiffBodyPoint({
       model,
-      pageX: origin.x + model.files[1]!.gutterWidth + 8,
-      pageY: origin.y + row.top + 2,
-      surfaceOrigin: origin,
-      scrollTop: 0,
-      horizontalOffsetForPath: (path) => (path === "src/second.ts" ? 30 : 0),
+      file,
+      locationX: file.gutterWidth + 8,
+      locationY: row.top - file.bodyTop + 2,
+      horizontalOffset: 30,
     });
     expect(hit?.kind === "cell" ? hit.position.sourceOffset : -1).toBe(3);
   });
 
-  it("resolves old and new split cells from page coordinates independent of the touch target", () => {
+  it("resolves old and new split cells from body-local coordinates", () => {
     const model = build("split");
     const row = model.rows.find(
       (candidate) =>
@@ -58,13 +55,13 @@ describe("native diff page-coordinate hit testing", () => {
 });
 
 function hitAt(model: ReturnType<typeof buildDiffDocumentModel>, rowTop: number, x: number) {
-  return hitTestDiffPagePoint({
+  const file = model.files.find((entry) => entry.bodyTop <= rowTop && rowTop < entry.bottom)!;
+  return hitTestDiffBodyPoint({
     model,
-    pageX: origin.x + x,
-    pageY: origin.y + rowTop + 2,
-    surfaceOrigin: origin,
-    scrollTop: 0,
-    horizontalOffsetForPath: () => 0,
+    file,
+    locationX: x,
+    locationY: rowTop - file.bodyTop + 2,
+    horizontalOffset: 0,
   });
 }
 

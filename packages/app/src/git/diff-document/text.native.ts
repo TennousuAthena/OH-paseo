@@ -7,7 +7,7 @@ import {
 } from "@shopify/react-native-skia";
 import { fragmentTextForRange } from "./model";
 import { codeTextColor } from "./palette";
-import { createFallbackAwareTextMeasurer } from "./text-measurement";
+import { createFallbackAwareTextMeasurer, requiresNativeParagraph } from "./text-measurement";
 import type { DiffCell, DiffDocumentModel, DiffFragment, DiffPalette, TextMeasurer } from "./types";
 
 const PARAGRAPH_WIDTH = 100_000;
@@ -17,31 +17,69 @@ export interface NativeTextLayout {
   paragraphs: Array<Array<Array<SkParagraph | null>>>;
 }
 
-export function createNativeTextLayout(input: {
-  model: DiffDocumentModel;
+export interface NativeTextLayoutStore {
+  font: SkFont;
+  paragraphsByCell: WeakMap<DiffCell, Array<SkParagraph | null>>;
+  ownedParagraphs: Set<SkParagraph>;
+  families: string[];
+  fontSize: number;
+  lineHeight: number;
+  palette: DiffPalette;
+}
+
+export function disposeNativeTextLayout(layout: NativeTextLayoutStore): void {
+  for (const paragraph of layout.ownedParagraphs) paragraph.dispose();
+  layout.ownedParagraphs.clear();
+  layout.font.dispose();
+}
+
+export function createNativeTextLayoutStore(input: {
   configuredFamily: string;
   fontSize: number;
+  lineHeight: number;
   palette: DiffPalette;
-}): NativeTextLayout {
+}): NativeTextLayoutStore {
   const families = nativeFontFamilies(input.configuredFamily);
   const font = primaryFont(families, input.fontSize);
-  const paragraphs = input.model.rows.map((row) => {
+  return {
+    font,
+    paragraphsByCell: new WeakMap(),
+    ownedParagraphs: new Set(),
+    families,
+    fontSize: input.fontSize,
+    lineHeight: input.lineHeight,
+    palette: input.palette,
+  };
+}
+
+export function prepareNativeTextLayout(
+  store: NativeTextLayoutStore,
+  model: DiffDocumentModel,
+): NativeTextLayout {
+  const paragraphs = model.rows.map((row) => {
     if (row.kind !== "line") return [];
     return row.cells.map((cell) => {
       if (!cell) return [];
-      return cell.fragments.map((fragment) =>
-        createFragmentParagraph({
+      const cached = store.paragraphsByCell.get(cell);
+      if (cached) return cached;
+      const cellParagraphs = cell.fragments.map((fragment) => {
+        if (!requiresRetainedParagraph(fragment.text, store.font)) return null;
+        const paragraph = createFragmentParagraph({
           cell,
           fragment,
-          families,
-          fontSize: input.fontSize,
-          lineHeight: input.model.lineHeight,
-          palette: input.palette,
-        }),
-      );
+          families: store.families,
+          fontSize: store.fontSize,
+          lineHeight: store.lineHeight,
+          palette: store.palette,
+        });
+        store.ownedParagraphs.add(paragraph);
+        return paragraph;
+      });
+      store.paragraphsByCell.set(cell, cellParagraphs);
+      return cellParagraphs;
     });
   });
-  return { font, paragraphs };
+  return { font: store.font, paragraphs };
 }
 
 export function createNativeTextMeasurer(input: {
@@ -63,13 +101,22 @@ export function createNativeTextMeasurer(input: {
         lineHeight: Math.round(input.fontSize * 1.5),
         color: Skia.Color("black"),
       });
-      return paragraph.getLongestLine();
+      const width = paragraph.getLongestLine();
+      paragraph.dispose();
+      return width;
     },
   });
   return {
     ...fallbackAware,
     measureAdvances(graphemes) {
       const text = graphemes.join("");
+      if (!requiresRetainedParagraph(text, font)) {
+        let prefix = "";
+        return graphemes.map((grapheme) => {
+          prefix += grapheme;
+          return font.getTextWidth(prefix);
+        });
+      }
       const paragraph = createParagraph({
         text,
         families,
@@ -78,7 +125,7 @@ export function createNativeTextMeasurer(input: {
         color: Skia.Color("black"),
       });
       let end = 0;
-      return graphemes.map((grapheme) => {
+      const advances = graphemes.map((grapheme) => {
         end += grapheme.length;
         const rectangles = paragraph.getRectsForRange(0, end);
         return rectangles.reduce(
@@ -86,8 +133,14 @@ export function createNativeTextMeasurer(input: {
           0,
         );
       });
+      paragraph.dispose();
+      return advances;
     },
   };
+}
+
+function requiresRetainedParagraph(text: string, font: SkFont): boolean {
+  return requiresNativeParagraph(text) || font.getGlyphIDs(text).some((glyph) => glyph === 0);
 }
 
 function createFragmentParagraph(input: {

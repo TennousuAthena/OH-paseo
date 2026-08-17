@@ -314,6 +314,58 @@ test("canvas file headers select without toggling for context menu and long pres
   await expect(firstFile).toHaveAttribute("aria-expanded", "true");
 });
 
+test("every interactive file header has the same hover feedback", async ({ page }) => {
+  const workspace = await createWorkspaceWithMountedTabDiff({ includeDeletedFile: true });
+  await useUnwrappedDiffLines(page);
+  await openWorkspaceChanges(page, workspace);
+
+  const first = page.getByTestId("diff-file-0-toggle");
+  const second = page.getByTestId("diff-file-1-toggle");
+  const normalBackground = await first.evaluate(
+    (element) => getComputedStyle(element.parentElement!).backgroundColor,
+  );
+  await expect
+    .poll(() =>
+      first.evaluate((element) => getComputedStyle(element.parentElement!).borderTopColor),
+    )
+    .toBe("rgba(0, 0, 0, 0)");
+
+  await first.hover();
+  const hoverBackground = await first.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
+  expect(hoverBackground).not.toBe(normalBackground);
+
+  await first.click();
+  await page.mouse.move(0, 0);
+  await expect(first).toHaveAttribute("aria-expanded", "false");
+  await expect
+    .poll(() =>
+      first.evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor),
+    )
+    .toBe(normalBackground);
+  const [sharedBorder, suppressedDuplicateBorder] = await Promise.all([
+    first.evaluate((element) => getComputedStyle(element.parentElement!).borderBottomColor),
+    second.evaluate((element) => getComputedStyle(element.parentElement!).borderTopColor),
+  ]);
+  expect(sharedBorder).not.toBe("rgba(0, 0, 0, 0)");
+  expect(suppressedDuplicateBorder).toBe("rgba(0, 0, 0, 0)");
+
+  await first.hover();
+  await expect
+    .poll(() => first.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .toBe(hoverBackground);
+  await second.hover();
+  await expect
+    .poll(() =>
+      first.evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor),
+    )
+    .toBe(normalBackground);
+  await expect
+    .poll(() => second.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .toBe(hoverBackground);
+});
+
 test("changes context menus duplicate files and folders", async ({ page }) => {
   const workspace = await createWorkspaceWithMountedTabDiff();
   await useUnwrappedDiffLines(page);
@@ -333,6 +385,32 @@ test("changes context menus duplicate files and folders", async ({ page }) => {
     .toBe(AFTER);
 });
 
+test("changes tree aligns every file status after its diff stat", async ({ page }) => {
+  const workspace = await createWorkspaceWithMountedTabDiff({
+    includeDeletedFile: true,
+    includeUntrackedFile: true,
+  });
+  await useUnwrappedDiffLines(page);
+  await openWorkspaceChanges(page, workspace);
+  await page.getByTestId("changes-toggle-tree").click();
+
+  const tree = changesTree(page);
+  const modifiedRow = tree.getByTestId("diff-tree-file-0");
+  const deletedRow = tree.getByTestId("diff-tree-file-1");
+  const addedRow = tree.getByTestId("diff-tree-file-2");
+  const modifiedStatus = modifiedRow.getByRole("img", { name: "Modified" });
+  await expect(modifiedStatus).toBeVisible();
+  await expect(deletedRow.getByRole("img", { name: "Deleted" })).toBeVisible();
+  await expect(addedRow.getByRole("img", { name: "New" })).toBeVisible();
+
+  const [statBounds, statusBounds] = await Promise.all([
+    modifiedRow.getByTestId("diff-tree-file-0-stat").boundingBox(),
+    modifiedStatus.boundingBox(),
+  ]);
+  if (!statBounds || !statusBounds) throw new Error("Changes tree trailing status has no bounds");
+  expect(statusBounds.x - (statBounds.x + statBounds.width)).toBeGreaterThanOrEqual(8);
+});
+
 test("changes context menu recursively collapses descendant folders", async ({ page }) => {
   const workspace = await createWorkspaceWithMountedTabDiff({ includeNestedFolders: true });
   await useUnwrappedDiffLines(page);
@@ -342,6 +420,22 @@ test("changes context menu recursively collapses descendant folders", async ({ p
   const tree = changesTree(page);
   await expect(tree.getByTestId("diff-folder-src/zz-folder")).toBeVisible();
   await expect(tree.getByTestId("diff-folder-src/zz-folder/nested")).toBeVisible();
+  const rootRow = tree.getByTestId("diff-folder-src-toggle");
+  const rootLabel = tree.getByTestId("diff-folder-src-toggle").getByText("src", { exact: true });
+  await expect(rootRow).toHaveCSS("opacity", "1");
+  await expect(rootLabel).toHaveCSS("opacity", "0.76");
+  await rootRow.hover();
+  await expect(rootLabel).toHaveCSS("opacity", "1");
+  await page.mouse.move(0, 0);
+  const nestedLabel = tree
+    .getByTestId("diff-folder-src/zz-folder-toggle")
+    .getByText("zz-folder", { exact: true });
+  const [rootBounds, nestedBounds] = await Promise.all([
+    rootLabel.boundingBox(),
+    nestedLabel.boundingBox(),
+  ]);
+  if (!rootBounds || !nestedBounds) throw new Error("Changes tree rows have no bounds");
+  expect(nestedBounds.x - rootBounds.x).toBe(12);
 
   await tree.getByTestId("diff-folder-src-toggle").click({ button: "right" });
   await page.getByTestId("diff-folder-src-collapse-folder").click();
@@ -718,6 +812,56 @@ test("scrolling clears the hovered review affordance", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Add review comment" })).toHaveCount(0);
 });
 
+test("canvas diff uses the overlay scrollbar and its thumb controls vertical scrolling", async ({
+  page,
+}) => {
+  const lines = Array.from({ length: 240 }, (_, index) => `export const line${index} = ${index};`);
+  const workspace = await createWorkspaceWithExactSelectionDiff(lines.join("\n"));
+  await openSelectionWorkspaceChanges(page, workspace);
+
+  const root = page.getByTestId("git-diff-canvas-root");
+  const scroller = page.getByTestId("git-diff-scroll");
+  const grab = root.getByTestId("workspace-overlay-scrollbar-grab");
+  await expect(grab).toBeVisible();
+  await expect(scroller).toHaveCSS("scrollbar-width", "none");
+
+  const bounds = await grab.boundingBox();
+  if (!bounds) throw new Error("Diff overlay scrollbar thumb has no bounds");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2 + 180);
+  await page.mouse.up();
+
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});
+
+test("the whole reviewable row reveals the gutter affordance and uses a text cursor", async ({
+  page,
+}) => {
+  const workspace = await createWorkspaceWithMountedTabDiff();
+  await useUnwrappedDiffLines(page);
+  await openWorkspaceChanges(page, workspace);
+
+  const body = page.getByTestId("diff-file-0-body");
+  const canvas = page.getByTestId("git-diff-canvas");
+  const [bodyBounds, fontSize] = await Promise.all([
+    body.boundingBox(),
+    canvas.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+  ]);
+  if (!bodyBounds) throw new Error("Expanded diff body has no bounds");
+  const lineHeight = Math.round(fontSize * 1.5);
+  await page.mouse.move(bodyBounds.x + bodyBounds.width - 32, bodyBounds.y + lineHeight * 1.5);
+
+  const affordance = page.getByRole("button", { name: "Add review comment" });
+  await expect(affordance).toBeVisible();
+  await expect(affordance.locator("svg")).toBeVisible();
+  const affordanceBounds = await affordance.boundingBox();
+  expect(affordanceBounds?.width).toBeCloseTo(22, 0);
+  expect(affordanceBounds?.height).toBeCloseTo(22, 0);
+  await expect(affordance).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(page.getByTestId("git-diff-scroll")).toHaveCSS("cursor", "text");
+});
+
 test("canvas diff copies a dragged character selection without opening a review", async ({
   context,
   page,
@@ -732,6 +876,19 @@ test("canvas diff copies a dragged character selection without opening a review"
 
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("CDEFGH");
   await expect(page.getByTestId("inline-review-editor")).toHaveCount(0);
+});
+
+test("the first click after a canvas selection only dismisses the selection", async ({ page }) => {
+  const workspace = await createWorkspaceWithExactSelectionDiff("ABCDEFGHIJ");
+  await useUnwrappedDiffLines(page);
+  await openSelectionWorkspaceChanges(page, workspace);
+
+  await dragExactAddedText(page, { startOffset: 2, endOffset: 8 });
+  await clickFirstChangedLine(page);
+  await expect(page.getByTestId("inline-review-editor")).toHaveCount(0);
+
+  await clickFirstChangedLine(page);
+  await expect(page.getByTestId("inline-review-editor")).toBeVisible();
 });
 
 test("canvas diff copies exact multiline text forwards and backwards", async ({
@@ -1115,6 +1272,18 @@ async function startReviewOnFirstChangedLine(
   const columnLeft = side === "right" ? bodyBounds.x + bodyBounds.width / 2 : bodyBounds.x;
   await page.mouse.click(columnLeft + 20, bodyBounds.y + lineHeight * 1.5);
   await expect(page.getByTestId("inline-review-editor")).toBeVisible();
+}
+
+async function clickFirstChangedLine(page: Page): Promise<void> {
+  const body = page.getByTestId("diff-file-0-body");
+  const canvas = page.getByTestId("git-diff-canvas");
+  const [bodyBounds, fontSize] = await Promise.all([
+    body.boundingBox(),
+    canvas.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+  ]);
+  if (!bodyBounds) throw new Error("Expanded diff body has no bounds");
+  const lineHeight = Math.round(fontSize * 1.5);
+  await page.mouse.click(bodyBounds.x + 120, bodyBounds.y + lineHeight * 1.5);
 }
 
 async function hoverFirstChangedGutter(page: Page): Promise<void> {

@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { InlineReviewThread } from "@/review";
+import type { ViewStyle } from "react-native";
+import { DomOverlayScrollbar } from "@/components/ui/overlay-scrollbar/dom-overlay-scrollbar";
+import { InlineReviewAddButton, InlineReviewThread } from "@/review";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
 import { DocumentFileHeader } from "./document-file-header";
 import { hitTestDiffDocument, selectedSourceText } from "./hit-testing";
 import { retainHorizontalOffsetMapForPaths } from "./horizontal-offsets";
 import { HorizontalScroll } from "./horizontal-scroll.web";
-import { buildDiffDocumentModel, captureScrollAnchor, resolveScrollAnchor } from "./model";
+import {
+  buildDiffDocumentModel,
+  FILE_HEADER_HEIGHT,
+  resolveRelayoutScrollTop,
+  retainReusableModels,
+} from "./model";
 import { paintWebViewport } from "./paint.web";
 import { hasPointerDragStarted } from "./pointer-gesture";
 import type {
@@ -23,9 +30,14 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasScratchRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const modelRef = useRef<ReturnType<typeof buildDiffDocumentModel> | null>(null);
   const previousModelRef = useRef<ReturnType<typeof buildDiffDocumentModel> | null>(null);
+  const reusableModelRef = useRef<{
+    dependencies: readonly unknown[];
+    models: ReturnType<typeof buildDiffDocumentModel>[];
+  } | null>(null);
   const consumedFocusRef = useRef<string | null>(null);
   const scrollTopRef = useRef(0);
   const horizontalOffsetsRef = useRef(new Map<string, number>());
@@ -37,6 +49,8 @@ export function DiffSurface(props: DiffSurfaceProps) {
     moved: boolean;
   } | null>(null);
   const frameRef = useRef<number | null>(null);
+  const forcePaintRef = useRef(true);
+  const canvasWindowRef = useRef({ top: 0, height: 0 });
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [loadedTypography, setLoadedTypography] = useState<DiffTypography | null>(null);
   const [hoveredAffordance, setHoveredAffordance] = useState<{
@@ -73,7 +87,23 @@ export function DiffSurface(props: DiffSurfaceProps) {
         lineHeight: desiredTypography.lineHeight,
       });
     }
-    return buildDiffDocumentModel({
+    const dependencies = [
+      props.files,
+      props.displayPreferences.layout,
+      props.displayPreferences.wrapLines,
+      viewport.width,
+      loadedTypography,
+      measurement,
+      props.palette,
+      reviewActions,
+      t,
+    ] as const;
+    const previous = reusableModelRef.current;
+    const canReuse = previous?.dependencies.every(
+      (dependency, index) => dependency === dependencies[index],
+    );
+    const reuseFrom = canReuse ? previous?.models : undefined;
+    const next = buildDiffDocumentModel({
       files: props.files,
       collapsedFilePaths: props.collapsedFilePaths,
       layout: props.displayPreferences.layout,
@@ -87,7 +117,13 @@ export function DiffSurface(props: DiffSurfaceProps) {
         binary: t("workspace.git.diff.binaryFile"),
         tooLarge: t("workspace.git.diff.tooLarge"),
       },
+      reuseFrom,
     });
+    reusableModelRef.current = {
+      dependencies,
+      models: retainReusableModels(reuseFrom, next),
+    };
+    return next;
   }, [
     measurement,
     props.collapsedFilePaths,
@@ -108,31 +144,77 @@ export function DiffSurface(props: DiffSurfaceProps) {
     const canvas = canvasRef.current;
     const currentModel = modelRef.current;
     if (!canvas || !currentModel || viewport.width <= 0 || viewport.height <= 0) return;
+    const desiredHeight = Math.min(
+      Math.max(currentModel.height, viewport.height),
+      viewport.height * 3,
+    );
+    const currentWindow = canvasWindowRef.current;
+    const viewportTop = scrollTopRef.current;
+    const viewportBottom = viewportTop + viewport.height;
+    const safeInset = viewport.height / 2;
+    const mustRecenter =
+      currentWindow.height !== desiredHeight ||
+      viewportTop < currentWindow.top + safeInset ||
+      viewportBottom > currentWindow.top + currentWindow.height - safeInset;
+    if (!forcePaintRef.current && !mustRecenter) return;
+    const forceFullPaint = forcePaintRef.current;
+    forcePaintRef.current = false;
+    const canvasHeight = desiredHeight;
     const ratio = window.devicePixelRatio || 1;
+    const requestedCanvasTop = mustRecenter
+      ? Math.min(
+          Math.max(0, viewportTop - viewport.height),
+          Math.max(0, currentModel.height - canvasHeight),
+        )
+      : currentWindow.top;
+    const canvasTop = Math.round(requestedCanvasTop * ratio) / ratio;
+    canvasWindowRef.current = { top: canvasTop, height: canvasHeight };
     const pixelWidth = Math.ceil(viewport.width * ratio);
-    const pixelHeight = Math.ceil(viewport.height * ratio);
+    const pixelHeight = Math.ceil(canvasHeight * ratio);
+    const resized = canvas.width !== pixelWidth || canvas.height !== pixelHeight;
     if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
     if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+    canvas.style.top = `${canvasTop}px`;
+    canvas.style.height = `${canvasHeight}px`;
     const context = canvas.getContext("2d");
     if (!context) return;
     if (!measurement || !loadedTypography) return;
+    const { paintTop, paintHeight } = shiftCanvasPixels({
+      canvas,
+      scratch:
+        canvasScratchRef.current ?? (canvasScratchRef.current = document.createElement("canvas")),
+      context,
+      currentTop: currentWindow.top,
+      nextTop: canvasTop,
+      canvasHeight,
+      pixelWidth,
+      pixelHeight,
+      ratio,
+      canReuse: !forceFullPaint && !resized && currentWindow.height === canvasHeight,
+    });
     paintWebViewport({
       context,
       model: currentModel,
       palette: props.palette,
       typography: loadedTypography,
       measureText: measurement,
-      scrollTop: scrollTopRef.current,
+      scrollTop: canvasTop,
       viewportWidth: viewport.width,
-      viewportHeight: viewport.height,
+      viewportHeight: canvasHeight,
       horizontalOffsets: horizontalOffsetsRef.current,
       selection: selectionRef.current,
       devicePixelRatio: ratio,
+      paintTop,
+      paintHeight,
     });
   }, [loadedTypography, measurement, props.palette, viewport.height, viewport.width]);
-  const schedulePaint = useCallback(() => {
-    if (frameRef.current === null) frameRef.current = requestAnimationFrame(paint);
-  }, [paint]);
+  const schedulePaint = useCallback(
+    (force = true) => {
+      if (force) forcePaintRef.current = true;
+      if (frameRef.current === null) frameRef.current = requestAnimationFrame(paint);
+    },
+    [paint],
+  );
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -162,12 +244,9 @@ export function DiffSurface(props: DiffSurfaceProps) {
     const previous = previousModelRef.current;
     const scroll = scrollRef.current;
     if (previous && scroll && previous !== model) {
-      const anchor = captureScrollAnchor(previous, scroll.scrollTop);
-      if (anchor) {
-        const nextScrollTop = resolveScrollAnchor(model, anchor);
-        scrollTopRef.current = nextScrollTop;
-        scroll.scrollTop = nextScrollTop;
-      }
+      const nextScrollTop = resolveRelayoutScrollTop(previous, model, scroll.scrollTop);
+      scrollTopRef.current = nextScrollTop;
+      scroll.scrollTop = nextScrollTop;
     }
     previousModelRef.current = model;
   }, [model]);
@@ -202,16 +281,42 @@ export function DiffSurface(props: DiffSurfaceProps) {
   }, [collapsedFilePaths, mode, model.files, onToggleFile]);
 
   const handleVerticalScroll = useCallback(
-    (event: React.UIEvent<HTMLDivElement>) => {
-      scrollTopRef.current = event.currentTarget.scrollTop;
+    (scrollElement: HTMLDivElement) => {
+      const scrollTop = scrollElement.scrollTop;
+      scrollTopRef.current = scrollTop;
       if (hasHoveredAffordanceRef.current) {
         hasHoveredAffordanceRef.current = false;
         setHoveredAffordance(null);
       }
-      schedulePaint();
+      const currentModel = modelRef.current;
+      const currentWindow = canvasWindowRef.current;
+      if (!currentModel || currentWindow.height === 0) {
+        schedulePaint(false);
+        return;
+      }
+      const viewportBottom = scrollTop + viewport.height;
+      const safeInset = viewport.height / 2;
+      const crossedSafeInset =
+        scrollTop < currentWindow.top + safeInset ||
+        viewportBottom > currentWindow.top + currentWindow.height - safeInset;
+      if (!crossedSafeInset) return;
+      const requestedTop = Math.min(
+        Math.max(0, scrollTop - viewport.height),
+        Math.max(0, currentModel.height - currentWindow.height),
+      );
+      const ratio = window.devicePixelRatio || 1;
+      const nextTop = Math.round(requestedTop * ratio) / ratio;
+      if (nextTop !== currentWindow.top) schedulePaint(false);
     },
-    [schedulePaint],
+    [schedulePaint, viewport.height],
   );
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    const onScroll = () => handleVerticalScroll(scroll);
+    scroll.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroll.removeEventListener("scroll", onScroll);
+  }, [handleVerticalScroll]);
   const handleHorizontalScroll = useCallback(
     (path: string, offset: number) => {
       horizontalOffsetsRef.current.set(path, offset);
@@ -247,6 +352,12 @@ export function DiffSurface(props: DiffSurfaceProps) {
         )
       )
         return;
+      if (selectionRef.current) {
+        selectionRef.current = null;
+        dragRef.current = null;
+        schedulePaint();
+        return;
+      }
       const hit = pointHit(event);
       if (hit?.kind !== "cell") return;
       dragRef.current = {
@@ -285,12 +396,12 @@ export function DiffSurface(props: DiffSurfaceProps) {
           const gutterBorder = sideIndex * columnWidth + file.gutterWidth;
           const rootBounds = rootRef.current?.getBoundingClientRect();
           const pointerX = rootBounds ? event.clientX - rootBounds.left : Number.NaN;
-          if (Math.abs(pointerX - gutterBorder) <= 14) {
+          if (hit.target && Number.isFinite(pointerX)) {
             hasHoveredAffordanceRef.current = true;
             setHoveredAffordance({
               hit,
-              left: gutterBorder - 14,
-              top: row.top - scrollTopRef.current + (modelRef.current!.lineHeight - 28) / 2,
+              left: gutterBorder - 12,
+              top: row.top - scrollTopRef.current + (modelRef.current!.lineHeight - 22) / 2,
             });
           } else {
             hasHoveredAffordanceRef.current = false;
@@ -351,7 +462,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     () => ({ ...CONTENT_STYLE, height: Math.max(model.height, viewport.height) }),
     [model.height, viewport.height],
   );
-  const affordanceStyle = useMemo<React.CSSProperties>(
+  const affordanceStyle = useMemo<ViewStyle>(
     () => ({
       ...AFFORDANCE_STYLE,
       left: hoveredAffordance?.left ?? 0,
@@ -377,8 +488,8 @@ export function DiffSurface(props: DiffSurfaceProps) {
       <div
         ref={scrollRef}
         data-testid="git-diff-scroll"
+        data-overlay-scrollbar="true"
         tabIndex={0}
-        onScroll={handleVerticalScroll}
         onPointerDown={pointerDown}
         onPointerMove={pointerMove}
         onPointerUp={pointerUp}
@@ -388,10 +499,12 @@ export function DiffSurface(props: DiffSurfaceProps) {
         style={SCROLL_STYLE}
       >
         <div style={contentStyle} onMouseDown={preventDocumentMouseSelection}>
-          {model.files.map((file) => (
+          <canvas ref={canvasRef} data-testid="git-diff-canvas" style={canvasStyle} />
+          {model.files.map((file, index) => (
             <WebFileHeaderSection key={file.path} file={file}>
               <DocumentFileHeader
                 file={file}
+                showTopBorder={index > 0 && !model.files[index - 1]?.isCollapsed}
                 selectedPath={props.selectedPath}
                 mode={props.mode}
                 onToggleFile={props.onToggleFile}
@@ -438,19 +551,66 @@ export function DiffSurface(props: DiffSurfaceProps) {
             : null}
         </div>
       </div>
-      <canvas ref={canvasRef} data-testid="git-diff-canvas" style={canvasStyle} />
+      <DomOverlayScrollbar scrollContainerRef={scrollRef} onUserScrollUp={noop} />
       {hoveredAffordance?.hit.target && reviewActions ? (
-        <button
-          type="button"
-          aria-label={t("review.comment.add")}
-          onClick={addHoveredComment}
-          style={affordanceStyle}
-        >
-          +
-        </button>
+        <InlineReviewAddButton onPress={addHoveredComment} style={affordanceStyle} />
       ) : null}
     </div>
   );
+}
+
+function shiftCanvasPixels(input: {
+  canvas: HTMLCanvasElement;
+  scratch: HTMLCanvasElement;
+  context: CanvasRenderingContext2D;
+  currentTop: number;
+  nextTop: number;
+  canvasHeight: number;
+  pixelWidth: number;
+  pixelHeight: number;
+  ratio: number;
+  canReuse: boolean;
+}): { paintTop: number; paintHeight: number } {
+  const delta = input.nextTop - input.currentTop;
+  if (!input.canReuse || delta === 0 || Math.abs(delta) >= input.canvasHeight) {
+    return { paintTop: 0, paintHeight: input.canvasHeight };
+  }
+  const deltaPixels = Math.round(Math.abs(delta) * input.ratio);
+  const overlapPixels = input.pixelHeight - deltaPixels;
+  if (input.scratch.width !== input.pixelWidth) input.scratch.width = input.pixelWidth;
+  if (input.scratch.height !== input.pixelHeight) input.scratch.height = input.pixelHeight;
+  const scratchContext = input.scratch.getContext("2d");
+  if (!scratchContext) return { paintTop: 0, paintHeight: input.canvasHeight };
+  scratchContext.setTransform(1, 0, 0, 1, 0, 0);
+  scratchContext.globalCompositeOperation = "copy";
+  scratchContext.drawImage(input.canvas, 0, 0);
+  input.context.setTransform(1, 0, 0, 1, 0, 0);
+  if (delta > 0) {
+    input.context.drawImage(
+      input.scratch,
+      0,
+      deltaPixels,
+      input.pixelWidth,
+      overlapPixels,
+      0,
+      0,
+      input.pixelWidth,
+      overlapPixels,
+    );
+    return { paintTop: input.canvasHeight - Math.abs(delta), paintHeight: Math.abs(delta) };
+  }
+  input.context.drawImage(
+    input.scratch,
+    0,
+    0,
+    input.pixelWidth,
+    overlapPixels,
+    0,
+    deltaPixels,
+    input.pixelWidth,
+    overlapPixels,
+  );
+  return { paintTop: 0, paintHeight: Math.abs(delta) };
 }
 
 function WebFileHeaderSection({
@@ -532,7 +692,11 @@ const SCROLL_STYLE: React.CSSProperties = {
   zIndex: 2,
   overflowY: "auto",
   overflowX: "hidden",
+  scrollbarWidth: "none",
+  cursor: "text",
 };
+
+function noop(): void {}
 const CONTENT_STYLE: React.CSSProperties = {
   position: "relative",
   width: "100%",
@@ -553,7 +717,7 @@ const STICKY_HEADER_STYLE: React.CSSProperties = {
 };
 const BODY_MARKER_STYLE: React.CSSProperties = {
   position: "absolute",
-  top: 44,
+  top: FILE_HEADER_HEIGHT,
   bottom: 0,
   left: 0,
   right: 0,
@@ -562,17 +726,16 @@ const BODY_MARKER_STYLE: React.CSSProperties = {
 const REVIEW_STYLE: React.CSSProperties = { position: "absolute", zIndex: 4, userSelect: "text" };
 const CANVAS_STYLE: React.CSSProperties = {
   position: "absolute",
-  inset: 0,
+  top: 0,
+  left: 0,
+  right: 0,
   zIndex: 1,
   width: "100%",
-  height: "100%",
   pointerEvents: "none",
 };
-const AFFORDANCE_STYLE: React.CSSProperties = {
+const AFFORDANCE_STYLE: ViewStyle = {
   position: "absolute",
   zIndex: 5,
-  width: 28,
-  height: 28,
 };
 
 function emptyDiffDocumentModel(input: {

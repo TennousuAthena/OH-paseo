@@ -1,4 +1,4 @@
-import { memo, type ReactElement, useCallback, useMemo } from "react";
+import { memo, type ReactElement, useCallback, useMemo, useState } from "react";
 import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useWorkspaceFileDragSource } from "@/attachments/use-workspace-file-drag-source";
@@ -7,8 +7,8 @@ import { FileActionsContextMenuContent } from "@/components/file-actions-menu";
 import { FileChangeIcon } from "@/components/file-change-icon";
 import { MaterialFileIcon } from "@/components/material-file-icon";
 import {
-  TreeIndentGuides,
   treeRowPaddingLeft,
+  workspaceTreeRowStyles,
   WORKSPACE_FILE_ROW_TRAILING_PADDING,
   WORKSPACE_FILE_ROW_VERTICAL_PADDING,
   WORKSPACE_TREE_ICON_LABEL_GAP,
@@ -29,6 +29,7 @@ export interface FileHeaderProps {
   depth?: number;
   showDir?: boolean;
   interactive?: boolean;
+  showTopBorder?: boolean;
   onActivate?: (path: string) => void;
   onSelect?: (path: string) => void;
   onOpenFile?: (path: string) => void;
@@ -65,6 +66,73 @@ function fileHeaderAccessibilityState(input: {
 
 function expandedAriaValue(showsBodyState: boolean, bodyVisible: boolean): boolean | undefined {
   return showsBodyState ? bodyVisible : undefined;
+}
+
+function useFileHeaderHover(enabled: boolean) {
+  const [isHovered, setIsHovered] = useState(false);
+  const handlePointerEnter = useCallback(() => {
+    if (enabled) setIsHovered(true);
+  }, [enabled]);
+  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
+  return { isHovered, handlePointerEnter, handlePointerLeave };
+}
+
+function fileHeaderIsActive(input: {
+  isHovered: boolean;
+  pressed: boolean;
+  showsBodyState: boolean;
+  isSelected: boolean;
+}): boolean {
+  return input.isHovered || input.pressed || (!input.showsBodyState && input.isSelected);
+}
+
+function fileHeaderInteractionStyle(input: {
+  isHovered: boolean;
+  pressed: boolean;
+  showsBodyState: boolean;
+  isSelected: boolean;
+}) {
+  if (!fileHeaderIsActive(input)) return null;
+  return input.showsBodyState ? styles.documentActive : workspaceTreeRowStyles.active;
+}
+
+function fileHeaderPressFeedbackStyle(showsBodyState: boolean) {
+  return showsBodyState ? styles.documentPressFeedback : workspaceTreeRowStyles.active;
+}
+
+function fileHeaderContainerStyle(showsBodyState: boolean, showTopBorder: boolean) {
+  if (!showsBodyState) return null;
+  return [styles.documentContainer, !showTopBorder && styles.documentContainerWithoutTopBorder];
+}
+
+function fileHeaderNameStyle(showsBodyState: boolean, isHovered: boolean) {
+  if (showsBodyState) return styles.name;
+  return [
+    styles.name,
+    workspaceTreeRowStyles.name,
+    isHovered ? workspaceTreeRowStyles.nameHovered : null,
+  ];
+}
+
+function fileChange(file: ParsedDiffFile): "added" | "deleted" | "modified" {
+  if (file.isNew) return "added";
+  if (file.isDeleted) return "deleted";
+  return "modified";
+}
+
+function documentFileChangeIcon(file: ParsedDiffFile, showsBodyState: boolean) {
+  if (!showsBodyState) return null;
+  if (file.isNew) return <FileChangeIcon change="added" />;
+  if (file.isDeleted) return <FileChangeIcon change="deleted" />;
+  return null;
+}
+
+function treeFileChangeIcon(file: ParsedDiffFile, showsBodyState: boolean) {
+  return showsBodyState ? null : <FileChangeIcon change={fileChange(file)} />;
+}
+
+function fileHeaderRightStyle(showsBodyState: boolean) {
+  return showsBodyState ? styles.right : [styles.right, styles.treeRight];
 }
 
 function FileHeaderMenu({
@@ -121,12 +189,14 @@ export const FileHeader = memo(function FileHeader({
   depth = 0,
   showDir = true,
   interactive = true,
+  showTopBorder = true,
   onActivate,
   onSelect,
   onHeaderHeightChange,
   testID,
   ...actions
 }: FileHeaderProps) {
+  const hover = useFileHeaderHover(interactive);
   const dragSourceRef = useWorkspaceFileDragSource({
     enabled: interactive,
     disabled: file.isDeleted,
@@ -139,25 +209,40 @@ export const FileHeader = memo(function FileHeader({
     enabled: interactive,
     onSelect,
     onActivate,
+    stickyPressFallback: showsBodyState,
     onLayout: useCallback(
       (height: number) => onHeaderHeightChange?.(file.path, height),
       [file.path, onHeaderHeightChange],
     ),
   });
   const pressableStyle = useCallback(
-    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+    ({ pressed }: PressableStateCallbackType) => [
       styles.header,
+      !showsBodyState && workspaceTreeRowStyles.row,
       showsBodyState && styles.documentHeader,
-      depth > 0 ? inlineUnistylesStyle({ paddingLeft: treeRowPaddingLeft(depth) }) : null,
-      (Boolean(hovered) || pressed || isSelected) && styles.active,
+      depth > 0
+        ? inlineUnistylesStyle({
+            paddingLeft: treeRowPaddingLeft(depth),
+          })
+        : null,
+      fileHeaderInteractionStyle({
+        isHovered: hover.isHovered,
+        pressed,
+        showsBodyState,
+        isSelected,
+      }),
     ],
-    [depth, isSelected, showsBodyState],
+    [depth, hover.isHovered, isSelected, showsBodyState],
   );
   const accessibilityState = useMemo(
     () => fileHeaderAccessibilityState({ showsBodyState, bodyVisible, isSelected }),
     [bodyVisible, isSelected, showsBodyState],
   );
   const fileName = fileNameForPath(file.path);
+  const nameStyle = fileHeaderNameStyle(showsBodyState, hover.isHovered);
+  const documentChangeIcon = documentFileChangeIcon(file, showsBodyState);
+  const treeChangeIcon = treeFileChangeIcon(file, showsBodyState);
+  const rightStyle = fileHeaderRightStyle(showsBodyState);
   const content = (
     <View
       style={[styles.content, showsBodyState && styles.documentContent]}
@@ -169,7 +254,7 @@ export const FileHeader = memo(function FileHeader({
             <MaterialFileIcon fileName={fileName} size={WORKSPACE_TREE_ICON_SIZE} />
           </View>
         )}
-        <Text style={styles.name} numberOfLines={1} testID={testID ? `${testID}-name` : undefined}>
+        <Text style={nameStyle} numberOfLines={1} testID={testID ? `${testID}-name` : undefined}>
           {fileName}
         </Text>
         {showDir ? (
@@ -179,15 +264,15 @@ export const FileHeader = memo(function FileHeader({
         ) : (
           <View style={styles.directorySpacer} />
         )}
-        {file.isNew ? <FileChangeIcon change="added" /> : null}
-        {file.isDeleted ? <FileChangeIcon change="deleted" /> : null}
+        {documentChangeIcon}
       </View>
-      <View style={styles.right}>
+      <View style={rightStyle}>
         <DiffStat
           additions={file.additions}
           deletions={file.deletions}
           testID={testID ? `${testID}-stat` : undefined}
         />
+        {treeChangeIcon}
       </View>
     </View>
   );
@@ -197,6 +282,7 @@ export const FileHeader = memo(function FileHeader({
       <ContextMenuTrigger
         testID={testID ? `${testID}-toggle` : undefined}
         style={pressableStyle}
+        highlightStyle={fileHeaderPressFeedbackStyle(showsBodyState)}
         cancelable={false}
         onPressIn={interaction.onPressIn}
         onPressOut={interaction.onPressOut}
@@ -211,19 +297,16 @@ export const FileHeader = memo(function FileHeader({
       </ContextMenuTrigger>
     );
   } else {
-    trigger = <View style={pressableStyle({ hovered: false, pressed: false })}>{content}</View>;
+    trigger = <View style={pressableStyle({ pressed: false })}>{content}</View>;
   }
   return (
     <View
-      style={[
-        styles.container,
-        showsBodyState && styles.documentContainer,
-        bodyVisible && styles.expanded,
-      ]}
+      style={[styles.container, fileHeaderContainerStyle(showsBodyState, showTopBorder)]}
       onLayout={interaction.onLayout}
+      onPointerEnter={hover.handlePointerEnter}
+      onPointerLeave={hover.handlePointerLeave}
       testID={testID}
     >
-      <TreeIndentGuides depth={depth} />
       <ContextMenu>
         <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild>{trigger}</TooltipTrigger>
@@ -240,14 +323,16 @@ export const FileHeader = memo(function FileHeader({
 });
 
 const styles = StyleSheet.create((theme) => ({
-  container: { overflow: "hidden", userSelect: "none" },
+  container: { width: "100%", overflow: "hidden", userSelect: "none" },
   documentContainer: {
-    height: 44,
-    backgroundColor: theme.colors.surface2,
+    height: 30,
+    backgroundColor: theme.colors.surface0,
+    borderTopWidth: theme.borderWidth[1],
+    borderTopColor: theme.colors.borderAccent,
     borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: theme.colors.borderAccent,
   },
-  expanded: { backgroundColor: theme.colors.surface1 },
+  documentContainerWithoutTopBorder: { borderTopColor: "transparent" },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -260,7 +345,12 @@ const styles = StyleSheet.create((theme) => ({
     elevation: 2,
     userSelect: "none",
   },
-  documentHeader: { height: 43, paddingHorizontal: 0, paddingVertical: 0 },
+  documentHeader: {
+    height: 28,
+    paddingLeft: 0,
+    paddingRight: 0,
+    paddingVertical: 0,
+  },
   content: {
     flex: 1,
     minWidth: 0,
@@ -269,8 +359,9 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     userSelect: "none",
   },
-  documentContent: { height: 43, paddingHorizontal: theme.spacing[3] },
-  active: { backgroundColor: theme.colors.surfaceSidebarHover },
+  documentContent: { height: 28, paddingHorizontal: theme.spacing[3] },
+  documentActive: { backgroundColor: theme.colors.surface1 },
+  documentPressFeedback: { backgroundColor: theme.colors.surface1 },
   left: {
     flexDirection: "row",
     alignItems: "center",
@@ -287,6 +378,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
     userSelect: "none",
   },
+  treeRight: { gap: theme.spacing[2] },
   icon: {
     width: WORKSPACE_TREE_ICON_SIZE,
     height: WORKSPACE_TREE_ICON_SIZE,

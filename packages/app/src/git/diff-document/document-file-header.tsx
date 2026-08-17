@@ -3,19 +3,23 @@ import { FileHeader } from "@/git/file-header";
 import type { DiffFileSection } from "./types";
 import type { DiffDocumentProps } from "./types";
 
+interface DocumentFileHeaderProps {
+  file: DiffFileSection;
+  selectedPath: string | null;
+  mode: DiffDocumentProps["mode"];
+  onToggleFile: (path: string) => void;
+  onSelectPath: (path: string) => void;
+  showTopBorder: boolean;
+}
+
 export const DocumentFileHeader = memo(function DocumentFileHeader({
   file,
   selectedPath,
   mode,
   onToggleFile,
   onSelectPath,
-}: {
-  file: DiffFileSection;
-  selectedPath: string | null;
-  mode: DiffDocumentProps["mode"];
-  onToggleFile: (path: string) => void;
-  onSelectPath: (path: string) => void;
-}) {
+  showTopBorder,
+}: DocumentFileHeaderProps) {
   const activate = useCallback(
     (path: string) => {
       if (mode.kind !== "working") return;
@@ -31,6 +35,7 @@ export const DocumentFileHeader = memo(function DocumentFileHeader({
       bodyVisible={!file.isCollapsed}
       isSelected={selectedPath === file.path}
       interactive={mode.kind === "working"}
+      showTopBorder={showTopBorder}
       workspaceFileDragScope={working?.workspaceFileDragScope}
       onActivate={activate}
       onSelect={onSelectPath}
@@ -46,4 +51,41 @@ export const DocumentFileHeader = memo(function DocumentFileHeader({
       testID={`diff-file-${file.fileIndex}`}
     />
   );
-});
+}, documentFileHeaderPropsEqual);
+
+function documentFileHeaderPropsEqual(
+  previous: DocumentFileHeaderProps,
+  next: DocumentFileHeaderProps,
+): boolean {
+  if (!documentFileHeaderIdentityMatches(previous, next)) return false;
+  if (previous.mode.kind === "commit" || next.mode.kind === "commit") return true;
+  return (
+    previous.mode.onFilePress === next.mode.onFilePress &&
+    previous.mode.workspaceFileDragScope === next.mode.workspaceFileDragScope &&
+    previous.mode.onOpenFile === next.mode.onOpenFile &&
+    previous.mode.onAddToChat === next.mode.onAddToChat &&
+    previous.mode.onCopyPath === next.mode.onCopyPath &&
+    previous.mode.onCopyRelativePath === next.mode.onCopyRelativePath &&
+    previous.mode.onReveal === next.mode.onReveal &&
+    previous.mode.revealTargetName === next.mode.revealTargetName &&
+    previous.mode.onDownload === next.mode.onDownload &&
+    previous.mode.onDuplicate === next.mode.onDuplicate &&
+    previous.mode.onRevert === next.mode.onRevert
+  );
+}
+
+function documentFileHeaderIdentityMatches(
+  previous: DocumentFileHeaderProps,
+  next: DocumentFileHeaderProps,
+): boolean {
+  return !(
+    previous.file.file !== next.file.file ||
+    previous.file.fileIndex !== next.file.fileIndex ||
+    previous.file.isCollapsed !== next.file.isCollapsed ||
+    previous.showTopBorder !== next.showTopBorder ||
+    (previous.selectedPath === previous.file.path) !== (next.selectedPath === next.file.path) ||
+    previous.onToggleFile !== next.onToggleFile ||
+    previous.onSelectPath !== next.onSelectPath ||
+    previous.mode.kind !== next.mode.kind
+  );
+}

@@ -888,6 +888,7 @@ export const en = {
         base: "base",
         newFile: "New",
         deletedFile: "Deleted",
+        modifiedFile: "Modified",
         commits: {
           title: "Commits",
           countLabel: "{{count}} workspace commits",

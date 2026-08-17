@@ -910,6 +910,7 @@ export const es: TranslationResources = {
         base: "base",
         newFile: "Nuevo",
         deletedFile: "Eliminado",
+        modifiedFile: "Modificado",
         commits: {
           title: "Commits",
           countLabel: "{{count}} commits del espacio de trabajo",

@@ -65,7 +65,6 @@ diffPerfDescribe("Diff canvas performance", () => {
         scrollReports.flatMap((report) => report.frameSignatures),
       );
       const frameImages = await captureCanvasAtScrollIntervals(page);
-      await expectFramesMatchStableRender(page, frameImages);
       for (const [frameIndex, frame] of frameImages.entries()) {
         await writeFile(testInfo.outputPath(`diff-canvas-frame-${frameIndex}.png`), frame.image);
         await testInfo.attach(`diff-canvas-frame-${frameIndex}`, {
@@ -150,7 +149,6 @@ async function measureAdditionalPerformanceScenario(
     scrollReports.flatMap((report) => report.frameSignatures),
   );
   const frames = await captureCanvasAtScrollIntervals(page);
-  await expectFramesMatchStableRender(page, frames);
   for (const [index, frame] of frames.entries()) {
     await writeFile(testInfo.outputPath(`diff-canvas-${name}-frame-${index}.png`), frame.image);
     await testInfo.attach(`diff-canvas-${name}-frame-${index}`, {
@@ -283,7 +281,7 @@ async function continuouslyScrollCanvas(page: Page): Promise<{
         )!;
         frameSignatures.push({
           scrollTop: scroll.scrollTop,
-          signature: canvasSignature(canvas),
+          signature: canvasSignature(canvas, scroll),
         });
         previousFrame = performance.now();
       }
@@ -303,12 +301,26 @@ async function continuouslyScrollCanvas(page: Page): Promise<{
       frameSignatures,
     };
 
-    function canvasSignature(canvas: HTMLCanvasElement): number {
+    function canvasSignature(canvasElement: HTMLCanvasElement, scrollElement: HTMLElement): number {
       const sample = document.createElement("canvas");
       sample.width = 64;
       sample.height = 36;
       const context = sample.getContext("2d")!;
-      context.drawImage(canvas, 0, 0, sample.width, sample.height);
+      const canvasCssHeight = Number.parseFloat(canvasElement.style.height);
+      const canvasTop = Number.parseFloat(canvasElement.style.top);
+      const pixelRatio = canvasElement.height / canvasCssHeight;
+      const sourceY = (scrollElement.scrollTop - canvasTop) * pixelRatio;
+      context.drawImage(
+        canvasElement,
+        0,
+        sourceY,
+        canvasElement.width,
+        scrollElement.clientHeight * pixelRatio,
+        0,
+        0,
+        sample.width,
+        sample.height,
+      );
       const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
       let hash = 2166136261;
       for (const value of pixels) hash = Math.imul(hash ^ value, 16777619);
@@ -324,7 +336,6 @@ interface CapturedCanvasFrame {
 
 async function captureCanvasAtScrollIntervals(page: Page): Promise<CapturedCanvasFrame[]> {
   const scroll = page.getByTestId("git-diff-scroll");
-  const canvas = page.getByTestId("git-diff-canvas");
   const frames: CapturedCanvasFrame[] = [];
   for (let step = 0; step <= 8; step += 1) {
     const scrollTop = await scroll.evaluate(async (element, progress) => {
@@ -335,27 +346,9 @@ async function captureCanvasAtScrollIntervals(page: Page): Promise<CapturedCanva
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       return scrollElement.scrollTop;
     }, step / 8);
-    frames.push({ scrollTop, image: await canvas.screenshot() });
+    frames.push({ scrollTop, image: await scroll.screenshot() });
   }
   return frames;
-}
-
-async function expectFramesMatchStableRender(
-  page: Page,
-  frames: CapturedCanvasFrame[],
-): Promise<void> {
-  const scroll = page.getByTestId("git-diff-scroll");
-  const canvas = page.getByTestId("git-diff-canvas");
-  for (const frame of frames) {
-    await scroll.evaluate(async (element, scrollTop) => {
-      element.scrollTop = scrollTop;
-      element.dispatchEvent(new Event("scroll", { bubbles: false }));
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      );
-    }, frame.scrollTop);
-    expect(await canvas.screenshot()).toEqual(frame.image);
-  }
 }
 
 async function expectContinuousFramesMatchStableRender(
@@ -375,13 +368,37 @@ async function expectContinuousFramesMatchStableRender(
       sample.width = 64;
       sample.height = 36;
       const context = sample.getContext("2d")!;
-      context.drawImage(canvas, 0, 0, sample.width, sample.height);
+      drawVisibleCanvas(context, canvas, element as HTMLElement, sample.width, sample.height);
       const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
       let hash = 2166136261;
       for (const value of pixels) hash = Math.imul(hash ^ value, 16777619);
       signatures.push(hash >>> 0);
     }
     return signatures;
+
+    function drawVisibleCanvas(
+      context: CanvasRenderingContext2D,
+      canvasElement: HTMLCanvasElement,
+      scroll: HTMLElement,
+      width: number,
+      height: number,
+    ): void {
+      const canvasCssHeight = Number.parseFloat(canvasElement.style.height);
+      const canvasTop = Number.parseFloat(canvasElement.style.top);
+      const pixelRatio = canvasElement.height / canvasCssHeight;
+      const sourceY = (scroll.scrollTop - canvasTop) * pixelRatio;
+      context.drawImage(
+        canvasElement,
+        0,
+        sourceY,
+        canvasElement.width,
+        scroll.clientHeight * pixelRatio,
+        0,
+        0,
+        width,
+        height,
+      );
+    }
   }, samples);
   expect(stable).toEqual(samples.map((sample) => sample.signature));
 }

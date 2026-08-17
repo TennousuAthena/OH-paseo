@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildDiffDocumentModel,
   captureScrollAnchor,
+  FILE_HEADER_HEIGHT,
   graphemeBoundaries,
   measureFragments,
   resolveScrollAnchor,
+  resolveRelayoutScrollTop,
 } from "./model";
 import type { BuildDiffDocumentModelInput, TextMeasurer } from "./types";
 
@@ -63,6 +65,24 @@ function input(overrides: Partial<BuildDiffDocumentModelInput> = {}): BuildDiffD
 }
 
 describe("diff document model", () => {
+  it("segments graphemes when Intl.Segmenter is unavailable", () => {
+    const originalSegmenter = Intl.Segmenter;
+    Object.defineProperty(Intl, "Segmenter", { configurable: true, value: undefined });
+    try {
+      const source = "中é👨‍👩‍👧‍👦";
+      const fragments = measureFragments({
+        text: source,
+        availableWidth: 100,
+        wrapLines: true,
+        lineHeight: 18,
+        measureText: measurer,
+      });
+      expect(fragments[0]?.graphemes.map((grapheme) => grapheme.text)).toEqual(["中", "é", "👨‍👩‍👧‍👦"]);
+    } finally {
+      Object.defineProperty(Intl, "Segmenter", { configurable: true, value: originalSegmenter });
+    }
+  });
+
   it("measures grapheme-safe wrapped fragments", () => {
     const text = "ab👨‍👩‍👧‍👦cd";
     const fragments = measureFragments({
@@ -159,6 +179,58 @@ describe("diff document model", () => {
     expect(collapsed.files[0]?.bodyHeight).toBe(0);
     expect(collapsed.files[1]?.bodyHeight).toBeGreaterThan(0);
     expect(collapsed.height).toBeLessThan(expanded.height);
+  });
+
+  it("reuses unchanged file measurements when collapse state changes", () => {
+    const files = [file("a.ts"), file("b.ts")];
+    let measurementCount = 0;
+    const countingMeasurer: TextMeasurer = {
+      measure(text) {
+        measurementCount += 1;
+        return Array.from(text).length * 10;
+      },
+    };
+    const expanded = buildDiffDocumentModel(input({ files, measureText: countingMeasurer }));
+    const initialMeasurementCount = measurementCount;
+
+    const collapsed = buildDiffDocumentModel(
+      input({
+        files,
+        collapsedFilePaths: new Set(["a.ts"]),
+        measureText: countingMeasurer,
+        reuseFrom: [expanded],
+      }),
+    );
+
+    expect(measurementCount).toBe(initialMeasurementCount);
+    expect(collapsed.files[1]?.bodyHeight).toBe(expanded.files[1]?.bodyHeight);
+    expect(collapsed.rows.every((row, index) => row.index === index)).toBe(true);
+    expect(collapsed.rows[0]?.top).toBe(FILE_HEADER_HEIGHT * 2);
+
+    const expandedAgain = buildDiffDocumentModel(
+      input({
+        files,
+        measureText: countingMeasurer,
+        reuseFrom: [expanded, collapsed],
+      }),
+    );
+    expect(measurementCount).toBe(initialMeasurementCount);
+    expect(expandedAgain.height).toBe(expanded.height);
+  });
+
+  it("keeps the toggled sticky header anchored through collapse and expansion", () => {
+    const files = [file("a.ts"), file("b.ts")];
+    const expanded = buildDiffDocumentModel(input({ files }));
+    const firstFile = expanded.files[0]!;
+    const scrollTop = firstFile.top + 20;
+    const collapsed = buildDiffDocumentModel(
+      input({ files, collapsedFilePaths: new Set(["a.ts"]), reuseFrom: [expanded] }),
+    );
+
+    expect(resolveRelayoutScrollTop(expanded, collapsed, scrollTop)).toBe(collapsed.files[0]!.top);
+    expect(resolveRelayoutScrollTop(collapsed, expanded, collapsed.files[0]!.top)).toBe(
+      expanded.files[0]!.top,
+    );
   });
 
   it("reserves review geometry in the measured row", () => {
