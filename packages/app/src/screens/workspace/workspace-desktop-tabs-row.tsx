@@ -381,7 +381,7 @@ function WorkspaceNewTabButton({
             trailing={agentShortcut}
             onSelect={onCreateAgentTab}
           >
-            {t("workspace.tabs.actions.newAgent")}
+            {t("workspace.tabs.fallback.agent")}
           </DropdownMenuItem>
           <DropdownMenuItem
             testID="workspace-new-tab-menu-terminal"
@@ -390,7 +390,7 @@ function WorkspaceNewTabButton({
             trailing={terminalShortcut}
             onSelect={terminalDisabled ? undefined : onCreateTerminal}
           >
-            {t("workspace.tabs.actions.newTerminal")}
+            {t("workspace.tabs.fallback.terminal")}
           </DropdownMenuItem>
           {showCreateBrowserTab ? (
             <DropdownMenuItem
@@ -399,7 +399,7 @@ function WorkspaceNewTabButton({
               trailing={browserShortcut}
               onSelect={onCreateBrowser}
             >
-              {t("workspace.tabs.actions.newBrowser")}
+              {t("workspace.tabs.fallback.browser")}
             </DropdownMenuItem>
           ) : null}
           {isGit ? (

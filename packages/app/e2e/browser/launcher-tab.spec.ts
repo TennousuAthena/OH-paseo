@@ -61,7 +61,7 @@ test.describe("Tab creation", () => {
     await expect(page.getByRole("navigation", { name: "Settings" })).toBeVisible();
 
     await page.keyboard.press(`${modifier}+t`);
-    await expect(page.getByRole("menuitem", { name: /New agent/ })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: /^Agent/ })).toHaveCount(0);
 
     await page.goto(workspaceUrl);
     await assertNewTabMenuTriggerVisible(page);
@@ -101,8 +101,8 @@ test.describe("Tab creation", () => {
     await gotoWorkspace(page, workspace.workspaceId);
     await openNewTabMenuWithShortcut(page);
 
-    const agent = page.getByRole("menuitem", { name: /New agent/ });
-    const terminal = page.getByRole("menuitem", { name: /New terminal/ });
+    const agent = page.getByRole("menuitem", { name: /^Agent/ });
+    const terminal = page.getByRole("menuitem", { name: /^Terminal/ });
     const changes = page.getByRole("menuitem", { name: /Changes/ });
     const files = page.getByRole("menuitem", { name: /Files/ });
     const shortcutPrefix = process.platform === "darwin" ? /⇧⌘/ : /Ctrl.*Shift/;
