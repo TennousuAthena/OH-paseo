@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, View, type LayoutChangeEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
   MenuRoot,
@@ -12,6 +12,7 @@ import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
+import { COMPOSER_PILL_CLEARANCE, composerPillStyles } from "./pill-styles";
 
 /**
  * The strip of pills where a pane's ambient trackers live — subagents and tasks today.
@@ -20,18 +21,23 @@ import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
  * it for the detail. Trackers used to be stacked cards, so every one of them pushed the composer
  * further down the pane; a row of pills costs one line no matter how many there are.
  *
- * **Mount it in a container that spans the transcript.** The bar pins itself to that container's
- * bottom edge and paints over it, with no background of its own and `pointerEvents="box-none"`
- * so the gaps between pills still belong to the timeline scrolling underneath. Absolute, not in
- * flow: in flow it reserves a strip the transcript cannot use, which is the band this replaced.
- *
- * It stays a child of the transcript rather than a sibling floating above the composer because
- * on Android a view outside its parent's bounds paints but takes no touches — see
- * docs/floating-panels.md — and every pill here is pressable.
+ * The bar floats over the transcript with no background, so content remains visible underneath.
+ * Its host gives the scroll viewport a small bottom inset only when the bar exists; that keeps
+ * the final footer clear without turning the overlay into a layout band.
  */
-export function ComposerTrackBar({ children }: { children: ReactNode }): ReactElement {
+export function ComposerTrackBar({
+  children,
+  onHeightChange,
+}: {
+  children: ReactNode;
+  onHeightChange?: (height: number) => void;
+}): ReactElement {
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => onHeightChange?.(event.nativeEvent.layout.height),
+    [onHeightChange],
+  );
   return (
-    <View style={styles.bar} pointerEvents="box-none">
+    <View style={styles.bar} pointerEvents="box-none" onLayout={handleLayout}>
       <View style={styles.track} pointerEvents="box-none">
         {children}
       </View>
@@ -119,12 +125,16 @@ function ComposerTrackPillTrigger({
   const ariaExpandedProps = isWeb ? { "aria-expanded": open } : null;
   const pillStyle = useCallback(
     ({ hovered, pressed, open: isOpen }: MenuTriggerState) => [
-      styles.pill,
-      (hovered || pressed || isOpen) && styles.pillActive,
+      composerPillStyles.body,
+      styles.pillSpacing,
+      (hovered || pressed || isOpen) && composerPillStyles.bodyActive,
     ],
     [],
   );
-  const labelStyle = useMemo(() => [styles.pillLabel, open && styles.pillLabelActive], [open]);
+  const labelStyle = useMemo(
+    () => [composerPillStyles.label, open && composerPillStyles.labelActive],
+    [open],
+  );
 
   return (
     <MenuTrigger
@@ -245,30 +255,8 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[1],
   },
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
-    marginBottom: theme.spacing[2],
-    // One step inside the composer's corner, not a stadium: the pills sit directly on top of it
-    // and read as part of the same stack. See composer/input/input.tsx `inputWrapper`.
-    borderRadius: theme.borderRadius.xl,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface1,
-  },
-  pillActive: {
-    backgroundColor: theme.colors.surface2,
-    borderColor: theme.colors.borderAccent,
-  },
-  pillLabel: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-  },
-  pillLabelActive: {
-    color: theme.colors.foreground,
+  pillSpacing: {
+    marginBottom: COMPOSER_PILL_CLEARANCE,
   },
   // The rail every panel row sits on: inset from the panel edge so the fill is a rounded block
   // inside it, and tall enough that revealing an action button cannot resize the row.

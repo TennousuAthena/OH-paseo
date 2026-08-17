@@ -4,17 +4,13 @@ import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { ComposerTrackPill, ComposerTrackRow } from "@/composer/tracks";
 import { TaskListRow } from "@/components/task-list-row";
-import { useSessionStore } from "@/stores/session-store";
 import type { TodoEntry } from "@/types/stream";
 
 export const AgentTaskList = memo(function AgentTaskList({
-  serverId,
-  agentId,
+  tasks,
 }: {
-  serverId: string;
-  agentId: string;
+  tasks: TodoEntry[] | undefined;
 }) {
-  const tasks = useSessionStore((state) => state.sessions[serverId]?.agentTasks.get(agentId));
   if (!tasks?.length) return null;
   return <TaskListCard tasks={tasks} />;
 });
