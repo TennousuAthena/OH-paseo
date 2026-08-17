@@ -596,32 +596,41 @@ test("Changes keeps review navigation and controls inside its workspace tab", as
   await expect(visiblePanel).toBeVisible();
   await expect(visiblePanel.getByText("use-mounted-tab-set.ts", { exact: true })).toBeVisible();
   await expect(visiblePanel).toContainText("zz-deleted.ts");
-  await expect(visiblePanel.getByTestId("changes-open-tab")).toHaveCount(0);
   await expect(visiblePanel.getByTestId("changes-primary-cta")).toHaveCount(0);
   await expect(page.getByTestId("changes-primary-cta")).toHaveCount(1);
   await expect(page.getByTestId("changes-primary-cta")).toContainText("Commit");
   await expect(visiblePanel.getByTestId("diff-file-0-body")).toBeVisible();
   await visiblePanel.getByTestId("diff-file-0-toggle").click();
   await expect(visiblePanel.getByTestId("diff-file-0-body")).not.toBeVisible();
-  await visiblePanel.getByRole("button", { name: "Collapse all files" }).click();
-  await expect(visiblePanel.getByRole("button", { name: "Expand all files" })).toBeVisible();
-  await visiblePanel.getByRole("button", { name: "Expand all files" }).click();
+
+  // Collapse-all and the layout switch are overflow-menu items, not toolbar icons.
+  const diffOptions = visiblePanel.getByRole("button", { name: "Diff options" });
+  await expect(page.getByTestId("changes-toggle-collapse-all")).toHaveCount(0);
+  await diffOptions.click();
+  // A workspace tab has nowhere to open itself, so the menu withholds that item.
+  await expect(page.getByTestId("changes-open-tab")).toHaveCount(0);
+  await page.getByTestId("changes-toggle-collapse-all").click();
+  await diffOptions.click();
+  await expect(page.getByTestId("changes-toggle-collapse-all")).toContainText("Expand all files");
+  await page.getByTestId("changes-toggle-collapse-all").click();
   await expect(visiblePanel.getByTestId("diff-file-0-body")).toBeVisible();
-  const workingDiffLayoutToggle = visiblePanel.getByRole("button", {
-    name: "Switch to side-by-side diff",
-  });
-  await expect(workingDiffLayoutToggle).toHaveAccessibleName("Switch to side-by-side diff");
-  await workingDiffLayoutToggle.click();
-  await expect(visiblePanel.getByRole("button", { name: "Switch to unified diff" })).toBeVisible();
-  await visiblePanel.getByRole("button", { name: "Diff options" }).click();
+
+  const layoutItem = page.getByTestId("changes-toggle-layout");
+  await diffOptions.click();
+  await expect(layoutItem).toContainText("Side-by-side diff");
+  // Leading icon only: the layout is still unified, so no trailing check.
+  await expect(layoutItem.locator("svg")).toHaveCount(1);
+  await layoutItem.click();
+  await diffOptions.click();
+  await expect(layoutItem.locator("svg")).toHaveCount(2);
+
   await expect(page.getByText("Hide whitespace", { exact: true })).toBeVisible();
   await expect(page.getByText("Wrap long lines", { exact: true })).toBeVisible();
-  await expect(page.getByText(/^Refresh/)).toBeVisible();
+  await expect(page.getByTestId("changes-refresh")).toHaveText("Refresh");
   await page.getByText("Wrap long lines", { exact: true }).click();
-  await visiblePanel.getByRole("button", { name: "Diff options" }).click();
+  await diffOptions.click();
   await expect(page.getByText("Scroll long lines", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(visiblePanel.getByRole("button", { name: "Collapse all files" })).toBeVisible();
   await expect(page.getByTestId(/^workspace-working-diff-close-/)).toHaveCount(1);
 
   await writeFile(path.join(workspace.repoPath, "src/use-mounted-tab-set.ts"), BEFORE);
@@ -645,15 +654,20 @@ test("desktop Changes toggles a navigation tree beside the expanded diff documen
   await openWorkspaceChanges(page, workspace);
 
   await expectFlatFileList(page);
-  await expect(page.getByTestId("changes-toggle-layout")).toBeVisible();
   await expect(page.getByTestId("changes-layout-unified")).toHaveCount(0);
   await expect(page.getByTestId("changes-layout-split")).toHaveCount(0);
+  // The tree toggle is the one icon action that stays outside the overflow menu.
+  await expect(page.getByTestId("changes-toggle-tree")).toBeVisible();
+  await expect(page.getByTestId("changes-toggle-collapse-all")).toHaveCount(0);
+  await expect(page.getByTestId("changes-toggle-layout")).toHaveCount(0);
 
   await page.getByTestId("changes-options-menu").click();
   await expect(page.getByTestId("changes-options-menu-content")).toBeVisible();
+  await expect(page.getByTestId("changes-toggle-collapse-all")).toContainText("Collapse all files");
+  await expect(page.getByTestId("changes-toggle-layout")).toContainText("Side-by-side diff");
   await expect(page.getByTestId("changes-toggle-whitespace")).toContainText("Hide whitespace");
   await expect(page.getByTestId("changes-toggle-wrap-lines")).toContainText("Wrap long lines");
-  await expect(page.getByTestId("changes-refresh")).toContainText("Refresh");
+  await expect(page.getByTestId("changes-refresh")).toHaveText("Refresh");
   await page.getByTestId("changes-toggle-whitespace").click();
   await page.getByTestId("changes-options-menu").click();
   await expect(page.getByTestId("changes-toggle-whitespace")).toContainText("Show whitespace");

@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { TreeRail } from "@/components/tree-rail";
+import { DiffStat } from "@/components/diff-stat";
 import {
   View,
   Text,
@@ -22,6 +23,7 @@ import {
   ListChevronsDownUp,
   ListChevronsUpDown,
   Maximize2,
+  MoreHorizontal,
   Pilcrow,
   RotateCw,
   WrapText,
@@ -82,6 +84,22 @@ export function resolveDiffLayout(
   canUseSplitLayout: boolean,
 ): "unified" | "split" {
   return canUseSplitLayout ? layout : "unified";
+}
+
+function computeSelectedDiffStat(
+  files: ParsedDiffFile[],
+  isLoading: boolean,
+): { additions: number; deletions: number } | null {
+  if (isLoading) {
+    return null;
+  }
+  return files.reduce(
+    (total, file) => ({
+      additions: total.additions + file.additions,
+      deletions: total.deletions + file.deletions,
+    }),
+    { additions: 0, deletions: 0 },
+  );
 }
 
 function useDiscardChangesAction({
@@ -163,11 +181,24 @@ const ThemedListChevronsDownUp = withUnistyles(ListChevronsDownUp);
 const ThemedListChevronsUpDown = withUnistyles(ListChevronsUpDown);
 const ThemedMaximize2 = withUnistyles(Maximize2);
 const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedMoreHorizontal = withUnistyles(MoreHorizontal);
 const DIFF_OPTIONS_WHITESPACE_ICON = (
   <ThemedPilcrow size={14} uniProps={foregroundMutedIconColorMapping} />
 );
 const DIFF_OPTIONS_WRAP_ICON = (
   <ThemedWrapText size={14} uniProps={foregroundMutedIconColorMapping} />
+);
+const DIFF_OPTIONS_SPLIT_ICON = (
+  <ThemedColumns2 size={14} uniProps={foregroundMutedIconColorMapping} />
+);
+const DIFF_OPTIONS_COLLAPSE_ICON = (
+  <ThemedListChevronsDownUp size={14} uniProps={foregroundMutedIconColorMapping} />
+);
+const DIFF_OPTIONS_EXPAND_ICON = (
+  <ThemedListChevronsUpDown size={14} uniProps={foregroundMutedIconColorMapping} />
+);
+const DIFF_OPTIONS_CHANGES_TAB_ICON = (
+  <ThemedMaximize2 size={14} uniProps={foregroundMutedIconColorMapping} />
 );
 
 interface DiffLayoutToggleProps {
@@ -220,12 +251,6 @@ export function DiffLayoutToggle({
   );
 }
 
-interface ChangesTabToggleProps {
-  isMobile: boolean;
-  selected: boolean;
-  onPress: () => void;
-}
-
 function resolveChangesTabOpen(host: "explorer" | "panel", changesTabOpen: boolean): boolean {
   return host === "explorer" ? changesTabOpen : false;
 }
@@ -235,18 +260,6 @@ function resolveChangesFilePress(
   onChangesFilePress: ((path?: string) => void) | undefined,
 ): ((path?: string) => void) | undefined {
   return host === "explorer" ? onChangesFilePress : undefined;
-}
-
-function ChangesTabToggleForHost({
-  host,
-  isMobile,
-  selected,
-  onPress,
-}: ChangesTabToggleProps & { host: "explorer" | "panel" }) {
-  if (host === "panel") {
-    return null;
-  }
-  return <ChangesTabToggle isMobile={isMobile} selected={selected} onPress={onPress} />;
 }
 
 interface DiffModeMenuProps {
@@ -303,38 +316,6 @@ export function DiffModeMenu({
   );
 }
 
-function ChangesTabToggle({ isMobile, selected, onPress }: ChangesTabToggleProps) {
-  const { t } = useTranslation();
-  const buttonStyle = useMemo(
-    () => buildToggleButtonStyle(selected, styles.toolbarIconButton),
-    [selected],
-  );
-  const label = t(
-    selected ? "workspace.git.diff.closeChangesTab" : "workspace.git.diff.openChangesTab",
-  );
-  if (isMobile) {
-    return null;
-  }
-  return (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={label}
-          testID="changes-open-tab"
-          onPress={onPress}
-          style={buttonStyle}
-        >
-          <ThemedMaximize2 size={14} uniProps={foregroundMutedIconColorMapping} />
-        </Pressable>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        <Text style={styles.tooltipText}>{label}</Text>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
 interface DesktopTreeToggleProps {
   visible: boolean;
   toggleStyle?: PressableStyleFn;
@@ -368,54 +349,6 @@ function DesktopTreeToggle({ visible, toggleStyle, onToggle }: DesktopTreeToggle
   );
 }
 
-interface CollapseAllToggleProps {
-  allCollapsed: boolean;
-  isMobile: boolean;
-  onCollapseAll: () => void;
-  onExpandAll: () => void;
-}
-
-function CollapseAllToggle({
-  allCollapsed,
-  isMobile,
-  onCollapseAll,
-  onExpandAll,
-}: CollapseAllToggleProps) {
-  const { t } = useTranslation();
-  const buttonStyle = useMemo(() => buildToggleButtonStyle(false, styles.toolbarIconButton), []);
-  const label = t(
-    allCollapsed ? "workspace.git.diff.expandAllFiles" : "workspace.git.diff.collapseAllFiles",
-  );
-  return (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={label}
-          testID="changes-toggle-collapse-all"
-          style={buttonStyle}
-          onPress={allCollapsed ? onExpandAll : onCollapseAll}
-        >
-          {allCollapsed ? (
-            <ThemedListChevronsUpDown
-              size={isMobile ? 18 : 14}
-              uniProps={foregroundMutedIconColorMapping}
-            />
-          ) : (
-            <ThemedListChevronsDownUp
-              size={isMobile ? 18 : 14}
-              uniProps={foregroundMutedIconColorMapping}
-            />
-          )}
-        </Pressable>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        <Text style={styles.tooltipText}>{label}</Text>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
 interface ChangesToolbarProps {
   branchName: string | null;
   allFilesCollapsed: boolean;
@@ -425,7 +358,6 @@ interface ChangesToolbarProps {
   cwd: string;
   desktopTreeVisible: boolean;
   diffMode: "uncommitted" | "base";
-  forge: Forge;
   gitActions: GitActions;
   hasFiles: boolean;
   hideWhitespace: boolean;
@@ -433,9 +365,9 @@ interface ChangesToolbarProps {
   isMobile: boolean;
   isRefreshing: boolean;
   layout: "unified" | "split";
-  layoutToggleStyle: PressableStyleFn;
   overflowToggleStyle: PressableStyleFn;
   refreshSupported: boolean;
+  selectedDiffStat: { additions: number; deletions: number } | null;
   serverId: string;
   treeToggleStyle: PressableStyleFn;
   workspaceId?: string | null;
@@ -452,155 +384,129 @@ interface ChangesToolbarProps {
   onToggleWrapLines: () => void;
 }
 
-function ChangesToolbar({
-  branchName,
+// One row: the diff-mode and branch pickers lead, the git actions and the
+// overflow menu trail. The tree toggle is the only icon action that stays out
+// of the menu, and it only exists on desktop, so a phone-width row holds two
+// pickers, the split button, and the trigger without wrapping.
+function ChangesToolbar(props: ChangesToolbarProps) {
+  const {
+    branchName,
+    committedDescription,
+    cwd,
+    desktopTreeVisible,
+    diffMode,
+    gitActions,
+    hasFiles,
+    isMobile,
+    selectedDiffStat,
+    serverId,
+    treeToggleStyle,
+    workspaceId,
+    onSelectBase,
+    onSelectUncommitted,
+    onToggleDesktopTree,
+  } = props;
+  return (
+    <View style={styles.changesToolbar} testID="changes-header">
+      <View style={styles.changesToolbarIdentity}>
+        <DiffModeMenu
+          diffMode={diffMode}
+          committedDescription={committedDescription}
+          onSelectUncommitted={onSelectUncommitted}
+          onSelectBase={onSelectBase}
+        />
+        <BranchSwitcher
+          currentBranchName={branchName}
+          serverId={serverId}
+          workspaceId={workspaceId ?? cwd}
+          workspaceDirectory={cwd}
+          isGitCheckout
+          testID="changes-branch-switcher"
+        />
+        {!isMobile && selectedDiffStat ? (
+          <DiffStat
+            additions={selectedDiffStat.additions}
+            deletions={selectedDiffStat.deletions}
+            testID="changes-selected-diff-stat"
+          />
+        ) : null}
+      </View>
+      <View style={styles.changesToolbarControls}>
+        {!isMobile && hasFiles ? (
+          <DesktopTreeToggle
+            visible={desktopTreeVisible}
+            toggleStyle={treeToggleStyle}
+            onToggle={onToggleDesktopTree}
+          />
+        ) : null}
+        {isMobile ? <GitActionsSplitButton gitActions={gitActions} /> : null}
+        <ChangesOptionsMenu {...props} />
+      </View>
+    </View>
+  );
+}
+
+type ChangesOptionsMenuProps = Pick<
+  ChangesToolbarProps,
+  | "allFilesCollapsed"
+  | "canUseSplitLayout"
+  | "changesTabOpen"
+  | "hasFiles"
+  | "hideWhitespace"
+  | "host"
+  | "isMobile"
+  | "isRefreshing"
+  | "layout"
+  | "overflowToggleStyle"
+  | "refreshSupported"
+  | "wrapLines"
+  | "onCollapseAll"
+  | "onExpandAll"
+  | "onRefresh"
+  | "onToggleChangesTab"
+  | "onToggleHideWhitespace"
+  | "onToggleLayout"
+  | "onToggleWrapLines"
+>;
+
+function ChangesOptionsMenu({
   allFilesCollapsed,
   canUseSplitLayout,
   changesTabOpen,
-  committedDescription,
-  cwd,
-  desktopTreeVisible,
-  diffMode,
-  forge,
-  gitActions,
   hasFiles,
   hideWhitespace,
   host,
   isMobile,
   isRefreshing,
   layout,
-  layoutToggleStyle,
   overflowToggleStyle,
   refreshSupported,
-  serverId,
-  treeToggleStyle,
-  workspaceId,
   wrapLines,
-  onRefresh,
   onCollapseAll,
   onExpandAll,
-  onSelectBase,
-  onSelectUncommitted,
+  onRefresh,
   onToggleChangesTab,
-  onToggleDesktopTree,
   onToggleHideWhitespace,
   onToggleLayout,
   onToggleWrapLines,
-}: ChangesToolbarProps) {
-  return (
-    <View style={styles.changesToolbar} testID="changes-header">
-      <View style={styles.changesToolbarMainRow}>
-        <View style={styles.changesToolbarIdentity}>
-          <DiffModeMenu
-            diffMode={diffMode}
-            committedDescription={committedDescription}
-            onSelectUncommitted={onSelectUncommitted}
-            onSelectBase={onSelectBase}
-          />
-          <BranchSwitcher
-            currentBranchName={branchName}
-            serverId={serverId}
-            workspaceId={workspaceId ?? cwd}
-            workspaceDirectory={cwd}
-            isGitCheckout
-            testID="changes-branch-switcher"
-          />
-        </View>
-        <View style={styles.changesToolbarControls}>
-          <ChangesTabToggleForHost
-            host={host}
-            isMobile={isMobile}
-            selected={changesTabOpen}
-            onPress={onToggleChangesTab}
-          />
-          {hasFiles ? (
-            <CollapseAllToggle
-              allCollapsed={allFilesCollapsed}
-              isMobile={isMobile}
-              onCollapseAll={onCollapseAll}
-              onExpandAll={onExpandAll}
-            />
-          ) : null}
-          {canUseSplitLayout && !changesTabOpen ? (
-            <DiffLayoutToggle
-              layout={layout}
-              isMobile={isMobile}
-              toggleStyle={layoutToggleStyle}
-              onToggle={onToggleLayout}
-            />
-          ) : null}
-          {!isMobile && hasFiles ? (
-            <DesktopTreeToggle
-              visible={desktopTreeVisible}
-              toggleStyle={treeToggleStyle}
-              onToggle={onToggleDesktopTree}
-            />
-          ) : null}
-          <DiffOptionsMenu
-            brand={getForgePresentation(forge).brandLabel}
-            hideWhitespace={hideWhitespace}
-            isMobile={isMobile}
-            isRefreshing={isRefreshing}
-            overflowToggleStyle={overflowToggleStyle}
-            refreshSupported={refreshSupported}
-            wrapLines={wrapLines}
-            onRefresh={onRefresh}
-            onToggleHideWhitespace={onToggleHideWhitespace}
-            onToggleWrapLines={onToggleWrapLines}
-          />
-        </View>
-      </View>
-      {isMobile ? (
-        <View style={styles.mobileGitActionsRow}>
-          <GitActionsSplitButton gitActions={gitActions} />
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-interface DiffOptionsMenuProps {
-  brand?: string;
-  hideWhitespace: boolean;
-  isMobile: boolean;
-  isRefreshing?: boolean;
-  overflowToggleStyle?: PressableStyleFn;
-  refreshSupported?: boolean;
-  testIDPrefix?: string;
-  wrapLines: boolean;
-  onRefresh?: () => void;
-  onToggleHideWhitespace: () => void;
-  onToggleWrapLines: () => void;
-}
-
-export function DiffOptionsMenu({
-  brand,
-  hideWhitespace,
-  isMobile,
-  isRefreshing = false,
-  overflowToggleStyle,
-  refreshSupported = false,
-  testIDPrefix = "changes",
-  wrapLines,
-  onRefresh,
-  onToggleHideWhitespace,
-  onToggleWrapLines,
-}: DiffOptionsMenuProps) {
+}: ChangesOptionsMenuProps) {
   const { t } = useTranslation();
-  const defaultToggleStyle = useMemo(() => buildOverflowButtonStyle(), []);
+  const optionsLabel = t("workspace.git.diff.options");
+  const collapseLabel = t(
+    allFilesCollapsed ? "workspace.git.diff.expandAllFiles" : "workspace.git.diff.collapseAllFiles",
+  );
+  const changesTabLabel = t(
+    changesTabOpen ? "workspace.git.diff.closeChangesTab" : "workspace.git.diff.openChangesTab",
+  );
   const whitespaceLabel = hideWhitespace
     ? t("workspace.git.diff.showWhitespace")
     : t("workspace.git.diff.hideWhitespace");
   const wrapLinesLabel = wrapLines
     ? t("workspace.git.diff.scrollLongLines")
     : t("workspace.git.diff.wrapLongLines");
-  const optionsLabel = t("workspace.git.diff.options");
-  let refreshLabel = t("workspace.git.diff.refresh");
-  if (isRefreshing) {
-    refreshLabel = t("workspace.git.diff.refreshing");
-  } else if (brand) {
-    refreshLabel = t("workspace.git.diff.refreshState", { brand });
-  }
+  const refreshLabel = isRefreshing
+    ? t("workspace.git.diff.refreshing")
+    : t("workspace.git.diff.refresh");
   const refreshIcon = useMemo(
     () =>
       isRefreshing ? (
@@ -611,6 +517,9 @@ export function DiffOptionsMenu({
     [isRefreshing],
   );
 
+  const showChangesTab = host === "explorer" && !isMobile;
+  const showLayout = canUseSplitLayout && !changesTabOpen;
+
   return (
     <DropdownMenu>
       <Tooltip delayDuration={300}>
@@ -618,10 +527,10 @@ export function DiffOptionsMenu({
           <DropdownMenuTrigger
             accessibilityRole="button"
             accessibilityLabel={optionsLabel}
-            testID={`${testIDPrefix}-options-menu`}
-            style={overflowToggleStyle ?? defaultToggleStyle}
+            testID="changes-options-menu"
+            style={overflowToggleStyle}
           >
-            <ThemedChevronDown
+            <ThemedMoreHorizontal
               size={isMobile ? 18 : 14}
               uniProps={foregroundMutedIconColorMapping}
             />
@@ -631,11 +540,40 @@ export function DiffOptionsMenu({
           <Text style={styles.tooltipText}>{optionsLabel}</Text>
         </TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="end" width={240} testID={`${testIDPrefix}-options-menu-content`}>
+      <DropdownMenuContent align="end" width={240} testID="changes-options-menu-content">
+        {hasFiles ? (
+          <DropdownMenuItem
+            leading={allFilesCollapsed ? DIFF_OPTIONS_EXPAND_ICON : DIFF_OPTIONS_COLLAPSE_ICON}
+            testID="changes-toggle-collapse-all"
+            onSelect={allFilesCollapsed ? onExpandAll : onCollapseAll}
+          >
+            {collapseLabel}
+          </DropdownMenuItem>
+        ) : null}
+        {showChangesTab ? (
+          <DropdownMenuItem
+            leading={DIFF_OPTIONS_CHANGES_TAB_ICON}
+            testID="changes-open-tab"
+            onSelect={onToggleChangesTab}
+          >
+            {changesTabLabel}
+          </DropdownMenuItem>
+        ) : null}
+        {hasFiles || showChangesTab ? <DropdownMenuSeparator /> : null}
+        {showLayout ? (
+          <DropdownMenuItem
+            leading={DIFF_OPTIONS_SPLIT_ICON}
+            selected={layout === "split"}
+            testID="changes-toggle-layout"
+            onSelect={onToggleLayout}
+          >
+            {t("workspace.git.diff.split")}
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem
           leading={DIFF_OPTIONS_WHITESPACE_ICON}
           selected={hideWhitespace}
-          testID={`${testIDPrefix}-toggle-whitespace`}
+          testID="changes-toggle-whitespace"
           onSelect={onToggleHideWhitespace}
         >
           {whitespaceLabel}
@@ -643,18 +581,18 @@ export function DiffOptionsMenu({
         <DropdownMenuItem
           leading={DIFF_OPTIONS_WRAP_ICON}
           selected={wrapLines}
-          testID={`${testIDPrefix}-toggle-wrap-lines`}
+          testID="changes-toggle-wrap-lines"
           onSelect={onToggleWrapLines}
         >
           {wrapLinesLabel}
         </DropdownMenuItem>
-        {refreshSupported && onRefresh ? (
+        {refreshSupported ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               leading={refreshIcon}
               disabled={isRefreshing}
-              testID={`${testIDPrefix}-refresh`}
+              testID="changes-refresh"
               onSelect={onRefresh}
             >
               {refreshLabel}
@@ -1188,11 +1126,6 @@ export function ChangesSurface({
   }, [changesPreferences.layout, updateChangesPreferences]);
 
   const codeFontSize = appSettings.codeFontSize;
-  const layoutToggleStyle = useMemo(
-    () => buildToggleButtonStyle(false, styles.toolbarIconButton),
-    [],
-  );
-
   const treeToggleStyle = useMemo(
     () => buildToggleButtonStyle(desktopTreeVisible, styles.toolbarIconButton),
     [desktopTreeVisible],
@@ -1419,6 +1352,10 @@ export function ChangesSurface({
   );
 
   const hasChanges = files.length > 0;
+  const selectedDiffStat = useMemo(
+    () => computeSelectedDiffStat(files, isDiffLoading),
+    [files, isDiffLoading],
+  );
   const allFilesCollapsed =
     hasChanges && files.every((file) => collapsedFilePaths.includes(file.path));
   const handleCollapseAllFiles = useCallback(
@@ -1506,7 +1443,6 @@ export function ChangesSurface({
           cwd={cwd}
           desktopTreeVisible={desktopTreeVisible}
           diffMode={diffMode}
-          forge={forge}
           gitActions={gitActions}
           hasFiles={hasChanges}
           hideWhitespace={changesPreferences.hideWhitespace}
@@ -1514,9 +1450,9 @@ export function ChangesSurface({
           isMobile={isMobile}
           isRefreshing={isRefreshing}
           layout={changesPreferences.layout}
-          layoutToggleStyle={layoutToggleStyle}
           overflowToggleStyle={overflowToggleStyle}
           refreshSupported={refreshSupported}
+          selectedDiffStat={selectedDiffStat}
           serverId={serverId}
           treeToggleStyle={treeToggleStyle}
           workspaceId={workspaceId}
@@ -1555,11 +1491,6 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
   changesToolbar: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    flexShrink: 0,
-  },
-  changesToolbarMainRow: {
     minHeight: WORKSPACE_SECONDARY_HEADER_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
@@ -1567,6 +1498,9 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingLeft: theme.spacing[2],
     paddingRight: theme.spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    flexShrink: 0,
   },
   changesToolbarIdentity: {
     minWidth: 0,
@@ -1581,15 +1515,6 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "flex-end",
     gap: theme.spacing[1],
     flexShrink: 0,
-  },
-  mobileGitActionsRow: {
-    minHeight: WORKSPACE_SECONDARY_HEADER_HEIGHT,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    paddingHorizontal: theme.spacing[3],
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
   },
   diffModeTrigger: {
     flexDirection: "row",
