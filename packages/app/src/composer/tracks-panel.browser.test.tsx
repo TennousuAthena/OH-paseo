@@ -4,6 +4,16 @@ import { Pressable, Text } from "react-native";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComposerTrackPill, ComposerTrackRow } from "./tracks";
 
+vi.mock("react-native-reanimated", async () => {
+  const actual =
+    await vi.importActual<typeof import("react-native-reanimated")>("react-native-reanimated");
+  const { View } = await vi.importActual<typeof import("react-native")>("react-native");
+  return {
+    ...actual,
+    default: { ...actual.default, View },
+  };
+});
+
 // App sources compile against the classic JSX runtime, which expects React on the global.
 beforeEach(() => vi.stubGlobal("React", React));
 
