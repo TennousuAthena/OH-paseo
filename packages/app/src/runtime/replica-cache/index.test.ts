@@ -490,6 +490,63 @@ describe("ReplicaCache", () => {
     });
   });
 
+  it("restores workspace change request checks beside the directory cursor", async () => {
+    const githubRuntime = {
+      featuresEnabled: true,
+      pullRequest: {
+        number: 824,
+        url: "https://github.com/blank-dot-page/editor/pull/824",
+        title: "Cut realistic editor typing latency by two thirds",
+        state: "OPEN",
+        baseRefName: "main",
+        headRefName: "perf-editor-typing-latency",
+        isMerged: false,
+        checksStatus: "success" as const,
+        checks: [
+          {
+            name: "Check",
+            status: "success" as const,
+            url: "https://github.com/blank-dot-page/editor/actions/runs/824",
+          },
+        ],
+      },
+      error: null,
+    };
+    const storage = new MemoryStorage();
+    const writer = new ReplicaCache(storage);
+    writer.setHosts([SERVER_ID]);
+    seedSession();
+    useSessionStore.getState().setWorkspaces(
+      SERVER_ID,
+      new Map([
+        [
+          "workspace-1",
+          normalizeWorkspaceDescriptor({
+            ...workspace(),
+            forge: "github",
+            githubRuntime,
+          }),
+        ],
+      ]),
+    );
+    writer.writeDirectoryCheckpoint(SERVER_ID, {
+      workspaces: { generation: "daemon-generation", afterSeq: 9 },
+    });
+    await writer.flush();
+
+    useSessionStore.getState().clearSession(SERVER_ID);
+    const reader = new ReplicaCache(storage);
+    reader.setHosts([SERVER_ID]);
+    await reader.restore();
+
+    expect(
+      useSessionStore.getState().sessions[SERVER_ID]?.workspaces.get("workspace-1")?.githubRuntime,
+    ).toEqual(githubRuntime);
+    expect(reader.readDirectoryCheckpoint(SERVER_ID)).toEqual({
+      workspaces: { generation: "daemon-generation", afterSeq: 9 },
+    });
+  });
+
   it("restores every registered host directory before any host reconnects", async () => {
     const storage = new MemoryStorage();
     const writer = new ReplicaCache(storage);
