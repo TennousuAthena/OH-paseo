@@ -46,7 +46,6 @@ import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
 import {
   getIsElectronRuntime,
-  getIsElectronRuntimeMac,
   HEADER_INNER_HEIGHT,
   useIsCompactFormFactor,
 } from "@/constants/layout";
@@ -713,23 +712,17 @@ function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
   const { theme } = useUnistyles();
   const surface0 = theme.colors.surface0;
   const foreground = theme.colors.foreground;
-  const pathname = usePathname();
-  const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
-  const liftTrafficLights =
-    getIsElectronRuntimeMac() &&
-    isFocusModeEnabled &&
-    parseHostWorkspaceRouteFromPathname(pathname) !== null;
 
   useEffect(() => {
     if (!enabled || isNative) return;
     void updateDesktopWindowControls({
       backgroundColor: surface0,
       foregroundColor: foreground,
-      trafficLightOffsetY: liftTrafficLights ? -5 : 0.5,
+      trafficLightOffsetY: -5,
     }).catch((error) => {
       console.warn("[DesktopWindow] Failed to update window controls overlay", error);
     });
-  }, [enabled, surface0, foreground, liftTrafficLights]);
+  }, [enabled, surface0, foreground]);
 
   return null;
 }
