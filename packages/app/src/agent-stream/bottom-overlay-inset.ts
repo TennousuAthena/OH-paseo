@@ -1,11 +1,9 @@
 export function resolveBottomOverlayTailInset({
-  overlayHeight,
-  clearance,
+  requiredTailClearance,
   existingTailSpacing,
 }: {
-  overlayHeight: number;
-  clearance: number;
+  requiredTailClearance: number;
   existingTailSpacing: number;
 }): number {
-  return Math.max(0, overlayHeight + clearance - existingTailSpacing);
+  return Math.max(0, requiredTailClearance - existingTailSpacing);
 }

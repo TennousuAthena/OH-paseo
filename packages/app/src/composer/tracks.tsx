@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from "react";
-import { Pressable, Text, View, type LayoutChangeEvent } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
   MenuRoot,
@@ -19,25 +19,16 @@ import { COMPOSER_PILL_CLEARANCE, composerPillStyles } from "./pill-styles";
  *
  * Everything in it is a pill: a count you can read without opening anything, and a panel behind
  * it for the detail. Trackers used to be stacked cards, so every one of them pushed the composer
- * further down the pane; a row of pills costs one line no matter how many there are.
+ * further down the pane. The bar has at most one subagent pill and one task pill, so it remains
+ * one line and has deterministic geometry on every platform.
  *
  * The bar floats over the transcript with no background, so content remains visible underneath.
  * Its host gives the scroll viewport a small bottom inset only when the bar exists; that keeps
  * the final footer clear without turning the overlay into a layout band.
  */
-export function ComposerTrackBar({
-  children,
-  onHeightChange,
-}: {
-  children: ReactNode;
-  onHeightChange?: (height: number) => void;
-}): ReactElement {
-  const handleLayout = useCallback(
-    (event: LayoutChangeEvent) => onHeightChange?.(event.nativeEvent.layout.height),
-    [onHeightChange],
-  );
+export function ComposerTrackBar({ children }: { children: ReactNode }): ReactElement {
   return (
-    <View style={styles.bar} pointerEvents="box-none" onLayout={handleLayout}>
+    <View style={styles.bar} pointerEvents="box-none">
       <View style={styles.track} pointerEvents="box-none">
         {children}
       </View>
@@ -126,7 +117,6 @@ function ComposerTrackPillTrigger({
   const pillStyle = useCallback(
     ({ hovered, pressed, open: isOpen }: MenuTriggerState) => [
       composerPillStyles.body,
-      styles.pillSpacing,
       (hovered || pressed || isOpen) && composerPillStyles.bodyActive,
     ],
     [],
@@ -246,20 +236,17 @@ const styles = StyleSheet.create((theme) => ({
     bottom: 0,
     alignItems: "center",
     paddingHorizontal: theme.spacing[4],
+    paddingBottom: {
+      xs: COMPOSER_PILL_CLEARANCE.compact,
+      md: COMPOSER_PILL_CLEARANCE.wide,
+    },
   },
   track: {
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
     flexDirection: "row",
-    flexWrap: "wrap",
     alignItems: "center",
     gap: theme.spacing[1],
-  },
-  pillSpacing: {
-    marginBottom: {
-      xs: COMPOSER_PILL_CLEARANCE.compact,
-      md: COMPOSER_PILL_CLEARANCE.wide,
-    },
   },
   // The rail every panel row sits on: inset from the panel edge so the fill is a rounded block
   // inside it, and tall enough that revealing an action button cannot resize the row.

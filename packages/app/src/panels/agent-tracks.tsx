@@ -26,14 +26,12 @@ export const AgentTracks = memo(function AgentTracks({
   tasks,
   archiveFinishedStatus,
   onArchiveFinished,
-  onHeightChange,
 }: {
   serverId: string;
   subagentRows: SubagentRow[];
   tasks: TodoEntry[] | undefined;
   archiveFinishedStatus: ArchiveFinishedStatus;
   onArchiveFinished: () => void;
-  onHeightChange?: (height: number) => void;
 }): ReactElement | null {
   const { openTab } = usePaneContext();
   const canDetachSubagents = useSessionStore(
@@ -59,7 +57,7 @@ export const AgentTracks = memo(function AgentTracks({
   }
 
   return (
-    <ComposerTrackBar onHeightChange={onHeightChange}>
+    <ComposerTrackBar>
       <SubagentsTrack
         rows={subagentRows}
         onOpenSubagent={handleOpenSubagent}

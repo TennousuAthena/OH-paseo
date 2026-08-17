@@ -25,7 +25,7 @@ import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { SidebarCallout } from "@/components/sidebar-callout";
 import { Composer } from "@/composer";
-import { COMPOSER_PILL_MIN_HEIGHT, resolveComposerPillClearance } from "@/composer/pill-styles";
+import { resolveComposerTrackTailClearance } from "@/composer/pill-styles";
 import { getActiveMessageSubmissions } from "@/composer/submission/model";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -1213,7 +1213,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
 }) {
   const { t } = useTranslation();
   const isCompactFormFactor = useIsCompactFormFactor();
-  const composerPillClearance = resolveComposerPillClearance(isCompactFormFactor);
+  const composerTrackTailClearance = resolveComposerTrackTailClearance(isCompactFormFactor);
   const subagentRows = useSubagentsForParent({ serverId, parentAgentId: agentId });
   const tasks = useSessionStore((state): TodoEntry[] | undefined =>
     state.sessions[serverId]?.agentTasks.get(agentId),
@@ -1223,14 +1223,14 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     parentAgentId: agentId,
     rows: subagentRows,
   });
-  const showAgentTracks = hasAgentTracks({
-    subagentRows,
-    tasks,
-    archiveFinishedStatus: archiveFinishedSubagents.status,
-  });
-  const [agentTracksHeight, setAgentTracksHeight] = useState(
-    COMPOSER_PILL_MIN_HEIGHT + composerPillClearance,
-  );
+  const hasActiveComposer = !agentState.archivedAt && !isArchivingCurrentAgent;
+  const showAgentTracks =
+    hasActiveComposer &&
+    hasAgentTracks({
+      subagentRows,
+      tasks,
+      archiveFinishedStatus: archiveFinishedSubagents.status,
+    });
   const rawAgentInputDraft = useAgentInputDraft({
     draftKey: buildDraftStoreKey({
       serverId,
@@ -1305,8 +1305,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
           agent={effectiveAgent}
           routeBottomAnchorRequest={routeBottomAnchorRequest}
           hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
-          bottomOverlayHeight={showAgentTracks ? agentTracksHeight : 0}
-          bottomOverlayClearance={showAgentTracks ? composerPillClearance : 0}
+          bottomOverlayTailClearance={showAgentTracks ? composerTrackTailClearance : 0}
           toast={toastApi}
           onOpenWorkspaceFile={onOpenWorkspaceFile}
         />
@@ -1318,7 +1317,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
           tasks={tasks}
           archiveFinishedStatus={archiveFinishedSubagents.status}
           onArchiveFinished={archiveFinishedSubagents.archiveFinished}
-          onHeightChange={setAgentTracksHeight}
         />
       ) : null}
     </ReanimatedAnimated.View>
@@ -1372,8 +1370,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   agent,
   routeBottomAnchorRequest,
   hasAppliedAuthoritativeHistory,
-  bottomOverlayHeight,
-  bottomOverlayClearance,
+  bottomOverlayTailClearance,
   toast,
   onOpenWorkspaceFile,
 }: {
@@ -1383,8 +1380,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   agent: AgentScreenAgent;
   routeBottomAnchorRequest: RouteBottomAnchorRequest;
   hasAppliedAuthoritativeHistory: boolean;
-  bottomOverlayHeight: number;
-  bottomOverlayClearance: number;
+  bottomOverlayTailClearance: number;
   toast: ReturnType<typeof useToastHost>["api"];
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
@@ -1443,8 +1439,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
       pendingPermissions={pendingPermissions}
       routeBottomAnchorRequest={routeBottomAnchorRequest}
       isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
-      bottomOverlayHeight={bottomOverlayHeight}
-      bottomOverlayClearance={bottomOverlayClearance}
+      bottomOverlayTailClearance={bottomOverlayTailClearance}
       toast={toast}
       pendingMessageSubmissions={pendingMessageSubmissions}
       turnPresentation={turnPresentation}

@@ -11,6 +11,11 @@ export function resolveComposerPillClearance(isCompact: boolean): number {
   return isCompact ? COMPOSER_PILL_CLEARANCE.compact : COMPOSER_PILL_CLEARANCE.wide;
 }
 
+export function resolveComposerTrackTailClearance(isCompact: boolean): number {
+  const clearance = resolveComposerPillClearance(isCompact);
+  return clearance + COMPOSER_PILL_MIN_HEIGHT + clearance;
+}
+
 /** Shared visual contract for the compact pills immediately above the composer. */
 export const composerPillStyles = StyleSheet.create((theme) => ({
   body: {
