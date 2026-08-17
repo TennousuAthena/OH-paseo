@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { i18n } from "@/i18n/i18next";
 import type { PaseoSubagentRow, ProviderSubagentRow, SubagentRow } from "./select";
 import {
-  aggregateSubagentStatusBucket,
+  buildSubagentPillPresentation,
   buildSubagentRowPresentationData,
   countFinishedSubagents,
   resolveRowLabel,
@@ -23,28 +24,57 @@ function row(
   };
 }
 
-describe("aggregateSubagentStatusBucket", () => {
-  it("has no bucket without rows", () => {
-    expect(aggregateSubagentStatusBucket([])).toBeNull();
+describe("buildSubagentPillPresentation", () => {
+  // The real instance, so a label that names a key nobody added renders as that key and fails.
+  beforeAll(async () => {
+    if (!i18n.isInitialized) {
+      await i18n.init();
+    }
+    await i18n.changeLanguage("en");
   });
 
-  it("has no bucket when every child is done", () => {
-    expect(aggregateSubagentStatusBucket([row({ id: "a" }), row({ id: "b" })])).toBeNull();
+  const pill = (rows: SubagentRow[]) => buildSubagentPillPresentation(i18n.t, rows);
+
+  it("counts the children that are running, not the fan-out", () => {
+    expect(pill([row({ id: "a" }), row({ id: "b", status: "running" })])).toEqual({
+      label: "1 running",
+      statusBucket: "running",
+    });
   });
 
-  it("reports running when any child is running", () => {
+  it("counts every child in the state it reports", () => {
     expect(
-      aggregateSubagentStatusBucket([row({ id: "a" }), row({ id: "b", status: "running" })]),
-    ).toBe("running");
+      pill([
+        row({ id: "a", status: "running" }),
+        row({ id: "b", status: "running" }),
+        row({ id: "c" }),
+      ]),
+    ).toEqual({ label: "2 running", statusBucket: "running" });
   });
 
-  it("ranks a failed child above a running one", () => {
+  it("ranks a failed child above a running one, and counts the failures", () => {
     expect(
-      aggregateSubagentStatusBucket([
+      pill([
         row({ id: "a", status: "running" }),
         row({ id: "b", status: "error", requiresAttention: true }),
+        row({ id: "c", status: "error" }),
       ]),
-    ).toBe("failed");
+    ).toEqual({ label: "2 failed", statusBucket: "failed" });
+  });
+
+  it("names what it opens once every child is done", () => {
+    expect(pill([row({ id: "a" }), row({ id: "b" })])).toEqual({
+      label: "2 subagents",
+      statusBucket: null,
+    });
+  });
+
+  it("keeps the singular for a lone child", () => {
+    expect(pill([row({ id: "a" })])).toEqual({ label: "1 subagent", statusBucket: null });
+  });
+
+  it("has nothing to mark without rows", () => {
+    expect(pill([])).toEqual({ label: "0 subagents", statusBucket: null });
   });
 });
 

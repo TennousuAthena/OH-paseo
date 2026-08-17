@@ -16,7 +16,7 @@ import type { Theme } from "@/styles/theme";
 import type { SubagentRow } from "./select";
 import type { ArchiveFinishedStatus } from "./use-archive-finished";
 import {
-  aggregateSubagentStatusBucket,
+  buildSubagentPillPresentation,
   buildSubagentRowPresentationData,
   countFinishedSubagents,
 } from "./track-presentation";
@@ -71,19 +71,16 @@ export function SubagentsTrack({
     return null;
   }
 
-  const pillLabel =
-    rows.length === 1
-      ? t("subagents.pillLabelOne")
-      : t("subagents.pillLabelMany", { count: rows.length });
+  const pill = buildSubagentPillPresentation(t, rows);
   const finishedCount = countFinishedSubagents(rows);
   const showArchiveFinished = finishedCount > 0 || isArchivingFinished || isArchiveFinishedFailed;
 
   return (
     <ComposerTrackPill
       testID="subagents-track-header"
-      label={pillLabel}
+      label={pill.label}
       panelTitle={t("subagents.title")}
-      statusBucket={aggregateSubagentStatusBucket(rows)}
+      statusBucket={pill.statusBucket}
     >
       {rows.map((row) => (
         <SubagentsTrackRow
