@@ -22,10 +22,22 @@ import {
   setupDeterministicPrompt,
 } from "../support/helpers/terminal-perf";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
+import {
+  expectTerminalOutputContains,
+  seedTerminalProfiles,
+  type TerminalProfile,
+} from "../support/helpers/new-workspace-launch";
 
 // ─── Shared state ──────────────────────────────────────────────────────────
 
 let workspace: SeededWorkspace;
+
+const EMPTY_PROMPT_PROFILE: TerminalProfile = {
+  id: "e2e-empty-prompt",
+  name: "Empty Prompt",
+  command: "/bin/sh",
+  args: ["-c", 'echo prompt-args: "$#"; sleep 10', "profile-name", "{{{prompt}}}"],
+};
 
 test.beforeAll(async () => {
   workspace = await seedWorkspace({ repoPrefix: "launcher-e2e-" });
@@ -135,6 +147,23 @@ test.describe("Tab creation", () => {
     const tabsAfter = await getTabTestIds(page);
     const terminalTabs = tabsAfter.filter((id) => id.includes("terminal"));
     expect(terminalTabs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("launching a profile from the New tab menu drops its empty prompt argument", async ({
+    page,
+  }) => {
+    test.setTimeout(45_000);
+    const profileSeed = await seedTerminalProfiles([EMPTY_PROMPT_PROFILE]);
+
+    try {
+      await gotoWorkspace(page, workspace.workspaceId);
+      await page.getByTestId("workspace-new-tab-menu-trigger").filter({ visible: true }).click();
+      await page.getByRole("menuitem", { name: EMPTY_PROMPT_PROFILE.name }).click();
+
+      await expectTerminalOutputContains(page, "prompt-args: 0");
+    } finally {
+      await profileSeed.restore();
+    }
   });
 
   test("tab bar shows action buttons per pane", async ({ page }) => {

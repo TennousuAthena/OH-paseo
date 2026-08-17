@@ -180,13 +180,10 @@ import {
   buildSettingsHostRoute,
   buildSettingsHostSectionRoute,
 } from "@/utils/host-routes";
-import {
-  useWorkspaceTerminals,
-  type TerminalProfileInput,
-} from "@/screens/workspace/terminals/use-workspace-terminals";
+import { useWorkspaceTerminals } from "@/screens/workspace/terminals/use-workspace-terminals";
+import type { TerminalProfile } from "@getpaseo/protocol/messages";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import {
-  resolveTerminalProfileLaunch,
   getTerminalProfileIcon,
   resolveTerminalProfiles,
 } from "@getpaseo/protocol/terminal-profiles";
@@ -930,7 +927,7 @@ interface WorkspaceHeaderMenuProps {
   menuSettingsIcon: ReactElement;
   onCreateDraftTab: () => void;
   onCreateTerminal: () => void;
-  onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
+  onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
   onCreateBrowser: () => void;
   onOpenImportSheet: () => void;
   onCopyWorkspacePath: () => void;
@@ -940,7 +937,7 @@ interface WorkspaceHeaderMenuProps {
 interface HeaderMenuProfileItemProps {
   profile: { id: string; name: string; command: string; args?: string[]; icon?: string };
   disabled: boolean;
-  onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
+  onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
 }
 
 function HeaderMenuProfileItem({
@@ -949,7 +946,7 @@ function HeaderMenuProfileItem({
   onCreateTerminalWithProfile,
 }: HeaderMenuProfileItemProps) {
   const handleSelect = useCallback(() => {
-    onCreateTerminalWithProfile(resolveTerminalProfileLaunch(profile, ""));
+    onCreateTerminalWithProfile(profile);
   }, [onCreateTerminalWithProfile, profile]);
 
   const icon = getTerminalProfileIcon(profile);
@@ -1196,7 +1193,7 @@ interface WorkspaceHeaderTitleBarProps {
   menuSettingsIcon: ReactElement;
   onCreateDraftTab: () => void;
   onCreateTerminal: () => void;
-  onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
+  onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
   onCreateBrowser: () => void;
   onOpenImportSheet: () => void;
   onCopyWorkspacePath: () => void;
@@ -2604,7 +2601,7 @@ function WorkspaceScreenContent({
   const handleCreateTerminal = useStableEvent(createTerminal);
 
   const handleCreateTerminalWithProfile = useCallback(
-    (profile: TerminalProfileInput) => {
+    (profile: TerminalProfile) => {
       createTerminal({ profile });
     },
     [createTerminal],

@@ -96,7 +96,7 @@ import {
   resolveTerminalProfiles,
 } from "@getpaseo/protocol/terminal-profiles";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
-import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
+import type { TerminalProfile } from "@getpaseo/protocol/messages";
 import { TerminalProfileIcon } from "@/components/terminal-profile-icon";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
@@ -261,7 +261,7 @@ function TabLabelMeasurement({
 interface TerminalProfileMenuItemProps {
   profile: { id: string; name: string; command: string; args?: string[]; icon?: string };
   disabled?: boolean;
-  onLaunch: (profile: TerminalProfileInput) => void;
+  onLaunch: (profile: TerminalProfile) => void;
 }
 
 function TerminalProfileMenuItem({ profile, disabled, onLaunch }: TerminalProfileMenuItemProps) {
@@ -286,7 +286,7 @@ interface TabTargetLauncherOptions {
   onOpenChanges: () => void;
   onOpenFiles: () => void;
   onOpenPullRequest: () => void;
-  onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
+  onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
 }
 
 interface WorkspaceNewTabButtonProps extends TabTargetLauncherOptions {
@@ -660,7 +660,7 @@ interface WorkspaceDesktopTabsRowProps {
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
   onCreateDraftTab: (input: { paneId?: string }) => void;
-  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfileInput }) => void;
+  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfile }) => void;
   onCreateBrowserTab: (input: { paneId?: string }) => void;
   showCreateBrowserTab?: boolean;
   disableCreateTerminal?: boolean;
@@ -1396,7 +1396,7 @@ function ResolvedWorkspaceDesktopTabsRow({
   }, [onCreateTerminalTab, paneId]);
 
   const handleCreateTerminalWithProfile = useCallback(
-    (profile: TerminalProfileInput) => {
+    (profile: TerminalProfile) => {
       onCreateTerminalTab({ paneId, profile });
     },
     [onCreateTerminalTab, paneId],
