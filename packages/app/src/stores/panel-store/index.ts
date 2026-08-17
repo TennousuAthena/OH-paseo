@@ -84,6 +84,7 @@ export interface PanelState {
   // by full uncompressed dir path, so folders default to expanded and new
   // folders stay expanded as the diff changes.
   diffCollapsedFoldersByWorkspace: Record<string, string[]>;
+  collapsedFilePathsByWorkspace: Record<string, string[]>;
   sidebarWidth: number;
   explorerWidth: number;
   explorerSortOption: SortOption;
@@ -111,6 +112,7 @@ export interface PanelState {
   setExplorerTabForCheckout: (params: ExplorerCheckoutContext & { tab: ExplorerTab }) => void;
   setExpandedPathsForWorkspace: (workspaceKey: string, paths: ExpandedPathsUpdate) => void;
   setDiffCollapsedFoldersForWorkspace: (workspaceKey: string, dirPaths: string[]) => void;
+  setCollapsedFilePathsForWorkspace: (workspaceKey: string, paths: string[]) => void;
   activateExplorerTabForCheckout: (checkout: ExplorerCheckoutContext) => void;
   setSidebarWidth: (width: number) => void;
   setExplorerWidth: (width: number) => void;
@@ -147,6 +149,7 @@ export const usePanelStore = create<PanelState>()(
       explorerTabByCheckout: {},
       expandedPathsByWorkspace: {},
       diffCollapsedFoldersByWorkspace: {},
+      collapsedFilePathsByWorkspace: {},
       sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
       explorerWidth: DEFAULT_EXPLORER_SIDEBAR_WIDTH,
       explorerSortOption: "name",
@@ -280,6 +283,13 @@ export const usePanelStore = create<PanelState>()(
             [workspaceKey]: dirPaths,
           },
         })),
+      setCollapsedFilePathsForWorkspace: (workspaceKey, paths) =>
+        set((state) => ({
+          collapsedFilePathsByWorkspace: {
+            ...state.collapsedFilePathsByWorkspace,
+            [workspaceKey]: paths,
+          },
+        })),
       activateExplorerTabForCheckout: (checkout) =>
         set((state) => ({
           explorerTab: resolveExplorerTabForCheckout({
@@ -307,6 +317,7 @@ export const usePanelStore = create<PanelState>()(
         explorerTabByCheckout: state.explorerTabByCheckout,
         expandedPathsByWorkspace: state.expandedPathsByWorkspace,
         diffCollapsedFoldersByWorkspace: state.diffCollapsedFoldersByWorkspace,
+        collapsedFilePathsByWorkspace: state.collapsedFilePathsByWorkspace,
         sidebarWidth: state.sidebarWidth,
         explorerWidth: state.explorerWidth,
         explorerSortOption: state.explorerSortOption,

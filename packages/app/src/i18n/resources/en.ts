@@ -870,6 +870,8 @@ export const en = {
         wrapLongLines: "Wrap long lines",
         collapseAllFolders: "Collapse all folders",
         expandAllFolders: "Expand all folders",
+        collapseAllFiles: "Collapse all files",
+        expandAllFiles: "Expand all files",
         refreshing: "Refreshing",
         refresh: "Refresh",
         refreshState: "Refresh git and {{brand}} state",

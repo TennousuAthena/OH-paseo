@@ -853,6 +853,8 @@ export const zhCN: TranslationResources = {
         wrapLongLines: "自动换行长行",
         collapseAllFolders: "折叠所有文件夹",
         expandAllFolders: "展开所有文件夹",
+        collapseAllFiles: "折叠所有文件",
+        expandAllFiles: "展开所有文件",
         refreshing: "正在刷新",
         refresh: "刷新",
         refreshState: "刷新 git 和 {{brand}} 状态",

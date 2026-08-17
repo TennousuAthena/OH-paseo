@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import { buildHostWorkspaceRoute, buildSettingsSectionRoute } from "../../src/utils/host-routes";
 import { test, expect } from "../support/fixtures";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
@@ -293,6 +293,27 @@ test("changes file actions open below the right-click without a reserved kebab",
   await expect(page.getByTestId("workspace-tab-file_src/use-mounted-tab-set.ts")).toBeVisible();
 });
 
+test("canvas file headers select without toggling for context menu and long press", async ({
+  page,
+}) => {
+  const workspace = await createWorkspaceWithMountedTabDiff({ includeDeletedFile: true });
+  await useUnwrappedDiffLines(page);
+  await openWorkspaceChanges(page, workspace);
+
+  const firstFile = page.getByTestId("diff-file-0-toggle");
+  const deletedFile = page.getByTestId("diff-file-1-toggle");
+  await deletedFile.click({ button: "right" });
+  await expect(deletedFile).toHaveAttribute("aria-selected", "true");
+  await expect(deletedFile).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("Copy path")).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await longPressFileHeader(page, firstFile);
+  await expect(firstFile).toHaveAttribute("aria-selected", "true");
+  await expect(deletedFile).toHaveAttribute("aria-selected", "false");
+  await expect(firstFile).toHaveAttribute("aria-expanded", "true");
+});
+
 test("changes context menus duplicate files and folders", async ({ page }) => {
   const workspace = await createWorkspaceWithMountedTabDiff();
   await useUnwrappedDiffLines(page);
@@ -487,6 +508,10 @@ test("Changes keeps review navigation and controls inside its workspace tab", as
   await expect(page.getByTestId("changes-primary-cta")).toContainText("Commit");
   await expect(visiblePanel.getByTestId("diff-file-0-body")).toBeVisible();
   await visiblePanel.getByTestId("diff-file-0-toggle").click();
+  await expect(visiblePanel.getByTestId("diff-file-0-body")).not.toBeVisible();
+  await visiblePanel.getByRole("button", { name: "Collapse all files" }).click();
+  await expect(visiblePanel.getByRole("button", { name: "Expand all files" })).toBeVisible();
+  await visiblePanel.getByRole("button", { name: "Expand all files" }).click();
   await expect(visiblePanel.getByTestId("diff-file-0-body")).toBeVisible();
   const workingDiffLayoutToggle = visiblePanel.getByRole("button", {
     name: "Switch to side-by-side diff",
@@ -502,7 +527,7 @@ test("Changes keeps review navigation and controls inside its workspace tab", as
   await visiblePanel.getByRole("button", { name: "Diff options" }).click();
   await expect(page.getByText("Scroll long lines", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: /all files/i })).toHaveCount(0);
+  await expect(visiblePanel.getByRole("button", { name: "Collapse all files" })).toBeVisible();
   await expect(page.getByTestId(/^workspace-working-diff-close-/)).toHaveCount(1);
 
   await writeFile(path.join(workspace.repoPath, "src/use-mounted-tab-set.ts"), BEFORE);
@@ -611,14 +636,230 @@ test("changes diff applies code size changes to gutter and code typography", asy
   await useCodeFont(page, 12);
   await useUnwrappedDiffLines(page);
   await openWorkspaceChanges(page, workspace);
+  const before = await readDiffTypographyGeometry(page);
 
-  await changeCodeFontSizeFromSettings(page, 18);
+  await changeCodeTypographyFromSettings(page, {
+    fontSize: 18,
+    fontFamily: "Courier New, Courier, monospace",
+  });
   await returnToWorkspaceChanges(page);
   await expectStoredCodeFontSize(page, 18);
   await scrollToLowerUnwrappedDiffRows(page);
 
   await expectDiffCodeFontSize(page, 18);
+  await expectDiffCodeFontFamily(page, "Courier");
   await expectVisibleDiffRowsShareTypography(page);
+  const after = await readDiffTypographyGeometry(page);
+  expect(after.horizontalExtent).toBeGreaterThan(before.horizontalExtent);
+  expect(after.canvasPixels).not.toEqual(before.canvasPixels);
+});
+
+test("canvas diff does not commit geometry before configured fonts are ready", async ({ page }) => {
+  const workspace = await createWorkspaceWithMountedTabDiff();
+  await holdBrowserFontLoads(page);
+  await useUnwrappedDiffLines(page);
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.id));
+  await waitForWorkspaceTabsVisible(page);
+  await openChangesPanel(page);
+
+  await expect(page.getByTestId("git-diff-canvas")).toBeVisible();
+  await expect(page.getByTestId("diff-file-0-body")).toHaveCount(0);
+  await releaseBrowserFontLoads(page);
+  await expectExpandedMountedTabDiff(page);
+});
+
+test("canvas diff creates, edits, and deletes an inline review without DOM code rows", async ({
+  page,
+}) => {
+  const workspace = await createWorkspaceWithMountedTabDiff();
+  await useUnwrappedDiffLines(page);
+  await openWorkspaceChanges(page, workspace);
+
+  await startReviewOnFirstChangedLine(page);
+  await cancelInlineReview(page);
+  await startReviewOnFirstChangedLine(page);
+  await saveInlineReview(page, "Please keep this branch explicit");
+  await editInlineReview(page, "Please keep this branch named explicitly");
+  await deleteInlineReview(page);
+
+  await expect(page.locator('[data-testid^="diff-code-row-"]')).toHaveCount(0);
+});
+
+test("split canvas creates a review on the changed side and keeps it in that column", async ({
+  page,
+}) => {
+  const workspace = await createWorkspaceWithMountedTabDiff();
+  await configureDiffPresentation(page, { layout: "split", wrapLines: false });
+  await openWorkspaceChanges(page, workspace);
+  await startReviewOnFirstChangedLine(page, "right");
+  const [editor, body] = await Promise.all([
+    page.getByTestId("inline-review-editor").boundingBox(),
+    page.getByTestId("diff-file-0-body").boundingBox(),
+  ]);
+  expect(editor).not.toBeNull();
+  expect(body).not.toBeNull();
+  expect(editor!.x).toBeGreaterThanOrEqual(body!.x + body!.width / 2);
+  await cancelInlineReview(page);
+});
+
+test("scrolling clears the hovered review affordance", async ({ page }) => {
+  const workspace = await createWorkspaceWithMountedTabDiff();
+  await useUnwrappedDiffLines(page);
+  await openWorkspaceChanges(page, workspace);
+
+  await hoverFirstChangedGutter(page);
+  await expect(page.getByRole("button", { name: "Add review comment" })).toBeVisible();
+  await page.getByTestId("git-diff-scroll").evaluate((element) => {
+    element.scrollTop += 80;
+    element.dispatchEvent(new Event("scroll", { bubbles: false }));
+  });
+
+  await expect(page.getByRole("button", { name: "Add review comment" })).toHaveCount(0);
+});
+
+test("canvas diff copies a dragged character selection without opening a review", async ({
+  context,
+  page,
+}) => {
+  const workspace = await createWorkspaceWithExactSelectionDiff("ABCDEFGHIJ");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await useUnwrappedDiffLines(page);
+  await openSelectionWorkspaceChanges(page, workspace);
+
+  await dragExactAddedText(page, { startOffset: 2, endOffset: 8 });
+  await page.keyboard.press("ControlOrMeta+C");
+
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("CDEFGH");
+  await expect(page.getByTestId("inline-review-editor")).toHaveCount(0);
+});
+
+test("canvas diff copies exact multiline text forwards and backwards", async ({
+  context,
+  page,
+}) => {
+  const workspace = await createWorkspaceWithExactSelectionDiff("ABCDE\nFGHIJ");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await useUnwrappedDiffLines(page);
+  await openSelectionWorkspaceChanges(page, workspace);
+  for (const [start, end] of [
+    [
+      { line: 0, offset: 2 },
+      { line: 1, offset: 3 },
+    ],
+    [
+      { line: 1, offset: 3 },
+      { line: 0, offset: 2 },
+    ],
+  ] as const) {
+    await dragAddedTextRange(page, { lines: ["ABCDE", "FGHIJ"], start, end });
+    await page.keyboard.press("ControlOrMeta+C");
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("CDE\nFGH");
+  }
+});
+
+test("canvas diff copies only the selected split side", async ({ context, page }) => {
+  const lines = ["RIGHT-ONE", "RIGHT-TWO"];
+  const workspace = await createWorkspaceWithExactSelectionDiff(lines.join("\n"));
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await configureDiffPresentation(page, { layout: "split", wrapLines: false });
+  await openSelectionWorkspaceChanges(page, workspace);
+  const before = await readSelectionPaintSamples(page, "right");
+  await dragAddedTextRange(page, {
+    lines,
+    side: "right",
+    start: { line: 0, offset: 1 },
+    end: { line: 1, offset: 5 },
+  });
+  await page.keyboard.press("ControlOrMeta+C");
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("IGHT-ONE\nRIGHT");
+  const after = await readSelectionPaintSamples(page, "right");
+  expect(after.gutter).toEqual(before.gutter);
+  expect(after.opposite).toEqual(before.opposite);
+  expect(after.code).not.toEqual(before.code);
+});
+
+test("canvas diff copies exact wrapped fragments", async ({ context, page }) => {
+  const content = "abcdefghijklmnopqrstuvwxyz".repeat(8);
+  const workspace = await createWorkspaceWithExactSelectionDiff(content);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await configureDiffPresentation(page, { layout: "unified", wrapLines: true });
+  await openSelectionWorkspaceChanges(page, workspace);
+  await dragAddedTextRange(page, {
+    lines: [content],
+    wrapped: true,
+    start: { line: 0, offset: 35 },
+    end: { line: 0, offset: 95 },
+  });
+  await page.keyboard.press("ControlOrMeta+C");
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(content.slice(35, 95));
+});
+
+test("horizontally scrolled selection copies exactly and does not paint the gutter", async ({
+  context,
+  page,
+}) => {
+  const content = "0123456789".repeat(50);
+  const workspace = await createWorkspaceWithExactSelectionDiff(content);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await useUnwrappedDiffLines(page);
+  await openSelectionWorkspaceChanges(page, workspace);
+  const horizontalOffset = await horizontallyScrollFirstFile(page, 320);
+  const before = await readSelectionPaintSamples(page);
+  await dragAddedTextRange(page, {
+    lines: [content],
+    horizontalOffset,
+    start: { line: 0, offset: 48 },
+    end: { line: 0, offset: 58 },
+  });
+  await page.keyboard.press("ControlOrMeta+C");
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(content.slice(48, 58));
+  const after = await readSelectionPaintSamples(page);
+  expect(after.gutter).toEqual(before.gutter);
+  expect(after.code).not.toEqual(before.code);
+});
+
+test("dragging within one wide grapheme or outside its cell never opens a review", async ({
+  page,
+}) => {
+  const workspace = await createWorkspaceWithExactSelectionDiff("👨‍👩‍👧‍👦tail");
+  await useCodeFont(page, 40);
+  await useUnwrappedDiffLines(page);
+  await openSelectionWorkspaceChanges(page, workspace);
+
+  await dragWithinFirstAddedGrapheme(page);
+  await expect(page.getByTestId("inline-review-editor")).toHaveCount(0);
+
+  await dragFirstAddedLineIntoHeader(page);
+  await expect(page.getByTestId("inline-review-editor")).toHaveCount(0);
+
+  const body = await page.getByTestId("diff-file-0-body").boundingBox();
+  if (!body) throw new Error("Expanded diff body has no bounds");
+  await page.mouse.click(body.x + 60, body.y + 90, { button: "right" });
+  await expect(page.getByTestId("inline-review-editor")).toHaveCount(0);
+});
+
+test("collapsing and expanding restores the real horizontal scroll offset", async ({ page }) => {
+  const workspace = await createWorkspaceWithExactSelectionDiff("x".repeat(400));
+  await useUnwrappedDiffLines(page);
+  await openSelectionWorkspaceChanges(page, workspace);
+
+  const retainedOffset = await horizontallyScrollFirstFile(page, 320);
+  await page.getByTestId("diff-file-0-toggle").click();
+  await expect(page.getByTestId("diff-file-0-horizontal-scroll")).toHaveCount(0);
+  await page.getByTestId("diff-file-0-toggle").click();
+
+  await expect
+    .poll(() =>
+      page.getByTestId("diff-file-0-horizontal-scroll").evaluate((element) => element.scrollLeft),
+    )
+    .toBe(retainedOffset);
 });
 
 async function useCodeFont(page: Page, codeFontSize: number): Promise<void> {
@@ -647,20 +888,58 @@ async function useCodeFont(page: Page, codeFontSize: number): Promise<void> {
 }
 
 async function useUnwrappedDiffLines(page: Page): Promise<void> {
+  await configureDiffPresentation(page, { layout: "unified", wrapLines: false });
+}
+
+async function configureDiffPresentation(
+  page: Page,
+  requestedPresentation: { layout: "unified" | "split"; wrapLines: boolean },
+): Promise<void> {
   await page.addInitScript(
-    ({ preferencesKey }) => {
+    ({ preferencesKey, presentation }) => {
       localStorage.setItem(
         preferencesKey,
         JSON.stringify({
-          layout: "unified",
+          layout: presentation.layout,
           desktopTreeVisible: false,
-          wrapLines: false,
+          wrapLines: presentation.wrapLines,
           hideWhitespace: false,
         }),
       );
     },
-    { preferencesKey: CHANGES_PREFERENCES_KEY },
+    { preferencesKey: CHANGES_PREFERENCES_KEY, presentation: requestedPresentation },
   );
+}
+
+async function holdBrowserFontLoads(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const fontSet = document.fonts;
+    const originalLoad = fontSet.load.bind(fontSet);
+    const pending: Array<() => void> = [];
+    Object.defineProperty(fontSet, "load", {
+      configurable: true,
+      value(font: string, text?: string) {
+        return new Promise<FontFace[]>((resolve, reject) => {
+          pending.push(() => {
+            originalLoad(font, text).then(resolve, reject);
+          });
+        });
+      },
+    });
+    Object.assign(window, {
+      __releasePaseoDiffFontLoads() {
+        for (const release of pending.splice(0)) release();
+      },
+    });
+  });
+}
+
+async function releaseBrowserFontLoads(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __releasePaseoDiffFontLoads: () => void }
+    ).__releasePaseoDiffFontLoads();
+  });
 }
 
 async function expectFlatFileList(page: Page): Promise<void> {
@@ -670,79 +949,27 @@ async function expectFlatFileList(page: Page): Promise<void> {
 }
 
 async function expectDiffCodeFontSize(page: Page, fontSize: number): Promise<void> {
-  const visibleCodeText = page
-    .getByTestId(/^diff-code-text-/)
-    .filter({ visible: true })
-    .first();
+  const canvas = page.getByTestId("git-diff-canvas");
   await expect
     .poll(async () => {
-      return visibleCodeText.evaluate((text) => Number.parseFloat(getComputedStyle(text).fontSize));
+      return canvas.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
     })
     .toBe(fontSize);
 }
 
-async function expectVisibleDiffRowsShareTypography(page: Page): Promise<void> {
-  const geometry = await readVisibleDiffRowGeometry(page);
-  expect(geometry.mismatchedTypography, JSON.stringify(geometry, null, 2)).toEqual([]);
+async function expectDiffCodeFontFamily(page: Page, fontFamily: string): Promise<void> {
+  await expect
+    .poll(() =>
+      page
+        .getByTestId("git-diff-canvas")
+        .evaluate((element) => getComputedStyle(element).fontFamily),
+    )
+    .toContain(fontFamily);
 }
 
-async function readVisibleDiffRowGeometry(page: Page): Promise<{
-  mismatchedTypography: { index: number; gutterLineHeight: number; codeLineHeight: number }[];
-  rows: {
-    index: number;
-    gutterTop: number;
-    codeTop: number;
-    gutterLineHeight: number;
-    codeLineHeight: number;
-  }[];
-}> {
-  return page.locator("body").evaluate(({ ownerDocument }) => {
-    const root = ownerDocument.querySelector('[data-testid="diff-file-0-body"]');
-    if (!root) {
-      throw new Error("Expanded diff body is not mounted");
-    }
-
-    const readRows = (prefix: string, textPrefix: string) =>
-      Array.from(root.querySelectorAll<HTMLElement>(`[data-testid^="${prefix}"]`)).map((row) => {
-        const testId = row.getAttribute("data-testid") ?? "";
-        const index = Number(testId.slice(prefix.length));
-        const rect = row.getBoundingClientRect();
-        const text = root.querySelector<HTMLElement>(`[data-testid="${textPrefix}${index}"]`);
-        const lineHeight = text ? Number.parseFloat(getComputedStyle(text).lineHeight) : 0;
-        return { index, top: rect.top, height: rect.height, lineHeight };
-      });
-
-    const gutters = new Map(
-      readRows("diff-gutter-row-", "diff-gutter-text-").map((row) => [row.index, row]),
-    );
-    const codes = readRows("diff-code-row-", "diff-code-text-");
-    const rows = codes
-      .map((code) => {
-        const gutter = gutters.get(code.index);
-        if (!gutter) {
-          throw new Error(`Missing gutter row ${code.index}`);
-        }
-        return {
-          index: code.index,
-          gutterTop: gutter.top,
-          codeTop: code.top,
-          gutterLineHeight: gutter.lineHeight,
-          codeLineHeight: code.lineHeight,
-        };
-      })
-      .filter((row) => row.gutterTop >= 0 && row.codeTop >= 0);
-
-    return {
-      mismatchedTypography: rows
-        .filter((row) => Math.abs(row.gutterLineHeight - row.codeLineHeight) > 0.5)
-        .map((row) => ({
-          index: row.index,
-          gutterLineHeight: row.gutterLineHeight,
-          codeLineHeight: row.codeLineHeight,
-        })),
-      rows,
-    };
-  });
+async function expectVisibleDiffRowsShareTypography(page: Page): Promise<void> {
+  await expect(page.getByTestId("git-diff-canvas")).toBeVisible();
+  await expect(page.locator('[data-testid^="diff-code-row-"]')).toHaveCount(0);
 }
 
 async function createWorkspaceWithMountedTabDiff(
@@ -798,12 +1025,37 @@ async function createWorkspaceWithMountedTabDiff(
   return { id: createdWorkspace.workspace.id, repoPath: repo.path };
 }
 
+async function createWorkspaceWithExactSelectionDiff(content: string): Promise<DirtyWorkspace> {
+  const repo = await createTempGitRepo("changes-canvas-selection-", {
+    files: [{ path: "src/selection.ts", content: "" }],
+  });
+  await writeFile(path.join(repo.path, "src/selection.ts"), `${content}\n`);
+  const client = await connectSeedClient();
+  cleanupTasks.push({
+    run: async () => {
+      await client.close().catch(() => undefined);
+      await repo.cleanup().catch(() => undefined);
+    },
+  });
+  const created = await client.createWorkspace({ source: { kind: "directory", path: repo.path } });
+  if (!created.workspace) throw new Error(created.error ?? "Failed to create selection workspace");
+  return { id: created.workspace.id, repoPath: repo.path };
+}
+
 async function openWorkspaceChanges(page: Page, workspace: DirtyWorkspace): Promise<void> {
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.id));
   await waitForWorkspaceTabsVisible(page);
   await openChangesInVisibleExplorer(page);
-  await page.getByTestId("diff-file-0").click();
+  await expectExpandedMountedTabDiff(page);
+}
+
+async function openSelectionWorkspaceChanges(page: Page, workspace: DirtyWorkspace): Promise<void> {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.id));
+  await waitForWorkspaceTabsVisible(page);
+  await openChangesPanel(page);
+  await expect(page.getByText("selection.ts")).toBeVisible({ timeout: 30_000 });
   await expectExpandedMountedTabDiff(page);
 }
 
@@ -814,19 +1066,23 @@ async function openChangesInVisibleExplorer(page: Page): Promise<void> {
 
 async function expectExpandedMountedTabDiff(page: Page): Promise<void> {
   await expect(page.getByTestId("diff-file-0-body")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("function createInitialMountedTabIds")).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page.getByTestId("git-diff-canvas")).toBeVisible({ timeout: 30_000 });
 }
 
-async function changeCodeFontSizeFromSettings(page: Page, codeFontSize: number): Promise<void> {
+async function changeCodeTypographyFromSettings(
+  page: Page,
+  typography: { fontSize: number; fontFamily: string },
+): Promise<void> {
   await page.getByTestId("sidebar-settings").click();
   await expect(page).toHaveURL(new RegExp(`${buildSettingsSectionRoute("general")}|/settings$`));
   await page.getByRole("button", { name: "Appearance" }).click();
-  await page.getByLabel("Code font size").fill(String(codeFontSize));
+  await page.getByLabel("Code font family").fill(typography.fontFamily);
+  await page.getByLabel("Code font family").press("Enter");
+  await page.getByLabel("Code font size").fill(String(typography.fontSize));
   await page.getByLabel("Code font size").press("Enter");
-  await expect(page.getByLabel("Code font size")).toHaveValue(String(codeFontSize));
-  await expectStoredCodeFontSize(page, codeFontSize);
+  await expect(page.getByLabel("Code font family")).toHaveValue(typography.fontFamily);
+  await expect(page.getByLabel("Code font size")).toHaveValue(String(typography.fontSize));
+  await expectStoredCodeFontSize(page, typography.fontSize);
 }
 
 async function expectStoredCodeFontSize(page: Page, codeFontSize: number): Promise<void> {
@@ -844,6 +1100,245 @@ async function expectStoredCodeFontSize(page: Page, codeFontSize: number): Promi
     .toBe(codeFontSize);
 }
 
+async function startReviewOnFirstChangedLine(
+  page: Page,
+  side: "unified" | "right" = "unified",
+): Promise<void> {
+  const body = page.getByTestId("diff-file-0-body");
+  const canvas = page.getByTestId("git-diff-canvas");
+  const [bodyBounds, fontSize] = await Promise.all([
+    body.boundingBox(),
+    canvas.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+  ]);
+  if (!bodyBounds) throw new Error("Expanded diff body has no bounds");
+  const lineHeight = Math.round(fontSize * 1.5);
+  const columnLeft = side === "right" ? bodyBounds.x + bodyBounds.width / 2 : bodyBounds.x;
+  await page.mouse.click(columnLeft + 20, bodyBounds.y + lineHeight * 1.5);
+  await expect(page.getByTestId("inline-review-editor")).toBeVisible();
+}
+
+async function hoverFirstChangedGutter(page: Page): Promise<void> {
+  const body = page.getByTestId("diff-file-0-body");
+  const canvas = page.getByTestId("git-diff-canvas");
+  const [bodyBounds, fontSize] = await Promise.all([
+    body.boundingBox(),
+    canvas.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+  ]);
+  if (!bodyBounds) throw new Error("Expanded diff body has no bounds");
+  const lineHeight = Math.round(fontSize * 1.5);
+  const gutterWidth = 2 * Math.ceil(fontSize * 0.62) + 12;
+  await page.mouse.move(bodyBounds.x + gutterWidth, bodyBounds.y + lineHeight * 1.5);
+}
+
+async function saveInlineReview(page: Page, body: string): Promise<void> {
+  await page.getByTestId("inline-review-editor-input").fill(body);
+  await page.getByTestId("inline-review-editor-save").click();
+  await expect(page.getByText(body, { exact: true })).toBeVisible();
+}
+
+async function cancelInlineReview(page: Page): Promise<void> {
+  await page.getByTestId("inline-review-editor-cancel").click();
+  await expect(page.getByTestId("inline-review-editor")).toHaveCount(0);
+}
+
+async function editInlineReview(page: Page, body: string): Promise<void> {
+  await page.getByTestId(/^review-comment-edit-/).click();
+  await expect(page.getByTestId("inline-review-editor")).toBeVisible();
+  await page.getByTestId("inline-review-editor-input").fill(body);
+  await page.getByTestId("inline-review-editor-save").click();
+  await expect(page.getByText(body, { exact: true })).toBeVisible();
+}
+
+async function deleteInlineReview(page: Page): Promise<void> {
+  await page.getByTestId(/^review-comment-delete-/).click();
+  await expect(page.getByTestId(/^review-comment-delete-/)).toHaveCount(0);
+}
+
+async function dragExactAddedText(
+  page: Page,
+  offsets: { startOffset: number; endOffset: number },
+): Promise<void> {
+  const body = page.getByTestId("diff-file-0-body");
+  const canvas = page.getByTestId("git-diff-canvas");
+  const [bodyBounds, metrics] = await Promise.all([
+    body.boundingBox(),
+    canvas.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const fontSize = Number.parseFloat(style.fontSize);
+      const measurementCanvas = document.createElement("canvas");
+      const context = measurementCanvas.getContext("2d")!;
+      context.font = `${fontSize}px ${style.fontFamily}`;
+      return { fontSize, characterWidth: context.measureText("A").width };
+    }),
+  ]);
+  if (!bodyBounds) throw new Error("Expanded diff body has no bounds");
+  const lineHeight = Math.round(metrics.fontSize * 1.5);
+  const gutterWidth = Math.max(2, String(1).length) * Math.ceil(metrics.fontSize * 0.62) + 12;
+  const textLeft = bodyBounds.x + gutterWidth + 8;
+  await page.mouse.move(
+    textLeft + offsets.startOffset * metrics.characterWidth + 1,
+    bodyBounds.y + lineHeight * 1.5,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    textLeft + offsets.endOffset * metrics.characterWidth - 1,
+    bodyBounds.y + lineHeight * 1.5,
+    { steps: 8 },
+  );
+  await page.mouse.up();
+}
+
+async function dragAddedTextRange(
+  page: Page,
+  input: {
+    lines: string[];
+    start: { line: number; offset: number };
+    end: { line: number; offset: number };
+    side?: "left" | "right";
+    wrapped?: boolean;
+    horizontalOffset?: number;
+  },
+): Promise<void> {
+  const body = page.getByTestId("diff-file-0-body");
+  const canvas = page.getByTestId("git-diff-canvas");
+  const [bounds, metrics] = await Promise.all([
+    body.boundingBox(),
+    canvas.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const fontSize = Number.parseFloat(style.fontSize);
+      const context = document.createElement("canvas").getContext("2d")!;
+      context.font = `${fontSize}px ${style.fontFamily}`;
+      return { fontSize, characterWidth: context.measureText("A").width };
+    }),
+  ]);
+  if (!bounds) throw new Error("Expanded diff body has no bounds");
+  const lineHeight = Math.round(metrics.fontSize * 1.5);
+  const gutterWidth = 2 * Math.ceil(metrics.fontSize * 0.62) + 12;
+  const columnWidth = input.side ? bounds.width / 2 : bounds.width;
+  const columnLeft = input.side === "right" ? bounds.x + columnWidth : bounds.x;
+  const availableWidth = columnWidth - gutterWidth - 16;
+  const charactersPerFragment = Math.max(1, Math.floor(availableWidth / metrics.characterWidth));
+  const fragmentsBefore = (line: number) =>
+    input.wrapped
+      ? input.lines
+          .slice(0, line)
+          .reduce(
+            (total, text) => total + Math.max(1, Math.ceil(text.length / charactersPerFragment)),
+            0,
+          )
+      : line;
+  const point = ({ line, offset }: { line: number; offset: number }) => {
+    const fragment = input.wrapped ? Math.floor(offset / charactersPerFragment) : 0;
+    const localOffset = input.wrapped ? offset % charactersPerFragment : offset;
+    return {
+      x:
+        columnLeft +
+        gutterWidth +
+        8 +
+        localOffset * metrics.characterWidth -
+        (input.horizontalOffset ?? 0),
+      y: bounds.y + (1 + fragmentsBefore(line) + fragment + 0.5) * lineHeight,
+    };
+  };
+  const start = point(input.start);
+  const end = point(input.end);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y, { steps: 12 });
+  await page.mouse.up();
+}
+
+async function readSelectionPaintSamples(
+  page: Page,
+  side: "unified" | "right" = "unified",
+): Promise<{ gutter: number[]; code: number[]; opposite: number[] }> {
+  return page.getByTestId("diff-file-0-body").evaluate((body, selectedSide) => {
+    const canvas = document.querySelector<HTMLCanvasElement>('[data-testid="git-diff-canvas"]')!;
+    const bodyBounds = body.getBoundingClientRect();
+    const canvasBounds = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / canvasBounds.width;
+    const scaleY = canvas.height / canvasBounds.height;
+    const context = canvas.getContext("2d")!;
+    const sample = (left: number, top: number, width: number, height: number) =>
+      Array.from(
+        context.getImageData(
+          Math.round((left - canvasBounds.left) * scaleX),
+          Math.round((top - canvasBounds.top) * scaleY),
+          Math.max(1, Math.round(width * scaleX)),
+          Math.max(1, Math.round(height * scaleY)),
+        ).data,
+      );
+    const columnLeft =
+      selectedSide === "right" ? bodyBounds.left + bodyBounds.width / 2 : bodyBounds.left;
+    return {
+      gutter: sample(columnLeft + 2, bodyBounds.top + 24, 8, 8),
+      code: sample(columnLeft + 80, bodyBounds.top + 24, 80, 10),
+      opposite: sample(bodyBounds.left + 80, bodyBounds.top + 24, 80, 10),
+    };
+  }, side);
+}
+
+async function dragWithinFirstAddedGrapheme(page: Page): Promise<void> {
+  const bodyBounds = await page.getByTestId("diff-file-0-body").boundingBox();
+  const fontSize = await page
+    .getByTestId("git-diff-canvas")
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  if (!bodyBounds) throw new Error("Expanded diff body has no bounds");
+  const lineHeight = Math.round(fontSize * 1.5);
+  const gutterWidth = 2 * Math.ceil(fontSize * 0.62) + 12;
+  const x = bodyBounds.x + gutterWidth + 10;
+  const y = bodyBounds.y + lineHeight * 1.5;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 5, y, { steps: 3 });
+  await page.mouse.up();
+}
+
+async function dragFirstAddedLineIntoHeader(page: Page): Promise<void> {
+  const bodyBounds = await page.getByTestId("diff-file-0-body").boundingBox();
+  const fontSize = await page
+    .getByTestId("git-diff-canvas")
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  if (!bodyBounds) throw new Error("Expanded diff body has no bounds");
+  const lineHeight = Math.round(fontSize * 1.5);
+  const x = bodyBounds.x + 60;
+  await page.mouse.move(x, bodyBounds.y + lineHeight * 1.5);
+  await page.mouse.down();
+  await page.mouse.move(x, bodyBounds.y - 10, { steps: 4 });
+  await page.mouse.up();
+}
+
+async function horizontallyScrollFirstFile(page: Page, requestedOffset: number): Promise<number> {
+  const horizontalScroll = page.getByTestId("diff-file-0-horizontal-scroll");
+  const retainedOffset = await horizontalScroll.evaluate((element, offset) => {
+    element.scrollLeft = offset;
+    element.dispatchEvent(new Event("scroll"));
+    return element.scrollLeft;
+  }, requestedOffset);
+  expect(retainedOffset).toBeGreaterThan(0);
+  return retainedOffset;
+}
+
+async function longPressFileHeader(page: Page, header: Locator): Promise<void> {
+  const bounds = await header.boundingBox();
+  if (!bounds) throw new Error("File header has no bounds");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(600);
+  await page.mouse.up();
+}
+
+async function readDiffTypographyGeometry(page: Page): Promise<{
+  horizontalExtent: number;
+  canvasPixels: string;
+}> {
+  const horizontalExtent = await page
+    .getByTestId("diff-file-0-horizontal-scroll")
+    .evaluate((element) => element.scrollWidth);
+  const canvasPixels = (await page.getByTestId("git-diff-canvas").screenshot()).toString("base64");
+  return { horizontalExtent, canvasPixels };
+}
+
 async function returnToWorkspaceChanges(page: Page): Promise<void> {
   await page.getByTestId("settings-back-to-workspace").click();
   await waitForWorkspaceTabsVisible(page);
@@ -852,15 +1347,9 @@ async function returnToWorkspaceChanges(page: Page): Promise<void> {
 }
 
 async function scrollToLowerUnwrappedDiffRows(page: Page): Promise<void> {
-  const lastRowIndex = await page.getByTestId("diff-file-0-body").evaluate((root) => {
-    const rows = Array.from(root.querySelectorAll<HTMLElement>('[data-testid^="diff-code-row-"]'));
-    if (rows.length === 0) {
-      throw new Error("No unwrapped code rows are mounted");
-    }
-    return Math.max(
-      ...rows.map((row) => Number((row.getAttribute("data-testid") ?? "").slice(14))),
-    );
+  await page.getByTestId("git-diff-scroll").evaluate((element) => {
+    element.scrollTop = element.scrollHeight - element.clientHeight;
+    element.dispatchEvent(new Event("scroll", { bubbles: false }));
   });
-  await page.getByTestId(`diff-code-row-${lastRowIndex}`).scrollIntoViewIfNeeded();
-  await expect(page.getByTestId(`diff-code-row-${lastRowIndex}`)).toBeVisible();
+  await expect(page.getByTestId("git-diff-canvas")).toBeVisible();
 }

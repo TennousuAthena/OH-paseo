@@ -872,6 +872,8 @@ export const ja: TranslationResources = {
         wrapLongLines: "長い行を折り返す",
         collapseAllFolders: "すべてのフォルダを折りたたむ",
         expandAllFolders: "すべてのフォルダを展開",
+        collapseAllFiles: "すべてのファイルを折りたたむ",
+        expandAllFiles: "すべてのファイルを展開",
         refreshing: "更新中",
         refresh: "更新",
         refreshState: "gitと{{brand}}の状態を更新",

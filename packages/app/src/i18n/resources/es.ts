@@ -892,6 +892,8 @@ export const es: TranslationResources = {
         wrapLongLines: "Envolver largas filas",
         collapseAllFolders: "Contraer todas las carpetas",
         expandAllFolders: "Expandir todas las carpetas",
+        collapseAllFiles: "Contraer todos los archivos",
+        expandAllFiles: "Expandir todos los archivos",
         refreshing: "Refrescante",
         refresh: "Refrescar",
         refreshState: "Actualizar el estado de git y {{brand}}",

@@ -883,6 +883,8 @@ export const ru: TranslationResources = {
         wrapLongLines: "Перенос длинных строк",
         collapseAllFolders: "Свернуть все папки",
         expandAllFolders: "Развернуть все папки",
+        collapseAllFiles: "Свернуть все файлы",
+        expandAllFiles: "Развернуть все файлы",
         refreshing: "Освежающий",
         refresh: "Обновить",
         refreshState: "Обновить состояние git и {{brand}}",

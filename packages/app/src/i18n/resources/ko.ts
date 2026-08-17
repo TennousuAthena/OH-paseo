@@ -868,6 +868,8 @@ export const ko: TranslationResources = {
         wrapLongLines: "긴 줄 줄바꿈",
         collapseAllFolders: "모든 폴더 축소",
         expandAllFolders: "모든 폴더 확장",
+        collapseAllFiles: "모든 파일 축소",
+        expandAllFiles: "모든 파일 확장",
         refreshing: "새로고침 중",
         refresh: "새로고침",
         refreshState: "Git 및 {{brand}} 상태 새로고침",

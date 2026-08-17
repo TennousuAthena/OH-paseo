@@ -186,6 +186,7 @@ export const PanelPersistedStateSchema = z.strictObject({
   // Accepted only so migration can discard the former per-file diff expansion state.
   diffExpandedPathsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
   diffCollapsedFoldersByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
+  collapsedFilePathsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
   sidebarWidth: z.number().optional(),
   explorerWidth: z.number().optional(),
   explorerSortOption: z.enum(["name", "modified", "size"]).optional(),
@@ -298,6 +299,12 @@ export function migratePanelState(
     !state.diffCollapsedFoldersByWorkspace
   ) {
     state.diffCollapsedFoldersByWorkspace = {};
+  }
+  if (
+    typeof state.collapsedFilePathsByWorkspace !== "object" ||
+    !state.collapsedFilePathsByWorkspace
+  ) {
+    state.collapsedFilePathsByWorkspace = {};
   }
   if (typeof state.explorerShowHiddenFiles !== "boolean") {
     state.explorerShowHiddenFiles = true;
