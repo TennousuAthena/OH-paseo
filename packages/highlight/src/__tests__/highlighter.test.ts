@@ -75,6 +75,17 @@ describe("highlightCode", () => {
     expect(stringToken?.style).toBe("string");
   });
 
+  it("highlights Nix code", () => {
+    const code = 'let message = "hello"; in message';
+    const result = highlightCode(code, "default.nix");
+
+    const letToken = result[0].find((token) => token.text === "let");
+    expect(letToken?.style).toBe("keyword");
+
+    const stringToken = result[0].find((token) => token.text.includes("hello"));
+    expect(stringToken?.style).toBe("string");
+  });
+
   it("highlights TSX code with correct dialect", () => {
     const code = 'const el = <div className="test">hello</div>;';
     const result = highlightCode(code, "test.tsx");

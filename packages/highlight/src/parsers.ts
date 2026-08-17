@@ -15,6 +15,7 @@ import { parser as rustParser } from "@lezer/rust";
 import { parser as xmlParser } from "@lezer/xml";
 import { parser as yamlParser } from "@lezer/yaml";
 import { csharpLanguage } from "@replit/codemirror-lang-csharp";
+import { nixLanguage } from "@replit/codemirror-lang-nix";
 import { parser as elixirParser } from "lezer-elixir";
 import type { Parser } from "@lezer/common";
 
@@ -69,6 +70,8 @@ const languagesByExtension: Record<string, Language> = {
   dart: StreamLanguage.define(dart),
   // C#
   cs: csharpLanguage,
+  // Nix
+  nix: nixLanguage,
   // Elixir
   ex: language(elixirParser),
   exs: language(elixirParser),
