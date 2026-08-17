@@ -8,8 +8,11 @@ import {
   useMenuContext,
   type MenuTriggerState,
 } from "@/components/ui/menu";
+import { StatusRing } from "@/components/status-ring";
+import { STATUS_RING_FRAME_SIZE } from "@/components/status-ring/geometry";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
+import { getStatusDotColor } from "@/utils/status-dot-color";
 import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { COMPOSER_PILL_CLEARANCE, composerPillStyles } from "./pill-styles";
@@ -43,7 +46,7 @@ export interface ComposerTrackPillProps {
   panelTitle: string;
   testID: string;
   accessibilityLabel?: string;
-  /** Drawn as a leading dot. `null` leaves the pill text-only. */
+  /** Drawn as a leading mark — a dot, or the running ring. `null` leaves the pill text-only. */
   statusBucket?: SidebarStateBucket | null;
   /** Panel body. Rendered into a popover on wide screens and a sheet on compact ones. */
   children: ReactNode;
@@ -135,7 +138,7 @@ function ComposerTrackPillTrigger({
       {...ariaExpandedProps}
       style={pillStyle}
     >
-      <ComposerTrackDot bucket={statusBucket} />
+      <ComposerTrackMark bucket={statusBucket} />
       <Text style={labelStyle} numberOfLines={1}>
         {label}
       </Text>
@@ -148,6 +151,12 @@ export interface ComposerTrackRowProps {
   children: ReactNode | ((state: { active: boolean }) => ReactNode);
   /** Rows that open something are pressable and fill on press or hover. A read-only row is not. */
   onPress?: () => void;
+  /**
+   * Dismiss the panel when this row is chosen. Same name, same default as `MenuItem`, because it
+   * is the same decision: a row that navigates away is done with the panel, a row whose result
+   * lands inside the panel is not.
+   */
+  closeOnSelect?: boolean;
   disabled?: boolean;
   accessibilityLabel?: string;
   testID?: string;
@@ -160,17 +169,27 @@ export interface ComposerTrackRowProps {
  *
  * Hover lives on the outer plain View and press on the inner Pressable, per docs/hover.md: rows
  * carry action buttons, and a Pressable tracking its own hover fights every Pressable inside it.
+ *
+ * A press is a menu selection, not a bare callback: the panel is a menu surface, so dismissal —
+ * and on iOS the wait for UIKit to finish tearing the sheet down before the action runs — belongs
+ * to the engine that opened it. The row only decides whether choosing it ends the panel.
  */
 export function ComposerTrackRow({
   children,
   onPress,
+  closeOnSelect = true,
   disabled = false,
   accessibilityLabel,
   testID,
 }: ComposerTrackRowProps): ReactElement {
+  const { selectItem } = useMenuContext("ComposerTrackRow");
   const [hovered, setHovered] = useState(false);
   const handlePointerEnter = useCallback(() => setHovered(true), []);
   const handlePointerLeave = useCallback(() => setHovered(false), []);
+  const handleSelect = useCallback(
+    () => selectItem(onPress, closeOnSelect),
+    [closeOnSelect, onPress, selectItem],
+  );
 
   const renderRow = useCallback(
     (active: boolean) => (
@@ -196,7 +215,7 @@ export function ComposerTrackRow({
         accessibilityLabel={accessibilityLabel}
         testID={testID}
         disabled={disabled}
-        onPress={onPress}
+        onPress={handleSelect}
       >
         {renderPressed}
       </Pressable>
@@ -204,23 +223,27 @@ export function ComposerTrackRow({
   );
 }
 
-function ComposerTrackDot({ bucket }: { bucket: SidebarStateBucket | null }): ReactElement | null {
-  const colorStyle = bucket ? dotColorStyle(bucket) : null;
-  const dotStyle = useMemo(() => [styles.dot, colorStyle], [colorStyle]);
-  if (!colorStyle) {
+/**
+ * The pill's leading state mark. Running is the ring every other running indicator in the app
+ * uses; the rest are the dot it grows from.
+ */
+function ComposerTrackMark({ bucket }: { bucket: SidebarStateBucket | null }): ReactElement | null {
+  if (!bucket) {
     return null;
   }
-  return <View style={dotStyle} />;
+  return (
+    <View style={styles.mark}>
+      {bucket === "running" ? <StatusRing /> : <View style={dotColorStyle(bucket)} />}
+    </View>
+  );
 }
 
-function dotColorStyle(bucket: SidebarStateBucket) {
+function dotColorStyle(bucket: Exclude<SidebarStateBucket, "running">) {
   switch (bucket) {
     case "needs_input":
       return styles.dotNeedsInput;
     case "failed":
       return styles.dotFailed;
-    case "running":
-      return styles.dotRunning;
     case "attention":
       return styles.dotAttention;
     case "done":
@@ -228,67 +251,71 @@ function dotColorStyle(bucket: SidebarStateBucket) {
   }
 }
 
-const styles = StyleSheet.create((theme) => ({
-  bar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: "center",
-    paddingHorizontal: theme.spacing[4],
-    paddingBottom: {
-      xs: COMPOSER_PILL_CLEARANCE.compact,
-      md: COMPOSER_PILL_CLEARANCE.wide,
-    },
-  },
-  track: {
-    width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  // The rail every panel row sits on: inset from the panel edge so the fill is a rounded block
-  // inside it, and tall enough that revealing an action button cannot resize the row.
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    minHeight: 32,
-    marginHorizontal: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.md,
-  },
-  rowActive: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    minHeight: 32,
-    marginHorizontal: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.surface2,
-  },
-  dot: {
+const styles = StyleSheet.create((theme) => {
+  // Colours come from the one bucket-to-colour map so the pill cannot drift from the status dots
+  // everywhere else, and are baked into each variant so the style prop stays a stable object.
+  const statusDot = (bucket: Exclude<SidebarStateBucket, "running">) => ({
     width: STATUS_INDICATOR_FILLED_DOT_SIZE,
     height: STATUS_INDICATOR_FILLED_DOT_SIZE,
     borderRadius: theme.borderRadius.full,
-  },
-  dotNeedsInput: {
-    backgroundColor: theme.colors.statusDotWarning,
-  },
-  dotFailed: {
-    backgroundColor: theme.colors.statusDotDanger,
-  },
-  dotRunning: {
-    backgroundColor: theme.colors.statusDotRunning,
-  },
-  dotAttention: {
-    backgroundColor: theme.colors.statusDotSuccess,
-  },
-  dotDone: {
-    backgroundColor: theme.colors.border,
-  },
-}));
+    backgroundColor: getStatusDotColor({ theme, bucket, showDoneAsInactive: true }) ?? undefined,
+  });
+
+  return {
+    bar: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      alignItems: "center",
+      paddingHorizontal: theme.spacing[4],
+      paddingBottom: {
+        xs: COMPOSER_PILL_CLEARANCE.compact,
+        md: COMPOSER_PILL_CLEARANCE.wide,
+      },
+    },
+    track: {
+      width: "100%",
+      maxWidth: MAX_CONTENT_WIDTH,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing[1],
+    },
+    // The rail every panel row sits on: inset from the panel edge so the fill is a rounded block
+    // inside it, and tall enough that revealing an action button cannot resize the row.
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing[2],
+      minHeight: 32,
+      marginHorizontal: theme.spacing[1],
+      paddingHorizontal: theme.spacing[2],
+      paddingVertical: theme.spacing[1],
+      borderRadius: theme.borderRadius.md,
+    },
+    rowActive: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing[2],
+      minHeight: 32,
+      marginHorizontal: theme.spacing[1],
+      paddingHorizontal: theme.spacing[2],
+      paddingVertical: theme.spacing[1],
+      borderRadius: theme.borderRadius.md,
+      backgroundColor: theme.colors.surface2,
+    },
+    // Sized for the widest mark that can land in it, which is the ring rather than the dot. The
+    // slot is the same width whatever the state, so the label does not step sideways when the last
+    // child stops running.
+    mark: {
+      width: STATUS_RING_FRAME_SIZE,
+      height: STATUS_RING_FRAME_SIZE,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    dotNeedsInput: statusDot("needs_input"),
+    dotFailed: statusDot("failed"),
+    dotAttention: statusDot("attention"),
+    dotDone: statusDot("done"),
+  };
+});

@@ -155,6 +155,9 @@ function ArchiveFinishedRow({
       accessibilityLabel={t("subagents.archiveFinishedAction")}
       testID="subagents-track-archive-finished"
       disabled={disabled}
+      // Progress and the retry count land on this row, so the panel is where the result of
+      // pressing it shows up. Dismissing would hide the thing the press produces.
+      closeOnSelect={false}
       onPress={onPress}
     >
       {renderRow}

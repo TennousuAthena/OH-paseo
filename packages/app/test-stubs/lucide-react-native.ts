@@ -22,6 +22,7 @@ export const Blocks = StubIcon;
 export const Bot = StubIcon;
 export const Brain = StubIcon;
 export const Check = StubIcon;
+export const CheckCircle = StubIcon;
 export const CheckCircle2 = StubIcon;
 export const ChevronDown = StubIcon;
 export const ChevronLeft = StubIcon;

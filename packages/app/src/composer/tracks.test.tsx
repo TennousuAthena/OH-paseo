@@ -12,6 +12,9 @@ vi.mock("react-native", () => ({
   },
   Pressable: "button",
   Text: "span",
+  // The status ring reaches for plain React Native styles rather than Unistyles ones — see the
+  // note on `rotatorStyles` in status-ring/frame.tsx.
+  StyleSheet: { create: <T,>(styles: T): T => styles },
   View: ({
     children,
     style,
