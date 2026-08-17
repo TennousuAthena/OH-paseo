@@ -367,7 +367,7 @@ const overlayStyles = StyleSheet.create((theme) => ({
     gap: theme.spacing[4],
   },
   timerText: {
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.semibold,
     fontVariant: ["tabular-nums"],
   },
