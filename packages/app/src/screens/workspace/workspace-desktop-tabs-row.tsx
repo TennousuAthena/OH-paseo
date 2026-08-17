@@ -2,6 +2,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -11,7 +12,6 @@ import React, {
 } from "react";
 import {
   Pressable,
-  ScrollView,
   Text,
   View,
   type LayoutChangeEvent,
@@ -28,12 +28,21 @@ import {
   FileDiff,
   FolderTree,
   GitPullRequest,
+  Maximize2,
+  Minimize2,
   Plus,
   SquarePen,
   SquareTerminal,
   X,
 } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import Animated, {
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  type AnimatedStyle,
+} from "react-native-reanimated";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { useTranslation } from "react-i18next";
 import { useRouter, type Href } from "expo-router";
 import { SortableInlineList } from "@/components/sortable-inline-list";
@@ -61,6 +70,7 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
+import { buttonControlHeight } from "@/components/ui/control-geometry";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
 import { retainWorkspaceTabMeasuredWidth } from "@/screens/workspace/workspace-tab-layout";
@@ -93,13 +103,16 @@ import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { TrailingActionScrim } from "@/components/ui/trailing-action-scrim";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 
 const DROPDOWN_WIDTH = 220;
 const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
 // Chip geometry. `layoutMetrics` measures tabs from these same numbers, so a chip that changes
 // shape without changing them mis-measures and drops the row into the overflow-scroll fallback at
 // the wrong width. Keep them together.
-const TAB_CHIP_HEIGHT = 26;
+// Tabs and the adjacent New Tab trigger are one control family. Keep their outer box and corner
+// token identical; only their horizontal sizing differs (content-width chip versus square icon).
 const TAB_CHIP_HORIZONTAL_PADDING = 8;
 const TAB_CHIP_GAP = 4;
 const TAB_ROW_PADDING_HORIZONTAL = 4;
@@ -110,10 +123,68 @@ const TAB_MIN_WIDTH = 96;
 const TAB_MAX_WIDTH = 160;
 const TAB_CLOSE_BUTTON_RESERVED_WIDTH = 0;
 const TAB_LABEL_LAYOUT_ALLOWANCE = 4;
+const TAB_SCROLL_SHADE_WIDTH = 24;
+const TAB_SCROLL_EDGE_EPSILON = 1;
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedX = withUnistyles(X);
 const ThemedCopy = withUnistyles(Copy);
+
+function WorkspaceTabScrollShadeSvg({ side, color }: { side: "left" | "right"; color: string }) {
+  const gradientId = `workspace-tab-scroll-shade-${side}-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  return (
+    <Svg width="100%" height="100%" preserveAspectRatio="none">
+      <Defs>
+        <SvgLinearGradient
+          id={gradientId}
+          x1={side === "left" ? "100%" : "0%"}
+          y1="0%"
+          x2={side === "left" ? "0%" : "100%"}
+          y2="0%"
+        >
+          <Stop offset="0%" stopColor={color} stopOpacity={0} />
+          <Stop offset="100%" stopColor={color} stopOpacity={1} />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
+    </Svg>
+  );
+}
+
+const ThemedWorkspaceTabScrollShadeSvg = withUnistyles(WorkspaceTabScrollShadeSvg);
+const tabScrollShadeColorMapping = (theme: Theme) => ({ color: theme.colors.surface0 });
+
+function WorkspaceTabScrollShades({
+  visible,
+  leftStyle,
+  rightStyle,
+}: {
+  visible: boolean;
+  leftStyle: AnimatedStyle<{ opacity: number }>;
+  rightStyle: AnimatedStyle<{ opacity: number }>;
+}) {
+  if (!visible) return null;
+
+  return (
+    <>
+      <Animated.View
+        pointerEvents="none"
+        testID="workspace-tabs-scroll-shade-left"
+        style={[styles.tabScrollShade, styles.tabScrollShadeLeft, leftStyle]}
+      >
+        <ThemedWorkspaceTabScrollShadeSvg side="left" uniProps={tabScrollShadeColorMapping} />
+      </Animated.View>
+      <Animated.View
+        pointerEvents="none"
+        testID="workspace-tabs-scroll-shade-right"
+        style={[styles.tabScrollShade, styles.tabScrollShadeRight, rightStyle]}
+      >
+        <ThemedWorkspaceTabScrollShadeSvg side="right" uniProps={tabScrollShadeColorMapping} />
+      </Animated.View>
+    </>
+  );
+}
+
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
 const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
@@ -126,6 +197,8 @@ const ThemedPlus = withUnistyles(Plus);
 const ThemedFileDiff = withUnistyles(FileDiff);
 const ThemedFolderTree = withUnistyles(FolderTree);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
+const ThemedMaximize2 = withUnistyles(Maximize2);
+const ThemedMinimize2 = withUnistyles(Minimize2);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const extraMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundExtraMuted });
@@ -141,8 +214,15 @@ const CHANGES_TARGET = { kind: "working_diff" } as const;
 const FILES_TARGET = { kind: "files" } as const;
 const PULL_REQUEST_TARGET = { kind: "pull_request" } as const;
 
-function inlineAddActionButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
-  return [styles.inlineAddActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
+function inlineAddActionButtonStyle({
+  hovered,
+  pressed,
+  open = false,
+}: PressableStateCallbackType & { open?: boolean }) {
+  return [
+    styles.inlineAddActionButton,
+    (hovered || pressed || open) && styles.newTabActionButtonHovered,
+  ];
 }
 
 function updateMeasuredWidth(
@@ -210,6 +290,8 @@ interface TabTargetLauncherOptions {
 }
 
 interface WorkspaceNewTabButtonProps extends TabTargetLauncherOptions {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   shortcutKeys: ShortcutKey[][] | null;
   onEditProfiles: () => void;
   showCreateBrowserTab: boolean;
@@ -220,6 +302,8 @@ interface WorkspaceNewTabButtonProps extends TabTargetLauncherOptions {
 }
 
 function WorkspaceNewTabButton({
+  open,
+  onOpenChange,
   shortcutKeys,
   onCreateAgentTab,
   onCreateTerminal,
@@ -242,15 +326,36 @@ function WorkspaceNewTabButton({
     () => resolveTerminalProfiles(config?.terminalProfiles),
     [config?.terminalProfiles],
   );
-  const shortcut = useMemo(
-    () => (shortcutKeys ? <Shortcut chord={shortcutKeys} /> : undefined),
-    [shortcutKeys],
-  );
+  const agentKeys = useShortcutKeys("workspace-tab-target-agent");
+  const terminalKeys = useShortcutKeys("workspace-terminal-new");
+  const browserKeys = useShortcutKeys("workspace-tab-target-browser");
+  const changesKeys = useShortcutKeys("workspace-tab-target-changes");
+  const filesKeys = useShortcutKeys("workspace-tab-target-files");
   const tooltipText = t("workspace.tabs.actions.newTab");
+  const agentShortcut = useMemo(
+    () => (agentKeys ? <Shortcut chord={agentKeys} /> : undefined),
+    [agentKeys],
+  );
+  const terminalShortcut = useMemo(
+    () => (terminalKeys ? <Shortcut chord={terminalKeys} /> : undefined),
+    [terminalKeys],
+  );
+  const browserShortcut = useMemo(
+    () => (browserKeys ? <Shortcut chord={browserKeys} /> : undefined),
+    [browserKeys],
+  );
+  const changesShortcut = useMemo(
+    () => (changesKeys ? <Shortcut chord={changesKeys} /> : undefined),
+    [changesKeys],
+  );
+  const filesShortcut = useMemo(
+    () => (filesKeys ? <Shortcut chord={filesKeys} /> : undefined),
+    [filesKeys],
+  );
 
   return (
     <View style={styles.inlineAddButton} onLayout={onLayout}>
-      <DropdownMenu>
+      <DropdownMenu open={open} onOpenChange={onOpenChange}>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild triggerRefProp="triggerRef">
             <DropdownMenuTrigger
@@ -263,14 +368,17 @@ function WorkspaceNewTabButton({
             </DropdownMenuTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" offset={8}>
-            <Text style={styles.newTabTooltipText}>{tooltipText}</Text>
+            <View style={styles.newTabTooltipRow}>
+              <Text style={styles.newTabTooltipText}>{tooltipText}</Text>
+              {shortcutKeys ? <Shortcut chord={shortcutKeys} /> : null}
+            </View>
           </TooltipContent>
         </Tooltip>
         <DropdownMenuContent side="bottom" align="start" offset={4} minWidth={200}>
           <DropdownMenuItem
             testID="workspace-new-tab-menu-agent"
             leading={AGENT_ICON}
-            trailing={shortcut}
+            trailing={agentShortcut}
             onSelect={onCreateAgentTab}
           >
             {t("workspace.tabs.actions.newAgent")}
@@ -279,6 +387,7 @@ function WorkspaceNewTabButton({
             testID="workspace-new-tab-menu-terminal"
             leading={TERMINAL_ICON}
             disabled={terminalDisabled}
+            trailing={terminalShortcut}
             onSelect={terminalDisabled ? undefined : onCreateTerminal}
           >
             {t("workspace.tabs.actions.newTerminal")}
@@ -287,6 +396,7 @@ function WorkspaceNewTabButton({
             <DropdownMenuItem
               testID="workspace-new-tab-menu-browser"
               leading={BROWSER_ICON}
+              trailing={browserShortcut}
               onSelect={onCreateBrowser}
             >
               {t("workspace.tabs.actions.newBrowser")}
@@ -296,6 +406,7 @@ function WorkspaceNewTabButton({
             <DropdownMenuItem
               testID="workspace-new-tab-menu-changes"
               leading={CHANGES_ICON}
+              trailing={changesShortcut}
               onSelect={onOpenChanges}
             >
               {t("workspace.tabs.actions.changes")}
@@ -304,6 +415,7 @@ function WorkspaceNewTabButton({
           <DropdownMenuItem
             testID="workspace-new-tab-menu-files"
             leading={FILES_ICON}
+            trailing={filesShortcut}
             onSelect={onOpenFiles}
           >
             {t("workspace.tabs.actions.files")}
@@ -335,6 +447,99 @@ function WorkspaceNewTabButton({
       </DropdownMenu>
     </View>
   );
+}
+
+function WorkspacePaneMaximizeButton({
+  visible,
+  maximized,
+  onPress,
+  onLayout,
+}: {
+  visible: boolean;
+  maximized: boolean;
+  onPress?: () => void;
+  onLayout: (event: LayoutChangeEvent) => void;
+}) {
+  const { t } = useTranslation();
+  const maximizePaneKeys = useShortcutKeys("workspace-explorer-maximize");
+  if (!visible || !onPress) {
+    return null;
+  }
+  const label = t(
+    maximized ? "workspace.tabs.actions.restorePane" : "workspace.tabs.actions.maximizePane",
+  );
+
+  return (
+    <View style={[styles.inlineAddButton, styles.paneMaximizeButtonSlot]} onLayout={onLayout}>
+      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger
+          testID={maximized ? "workspace-restore-pane" : "workspace-maximize-pane"}
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          style={inlineAddActionButtonStyle}
+        >
+          {maximized ? (
+            <ThemedMinimize2 size={14} uniProps={extraMutedColorMapping} />
+          ) : (
+            <ThemedMaximize2 size={14} uniProps={extraMutedColorMapping} />
+          )}
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center" offset={8}>
+          <View style={styles.newTabTooltipRow}>
+            <Text style={styles.newTabTooltipText}>{label}</Text>
+            {maximizePaneKeys ? <Shortcut chord={maximizePaneKeys} /> : null}
+          </View>
+        </TooltipContent>
+      </Tooltip>
+    </View>
+  );
+}
+
+function WorkspaceExitFocusModeButton({
+  visible,
+  onPress,
+  onLayout,
+}: {
+  visible: boolean;
+  onPress: () => void;
+  onLayout: (event: LayoutChangeEvent) => void;
+}) {
+  const { t } = useTranslation();
+  const focusModeKeys = useShortcutKeys("toggle-focus");
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <View style={styles.exitFocusModeSlot} onLayout={onLayout}>
+      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger
+          testID="workspace-exit-focus-mode"
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={t("workspace.tabs.actions.exitFocusMode")}
+          style={inlineAddActionButtonStyle}
+        >
+          <ThemedX size={14} uniProps={mutedColorMapping} />
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center" offset={8}>
+          <View style={styles.newTabTooltipRow}>
+            <Text style={styles.newTabTooltipText}>
+              {t("workspace.tabs.actions.exitFocusMode")}
+            </Text>
+            {focusModeKeys ? (
+              <Shortcut chord={focusModeKeys} style={styles.newTabTooltipShortcut} />
+            ) : null}
+          </View>
+        </TooltipContent>
+      </Tooltip>
+    </View>
+  );
+}
+
+function resolvePaneMaximizeReservedWidth(visible: boolean, measuredWidth: number): number {
+  return visible ? measuredWidth : 0;
 }
 
 function TabContextMenuItem({
@@ -464,6 +669,9 @@ interface WorkspaceDesktopTabsRowProps {
   externalDndContext?: boolean;
   activeDragTabId?: string | null;
   tabDropPreviewIndex?: number | null;
+  showPaneMaximizeAction?: boolean;
+  paneMaximized?: boolean;
+  onTogglePaneMaximized?: () => void;
   focusModeEnabled: boolean;
   onExitFocusMode: () => void;
 }
@@ -942,16 +1150,23 @@ function ResolvedWorkspaceDesktopTabsRow({
   externalDndContext = false,
   activeDragTabId = null,
   tabDropPreviewIndex = null,
+  showPaneMaximizeAction = false,
+  paneMaximized = false,
+  onTogglePaneMaximized,
   focusModeEnabled,
   onExitFocusMode,
 }: ResolvedWorkspaceDesktopTabsRowProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const newTabKeys = useShortcutKeys("workspace-tab-new");
-  const focusModeKeys = useShortcutKeys("toggle-focus");
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
   const [inlineAddButtonWidth, setInlineAddButtonWidth] = useState<number>(0);
+  const [paneMaximizeButtonWidth, setPaneMaximizeButtonWidth] = useState<number>(0);
   const [exitFocusModeWidth, setExitFocusModeWidth] = useState<number>(0);
+  const [newTabMenuOpen, setNewTabMenuOpen] = useState(false);
+  const tabScrollOffset = useSharedValue(0);
+  const tabScrollViewportWidth = useSharedValue(0);
+  const tabScrollContentWidth = useSharedValue(0);
   const labelMeasurementsRef = useRef(new Map<string, WorkspaceTabLabelMeasurement>());
   const [trackSnapshot, setTrackSnapshot] = useState<WorkspaceTabTrackSnapshot | null>(null);
   const workspaceRoot = useWorkspaceDirectory(normalizedServerId, normalizedWorkspaceId) ?? "";
@@ -980,13 +1195,48 @@ function ResolvedWorkspaceDesktopTabsRow({
     updateMeasuredWidth(setExitFocusModeWidth, event);
   }, []);
 
+  const handlePaneMaximizeButtonLayout = useCallback((event: LayoutChangeEvent) => {
+    updateMeasuredWidth(setPaneMaximizeButtonWidth, event);
+  }, []);
+
+  const handleTabScrollLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      tabScrollViewportWidth.value = event.nativeEvent.layout.width;
+    },
+    [tabScrollViewportWidth],
+  );
+
+  const handleTabScrollContentSizeChange = useCallback(
+    (width: number) => {
+      tabScrollContentWidth.value = width;
+    },
+    [tabScrollContentWidth],
+  );
+
+  const handleTabScroll = useAnimatedScrollHandler((event) => {
+    tabScrollOffset.value = event.contentOffset.x;
+    tabScrollViewportWidth.value = event.layoutMeasurement.width;
+    tabScrollContentWidth.value = event.contentSize.width;
+  });
+
+  const leftTabScrollShadeStyle = useAnimatedStyle(() => ({
+    opacity: Number(tabScrollOffset.value > TAB_SCROLL_EDGE_EPSILON),
+  }));
+  const rightTabScrollShadeStyle = useAnimatedStyle(() => ({
+    opacity: Number(
+      tabScrollOffset.value + tabScrollViewportWidth.value <
+        tabScrollContentWidth.value - TAB_SCROLL_EDGE_EPSILON,
+    ),
+  }));
+
   const layoutMetrics = useMemo(
     () => ({
       rowHorizontalInset: 0,
       actionsReservedWidth: Math.max(
         0,
         (inlineAddButtonWidth || DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH) +
-          (focusModeEnabled ? exitFocusModeWidth : 0),
+          (focusModeEnabled ? exitFocusModeWidth : 0) +
+          resolvePaneMaximizeReservedWidth(showPaneMaximizeAction, paneMaximizeButtonWidth),
       ),
       rowPaddingHorizontal: TAB_ROW_PADDING_HORIZONTAL,
       tabGap: TAB_CHIP_GAP,
@@ -997,7 +1247,13 @@ function ResolvedWorkspaceDesktopTabsRow({
       tabHorizontalPadding: TAB_CHIP_HORIZONTAL_PADDING,
       closeButtonWidth: TAB_CLOSE_BUTTON_RESERVED_WIDTH,
     }),
-    [exitFocusModeWidth, focusModeEnabled, inlineAddButtonWidth],
+    [
+      exitFocusModeWidth,
+      focusModeEnabled,
+      inlineAddButtonWidth,
+      paneMaximizeButtonWidth,
+      showPaneMaximizeAction,
+    ],
   );
 
   const fallbackTabLabels = useMemo(
@@ -1175,6 +1431,67 @@ function ResolvedWorkspaceDesktopTabsRow({
 
   const terminalDisabled = disableCreateTerminal || isWaitingOnTerminalReadiness;
 
+  useEffect(() => {
+    if (!isFocused) {
+      setNewTabMenuOpen(false);
+    }
+  }, [isFocused]);
+
+  const handleNewTabKeyboardAction = useCallback(
+    (action: KeyboardActionDefinition): boolean => {
+      if (!isFocused) return false;
+      if (action.id === "workspace.tab.menu.open") {
+        setNewTabMenuOpen(true);
+        return true;
+      }
+      switch (action.id) {
+        case "workspace.tab.target.agent":
+          setNewTabMenuOpen(false);
+          handleCreateAgentTab();
+          return true;
+        case "workspace.tab.target.browser":
+          if (!showCreateBrowserTab) return true;
+          setNewTabMenuOpen(false);
+          handleCreateBrowser();
+          return true;
+        case "workspace.tab.target.changes":
+          if (!isGit) return true;
+          setNewTabMenuOpen(false);
+          handleOpenChanges();
+          return true;
+        case "workspace.tab.target.files":
+          setNewTabMenuOpen(false);
+          handleOpenFiles();
+          return true;
+        default:
+          return false;
+      }
+    },
+    [
+      handleCreateAgentTab,
+      handleCreateBrowser,
+      handleOpenChanges,
+      handleOpenFiles,
+      isFocused,
+      isGit,
+      showCreateBrowserTab,
+    ],
+  );
+
+  useKeyboardActionHandler({
+    handlerId: `workspace-new-tab-menu:${normalizedServerId}:${paneId ?? "main"}`,
+    actions: [
+      "workspace.tab.menu.open",
+      "workspace.tab.target.agent",
+      "workspace.tab.target.browser",
+      "workspace.tab.target.changes",
+      "workspace.tab.target.files",
+    ],
+    enabled: isFocused,
+    priority: 200,
+    handle: handleNewTabKeyboardAction,
+  });
+
   const renderTab = useCallback(
     ({
       item,
@@ -1276,72 +1593,67 @@ function ResolvedWorkspaceDesktopTabsRow({
           />
         ))}
       </View>
-      {focusModeEnabled ? (
-        <View style={styles.exitFocusModeSlot} onLayout={handleExitFocusModeLayout}>
-          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-            <TooltipTrigger
-              testID="workspace-exit-focus-mode"
-              onPress={onExitFocusMode}
-              accessibilityRole="button"
-              accessibilityLabel={t("workspace.tabs.actions.exitFocusMode")}
-              style={inlineAddActionButtonStyle}
-            >
-              <ThemedX size={14} uniProps={mutedColorMapping} />
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="center" offset={8}>
-              <View style={styles.newTabTooltipRow}>
-                <Text style={styles.newTabTooltipText}>
-                  {t("workspace.tabs.actions.exitFocusMode")}
-                </Text>
-                {focusModeKeys ? (
-                  <Shortcut chord={focusModeKeys} style={styles.newTabTooltipShortcut} />
-                ) : null}
-              </View>
-            </TooltipContent>
-          </Tooltip>
-        </View>
-      ) : null}
-      <ScrollView
-        horizontal
-        scrollEnabled={layout.requiresHorizontalScrollFallback}
-        testID="workspace-tabs-scroll"
-        style={tabsScrollStyle}
-        contentContainerStyle={styles.tabsContent}
-        showsHorizontalScrollIndicator={false}
-      >
-        <SortableInlineList
-          data={displayedTabs}
-          keyExtractor={tabKeyExtractor}
-          useDragHandle
-          disabled={!externalDndContext && displayedTabs.length < 2}
-          onDragEnd={handleDragEnd}
-          externalDndContext={externalDndContext}
-          activeId={activeDragTabId}
-          getItemData={getTabDragData}
-          renderItem={renderTab}
-        />
-        {!layout.requiresHorizontalScrollFallback ? (
-          <WorkspaceNewTabButton
-            shortcutKeys={newTabKeys}
-            onCreateAgentTab={handleCreateAgentTab}
-            onCreateTerminal={handleCreateTerminal}
-            onCreateBrowser={handleCreateBrowser}
-            onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
-            onOpenChanges={handleOpenChanges}
-            onOpenFiles={handleOpenFiles}
-            onOpenPullRequest={handleOpenPullRequest}
-            onEditProfiles={handleEditProfiles}
-            normalizedServerId={normalizedServerId}
-            showCreateBrowserTab={showCreateBrowserTab}
-            terminalDisabled={terminalDisabled}
-            isGit={isGit}
-            showPullRequest={showPullRequest}
-            onLayout={handleInlineAddButtonLayout}
+      <WorkspaceExitFocusModeButton
+        visible={focusModeEnabled}
+        onPress={onExitFocusMode}
+        onLayout={handleExitFocusModeLayout}
+      />
+      <View style={styles.tabsScrollContainer}>
+        <Animated.ScrollView
+          horizontal
+          scrollEnabled={layout.requiresHorizontalScrollFallback}
+          testID="workspace-tabs-scroll"
+          style={tabsScrollStyle}
+          contentContainerStyle={styles.tabsContent}
+          showsHorizontalScrollIndicator={false}
+          onLayout={handleTabScrollLayout}
+          onContentSizeChange={handleTabScrollContentSizeChange}
+          onScroll={handleTabScroll}
+          scrollEventThrottle={16}
+        >
+          <SortableInlineList
+            data={displayedTabs}
+            keyExtractor={tabKeyExtractor}
+            useDragHandle
+            disabled={!externalDndContext && displayedTabs.length < 2}
+            onDragEnd={handleDragEnd}
+            externalDndContext={externalDndContext}
+            activeId={activeDragTabId}
+            getItemData={getTabDragData}
+            renderItem={renderTab}
           />
-        ) : null}
-      </ScrollView>
+          {!layout.requiresHorizontalScrollFallback ? (
+            <WorkspaceNewTabButton
+              open={newTabMenuOpen}
+              onOpenChange={setNewTabMenuOpen}
+              shortcutKeys={newTabKeys}
+              onCreateAgentTab={handleCreateAgentTab}
+              onCreateTerminal={handleCreateTerminal}
+              onCreateBrowser={handleCreateBrowser}
+              onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
+              onOpenChanges={handleOpenChanges}
+              onOpenFiles={handleOpenFiles}
+              onOpenPullRequest={handleOpenPullRequest}
+              onEditProfiles={handleEditProfiles}
+              normalizedServerId={normalizedServerId}
+              showCreateBrowserTab={showCreateBrowserTab}
+              terminalDisabled={terminalDisabled}
+              isGit={isGit}
+              showPullRequest={showPullRequest}
+              onLayout={handleInlineAddButtonLayout}
+            />
+          ) : null}
+        </Animated.ScrollView>
+        <WorkspaceTabScrollShades
+          visible={layout.requiresHorizontalScrollFallback}
+          leftStyle={leftTabScrollShadeStyle}
+          rightStyle={rightTabScrollShadeStyle}
+        />
+      </View>
       {layout.requiresHorizontalScrollFallback ? (
         <WorkspaceNewTabButton
+          open={newTabMenuOpen}
+          onOpenChange={setNewTabMenuOpen}
           shortcutKeys={newTabKeys}
           onCreateAgentTab={handleCreateAgentTab}
           onCreateTerminal={handleCreateTerminal}
@@ -1359,6 +1671,12 @@ function ResolvedWorkspaceDesktopTabsRow({
           onLayout={handleInlineAddButtonLayout}
         />
       ) : null}
+      <WorkspacePaneMaximizeButton
+        visible={showPaneMaximizeAction}
+        maximized={paneMaximized}
+        onPress={onTogglePaneMaximized}
+        onLayout={handlePaneMaximizeButtonLayout}
+      />
     </View>
   );
 
@@ -1502,6 +1820,11 @@ const styles = StyleSheet.create((theme) => ({
   tabsScroll: {
     minWidth: 0,
   },
+  tabsScrollContainer: {
+    minWidth: 0,
+    flex: 1,
+    alignSelf: "stretch",
+  },
   tabsScrollFitContent: {
     flex: 1,
   },
@@ -1512,6 +1835,18 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: TAB_ROW_PADDING_HORIZONTAL,
+  },
+  tabScrollShade: {
+    position: "absolute",
+    top: 0,
+    bottom: 1,
+    width: TAB_SCROLL_SHADE_WIDTH,
+  },
+  tabScrollShadeLeft: {
+    left: 0,
+  },
+  tabScrollShadeRight: {
+    right: 0,
   },
   exitFocusModeSlot: {
     alignSelf: "stretch",
@@ -1526,8 +1861,12 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingHorizontal: theme.spacing[1],
   },
+  paneMaximizeButtonSlot: {
+    // Keep the glyph centered in its hit target while placing that glyph on the trailing rail.
+    marginRight: theme.spacing[2],
+  },
   tab: {
-    height: TAB_CHIP_HEIGHT,
+    height: buttonControlHeight.xs,
     paddingHorizontal: TAB_CHIP_HORIZONTAL_PADDING,
     borderRadius: theme.borderRadius.md,
     flexDirection: "row",
@@ -1661,11 +2000,13 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.foregroundMuted,
   },
   inlineAddActionButton: {
-    width: 28,
-    height: 28,
+    width: buttonControlHeight.xs,
+    height: buttonControlHeight.xs,
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
+    outlineWidth: 0,
+    outlineColor: "transparent",
   },
   newTabActionButtonHovered: {
     backgroundColor: theme.colors.surface2,

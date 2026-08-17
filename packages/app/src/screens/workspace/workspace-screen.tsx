@@ -3147,7 +3147,7 @@ function WorkspaceScreenContent({
   const handleWorkspaceTabAction = useCallback(
     (action: KeyboardActionDefinition): boolean => {
       switch (action.id) {
-        case "workspace.tab.new":
+        case "workspace.agent.new":
           handleCreateDraftTab();
           return true;
         case "workspace.terminal.new":
@@ -3298,7 +3298,7 @@ function WorkspaceScreenContent({
   useKeyboardActionHandler({
     handlerId: `workspace-tab-actions:${normalizedServerId}:${normalizedWorkspaceId}`,
     actions: [
-      "workspace.tab.new",
+      "workspace.agent.new",
       "workspace.tab.close-current",
       "workspace.tab.navigate-index",
       "workspace.tab.navigate-relative",

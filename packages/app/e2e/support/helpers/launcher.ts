@@ -62,10 +62,20 @@ export async function getActiveTabTestId(page: Page): Promise<string | null> {
 
 // ─── Tab actions ───────────────────────────────────────────────────────────
 
-/** Press Cmd+T (macOS) or Ctrl+T (Linux/Windows) to open a new tab. */
+/** Press Cmd+T (macOS) or Ctrl+T (Linux/Windows) to open the focused pane's New tab menu. */
 export async function pressNewTabShortcut(page: Page): Promise<void> {
   const modifier = process.platform === "darwin" ? "Meta" : "Control";
   await page.keyboard.press(`${modifier}+t`);
+}
+
+export async function openNewTabMenuWithShortcut(page: Page): Promise<void> {
+  await pressNewTabShortcut(page);
+  await expect(page.getByRole("menuitem", { name: /New agent/ })).toBeVisible();
+}
+
+export async function pressDirectNewTabShortcut(page: Page, key: string): Promise<void> {
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.keyboard.press(`${modifier}+Shift+${key}`);
 }
 
 // ─── Tab bar assertions ───────────────────────────────────────────────────

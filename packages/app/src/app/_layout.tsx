@@ -93,7 +93,10 @@ import { useStableEvent } from "@/hooks/use-stable-event";
 import { useOpenAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelsProvider } from "@/mobile-panels/provider";
 import { I18nProvider } from "@/i18n/provider";
-import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
+import {
+  KeyboardActionDispatcherProvider,
+  useKeyboardActionDispatcher,
+} from "@/keyboard/keyboard-action-dispatcher-context";
 import { polyfillCrypto } from "@/polyfills/crypto";
 import { polyfillNavigator } from "@/polyfills/navigator";
 import { queryClient } from "@/data/query-client";
@@ -455,6 +458,7 @@ interface AppContainerProps {
 const WINDOW_SIDEBAR_TOGGLE_HORIZONTAL_PADDING = 12;
 
 function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppContainerProps) {
+  const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const daemons = useHosts();
   const { settings, updateSettings } = useAppSettings();
   const toggleMobileAgentList = usePanelStore((state) => state.toggleMobileAgentList);
@@ -496,7 +500,12 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
           scope: "sidebar",
         }),
     });
-  }, [closeDesktopAgentList, closeDesktopFileExplorer, openDesktopAgentList]);
+  }, [
+    closeDesktopAgentList,
+    closeDesktopFileExplorer,
+    keyboardActionDispatcher,
+    openDesktopAgentList,
+  ]);
   // TODO: stop matching pathname here as a branch. `chromeEnabled` should not
   // conflate workspace/project-specific chrome (sidebar, mobile gesture) with
   // global concerns like keyboard shortcuts. Split those out so settings (and
@@ -981,17 +990,19 @@ function RuntimeProviders({ children }: { children: ReactNode }) {
 // context and need one shared provider for sibling sheets to stack.
 function RootProviders({ children }: { children: ReactNode }) {
   return (
-    <WindowChromeProvider>
-      <KeyboardProvider>
-        <KeyboardShiftProvider>
-          <ToastProvider>
-            <PortalProvider>
-              <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
-            </PortalProvider>
-          </ToastProvider>
-        </KeyboardShiftProvider>
-      </KeyboardProvider>
-    </WindowChromeProvider>
+    <KeyboardActionDispatcherProvider>
+      <WindowChromeProvider>
+        <KeyboardProvider>
+          <KeyboardShiftProvider>
+            <ToastProvider>
+              <PortalProvider>
+                <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
+              </PortalProvider>
+            </ToastProvider>
+          </KeyboardShiftProvider>
+        </KeyboardProvider>
+      </WindowChromeProvider>
+    </KeyboardActionDispatcherProvider>
   );
 }
 
