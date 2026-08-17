@@ -2455,7 +2455,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
   queueText: {
     flex: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
   },
   queueActions: {
     flexDirection: "row",
