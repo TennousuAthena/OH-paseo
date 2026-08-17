@@ -272,6 +272,6 @@ const styles = StyleSheet.create((theme) => ({
   hostSwitcherText: {
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
 }));

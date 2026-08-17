@@ -1249,9 +1249,7 @@ function WorkspaceHeaderTitleBar({
         </View>
       ) : (
         <View style={styles.headerTitleTextGroup}>
-          <ScreenTitle testID="workspace-header-title" style={styles.headerTitle}>
-            {title}
-          </ScreenTitle>
+          <ScreenTitle testID="workspace-header-title">{title}</ScreenTitle>
           <WorkspaceHeaderProjectRow
             subtitle={subtitle}
             isSubtitleDistinct={isSubtitleDistinct}
@@ -3932,9 +3930,6 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minHeight: 0,
   },
-  headerTitle: {
-    fontSize: theme.fontSize.sm,
-  },
   headerTitleContainer: {
     flex: 1,
     flexShrink: 1,
@@ -3982,15 +3977,15 @@ const styles = StyleSheet.create((theme) => ({
   headerProjectTitle: {
     color: theme.colors.foregroundMuted,
     fontSize: {
-      xs: theme.fontSize.xs,
-      md: theme.fontSize.sm,
+      xs: theme.fontSize.sm,
+      md: theme.fontSize.base,
     },
     flexShrink: 1,
     minWidth: 0,
   },
   headerProjectSeparator: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     flexShrink: 0,
   },
   headerTitleSkeleton: {
@@ -4055,7 +4050,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   newTabTooltipText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.popoverForeground,
   },
   newTabTooltipRow: {
@@ -4093,7 +4088,7 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     flex: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   headerMenuProfileIconWrapper: {
     width: 16,
@@ -4157,7 +4152,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
   },
   tabLabelWithCloseButton: {

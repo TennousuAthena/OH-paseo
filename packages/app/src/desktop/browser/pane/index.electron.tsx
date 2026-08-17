@@ -1738,7 +1738,7 @@ const styles = StyleSheet.create((theme) => ({
   urlInput: {
     flex: 1,
     minWidth: 0,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     paddingVertical: 0,
     paddingHorizontal: 0,
   },
@@ -1750,7 +1750,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   metaError: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   webviewWrap: {
     flex: 1,
@@ -1771,7 +1771,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   toolbarTooltipText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.popoverForeground,
   },
   annotationOverlay: {
@@ -1803,7 +1803,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   annotationTitle: {
     flex: 1,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: "600",
     color: theme.colors.foreground,
   },
@@ -1815,13 +1815,13 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
   },
   annotationElement: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     marginBottom: theme.spacing[2],
   },
   annotationInput: {
     minHeight: 64,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foreground,
     borderRadius: theme.borderRadius.md,
     borderWidth: 1,
@@ -1844,10 +1844,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: 8,
   },
   unavailableTitle: {
-    fontSize: 16,
+    fontSize: theme.fontSize.base,
     fontWeight: "600",
   },
   unavailableSubtitle: {
-    fontSize: 12,
+    fontSize: theme.fontSize.sm,
   },
 }));

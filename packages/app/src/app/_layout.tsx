@@ -684,7 +684,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
     applyAppearance({
       uiFontFamily: settings.uiFontFamily,
       monoFontFamily: settings.monoFontFamily,
-      uiFontSize: settings.uiFontSize,
+      uiBaseFontSize: settings.uiBaseFontSize,
       codeFontSize: settings.codeFontSize,
       syntaxTheme: settings.syntaxTheme,
     });
@@ -692,7 +692,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
     settingsLoading,
     settings.uiFontFamily,
     settings.monoFontFamily,
-    settings.uiFontSize,
+    settings.uiBaseFontSize,
     settings.codeFontSize,
     settings.syntaxTheme,
   ]);

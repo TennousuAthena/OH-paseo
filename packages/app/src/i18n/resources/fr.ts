@@ -2035,8 +2035,8 @@ export const fr: TranslationResources = {
         interfaceFontHint:
           "Utilisé dans toute l'application. Laisser vide pour la valeur par défaut du système",
         interfaceFontAccessibility: "Famille de polices d'interface",
-        interfaceSize: "Taille de l'interface",
-        interfaceSizeAccessibility: "Taille de la police de l'interface",
+        baseSize: "Taille de base",
+        baseSizeAccessibility: "Taille de base de la police",
         codeFont: "Police de code",
         codeFontHint:
           "Utilisé dans le code, les différences et la sortie du terminal. Laisser vide pour la valeur par défaut du système",

@@ -2047,8 +2047,8 @@ export const en = {
         interfaceFont: "Interface font",
         interfaceFontHint: "Used across the app. Leave empty for the system default",
         interfaceFontAccessibility: "Interface font family",
-        interfaceSize: "Interface size",
-        interfaceSizeAccessibility: "Interface font size",
+        baseSize: "Base size",
+        baseSizeAccessibility: "Base font size",
         codeFont: "Code font",
         codeFontHint:
           "Used in code, diffs, and the terminal output. Leave empty for the system default",

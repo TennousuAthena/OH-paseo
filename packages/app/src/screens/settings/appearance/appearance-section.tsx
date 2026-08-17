@@ -20,9 +20,9 @@ import { Switch } from "@/components/ui/switch";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import {
   MAX_CODE_FONT_SIZE,
-  MAX_UI_FONT_SIZE,
+  MAX_UI_BASE_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
-  MIN_UI_FONT_SIZE,
+  MIN_UI_BASE_FONT_SIZE,
   parseClampedFontSize,
   sanitizeFontFamily,
   useAppSettings,
@@ -470,13 +470,13 @@ export function AppearanceSection() {
 
   const [uiFontDraft, setUiFontDraft] = useState(settings.uiFontFamily);
   const [monoFontDraft, setMonoFontDraft] = useState(settings.monoFontFamily);
-  const [uiSizeDraft, setUiSizeDraft] = useState(String(settings.uiFontSize));
+  const [uiBaseSizeDraft, setUiBaseSizeDraft] = useState(String(settings.uiBaseFontSize));
   const [codeSizeDraft, setCodeSizeDraft] = useState(String(settings.codeFontSize));
 
   // Resync numeric drafts when the committed value changes elsewhere.
   useEffect(() => {
-    setUiSizeDraft(String(settings.uiFontSize));
-  }, [settings.uiFontSize]);
+    setUiBaseSizeDraft(String(settings.uiBaseFontSize));
+  }, [settings.uiBaseFontSize]);
   useEffect(() => {
     setCodeSizeDraft(String(settings.codeFontSize));
   }, [settings.codeFontSize]);
@@ -546,25 +546,25 @@ export function AppearanceSection() {
     [settings.monoFontFamily, updateSettings],
   );
 
-  const handleUiSizeChange = useCallback((value: string) => {
-    setUiSizeDraft(value.replace(/[^\d]/g, ""));
+  const handleUiBaseSizeChange = useCallback((value: string) => {
+    setUiBaseSizeDraft(value.replace(/[^\d]/g, ""));
   }, []);
 
   const handleCodeSizeChange = useCallback((value: string) => {
     setCodeSizeDraft(value.replace(/[^\d]/g, ""));
   }, []);
 
-  const commitUiSize = useCallback(() => {
-    const parsed = parseClampedFontSize(uiSizeDraft, {
-      min: MIN_UI_FONT_SIZE,
-      max: MAX_UI_FONT_SIZE,
+  const commitUiBaseSize = useCallback(() => {
+    const parsed = parseClampedFontSize(uiBaseSizeDraft, {
+      min: MIN_UI_BASE_FONT_SIZE,
+      max: MAX_UI_BASE_FONT_SIZE,
     });
-    const next = parsed ?? settings.uiFontSize;
-    setUiSizeDraft(String(next));
-    if (next !== settings.uiFontSize) {
-      void updateSettings({ uiFontSize: next });
+    const next = parsed ?? settings.uiBaseFontSize;
+    setUiBaseSizeDraft(String(next));
+    if (next !== settings.uiBaseFontSize) {
+      void updateSettings({ uiBaseFontSize: next });
     }
-  }, [settings.uiFontSize, uiSizeDraft, updateSettings]);
+  }, [settings.uiBaseFontSize, uiBaseSizeDraft, updateSettings]);
 
   const commitCodeSize = useCallback(() => {
     const parsed = parseClampedFontSize(codeSizeDraft, {
@@ -630,12 +630,12 @@ export function AppearanceSection() {
             />
           ) : null}
           <FontSizeRow
-            title={t("settings.appearance.fonts.interfaceSize")}
-            accessibilityLabel={t("settings.appearance.fonts.interfaceSizeAccessibility")}
-            draft={uiSizeDraft}
+            title={t("settings.appearance.fonts.baseSize")}
+            accessibilityLabel={t("settings.appearance.fonts.baseSizeAccessibility")}
+            draft={uiBaseSizeDraft}
             withBorder={showInterfaceFontFamilyRow}
-            onChangeDraft={handleUiSizeChange}
-            onCommit={commitUiSize}
+            onChangeDraft={handleUiBaseSizeChange}
+            onCommit={commitUiBaseSize}
           />
           <FontFamilyRow
             title={t("settings.appearance.fonts.codeFont")}
@@ -697,7 +697,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   triggerText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   swatch: {
     width: ICON_SIZE.md,
@@ -718,7 +718,7 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface2,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     textAlign: "left",
   },
   sizeField: {
@@ -736,12 +736,12 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface2,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     textAlign: "right",
   },
   unit: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   placeholderColor: {
     color: theme.colors.foregroundMuted,

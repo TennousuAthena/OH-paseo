@@ -2000,8 +2000,8 @@ export const ja: TranslationResources = {
         interfaceFontHint:
           "アプリ全体で使用されます。システムデフォルトにするには空のままにしてください",
         interfaceFontAccessibility: "インターフェースフォントファミリー",
-        interfaceSize: "インターフェースサイズ",
-        interfaceSizeAccessibility: "インターフェースフォントサイズ",
+        baseSize: "基本サイズ",
+        baseSizeAccessibility: "基本フォントサイズ",
         codeFont: "コードフォント",
         codeFontHint:
           "コード、差分、ターミナル出力で使用されます。システムデフォルトにするには空のままにしてください",

@@ -1994,8 +1994,8 @@ export const ko: TranslationResources = {
         interfaceFont: "인터페이스 글꼴",
         interfaceFontHint: "앱 전체에 사용됩니다. 시스템 기본값을 사용하려면 비워 두세요",
         interfaceFontAccessibility: "인터페이스 글꼴 패밀리",
-        interfaceSize: "인터페이스 크기",
-        interfaceSizeAccessibility: "인터페이스 글꼴 크기",
+        baseSize: "기본 크기",
+        baseSizeAccessibility: "기본 글꼴 크기",
         codeFont: "코드 글꼴",
         codeFontHint:
           "코드, diff, 터미널 출력에 사용됩니다. 시스템 기본값을 사용하려면 비워 두세요",

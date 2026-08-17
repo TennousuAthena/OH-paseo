@@ -1983,8 +1983,8 @@ export const ar: TranslationResources = {
         interfaceFont: "خط الواجهة",
         interfaceFontHint: "تستخدم عبر التطبيق. اتركه فارغًا للإعداد الافتراضي للنظام",
         interfaceFontAccessibility: "عائلة خطوط الواجهة",
-        interfaceSize: "حجم الواجهة",
-        interfaceSizeAccessibility: "حجم الخط في الواجهة",
+        baseSize: "الحجم الأساسي",
+        baseSizeAccessibility: "حجم الخط الأساسي",
         codeFont: "خط الكود",
         codeFontHint:
           "تستخدم في الكود والاختلافات والمخرجات الطرفية. اتركه فارغًا للإعداد الافتراضي للنظام",

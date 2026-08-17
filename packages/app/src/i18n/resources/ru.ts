@@ -2021,8 +2021,8 @@ export const ru: TranslationResources = {
         interfaceFontHint:
           "Используется во всем приложении. Оставьте пустым для системного значения по умолчанию.",
         interfaceFontAccessibility: "Семейство интерфейсных шрифтов",
-        interfaceSize: "Размер интерфейса",
-        interfaceSizeAccessibility: "Размер шрифта интерфейса",
+        baseSize: "Базовый размер",
+        baseSizeAccessibility: "Базовый размер шрифта",
         codeFont: "Шрифт кода",
         codeFontHint:
           "Используется в коде, различиях и выводе терминала. Оставьте пустым для системного значения по умолчанию.",

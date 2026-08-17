@@ -2014,8 +2014,8 @@ export const ptBR: TranslationResources = {
         interfaceFont: "Fonte da interface",
         interfaceFontHint: "Usada em todo o app. Deixe vazio para usar o padrão do sistema",
         interfaceFontAccessibility: "Família da fonte da interface",
-        interfaceSize: "Tamanho da interface",
-        interfaceSizeAccessibility: "Tamanho da fonte da interface",
+        baseSize: "Tamanho base",
+        baseSizeAccessibility: "Tamanho base da fonte",
         codeFont: "Fonte de código",
         codeFontHint:
           "Usada em código, diffs e saída do terminal. Deixe vazio para usar o padrão do sistema",
