@@ -25,7 +25,7 @@ import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { SidebarCallout } from "@/components/sidebar-callout";
 import { Composer } from "@/composer";
-import { COMPOSER_PILL_CLEARANCE, COMPOSER_PILL_MIN_HEIGHT } from "@/composer/pill-styles";
+import { COMPOSER_PILL_MIN_HEIGHT, resolveComposerPillClearance } from "@/composer/pill-styles";
 import { getActiveMessageSubmissions } from "@/composer/submission/model";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -1212,6 +1212,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
+  const isCompactFormFactor = useIsCompactFormFactor();
+  const composerPillClearance = resolveComposerPillClearance(isCompactFormFactor);
   const subagentRows = useSubagentsForParent({ serverId, parentAgentId: agentId });
   const tasks = useSessionStore((state): TodoEntry[] | undefined =>
     state.sessions[serverId]?.agentTasks.get(agentId),
@@ -1227,7 +1229,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     archiveFinishedStatus: archiveFinishedSubagents.status,
   });
   const [agentTracksHeight, setAgentTracksHeight] = useState(
-    COMPOSER_PILL_MIN_HEIGHT + COMPOSER_PILL_CLEARANCE,
+    COMPOSER_PILL_MIN_HEIGHT + composerPillClearance,
   );
   const rawAgentInputDraft = useAgentInputDraft({
     draftKey: buildDraftStoreKey({
@@ -1304,7 +1306,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
           routeBottomAnchorRequest={routeBottomAnchorRequest}
           hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
           bottomOverlayHeight={showAgentTracks ? agentTracksHeight : 0}
-          bottomOverlayClearance={showAgentTracks ? COMPOSER_PILL_CLEARANCE : 0}
+          bottomOverlayClearance={showAgentTracks ? composerPillClearance : 0}
           toast={toastApi}
           onOpenWorkspaceFile={onOpenWorkspaceFile}
         />

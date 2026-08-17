@@ -752,8 +752,14 @@ const styles = StyleSheet.create((theme) => ({
   importPillRow: {
     width: "100%",
     paddingHorizontal: theme.spacing[4],
-    paddingTop: COMPOSER_PILL_CLEARANCE,
-    paddingBottom: COMPOSER_PILL_CLEARANCE,
+    paddingTop: {
+      xs: COMPOSER_PILL_CLEARANCE.compact,
+      md: COMPOSER_PILL_CLEARANCE.wide,
+    },
+    paddingBottom: {
+      xs: COMPOSER_PILL_CLEARANCE.compact,
+      md: COMPOSER_PILL_CLEARANCE.wide,
+    },
     alignItems: "center",
   },
   importPillContent: {

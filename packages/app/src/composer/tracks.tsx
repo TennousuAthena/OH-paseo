@@ -256,7 +256,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   pillSpacing: {
-    marginBottom: COMPOSER_PILL_CLEARANCE,
+    marginBottom: {
+      xs: COMPOSER_PILL_CLEARANCE.compact,
+      md: COMPOSER_PILL_CLEARANCE.wide,
+    },
   },
   // The rail every panel row sits on: inset from the panel edge so the fill is a rounded block
   // inside it, and tall enough that revealing an action button cannot resize the row.

@@ -49,7 +49,11 @@ vi.mock("@/components/ui/menu", () => ({
 }));
 
 import { ComposerTrackBar } from "./tracks";
-import { COMPOSER_PILL_CLEARANCE, composerPillStyles } from "./pill-styles";
+import {
+  COMPOSER_PILL_CLEARANCE,
+  composerPillStyles,
+  resolveComposerPillClearance,
+} from "./pill-styles";
 
 describe("ComposerTrackBar", () => {
   let root: Root | null = null;
@@ -96,6 +100,8 @@ describe("ComposerTrackBar", () => {
       borderRadius: 16,
     });
     expect(composerPillStyles.label).toMatchObject({ fontSize: 12 });
-    expect(COMPOSER_PILL_CLEARANCE).toBe(16);
+    expect(resolveComposerPillClearance(true)).toBe(16);
+    expect(resolveComposerPillClearance(false)).toBe(10);
+    expect(COMPOSER_PILL_CLEARANCE).toEqual({ compact: 16, wide: 10 });
   });
 });
