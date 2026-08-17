@@ -12,6 +12,7 @@ import {
   waitForTabWithTitle,
   measureTileTransition,
   sampleTabsDuringTransition,
+  expectTabTitleFits,
   terminalSurfaceLocator,
 } from "../support/helpers/launcher";
 import { expectComposerVisible, composerLocator } from "../support/helpers/composer";
@@ -197,7 +198,7 @@ test.describe("Tab transitions (no flash)", () => {
     await gotoWorkspace(page, workspace.workspaceId);
 
     // Sample tabs at high frequency across the transition
-    const snapshots = await sampleTabsDuringTransition(page, () => clickNewChat(page), 2_000, 30);
+    const snapshots = await sampleTabsDuringTransition(page, () => clickNewChat(page));
 
     // Every snapshot should have at least one tab — no blank/zero-tab frames
     for (const snapshot of snapshots) {
@@ -207,11 +208,15 @@ test.describe("Tab transitions (no flash)", () => {
     // Tab count should never spike excessively (no duplicate flash from add-then-remove).
     // When running in-suite, previous tests may have created tabs on the shared workspace,
     // so we allow +2 tolerance for accumulated state and React render batching.
-    const counts = snapshots.map((s) => s.length);
+    const counts = snapshots.map((snapshot) => snapshot.length);
     const maxCount = Math.max(...counts);
     const initialCount = counts[0] ?? 0;
 
     expect(maxCount).toBeLessThanOrEqual(initialCount + 2);
+    expect(new Set(snapshots.map((snapshot) => JSON.stringify(snapshot))).size).toBeLessThanOrEqual(
+      2,
+    );
+    await expectTabTitleFits(page, "New Agent", { min: 96, max: 160 });
   });
 
   test("Terminal transition completes within visual budget", async ({ page }) => {

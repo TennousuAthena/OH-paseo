@@ -158,21 +158,59 @@ export async function sampleTabsDuringTransition(
   page: Page,
   action: () => Promise<void>,
   durationMs = 2_000,
-  intervalMs = 30,
-): Promise<string[][]> {
-  const snapshots: string[][] = [];
-  const startSampling = async () => {
-    const start = Date.now();
-    while (Date.now() - start < durationMs) {
-      snapshots.push(await getTabTestIds(page));
-      await page.waitForTimeout(intervalMs);
+): Promise<Array<Array<{ id: string; width: number }>>> {
+  await page.evaluate((duration) => {
+    const scope = globalThis as typeof globalThis & {
+      __paseoTabTrackFrames?: Array<Array<{ id: string; width: number }>>;
+    };
+    scope.__paseoTabTrackFrames = [];
+    const startedAt = performance.now();
+    function sample() {
+      const tabs = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])',
+        ),
+      ).filter((element) => element.getClientRects().length > 0);
+      scope.__paseoTabTrackFrames?.push(
+        tabs.map((element) => ({
+          id: element.getAttribute("data-testid") ?? "",
+          width: Math.round(element.getBoundingClientRect().width),
+        })),
+      );
+      if (performance.now() - startedAt < duration) {
+        requestAnimationFrame(sample);
+      }
     }
-  };
-
-  const samplingPromise = startSampling();
+    requestAnimationFrame(sample);
+  }, durationMs);
   await action();
-  await samplingPromise;
-  return snapshots;
+  await page.waitForTimeout(durationMs + 100);
+  return page.evaluate(() => {
+    const scope = globalThis as typeof globalThis & {
+      __paseoTabTrackFrames?: Array<Array<{ id: string; width: number }>>;
+    };
+    return scope.__paseoTabTrackFrames ?? [];
+  });
+}
+
+export async function expectTabTitleFits(
+  page: Page,
+  title: string,
+  widthRange: { min: number; max: number },
+): Promise<void> {
+  const tab = page
+    .locator('[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])')
+    .filter({ hasText: title })
+    .filter({ visible: true })
+    .last();
+  await expect(tab).toContainText(title);
+  const tabWidth = await tab.evaluate((element) => element.getBoundingClientRect().width);
+  expect(tabWidth).toBeGreaterThanOrEqual(widthRange.min);
+  expect(tabWidth).toBeLessThanOrEqual(widthRange.max);
+  const label = tab.getByText(title, { exact: true });
+  await expect(label).toBeVisible();
+  const labelFits = await label.evaluate((element) => element.scrollWidth <= element.clientWidth);
+  expect(labelFits).toBe(true);
 }
 
 export function terminalSurfaceLocator(page: Page) {

@@ -60,14 +60,28 @@ export function buildDiffDocumentModel(input: BuildDiffDocumentModelInput): Diff
     if (!isCollapsed && reusableFile) {
       const reusedRows = reusableModel!.rows.slice(reusableFile.rowStart, reusableFile.rowEnd);
       for (const reusedRow of reusedRows) {
-        const height = reusedRow.height;
+        if (reusedRow.kind === "line") {
+          const reviewHeight = reviewHeightForCells(reusedRow.cells, input);
+          const textHeight = reusedRow.height - reusedRow.reviewHeight;
+          const height = textHeight + reviewHeight;
+          rows.push({
+            ...reusedRow,
+            index: rows.length,
+            fileIndex,
+            top: documentTop,
+            height,
+            reviewHeight,
+          });
+          documentTop += height;
+          continue;
+        }
         rows.push({
           ...reusedRow,
           index: rows.length,
           fileIndex,
           top: documentTop,
         });
-        documentTop += height;
+        documentTop += reusedRow.height;
       }
       maximumHorizontalOverflow = Math.max(0, reusableFile.contentWidth - input.viewportWidth);
       documentTop += BODY_BORDER_HEIGHT;

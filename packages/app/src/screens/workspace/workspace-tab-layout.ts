@@ -30,6 +30,16 @@ export interface WorkspaceTabLayoutResult {
   requiresHorizontalScrollFallback: boolean;
 }
 
+export function retainWorkspaceTabMeasuredWidth(
+  currentWidth: number,
+  measuredWidth: number,
+): number {
+  if (measuredWidth <= 0 || Math.abs(currentWidth - measuredWidth) <= 1) {
+    return currentWidth;
+  }
+  return measuredWidth;
+}
+
 function clamp(value: number, min: number, max: number): number {
   if (value < min) {
     return min;

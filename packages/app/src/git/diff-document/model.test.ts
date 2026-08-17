@@ -272,6 +272,54 @@ describe("diff document model", () => {
     expect(reviewRow?.kind === "line" ? reviewRow.reviewHeight : 0).toBe(148);
   });
 
+  it("reflows review geometry without remeasuring unchanged text", () => {
+    const files = [file("a.ts"), file("b.ts")];
+    let measurementCount = 0;
+    const countingMeasurer: TextMeasurer = {
+      measure(text) {
+        measurementCount += 1;
+        return Array.from(text).length * 10;
+      },
+    };
+    const base = buildDiffDocumentModel(input({ files, measureText: countingMeasurer }));
+    const initialMeasurementCount = measurementCount;
+    const reviewCell = base.rows
+      .filter((row) => row.kind === "line")
+      .flatMap((row) => row.cells)
+      .find((cell) => cell?.reviewTarget);
+    if (!reviewCell?.reviewTarget) throw new Error("Expected a reviewable cell");
+    const baseReviewRow = rowForCell(base, reviewCell);
+    const baseSecondFileTop = base.files[1]!.top;
+
+    const withEditor = buildDiffDocumentModel(
+      input({
+        files,
+        measureText: countingMeasurer,
+        reviewActions: reviewActionsWithEditor(reviewCell.reviewTarget),
+        reuseFrom: [base],
+      }),
+    );
+    const editorRow = rowForReviewTarget(withEditor, reviewCell.reviewTarget.key);
+
+    expect(measurementCount).toBe(initialMeasurementCount);
+    expect(editorRow.reviewHeight).toBe(148);
+    expect(editorRow.cells).toBe(baseReviewRow.cells);
+    expect(withEditor.files[1]!.top).toBe(baseSecondFileTop + 148);
+
+    const withoutEditor = buildDiffDocumentModel(
+      input({
+        files,
+        measureText: countingMeasurer,
+        reviewActions: reviewActionsWithEditor(null),
+        reuseFrom: [base, withEditor],
+      }),
+    );
+
+    expect(measurementCount).toBe(initialMeasurementCount);
+    expect(withoutEditor.height).toBe(base.height);
+    expect(withoutEditor.files[1]!.top).toBe(baseSecondFileTop);
+  });
+
   it("preserves a logical source anchor through width and font metric relayout", () => {
     const narrow = buildDiffDocumentModel(
       input({ files: [fileWithChangedLine("abcdefghij")], viewportWidth: 90 }),
@@ -491,4 +539,27 @@ function rowForCell(
   );
   if (!row || row.kind !== "line") throw new Error("Expected the cell row");
   return row;
+}
+
+function rowForReviewTarget(model: ReturnType<typeof buildDiffDocumentModel>, key: string) {
+  const row = model.rows.find(
+    (candidate) =>
+      candidate.kind === "line" && candidate.cells.some((cell) => cell?.reviewTarget?.key === key),
+  );
+  if (!row || row.kind !== "line") throw new Error("Expected the review row");
+  return row;
+}
+
+function reviewActionsWithEditor(
+  target: NonNullable<ReturnType<typeof addedCell>["reviewTarget"]> | null,
+): NonNullable<BuildDiffDocumentModelInput["reviewActions"]> {
+  return {
+    commentsByTarget: new Map(),
+    editor: target ? { target, body: "", commentId: null } : null,
+    onStartComment() {},
+    onCancelEditor() {},
+    onSaveEditor() {},
+    onEditComment() {},
+    onDeleteComment() {},
+  };
 }

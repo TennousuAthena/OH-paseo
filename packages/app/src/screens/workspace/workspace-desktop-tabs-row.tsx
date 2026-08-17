@@ -2,6 +2,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -62,6 +63,7 @@ import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
+import { retainWorkspaceTabMeasuredWidth } from "@/screens/workspace/workspace-tab-layout";
 import {
   WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
@@ -105,9 +107,8 @@ const TAB_ICON_WIDTH = 14;
 const TAB_CONTENT_GAP = 4;
 const TAB_DROP_INDICATOR_WIDTH = 4;
 const TAB_MIN_WIDTH = 96;
-const TAB_MAX_WIDTH = 240;
+const TAB_MAX_WIDTH = 160;
 const TAB_CLOSE_BUTTON_RESERVED_WIDTH = 0;
-const TAB_LABEL_FALLBACK_CHARACTER_WIDTH = 7;
 const TAB_LABEL_LAYOUT_ALLOWANCE = 4;
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
@@ -144,9 +145,12 @@ function inlineAddActionButtonStyle({ hovered, pressed }: PressableStateCallback
   return [styles.inlineAddActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
 }
 
-function updateMeasuredWidth(setWidth: Dispatch<SetStateAction<number>>, event: LayoutChangeEvent) {
+function updateMeasuredWidth(
+  setWidth: React.Dispatch<React.SetStateAction<number>>,
+  event: LayoutChangeEvent,
+) {
   const nextWidth = Math.round(event.nativeEvent.layout.width);
-  setWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+  setWidth((current) => retainWorkspaceTabMeasuredWidth(current, nextWidth));
 }
 
 function TabLabelMeasurement({
@@ -392,6 +396,46 @@ interface ResolvedWorkspaceDesktopTabRowItem extends WorkspaceDesktopTabRowItem 
   presentation: WorkspaceTabPresentation;
 }
 
+interface WorkspaceTabLabel {
+  key: string;
+  label: string;
+}
+
+interface WorkspaceTabLabelMeasurement {
+  label: string;
+  width: number;
+}
+
+interface WorkspaceTabTrackSnapshot {
+  signature: string;
+  tabs: ResolvedWorkspaceDesktopTabRowItem[];
+  labels: WorkspaceTabLabel[];
+  labelWidths: number[];
+}
+
+function workspaceTabLabelSignature(labels: WorkspaceTabLabel[]): string {
+  return JSON.stringify(labels);
+}
+
+function completeWorkspaceTabLabelWidths(
+  labels: WorkspaceTabLabel[],
+  measurements: Map<string, WorkspaceTabLabelMeasurement>,
+): number[] | null {
+  const widths: number[] = [];
+  for (const { key, label } of labels) {
+    const measurement = measurements.get(key);
+    if (!measurement || measurement.label !== label || measurement.width <= 0) {
+      return null;
+    }
+    widths.push(measurement.width + TAB_LABEL_LAYOUT_ALLOWANCE);
+  }
+  return widths;
+}
+
+function sameWidths(left: number[], right: number[]): boolean {
+  return left.length === right.length && left.every((width, index) => width === right[index]);
+}
+
 interface WorkspaceDesktopTabsRowProps {
   paneId?: string;
   isFocused?: boolean;
@@ -428,48 +472,47 @@ interface ResolvedWorkspaceDesktopTabsRowProps extends Omit<WorkspaceDesktopTabs
   tabs: ResolvedWorkspaceDesktopTabRowItem[];
 }
 
-interface WorkspaceDesktopTabRowsResolverProps {
-  tabs: WorkspaceDesktopTabRowItem[];
+interface WorkspaceDesktopTabPresentationSlotProps {
+  tab: WorkspaceTabDescriptor;
   serverId: string;
   workspaceId: string;
-  index: number;
-  resolvedTabs: ResolvedWorkspaceDesktopTabRowItem[];
-  children: (tabs: ResolvedWorkspaceDesktopTabRowItem[]) => React.ReactNode;
+  onResolve: (tabKey: string, presentation: WorkspaceTabPresentation) => void;
 }
 
 const EMPTY_RESOLVED_TAB_ROWS: ResolvedWorkspaceDesktopTabRowItem[] = [];
 
-function WorkspaceDesktopTabRowsResolver({
-  tabs,
+function WorkspaceDesktopTabPresentationSlot({
+  tab,
   serverId,
   workspaceId,
-  index,
-  resolvedTabs,
-  children,
-}: WorkspaceDesktopTabRowsResolverProps): React.ReactElement {
-  const item = tabs[index];
-  if (!item) {
-    return <>{children(resolvedTabs)}</>;
-  }
-
+  onResolve,
+}: WorkspaceDesktopTabPresentationSlotProps) {
   return (
-    <WorkspaceTabPresentationResolver tab={item.tab} serverId={serverId} workspaceId={workspaceId}>
-      {(presentation) => {
-        const nextResolvedTabs = [...resolvedTabs, { ...item, presentation }];
-        return (
-          <WorkspaceDesktopTabRowsResolver
-            tabs={tabs}
-            serverId={serverId}
-            workspaceId={workspaceId}
-            index={index + 1}
-            resolvedTabs={nextResolvedTabs}
-          >
-            {children}
-          </WorkspaceDesktopTabRowsResolver>
-        );
-      }}
+    <WorkspaceTabPresentationResolver tab={tab} serverId={serverId} workspaceId={workspaceId}>
+      {(presentation) => (
+        <WorkspaceDesktopTabPresentationCommit
+          tabKey={tab.key}
+          presentation={presentation}
+          onResolve={onResolve}
+        />
+      )}
     </WorkspaceTabPresentationResolver>
   );
+}
+
+function WorkspaceDesktopTabPresentationCommit({
+  tabKey,
+  presentation,
+  onResolve,
+}: {
+  tabKey: string;
+  presentation: WorkspaceTabPresentation;
+  onResolve: (tabKey: string, presentation: WorkspaceTabPresentation) => void;
+}) {
+  useLayoutEffect(() => {
+    onResolve(tabKey, presentation);
+  }, [onResolve, presentation, tabKey]);
+  return null;
 }
 
 function getFallbackTabLabel(
@@ -813,16 +856,61 @@ function TabChip({
 }
 
 export function WorkspaceDesktopTabsRow(props: WorkspaceDesktopTabsRowProps) {
+  const [presentations, setPresentations] = useState(
+    () => new Map<string, WorkspaceTabPresentation>(),
+  );
+  const handlePresentation = useCallback(
+    (tabKey: string, presentation: WorkspaceTabPresentation) => {
+      setPresentations((current) => {
+        if (current.get(tabKey) === presentation) {
+          return current;
+        }
+        const next = new Map(current);
+        next.set(tabKey, presentation);
+        return next;
+      });
+    },
+    [],
+  );
+  const currentTabKeys = useMemo(
+    () => new Set(props.tabs.map((item) => item.tab.key)),
+    [props.tabs],
+  );
+  useEffect(() => {
+    setPresentations((current) => {
+      const removedKeys = [...current.keys()].filter((key) => !currentTabKeys.has(key));
+      if (removedKeys.length === 0) {
+        return current;
+      }
+      const next = new Map(current);
+      for (const key of removedKeys) {
+        next.delete(key);
+      }
+      return next;
+    });
+  }, [currentTabKeys]);
+  const resolvedTabs = useMemo(
+    () =>
+      props.tabs.flatMap((item) => {
+        const presentation = presentations.get(item.tab.key);
+        return presentation ? [{ ...item, presentation }] : [];
+      }),
+    [presentations, props.tabs],
+  );
+
   return (
-    <WorkspaceDesktopTabRowsResolver
-      tabs={props.tabs}
-      serverId={props.normalizedServerId}
-      workspaceId={props.normalizedWorkspaceId}
-      index={0}
-      resolvedTabs={EMPTY_RESOLVED_TAB_ROWS}
-    >
-      {(tabs) => <ResolvedWorkspaceDesktopTabsRow {...props} tabs={tabs} />}
-    </WorkspaceDesktopTabRowsResolver>
+    <>
+      <ResolvedWorkspaceDesktopTabsRow {...props} tabs={resolvedTabs} />
+      {props.tabs.map(({ tab }) => (
+        <WorkspaceDesktopTabPresentationSlot
+          key={`${tab.key}:${tab.kind}`}
+          tab={tab}
+          serverId={props.normalizedServerId}
+          workspaceId={props.normalizedWorkspaceId}
+          onResolve={handlePresentation}
+        />
+      ))}
+    </>
   );
 }
 
@@ -864,9 +952,8 @@ function ResolvedWorkspaceDesktopTabsRow({
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
   const [inlineAddButtonWidth, setInlineAddButtonWidth] = useState<number>(0);
   const [exitFocusModeWidth, setExitFocusModeWidth] = useState<number>(0);
-  const [measuredTabLabels, setMeasuredTabLabels] = useState<
-    Record<string, { label: string; width: number }>
-  >({});
+  const labelMeasurementsRef = useRef(new Map<string, WorkspaceTabLabelMeasurement>());
+  const [trackSnapshot, setTrackSnapshot] = useState<WorkspaceTabTrackSnapshot | null>(null);
   const workspaceRoot = useWorkspaceDirectory(normalizedServerId, normalizedWorkspaceId) ?? "";
   const checkoutStatus = useCheckoutStatusQuery({
     serverId: normalizedServerId,
@@ -954,32 +1041,76 @@ function ResolvedWorkspaceDesktopTabsRow({
       }),
     [fallbackTabLabels, tabs],
   );
-  const tabLabelWidths = useMemo(
-    () =>
-      tabLabels.map(({ key, label }) => {
-        const measurement = measuredTabLabels[key];
-        return measurement?.label === label
-          ? measurement.width + TAB_LABEL_LAYOUT_ALLOWANCE
-          : label.length * TAB_LABEL_FALLBACK_CHARACTER_WIDTH + TAB_LABEL_LAYOUT_ALLOWANCE;
-      }),
-    [measuredTabLabels, tabLabels],
-  );
+  const tabLabelSignature = useMemo(() => workspaceTabLabelSignature(tabLabels), [tabLabels]);
+  const publishMeasuredTrack = useCallback(() => {
+    if (tabsContainerWidth <= 0) {
+      return;
+    }
+    const labelWidths = completeWorkspaceTabLabelWidths(tabLabels, labelMeasurementsRef.current);
+    if (!labelWidths) {
+      return;
+    }
+
+    const retainedMeasurements = new Map<string, WorkspaceTabLabelMeasurement>();
+    for (const { key } of tabLabels) {
+      const measurement = labelMeasurementsRef.current.get(key);
+      if (measurement) {
+        retainedMeasurements.set(key, measurement);
+      }
+    }
+    labelMeasurementsRef.current = retainedMeasurements;
+
+    setTrackSnapshot((current) => {
+      if (
+        current?.signature === tabLabelSignature &&
+        sameWidths(current.labelWidths, labelWidths)
+      ) {
+        return current;
+      }
+      return {
+        signature: tabLabelSignature,
+        tabs,
+        labels: tabLabels,
+        labelWidths,
+      };
+    });
+  }, [tabLabelSignature, tabLabels, tabs, tabsContainerWidth]);
+
+  useLayoutEffect(() => {
+    publishMeasuredTrack();
+  }, [publishMeasuredTrack]);
+
   const handleTabLabelLayout = useCallback(
     (key: string, label: string, event: LayoutChangeEvent) => {
       const width = Math.ceil(event.nativeEvent.layout.width);
-      setMeasuredTabLabels((current) => {
-        const existing = current[key];
-        if (existing?.label === label && existing.width === width) {
-          return current;
-        }
-        return { ...current, [key]: { label, width } };
-      });
+      if (width <= 0) {
+        return;
+      }
+      const current = labelMeasurementsRef.current.get(key);
+      if (current?.label === label && current.width === width) {
+        return;
+      }
+      labelMeasurementsRef.current.set(key, { label, width });
+      publishMeasuredTrack();
     },
-    [],
+    [publishMeasuredTrack],
   );
 
+  const displayedTabs = useMemo(() => {
+    if (!trackSnapshot) {
+      return EMPTY_RESOLVED_TAB_ROWS;
+    }
+    const currentTabs = new Map(
+      tabs.map((tab, index) => [tab.tab.key, { tab, label: tabLabels[index]?.label }]),
+    );
+    return trackSnapshot.tabs.map((snapshotTab, index) => {
+      const current = currentTabs.get(snapshotTab.tab.key);
+      return current?.label === trackSnapshot.labels[index]?.label ? current.tab : snapshotTab;
+    });
+  }, [tabLabels, tabs, trackSnapshot]);
+
   const { layout } = useWorkspaceTabLayout({
-    tabLabelWidths,
+    tabLabelWidths: trackSnapshot?.labelWidths ?? [],
     viewportWidthOverride: tabsContainerWidth > 0 ? tabsContainerWidth : null,
     metrics: layoutMetrics,
   });
@@ -1058,8 +1189,8 @@ function ResolvedWorkspaceDesktopTabsRow({
       const showDropIndicatorBefore = activeDragTabId !== null && tabDropPreviewIndex === index;
       const showDropIndicatorAfter =
         activeDragTabId !== null &&
-        tabDropPreviewIndex === tabs.length &&
-        index === tabs.length - 1;
+        tabDropPreviewIndex === displayedTabs.length &&
+        index === displayedTabs.length - 1;
 
       return (
         <ResolvedDesktopTabChip
@@ -1068,7 +1199,7 @@ function ResolvedWorkspaceDesktopTabsRow({
           isFocused={isFocused}
           isDragging={isActive}
           index={index}
-          tabCount={tabs.length}
+          tabCount={displayedTabs.length}
           onCopyResumeCommand={onCopyResumeCommand}
           onCopyAgentId={onCopyAgentId}
           onCopyTerminalId={onCopyTerminalId}
@@ -1110,7 +1241,7 @@ function ResolvedWorkspaceDesktopTabsRow({
       setHoveredCloseTabKey,
       tabMenuLabels,
       tabDropPreviewIndex,
-      tabs.length,
+      displayedTabs.length,
     ],
   );
 
@@ -1179,10 +1310,10 @@ function ResolvedWorkspaceDesktopTabsRow({
         showsHorizontalScrollIndicator={false}
       >
         <SortableInlineList
-          data={tabs}
+          data={displayedTabs}
           keyExtractor={tabKeyExtractor}
           useDragHandle
-          disabled={!externalDndContext && tabs.length < 2}
+          disabled={!externalDndContext && displayedTabs.length < 2}
           onDragEnd={handleDragEnd}
           externalDndContext={externalDndContext}
           activeId={activeDragTabId}

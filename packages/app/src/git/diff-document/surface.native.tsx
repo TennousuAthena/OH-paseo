@@ -93,7 +93,6 @@ export function DiffSurface(props: DiffSurfaceProps) {
       typography,
       measurement,
       props.palette,
-      reviewActions,
       t,
     ] as const;
     const previous = reusableModelRef.current;

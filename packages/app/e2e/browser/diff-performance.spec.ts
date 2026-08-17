@@ -25,6 +25,39 @@ const MAX_MEDIAN_FRAME_MS = POC_MEDIAN_FRAME_MS * 1.1;
 const MAX_P95_FRAME_MS = POC_P95_FRAME_MS * 1.1;
 
 diffPerfDescribe("Diff canvas performance", () => {
+  test("opening a review stays responsive in a large diff", async ({ page }) => {
+    test.setTimeout(120_000);
+    const repo = await createLargeDiffRepository();
+    const client = await connectSeedClient();
+    let cdp: CDPSession | null = null;
+
+    try {
+      const created = await client.createWorkspace({
+        source: { kind: "directory", path: repo.path },
+      });
+      if (!created.workspace) {
+        throw new Error(created.error ?? "Failed to create diff performance workspace");
+      }
+
+      await configureUnwrappedUnifiedDiff(page);
+      await page.setViewportSize({ width: 1400, height: 900 });
+      await page.goto(buildHostWorkspaceRoute(getServerId(), created.workspace.id));
+      await waitForWorkspaceTabsVisible(page);
+      await openChangesPanel(page);
+      await expect(page.getByTestId("git-diff-canvas")).toBeVisible({ timeout: 30_000 });
+
+      cdp = await page.context().newCDPSession(page);
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: CPU_SLOWDOWN });
+      const elapsedMs = await openFirstReviewEditor(page);
+      expect(elapsedMs).toBeLessThanOrEqual(200 * CPU_SLOWDOWN);
+    } finally {
+      await cdp?.send("Emulation.setCPUThrottlingRate", { rate: 1 }).catch(() => undefined);
+      await cdp?.detach().catch(() => undefined);
+      await client.close().catch(() => undefined);
+      await repo.cleanup().catch(() => undefined);
+    }
+  });
+
   test("one canvas stays filled through continuous fast scrolling", async ({ page }, testInfo) => {
     test.setTimeout(180_000);
     const repo = await createLargeDiffRepository();
@@ -239,6 +272,21 @@ async function configureUnwrappedUnifiedDiff(page: Page): Promise<void> {
     },
     { preferencesKey: CHANGES_PREFERENCES_KEY },
   );
+}
+
+async function openFirstReviewEditor(page: Page): Promise<number> {
+  const body = page.getByTestId("diff-file-0-body");
+  const canvas = page.getByTestId("git-diff-canvas");
+  const [bodyBounds, fontSize] = await Promise.all([
+    body.boundingBox(),
+    canvas.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+  ]);
+  if (!bodyBounds) throw new Error("Expanded diff body has no bounds");
+  const lineHeight = Math.round(fontSize * 1.5);
+  const startedAt = performance.now();
+  await page.mouse.click(bodyBounds.x + 120, bodyBounds.y + lineHeight * 1.5);
+  await expect(page.getByTestId("inline-review-editor")).toBeVisible();
+  return performance.now() - startedAt;
 }
 
 async function expectSingleCanvasSurface(page: Page): Promise<void> {

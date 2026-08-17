@@ -95,7 +95,6 @@ export function DiffSurface(props: DiffSurfaceProps) {
       loadedTypography,
       measurement,
       props.palette,
-      reviewActions,
       t,
     ] as const;
     const previous = reusableModelRef.current;
@@ -210,7 +209,15 @@ export function DiffSurface(props: DiffSurfaceProps) {
   }, [loadedTypography, measurement, props.palette, viewport.height, viewport.width]);
   const schedulePaint = useCallback(
     (force = true) => {
-      if (force) forcePaintRef.current = true;
+      if (force) {
+        forcePaintRef.current = true;
+        // Fast Refresh preserves refs. A request owned by the previous module can leave a stale
+        // id behind, which would otherwise prevent every subsequent canvas repaint.
+        if (frameRef.current !== null) {
+          cancelAnimationFrame(frameRef.current);
+          frameRef.current = null;
+        }
+      }
       if (frameRef.current === null) frameRef.current = requestAnimationFrame(paint);
     },
     [paint],
@@ -260,6 +267,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
   useEffect(
     () => () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
     },
     [],
   );

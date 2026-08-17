@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { computeWorkspaceTabLayout } from "@/screens/workspace/workspace-tab-layout";
+import {
+  computeWorkspaceTabLayout,
+  retainWorkspaceTabMeasuredWidth,
+} from "@/screens/workspace/workspace-tab-layout";
 
 const metrics = {
   rowHorizontalInset: 0,
@@ -7,7 +10,7 @@ const metrics = {
   rowPaddingHorizontal: 8,
   tabGap: 4,
   minTabWidth: 96,
-  maxTabWidth: 240,
+  maxTabWidth: 160,
   tabIconWidth: 14,
   tabContentGap: 4,
   tabHorizontalPadding: 8,
@@ -49,7 +52,7 @@ describe("computeWorkspaceTabLayout", () => {
 
     expect(result.closeButtonPolicy).toBe("all");
     expect(result.requiresHorizontalScrollFallback).toBe(false);
-    expect(result.items.map((item) => item.width)).toEqual([119, 101, 96]);
+    expect(result.items.map((item) => item.width)).toEqual([117, 103, 96]);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
   });
 
@@ -67,7 +70,7 @@ describe("computeWorkspaceTabLayout", () => {
 
     expect(result.closeButtonPolicy).toBe("all");
     expect(result.requiresHorizontalScrollFallback).toBe(false);
-    expect(result.items.map((item) => item.width)).toEqual([240, 240, 240, 240]);
+    expect(result.items.map((item) => item.width)).toEqual([160, 160, 160, 160]);
   });
 
   it("keeps every tab at the clickable minimum at the exact fit boundary", () => {
@@ -116,5 +119,15 @@ describe("computeWorkspaceTabLayout", () => {
     });
 
     expect(result.items.map((item) => item.width)).toEqual([102, 138]);
+  });
+});
+
+describe("retainWorkspaceTabMeasuredWidth", () => {
+  it("retains the last usable width while a retained panel is hidden", () => {
+    expect(retainWorkspaceTabMeasuredWidth(720, 0)).toBe(720);
+  });
+
+  it("accepts the next usable layout width", () => {
+    expect(retainWorkspaceTabMeasuredWidth(720, 640)).toBe(640);
   });
 });
