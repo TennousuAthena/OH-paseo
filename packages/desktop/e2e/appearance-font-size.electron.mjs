@@ -25,7 +25,7 @@ export async function runAppearanceFontSizeRegression(page) {
     "Theme label did not start at the default 12px ramp size",
   );
 
-  await input.fill("17");
+  await input.fill("15");
   await input.press("Tab");
 
   await page.waitForFunction(
@@ -35,9 +35,9 @@ export async function runAppearanceFontSizeRegression(page) {
         (element) => element.children.length === 0 && element.textContent?.trim() === "Theme",
       );
       return (
-        inputElement?.value === "17" &&
+        inputElement?.value === "15" &&
         themeLabel instanceof HTMLElement &&
-        getComputedStyle(themeLabel).fontSize === "15px"
+        getComputedStyle(themeLabel).fontSize === "13px"
       );
     },
     undefined,
