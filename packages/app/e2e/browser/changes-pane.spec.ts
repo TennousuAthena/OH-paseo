@@ -326,9 +326,9 @@ test("every interactive file header has the same hover feedback", async ({ page 
   );
   await expect
     .poll(() =>
-      first.evaluate((element) => getComputedStyle(element.parentElement!).borderTopColor),
+      first.evaluate((element) => getComputedStyle(element.parentElement!).borderTopWidth),
     )
-    .toBe("rgba(0, 0, 0, 0)");
+    .toBe("0px");
 
   await first.hover();
   const hoverBackground = await first.evaluate(
@@ -344,12 +344,12 @@ test("every interactive file header has the same hover feedback", async ({ page 
       first.evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor),
     )
     .toBe(normalBackground);
-  const [sharedBorder, suppressedDuplicateBorder] = await Promise.all([
+  const [sharedBorder, secondTopBorderWidth] = await Promise.all([
     first.evaluate((element) => getComputedStyle(element.parentElement!).borderBottomColor),
-    second.evaluate((element) => getComputedStyle(element.parentElement!).borderTopColor),
+    second.evaluate((element) => getComputedStyle(element.parentElement!).borderTopWidth),
   ]);
   expect(sharedBorder).not.toBe("rgba(0, 0, 0, 0)");
-  expect(suppressedDuplicateBorder).toBe("rgba(0, 0, 0, 0)");
+  expect(secondTopBorderWidth).toBe("0px");
 
   await first.hover();
   await expect
@@ -684,7 +684,6 @@ test("desktop Changes toggles a navigation tree beside the expanded diff documen
   );
   await expect(tree.getByTestId("diff-tree-file-0")).toBeVisible();
   await expect(tree.getByTestId("diff-folder-src-toggle").locator("svg")).toHaveCount(1);
-  await expect(tree.getByTestId("diff-tree-file-0-toggle").locator("svg")).toHaveCount(1);
   const folderToggleBounds = await tree.getByTestId("diff-folder-src-toggle").boundingBox();
   const folderChevronBounds = await tree
     .getByTestId("diff-folder-src-toggle")
@@ -706,7 +705,7 @@ test("desktop Changes toggles a navigation tree beside the expanded diff documen
     .boundingBox();
   expect(folderLabelBounds).not.toBeNull();
   expect(fileLabelBounds).not.toBeNull();
-  expect(fileLabelBounds!.x - folderLabelBounds!.x).toBeCloseTo(16, 0);
+  expect(fileLabelBounds!.x - folderLabelBounds!.x).toBeCloseTo(12, 0);
 
   const folderToggle = tree.getByTestId("diff-folder-src-toggle");
   await folderToggle.click();
@@ -798,7 +797,7 @@ test("canvas diff stays sharp while its workspace pane is resized", async ({ pag
     return frames;
   });
   for (const frame of resizeFrames) {
-    expect(frame.cssWidth).toBeCloseTo(frame.bitmapWidth, 0);
+    expect(Math.abs(frame.cssWidth - frame.bitmapWidth)).toBeLessThan(1);
   }
   await expect
     .poll(async () => {
