@@ -19,8 +19,9 @@ import {
   ChevronDown,
   Columns2,
   FolderTree,
+  ListChevronsDownUp,
+  ListChevronsUpDown,
   Maximize2,
-  Minimize2,
   Pilcrow,
   RotateCw,
   WrapText,
@@ -158,8 +159,9 @@ const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedPilcrow = withUnistyles(Pilcrow);
 const ThemedWrapText = withUnistyles(WrapText);
 const ThemedFolderTree = withUnistyles(FolderTree);
+const ThemedListChevronsDownUp = withUnistyles(ListChevronsDownUp);
+const ThemedListChevronsUpDown = withUnistyles(ListChevronsUpDown);
 const ThemedMaximize2 = withUnistyles(Maximize2);
-const ThemedMinimize2 = withUnistyles(Minimize2);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const DIFF_OPTIONS_WHITESPACE_ICON = (
   <ThemedPilcrow size={14} uniProps={foregroundMutedIconColorMapping} />
@@ -395,9 +397,15 @@ function CollapseAllToggle({
           onPress={allCollapsed ? onExpandAll : onCollapseAll}
         >
           {allCollapsed ? (
-            <ThemedMaximize2 size={isMobile ? 18 : 14} uniProps={foregroundMutedIconColorMapping} />
+            <ThemedListChevronsUpDown
+              size={isMobile ? 18 : 14}
+              uniProps={foregroundMutedIconColorMapping}
+            />
           ) : (
-            <ThemedMinimize2 size={isMobile ? 18 : 14} uniProps={foregroundMutedIconColorMapping} />
+            <ThemedListChevronsDownUp
+              size={isMobile ? 18 : 14}
+              uniProps={foregroundMutedIconColorMapping}
+            />
           )}
         </Pressable>
       </TooltipTrigger>

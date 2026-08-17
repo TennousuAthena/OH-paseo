@@ -25,6 +25,7 @@ import type {
 } from "./types";
 
 const DEFAULT_MONO_STACK = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+const RESIZE_SETTLE_DELAY_MS = 120;
 
 export function DiffSurface(props: DiffSurfaceProps) {
   const { t } = useTranslation();
@@ -49,6 +50,10 @@ export function DiffSurface(props: DiffSurfaceProps) {
     moved: boolean;
   } | null>(null);
   const frameRef = useRef<number | null>(null);
+  const resizeSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resizeReleaseFrameRef = useRef<number | null>(null);
+  const resizePointerActiveRef = useRef(false);
+  const pendingViewportRef = useRef({ width: 0, height: 0 });
   const forcePaintRef = useRef(true);
   const canvasWindowRef = useRef({ top: 0, height: 0 });
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
@@ -142,7 +147,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     frameRef.current = null;
     const canvas = canvasRef.current;
     const currentModel = modelRef.current;
-    if (!canvas || !currentModel || viewport.width <= 0 || viewport.height <= 0) return;
+    if (!canvas || !currentModel || currentModel.viewportWidth <= 0 || viewport.height <= 0) return;
     const desiredHeight = Math.min(
       Math.max(currentModel.height, viewport.height),
       viewport.height * 3,
@@ -168,7 +173,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       : currentWindow.top;
     const canvasTop = Math.round(requestedCanvasTop * ratio) / ratio;
     canvasWindowRef.current = { top: canvasTop, height: canvasHeight };
-    const pixelWidth = Math.ceil(viewport.width * ratio);
+    const pixelWidth = Math.ceil(currentModel.viewportWidth * ratio);
     const pixelHeight = Math.ceil(canvasHeight * ratio);
     const resized = canvas.width !== pixelWidth || canvas.height !== pixelHeight;
     if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
@@ -198,7 +203,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       typography: loadedTypography,
       measureText: measurement,
       scrollTop: canvasTop,
-      viewportWidth: viewport.width,
+      viewportWidth: currentModel.viewportWidth,
       viewportHeight: canvasHeight,
       horizontalOffsets: horizontalOffsetsRef.current,
       selection: selectionRef.current,
@@ -206,7 +211,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       paintTop,
       paintHeight,
     });
-  }, [loadedTypography, measurement, props.palette, viewport.height, viewport.width]);
+  }, [loadedTypography, measurement, props.palette, viewport.height]);
   const schedulePaint = useCallback(
     (force = true) => {
       if (force) forcePaintRef.current = true;
@@ -218,12 +223,56 @@ export function DiffSurface(props: DiffSurfaceProps) {
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
+    const commitPendingViewport = () => setViewport(pendingViewportRef.current);
+    const clearResizeSettleTimer = () => {
+      if (resizeSettleTimerRef.current === null) return;
+      clearTimeout(resizeSettleTimerRef.current);
+      resizeSettleTimerRef.current = null;
+    };
+    const handlePointerDown = () => {
+      resizePointerActiveRef.current = true;
+      clearResizeSettleTimer();
+    };
+    const handlePointerEnd = () => {
+      if (!resizePointerActiveRef.current) return;
+      resizePointerActiveRef.current = false;
+      if (resizeReleaseFrameRef.current !== null) {
+        cancelAnimationFrame(resizeReleaseFrameRef.current);
+      }
+      resizeReleaseFrameRef.current = requestAnimationFrame(() => {
+        resizeReleaseFrameRef.current = null;
+        commitPendingViewport();
+      });
+    };
     const observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
-      setViewport({ width: entry.contentRect.width, height: entry.contentRect.height });
+      const nextViewport = { width: entry.contentRect.width, height: entry.contentRect.height };
+      pendingViewportRef.current = nextViewport;
+      setViewport((currentViewport) =>
+        currentViewport.width === 0 || currentViewport.height === 0
+          ? nextViewport
+          : currentViewport,
+      );
+      if (resizePointerActiveRef.current) return;
+      clearResizeSettleTimer();
+      resizeSettleTimerRef.current = setTimeout(() => {
+        resizeSettleTimerRef.current = null;
+        commitPendingViewport();
+      }, RESIZE_SETTLE_DELAY_MS);
     });
     observer.observe(root);
-    return () => observer.disconnect();
+    window.addEventListener("pointerdown", handlePointerDown, { capture: true });
+    window.addEventListener("pointerup", handlePointerEnd, { capture: true });
+    window.addEventListener("pointercancel", handlePointerEnd, { capture: true });
+    return () => {
+      observer.disconnect();
+      clearResizeSettleTimer();
+      if (resizeReleaseFrameRef.current !== null)
+        cancelAnimationFrame(resizeReleaseFrameRef.current);
+      window.removeEventListener("pointerdown", handlePointerDown, { capture: true });
+      window.removeEventListener("pointerup", handlePointerEnd, { capture: true });
+      window.removeEventListener("pointercancel", handlePointerEnd, { capture: true });
+    };
   }, []);
   useEffect(() => {
     let cancelled = false;
@@ -255,7 +304,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       props.files.map((file) => file.path),
     );
   }, [props.files]);
-  useEffect(schedulePaint, [model, schedulePaint]);
+  useLayoutEffect(schedulePaint, [model, schedulePaint]);
   useEffect(
     () => () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -479,10 +528,11 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const canvasStyle = useMemo<React.CSSProperties>(
     () => ({
       ...CANVAS_STYLE,
+      width: model.viewportWidth,
       fontFamily: (loadedTypography ?? desiredTypography).family,
       fontSize: (loadedTypography ?? desiredTypography).size,
     }),
-    [desiredTypography, loadedTypography],
+    [desiredTypography, loadedTypography, model.viewportWidth],
   );
 
   return (
@@ -730,9 +780,7 @@ const CANVAS_STYLE: React.CSSProperties = {
   position: "absolute",
   top: 0,
   left: 0,
-  right: 0,
   zIndex: 1,
-  width: "100%",
   pointerEvents: "none",
 };
 const AFFORDANCE_STYLE: ViewStyle = {

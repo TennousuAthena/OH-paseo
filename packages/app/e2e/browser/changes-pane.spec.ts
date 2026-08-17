@@ -725,6 +725,82 @@ test("desktop Changes toggles a navigation tree beside the expanded diff documen
   await expectFlatFileList(page);
 });
 
+test("canvas diff stays sharp while its workspace pane is resized", async ({ page }) => {
+  const workspace = await createWorkspaceWithMountedTabDiff();
+  await useUnwrappedDiffLines(page);
+  await openWorkspaceChanges(page, workspace);
+
+  const canvas = page.getByTestId("git-diff-canvas");
+  const root = page.getByTestId("git-diff-canvas-root");
+  const handle = page.getByTestId("workspace-split-resize-handle").getByRole("separator");
+  await expect(handle).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [canvasWidth, rootWidth] = await Promise.all([
+        canvas.evaluate((element) => (element as HTMLCanvasElement).getBoundingClientRect().width),
+        root.evaluate((element) => element.getBoundingClientRect().width),
+      ]);
+      return Math.abs(canvasWidth - rootWidth) < 1;
+    })
+    .toBe(true);
+  const [handleBounds, before] = await Promise.all([
+    handle.boundingBox(),
+    canvas.evaluate((element) => {
+      const canvasElement = element as HTMLCanvasElement;
+      return {
+        width: canvasElement.getBoundingClientRect().width,
+        ratio: window.devicePixelRatio || 1,
+      };
+    }),
+  ]);
+  if (!handleBounds) throw new Error("Workspace split resize handle has no bounds");
+
+  await page.mouse.move(handleBounds.x + handleBounds.width / 2, handleBounds.y + 120);
+  await page.mouse.down();
+  await page.mouse.move(handleBounds.x - 120, handleBounds.y + 120);
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
+  const duringDrag = await Promise.all([
+    canvas.evaluate((element) => (element as HTMLCanvasElement).getBoundingClientRect().width),
+    root.evaluate((element) => element.getBoundingClientRect().width),
+  ]);
+  expect(duringDrag[0]).toBeCloseTo(before.width, 0);
+  expect(duringDrag[1]).toBeGreaterThan(before.width + 10);
+
+  await page.mouse.up();
+  const resizeFrames = await page.evaluate(async () => {
+    const canvasElement = document.querySelector<HTMLCanvasElement>(
+      '[data-testid="git-diff-canvas"]',
+    )!;
+    const ratio = window.devicePixelRatio || 1;
+    const frames: Array<{ cssWidth: number; bitmapWidth: number }> = [];
+    for (let index = 0; index < 10; index += 1) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      frames.push({
+        cssWidth: canvasElement.getBoundingClientRect().width,
+        bitmapWidth: canvasElement.width / ratio,
+      });
+    }
+    return frames;
+  });
+  for (const frame of resizeFrames) {
+    expect(frame.cssWidth).toBeCloseTo(frame.bitmapWidth, 0);
+  }
+  await expect
+    .poll(async () => {
+      const [canvasWidth, rootWidth, backingWidth] = await Promise.all([
+        canvas.evaluate((element) => (element as HTMLCanvasElement).getBoundingClientRect().width),
+        root.evaluate((element) => element.getBoundingClientRect().width),
+        canvas.evaluate((element) => (element as HTMLCanvasElement).width),
+      ]);
+      return (
+        Math.abs(canvasWidth - rootWidth) < 1 &&
+        Math.abs(backingWidth / before.ratio - rootWidth) < 1
+      );
+    })
+    .toBe(true);
+});
+
 test("changes diff applies code size changes to gutter and code typography", async ({ page }) => {
   const workspace = await createWorkspaceWithMountedTabDiff();
   await useCodeFont(page, 12);
