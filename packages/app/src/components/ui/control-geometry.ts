@@ -47,6 +47,13 @@ export const CONTROL_HEIGHTS = {
   field: FIELD_CONTROL_HEIGHT,
 };
 
+export const buttonControlHeight: Record<ButtonControlSize, number> = {
+  xs: CONTROL_HEIGHTS.tight,
+  sm: CONTROL_HEIGHTS.compact,
+  md: CONTROL_HEIGHTS.field,
+  lg: CONTROL_HEIGHTS.field,
+};
+
 export const buttonIconSize: Record<ButtonControlSize, number> = {
   xs: ICON_SIZE.xs,
   sm: ICON_SIZE.sm,
@@ -133,22 +140,22 @@ export function createControlGeometry(theme: Theme) {
 
   return {
     buttonXs: {
-      minHeight: CONTROL_HEIGHTS.tight,
+      minHeight: buttonControlHeight.xs,
       paddingHorizontal: theme.spacing[3],
       borderRadius: theme.borderRadius.md,
     },
     buttonSm: {
-      minHeight: CONTROL_HEIGHTS.compact,
+      minHeight: buttonControlHeight.sm,
       paddingHorizontal: theme.spacing[3],
       borderRadius: theme.borderRadius.md,
     },
     buttonMd: {
-      minHeight: CONTROL_HEIGHTS.field,
+      minHeight: buttonControlHeight.md,
       paddingHorizontal: theme.spacing[4],
       borderRadius: theme.borderRadius.lg,
     },
     buttonLg: {
-      minHeight: CONTROL_HEIGHTS.field,
+      minHeight: buttonControlHeight.lg,
       paddingHorizontal: theme.spacing[6],
       borderRadius: theme.borderRadius.xl,
     },
@@ -211,18 +218,18 @@ export function createControlGeometry(theme: Theme) {
     },
     segmentedSegmentXs: {
       minHeight: CONTROL_HEIGHTS.tight - SEGMENTED_TIGHT_INSET * 2,
-      paddingHorizontal: theme.spacing[3],
-      borderRadius: theme.borderRadius.full,
+      paddingHorizontal: theme.spacing[2],
+      borderRadius: theme.borderRadius.md,
     },
     segmentedSegmentSm: {
       minHeight: CONTROL_HEIGHTS.compact - SEGMENTED_COMPACT_INSET * 2,
-      paddingHorizontal: theme.spacing[3],
-      borderRadius: theme.borderRadius.full,
+      paddingHorizontal: theme.spacing[2],
+      borderRadius: theme.borderRadius.md,
     },
     segmentedSegmentMd: {
       minHeight: CONTROL_HEIGHTS.field - SEGMENTED_FIELD_INSET * 2,
-      paddingHorizontal: theme.spacing[4],
-      borderRadius: theme.borderRadius.full,
+      paddingHorizontal: theme.spacing[3],
+      borderRadius: theme.borderRadius.lg,
     },
     segmentedLabelXs: {
       fontSize: theme.fontSize.xs,
