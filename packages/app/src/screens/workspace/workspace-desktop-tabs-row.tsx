@@ -1167,7 +1167,9 @@ function ResolvedWorkspaceDesktopTabsRow({
   const tabScrollOffset = useSharedValue(0);
   const tabScrollViewportWidth = useSharedValue(0);
   const tabScrollContentWidth = useSharedValue(0);
-  const labelMeasurementsRef = useRef(new Map<string, WorkspaceTabLabelMeasurement>());
+  const [labelMeasurements, setLabelMeasurements] = useState(
+    () => new Map<string, WorkspaceTabLabelMeasurement>(),
+  );
   const [trackSnapshot, setTrackSnapshot] = useState<WorkspaceTabTrackSnapshot | null>(null);
   const workspaceRoot = useWorkspaceDirectory(normalizedServerId, normalizedWorkspaceId) ?? "";
   const checkoutStatus = useCheckoutStatusQuery({
@@ -1298,23 +1300,28 @@ function ResolvedWorkspaceDesktopTabsRow({
     [fallbackTabLabels, tabs],
   );
   const tabLabelSignature = useMemo(() => workspaceTabLabelSignature(tabLabels), [tabLabels]);
+  const currentTabLabelKeys = useMemo(() => new Set(tabLabels.map(({ key }) => key)), [tabLabels]);
+  useEffect(() => {
+    setLabelMeasurements((current) => {
+      const removedKeys = [...current.keys()].filter((key) => !currentTabLabelKeys.has(key));
+      if (removedKeys.length === 0) {
+        return current;
+      }
+      const next = new Map(current);
+      for (const key of removedKeys) {
+        next.delete(key);
+      }
+      return next;
+    });
+  }, [currentTabLabelKeys]);
   const publishMeasuredTrack = useCallback(() => {
     if (tabsContainerWidth <= 0) {
       return;
     }
-    const labelWidths = completeWorkspaceTabLabelWidths(tabLabels, labelMeasurementsRef.current);
+    const labelWidths = completeWorkspaceTabLabelWidths(tabLabels, labelMeasurements);
     if (!labelWidths) {
       return;
     }
-
-    const retainedMeasurements = new Map<string, WorkspaceTabLabelMeasurement>();
-    for (const { key } of tabLabels) {
-      const measurement = labelMeasurementsRef.current.get(key);
-      if (measurement) {
-        retainedMeasurements.set(key, measurement);
-      }
-    }
-    labelMeasurementsRef.current = retainedMeasurements;
 
     setTrackSnapshot((current) => {
       if (
@@ -1330,7 +1337,7 @@ function ResolvedWorkspaceDesktopTabsRow({
         labelWidths,
       };
     });
-  }, [tabLabelSignature, tabLabels, tabs, tabsContainerWidth]);
+  }, [labelMeasurements, tabLabelSignature, tabLabels, tabs, tabsContainerWidth]);
 
   useLayoutEffect(() => {
     publishMeasuredTrack();
@@ -1342,14 +1349,17 @@ function ResolvedWorkspaceDesktopTabsRow({
       if (width <= 0) {
         return;
       }
-      const current = labelMeasurementsRef.current.get(key);
-      if (current?.label === label && current.width === width) {
-        return;
-      }
-      labelMeasurementsRef.current.set(key, { label, width });
-      publishMeasuredTrack();
+      setLabelMeasurements((current) => {
+        const measurement = current.get(key);
+        if (measurement?.label === label && measurement.width === width) {
+          return current;
+        }
+        const next = new Map(current);
+        next.set(key, { label, width });
+        return next;
+      });
     },
-    [publishMeasuredTrack],
+    [],
   );
 
   const displayedTabs = useMemo(() => {
