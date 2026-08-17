@@ -19,10 +19,11 @@ export function buildNativeCanvasSlabs(
   const slabHeight = Math.max(768, viewportHeight * 2);
   return model.files.flatMap((file) => {
     const slabs: NativeCanvasSlab[] = [];
-    for (let top = file.bodyTop; top < file.bottom; top += slabHeight) {
+    let slabIndex = 0;
+    for (let top = file.bodyTop; top < file.bottom; top += slabHeight, slabIndex += 1) {
       const height = Math.min(slabHeight, file.bottom - top);
       slabs.push({
-        key: `${file.path}:${top}:${height}`,
+        key: `${file.path}:${slabIndex}`,
         path: file.path,
         fileIndex: file.fileIndex,
         top,

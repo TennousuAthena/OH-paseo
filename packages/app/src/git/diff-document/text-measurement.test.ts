@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createCachedAsciiTextMetrics,
   createFallbackAwareTextMeasurer,
   requiresNativeParagraph,
   type PrimaryTextFace,
@@ -37,6 +38,39 @@ describe("native paragraph retention", () => {
 
   it.each(["value => next", "中", "e\u0301", "👩‍💻", "مرحبا"])("retains shaping for %s", (text) => {
     expect(requiresNativeParagraph(text)).toBe(true);
+  });
+});
+
+describe("cached ASCII text metrics", () => {
+  it("measures each distinct grapheme once across lines", () => {
+    const measured: string[] = [];
+    const metrics = createCachedAsciiTextMetrics({
+      glyphIds: (text) => Array.from(text, () => 1),
+      measure(text) {
+        measured.push(text);
+        return text.length * 10;
+      },
+    });
+
+    expect(metrics.measureAdvances(["a", "b", "a"])).toEqual([10, 20, 30]);
+    expect(metrics.measureAdvances(["b", "a"])).toEqual([10, 20]);
+    expect(measured).toEqual(["a", "b"]);
+  });
+
+  it("caches glyph coverage per distinct ASCII character", () => {
+    const checked: string[] = [];
+    const metrics = createCachedAsciiTextMetrics({
+      glyphIds(text) {
+        checked.push(text);
+        return [text === "?" ? 0 : 1];
+      },
+      measure: (text) => text.length * 10,
+    });
+
+    expect(metrics.hasEveryGlyph("abba")).toBe(true);
+    expect(metrics.hasEveryGlyph("bad?")).toBe(false);
+    expect(metrics.hasEveryGlyph("cab")).toBe(true);
+    expect(checked).toEqual(["a", "b", "d", "?", "c"]);
   });
 });
 

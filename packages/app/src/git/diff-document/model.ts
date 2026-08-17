@@ -172,10 +172,9 @@ export function buildDiffDocumentModel(input: BuildDiffDocumentModelInput): Diff
   };
 }
 
-export function finalExpandedBodyBorderTop(model: DiffDocumentModel): number | null {
+export function expandedBodyBorderTop(file: DiffFileSection): number | null {
   "worklet";
-  const file = model.files[model.files.length - 1];
-  return file && !file.isCollapsed ? file.bottom - DIFF_BODY_BORDER_HEIGHT : null;
+  return file.isCollapsed ? null : file.bottom - DIFF_BODY_BORDER_HEIGHT;
 }
 
 export function retainReusableModels(
@@ -577,6 +576,13 @@ export function resolveRelayoutScrollTop(
   }
   const anchor = captureScrollAnchor(previous, scrollTop);
   return anchor ? resolveScrollAnchor(next, anchor) : scrollTop;
+}
+
+export function shouldApplyRelayoutScroll(
+  currentScrollTop: number,
+  nextScrollTop: number,
+): boolean {
+  return Math.abs(nextScrollTop - currentScrollTop) > 0.5;
 }
 
 function sameSourceIdentity(left: DiffSourceIdentity, right: DiffSourceIdentity): boolean {

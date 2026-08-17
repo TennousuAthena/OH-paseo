@@ -78,4 +78,25 @@ describe("native canvas slabs", () => {
     expect(nativeCanvasWindowBucket(899, 600)).toBe(2);
     expect(nativeCanvasWindowTop(2, 600)).toBe(600);
   });
+
+  it("keeps slab identities stable when inline review geometry moves files", () => {
+    const before = buildNativeCanvasSlabs(
+      modelWithBodies([
+        { path: "first.ts", bodyTop: 30, bottom: 230 },
+        { path: "second.ts", bodyTop: 260, bottom: 3460 },
+      ]),
+      600,
+    );
+    const after = buildNativeCanvasSlabs(
+      modelWithBodies([
+        { path: "first.ts", bodyTop: 30, bottom: 378 },
+        { path: "second.ts", bodyTop: 408, bottom: 3608 },
+      ]),
+      600,
+    );
+
+    expect(after.filter((slab) => slab.path === "second.ts").map((slab) => slab.key)).toEqual(
+      before.filter((slab) => slab.path === "second.ts").map((slab) => slab.key),
+    );
+  });
 });

@@ -8,6 +8,7 @@ import {
   measureFragments,
   resolveScrollAnchor,
   resolveRelayoutScrollTop,
+  shouldApplyRelayoutScroll,
 } from "./model";
 import type { BuildDiffDocumentModelInput, TextMeasurer } from "./types";
 
@@ -65,6 +66,12 @@ function input(overrides: Partial<BuildDiffDocumentModelInput> = {}): BuildDiffD
 }
 
 describe("diff document model", () => {
+  it("does not imperatively scroll for a no-op relayout", () => {
+    expect(shouldApplyRelayoutScroll(320, 320)).toBe(false);
+    expect(shouldApplyRelayoutScroll(320, 320.4)).toBe(false);
+    expect(shouldApplyRelayoutScroll(320, 321)).toBe(true);
+  });
+
   it("segments graphemes when Intl.Segmenter is unavailable", () => {
     const originalSegmenter = Intl.Segmenter;
     Object.defineProperty(Intl, "Segmenter", { configurable: true, value: undefined });

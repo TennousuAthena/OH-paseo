@@ -1,4 +1,4 @@
-import { Canvas, Picture, type SkPicture } from "@shopify/react-native-skia";
+import { Canvas, Group, Picture, type SkPicture } from "@shopify/react-native-skia";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -9,26 +9,34 @@ import {
   type LayoutChangeEvent,
   type ViewStyle,
 } from "react-native";
-import {
+import Animated, {
   createAnimatedComponent,
   useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { InlineReviewThread } from "@/review";
+import { useKeyboardShift } from "@/hooks/keyboard-shift-context";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { DocumentFileHeader } from "./document-file-header";
 import { hitTestDiffBodyPoint } from "./native-hit-testing";
+import { retainDiffViewport } from "./viewport";
 import { HorizontalScroll } from "./horizontal-scroll.native";
 import {
   horizontalOffsetForPath,
   retainHorizontalOffsetsForPaths,
   type DiffHorizontalOffsets,
 } from "./horizontal-offsets";
-import { buildDiffDocumentModel, resolveRelayoutScrollTop, retainReusableModels } from "./model";
+import {
+  buildDiffDocumentModel,
+  resolveRelayoutScrollTop,
+  retainReusableModels,
+  shouldApplyRelayoutScroll,
+} from "./model";
 import {
   buildNativeCanvasSlabs,
   nativeCanvasSlabsForViewport,
@@ -54,7 +62,6 @@ import type {
 } from "./types";
 
 const AnimatedScrollView = createAnimatedComponent(ScrollView);
-const AnimatedCodeLayer = createAnimatedComponent(View);
 const SYSTEM_MONO = "monospace";
 const CODE_LEFT_PADDING = 8;
 
@@ -69,6 +76,11 @@ export function DiffSurface(props: DiffSurfaceProps) {
   } | null>(null);
   const consumedFocusRef = useRef<string | null>(null);
   const scrollTop = useSharedValue(0);
+  const { shift: keyboardShift } = useKeyboardShift();
+  const keyboardSpacerStyle = useAnimatedStyle(
+    () => ({ height: keyboardShift.value }),
+    [keyboardShift],
+  );
   const horizontalOffsets = useSharedValue<DiffHorizontalOffsets>({});
   const family = props.displayPreferences.monoFontFamily.trim() || SYSTEM_MONO;
   const typography = useMemo<DiffTypography>(
@@ -101,7 +113,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     );
     const reuseFrom = canReuse ? previous?.models : undefined;
     const next = buildDiffDocumentModel({
-      files: props.files,
+      files: viewport.width > 0 ? props.files : [],
       collapsedFilePaths: props.collapsedFilePaths,
       layout: props.displayPreferences.layout,
       wrapLines: props.displayPreferences.wrapLines,
@@ -156,16 +168,16 @@ export function DiffSurface(props: DiffSurfaceProps) {
 
   const layout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
-    setViewport((current) =>
-      current.width === width && current.height === height ? current : { width, height },
-    );
+    setViewport((current) => retainDiffViewport(current, { width, height }));
   }, []);
   useLayoutEffect(() => {
     const previous = previousModelRef.current;
     if (previous && previous !== model) {
       const nextScrollTop = resolveRelayoutScrollTop(previous, model, scrollTop.value);
-      scrollTop.value = nextScrollTop;
-      scrollRef.current?.scrollTo({ y: nextScrollTop, animated: false });
+      if (shouldApplyRelayoutScroll(scrollTop.value, nextScrollTop)) {
+        scrollTop.value = nextScrollTop;
+        scrollRef.current?.scrollTo({ y: nextScrollTop, animated: false });
+      }
     }
     previousModelRef.current = model;
   }, [model, scrollTop]);
@@ -201,7 +213,6 @@ export function DiffSurface(props: DiffSurfaceProps) {
     () => nativeStickyHeaderIndices(model.files.length),
     [model.files.length],
   );
-
   return (
     <View style={[styles.root, { backgroundColor: props.palette.surface }]} onLayout={layout}>
       <AnimatedScrollView
@@ -222,11 +233,10 @@ export function DiffSurface(props: DiffSurfaceProps) {
           paints={paints}
           horizontalOffsets={horizontalOffsets}
         />
-        {model.files.flatMap((file, index) => [
+        {model.files.flatMap((file) => [
           <NativeStickyFileHeader
             key={`${file.path}:header`}
             file={file}
-            showTopBorder={index > 0 && !model.files[index - 1]?.isCollapsed}
             selectedPath={props.selectedPath}
             mode={props.mode}
             onToggleFile={props.onToggleFile}
@@ -241,6 +251,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
           />,
         ])}
         <NativeReviewOverlays model={model} mode={props.mode} />
+        <Animated.View pointerEvents="none" style={keyboardSpacerStyle} />
       </AnimatedScrollView>
     </View>
   );
@@ -282,6 +293,7 @@ function NativeCanvasSlabLayer({
     () => nativeCanvasSlabsForViewport(descriptors, windowTop, viewportHeight),
     [descriptors, viewportHeight, windowTop],
   );
+  if (model.viewportWidth <= 0 || viewportHeight <= 0) return null;
   return visible.map((slab) => (
     <NativeCanvasSlabView
       key={slab.key}
@@ -296,14 +308,12 @@ function NativeCanvasSlabLayer({
 
 function NativeStickyFileHeader({
   file,
-  showTopBorder,
   selectedPath,
   mode,
   onToggleFile,
   onSelectPath,
 }: {
   file: DiffFileSection;
-  showTopBorder: boolean;
   selectedPath: DiffSurfaceProps["selectedPath"];
   mode: DiffSurfaceProps["mode"];
   onToggleFile: DiffSurfaceProps["onToggleFile"];
@@ -313,7 +323,6 @@ function NativeStickyFileHeader({
     <View style={styles.header}>
       <DocumentFileHeader
         file={file}
-        showTopBorder={showTopBorder}
         selectedPath={selectedPath}
         mode={mode}
         onToggleFile={onToggleFile}
@@ -491,7 +500,6 @@ function NativeCanvasSlabView({
         wrapLines={model.wrapLines}
         clipX={unifiedClip.x}
         clipWidth={unifiedClip.width}
-        contentWidth={file.contentWidth}
         height={slab.height}
       />
       {model.layout === "split" ? (
@@ -503,7 +511,6 @@ function NativeCanvasSlabView({
             wrapLines={model.wrapLines}
             clipX={file.gutterWidth + CODE_LEFT_PADDING}
             clipWidth={splitClipWidth}
-            contentWidth={file.contentWidth}
             height={slab.height}
           />
           <NativeSlabCode
@@ -513,7 +520,6 @@ function NativeCanvasSlabView({
             wrapLines={model.wrapLines}
             clipX={columnWidth + file.gutterWidth + CODE_LEFT_PADDING}
             clipWidth={splitClipWidth}
-            contentWidth={file.contentWidth}
             height={slab.height}
           />
         </>
@@ -532,7 +538,6 @@ function NativeSlabCode({
   wrapLines,
   clipX,
   clipWidth,
-  contentWidth,
   height,
 }: {
   picture: SkPicture;
@@ -541,14 +546,13 @@ function NativeSlabCode({
   wrapLines: boolean;
   clipX: number;
   clipWidth: number;
-  contentWidth: number;
   height: number;
 }) {
-  const transform = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: wrapLines ? 0 : -horizontalOffsetForPath(horizontalOffsets.value, path) },
-    ],
-  }));
+  const pictureTransform = useDerivedValue(() => [
+    {
+      translateX: -clipX - (wrapLines ? 0 : horizontalOffsetForPath(horizontalOffsets.value, path)),
+    },
+  ]);
   const clipStyle = useMemo<ViewStyle>(
     () => ({
       position: "absolute",
@@ -560,17 +564,14 @@ function NativeSlabCode({
     }),
     [clipWidth, clipX, height],
   );
-  const contentStyle = useMemo<ViewStyle>(
-    () => ({ position: "absolute", top: 0, left: -clipX, width: contentWidth, height }),
-    [clipX, contentWidth, height],
-  );
+  if (clipWidth <= 0 || height <= 0) return null;
   return (
     <View pointerEvents="none" style={clipStyle}>
-      <AnimatedCodeLayer style={[contentStyle, transform]}>
-        <Canvas style={StyleSheet.absoluteFill}>
+      <Canvas pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <Group transform={pictureTransform}>
           <Picture picture={picture} />
-        </Canvas>
-      </AnimatedCodeLayer>
+        </Group>
+      </Canvas>
     </View>
   );
 }

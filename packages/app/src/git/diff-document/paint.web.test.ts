@@ -84,7 +84,7 @@ describe("web diff text shaping", () => {
     expect(fills).toContainEqual({ color: "border", x: 20, y: 0, width: 1, height: 58 });
   });
 
-  it("paints the final expanded file body's bottom border", () => {
+  it("paints every expanded file body's bottom border", () => {
     const fills: Array<{ color: string; x: number; y: number; width: number; height: number }> = [];
     let fillStyle = "";
     const context = {
@@ -111,8 +111,22 @@ describe("web diff text shaping", () => {
     } as unknown as CanvasRenderingContext2D;
     const borderedModel: DiffDocumentModel = {
       ...model,
-      height: 19,
-      files: [{ ...model.files[0]!, bodyHeight: 19, bottom: 19 }],
+      height: 38,
+      files: [
+        { ...model.files[0]!, bodyHeight: 19, bottom: 19 },
+        {
+          ...model.files[0]!,
+          file: { ...model.files[0]!.file, path: "src/b.ts" },
+          fileIndex: 1,
+          path: "src/b.ts",
+          top: 19,
+          bodyTop: 19,
+          bodyHeight: 19,
+          bottom: 38,
+          rowStart: 1,
+          rowEnd: 1,
+        },
+      ],
     };
 
     paintWebViewport({
@@ -129,7 +143,10 @@ describe("web diff text shaping", () => {
       devicePixelRatio: 1,
     });
 
-    expect(fills).toContainEqual({ color: "border", x: 0, y: 18, width: 200, height: 1 });
+    expect(fills.filter((fill) => fill.color === "border" && fill.x === 0)).toEqual([
+      { color: "border", x: 0, y: 18, width: 200, height: 1 },
+      { color: "border", x: 0, y: 37, width: 200, height: 1 },
+    ]);
   });
 
   it("clips a horizontally scrolled unified selection to the code viewport", () => {

@@ -1,7 +1,7 @@
 import { selectionRectangles } from "./hit-testing";
 import {
   DIFF_BODY_BORDER_HEIGHT,
-  finalExpandedBodyBorderTop,
+  expandedBodyBorderTop,
   fragmentWidthForRange,
   visibleRowRange,
 } from "./model";
@@ -69,15 +69,17 @@ export function paintWebViewport(input: PaintWebViewportInput): void {
     });
   }
 
-  const finalBorderTop = finalExpandedBodyBorderTop(input.model);
-  if (finalBorderTop !== null) {
-    context.fillStyle = input.palette.border;
-    context.fillRect(
-      0,
-      finalBorderTop - input.scrollTop,
-      input.viewportWidth,
-      DIFF_BODY_BORDER_HEIGHT,
-    );
+  context.fillStyle = input.palette.border;
+  const paintDocumentTop = input.scrollTop + paintTop;
+  const paintDocumentBottom = paintDocumentTop + paintHeight;
+  for (const file of input.model.files) {
+    const borderTop = expandedBodyBorderTop(file);
+    const isVisible =
+      borderTop !== null &&
+      borderTop < paintDocumentBottom &&
+      borderTop + DIFF_BODY_BORDER_HEIGHT > paintDocumentTop;
+    if (!isVisible) continue;
+    context.fillRect(0, borderTop - input.scrollTop, input.viewportWidth, DIFF_BODY_BORDER_HEIGHT);
   }
 
   if (input.selection) paintSelection(input, input.selection);

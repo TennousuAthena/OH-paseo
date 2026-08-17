@@ -7,7 +7,12 @@ import {
 } from "@shopify/react-native-skia";
 import { fragmentTextForRange } from "./model";
 import { codeTextColor } from "./palette";
-import { createFallbackAwareTextMeasurer, requiresNativeParagraph } from "./text-measurement";
+import {
+  createCachedAsciiTextMetrics,
+  createFallbackAwareTextMeasurer,
+  requiresNativeParagraph,
+  type CachedAsciiTextMetrics,
+} from "./text-measurement";
 import type { DiffCell, DiffDocumentModel, DiffFragment, DiffPalette, TextMeasurer } from "./types";
 
 const PARAGRAPH_WIDTH = 100_000;
@@ -19,6 +24,7 @@ export interface NativeTextLayout {
 
 export interface NativeTextLayoutStore {
   font: SkFont;
+  asciiMetrics: CachedAsciiTextMetrics;
   paragraphsByCell: WeakMap<DiffCell, Array<SkParagraph | null>>;
   ownedParagraphs: Set<SkParagraph>;
   families: string[];
@@ -43,6 +49,10 @@ export function createNativeTextLayoutStore(input: {
   const font = primaryFont(families, input.fontSize);
   return {
     font,
+    asciiMetrics: createCachedAsciiTextMetrics({
+      glyphIds: (text) => font.getGlyphIDs(text),
+      measure: (text) => font.getTextWidth(text),
+    }),
     paragraphsByCell: new WeakMap(),
     ownedParagraphs: new Set(),
     families,
@@ -63,7 +73,7 @@ export function prepareNativeTextLayout(
       const cached = store.paragraphsByCell.get(cell);
       if (cached) return cached;
       const cellParagraphs = cell.fragments.map((fragment) => {
-        if (!requiresRetainedParagraph(fragment.text, store.font)) return null;
+        if (!requiresRetainedParagraph(fragment.text, store.asciiMetrics)) return null;
         const paragraph = createFragmentParagraph({
           cell,
           fragment,
@@ -88,11 +98,13 @@ export function createNativeTextMeasurer(input: {
 }): TextMeasurer {
   const families = nativeFontFamilies(input.configuredFamily);
   const font = primaryFont(families, input.fontSize);
+  const primary = {
+    glyphIds: (text: string) => font.getGlyphIDs(text),
+    measure: (text: string) => font.getTextWidth(text),
+  };
+  const asciiMetrics = createCachedAsciiTextMetrics(primary);
   const fallbackAware = createFallbackAwareTextMeasurer({
-    primary: {
-      glyphIds: (text) => font.getGlyphIDs(text),
-      measure: (text) => font.getTextWidth(text),
-    },
+    primary,
     measureWithSystemFallback(text) {
       const paragraph = createParagraph({
         text,
@@ -110,13 +122,8 @@ export function createNativeTextMeasurer(input: {
     ...fallbackAware,
     measureAdvances(graphemes) {
       const text = graphemes.join("");
-      if (!requiresRetainedParagraph(text, font)) {
-        let prefix = "";
-        return graphemes.map((grapheme) => {
-          prefix += grapheme;
-          return font.getTextWidth(prefix);
-        });
-      }
+      if (!requiresRetainedParagraph(text, asciiMetrics))
+        return asciiMetrics.measureAdvances(graphemes);
       const paragraph = createParagraph({
         text,
         families,
@@ -139,8 +146,8 @@ export function createNativeTextMeasurer(input: {
   };
 }
 
-function requiresRetainedParagraph(text: string, font: SkFont): boolean {
-  return requiresNativeParagraph(text) || font.getGlyphIDs(text).some((glyph) => glyph === 0);
+function requiresRetainedParagraph(text: string, asciiMetrics: CachedAsciiTextMetrics): boolean {
+  return requiresNativeParagraph(text) || !asciiMetrics.hasEveryGlyph(text);
 }
 
 function createFragmentParagraph(input: {

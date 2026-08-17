@@ -16,6 +16,7 @@ import {
 } from "./model";
 import { paintWebViewport } from "./paint.web";
 import { hasPointerDragStarted } from "./pointer-gesture";
+import { retainDiffViewport } from "./viewport";
 import type {
   DiffHit,
   DiffSelection,
@@ -48,6 +49,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     startX: number;
     startY: number;
     moved: boolean;
+    dismissSelectionOnClick: boolean;
   } | null>(null);
   const frameRef = useRef<number | null>(null);
   const resizeSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -223,7 +225,8 @@ export function DiffSurface(props: DiffSurfaceProps) {
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    const commitPendingViewport = () => setViewport(pendingViewportRef.current);
+    const commitPendingViewport = () =>
+      setViewport((current) => retainDiffViewport(current, pendingViewportRef.current));
     const clearResizeSettleTimer = () => {
       if (resizeSettleTimerRef.current === null) return;
       clearTimeout(resizeSettleTimerRef.current);
@@ -248,12 +251,12 @@ export function DiffSurface(props: DiffSurfaceProps) {
       if (!entry) return;
       const nextViewport = { width: entry.contentRect.width, height: entry.contentRect.height };
       pendingViewportRef.current = nextViewport;
-      setViewport((currentViewport) =>
-        currentViewport.width === 0 || currentViewport.height === 0
-          ? nextViewport
-          : currentViewport,
-      );
       if (resizePointerActiveRef.current) return;
+      setViewport((currentViewport) =>
+        currentViewport.width > 0 && currentViewport.height > 0
+          ? currentViewport
+          : retainDiffViewport(currentViewport, nextViewport),
+      );
       clearResizeSettleTimer();
       resizeSettleTimerRef.current = setTimeout(() => {
         resizeSettleTimerRef.current = null;
@@ -403,11 +406,10 @@ export function DiffSurface(props: DiffSurfaceProps) {
         )
       )
         return;
-      if (selectionRef.current) {
+      const dismissSelectionOnClick = selectionRef.current !== null;
+      if (dismissSelectionOnClick) {
         selectionRef.current = null;
-        dragRef.current = null;
         schedulePaint();
-        return;
       }
       const hit = pointHit(event);
       if (hit?.kind !== "cell") return;
@@ -416,6 +418,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
         startX: event.clientX,
         startY: event.clientY,
         moved: false,
+        dismissSelectionOnClick,
       };
       selectionRef.current = { anchor: hit.position, focus: hit.position };
       event.currentTarget.focus();
@@ -486,6 +489,11 @@ export function DiffSurface(props: DiffSurfaceProps) {
             alreadyDragging: drag.moved,
           })
         : false;
+      if (drag && !moved && drag.dismissSelectionOnClick) {
+        selectionRef.current = null;
+        schedulePaint();
+        return;
+      }
       if (drag && !moved && hit?.kind === "cell" && hit.target && reviewActions) {
         selectionRef.current = null;
         reviewActions.onStartComment(hit.target);
@@ -552,11 +560,10 @@ export function DiffSurface(props: DiffSurfaceProps) {
       >
         <div style={contentStyle} onMouseDown={preventDocumentMouseSelection}>
           <canvas ref={canvasRef} data-testid="git-diff-canvas" style={canvasStyle} />
-          {model.files.map((file, index) => (
+          {model.files.map((file) => (
             <WebFileHeaderSection key={file.path} file={file}>
               <DocumentFileHeader
                 file={file}
-                showTopBorder={index > 0 && !model.files[index - 1]?.isCollapsed}
                 selectedPath={props.selectedPath}
                 mode={props.mode}
                 onToggleFile={props.onToggleFile}
