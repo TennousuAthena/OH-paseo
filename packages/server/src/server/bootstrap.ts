@@ -1704,7 +1704,7 @@ export async function createPaseoDaemon(
     await agentStorage.flush().catch(() => undefined);
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
-    speechService.stop();
+    await speechService.stop();
     await scheduleService.stop().catch(() => undefined);
     await relayRuntime?.stop().catch(() => undefined);
     if (wsServer) {
