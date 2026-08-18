@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
 import { ClaudeAgentClient } from "./agent.js";
 import { streamSession } from "../test-utils/session-stream-adapter.js";
-import type { AgentStreamEvent } from "../../agent-sdk-types.js";
+import type { AgentSession, AgentStreamEvent } from "../../agent-sdk-types.js";
 
 interface QueryMock {
   next: ReturnType<typeof vi.fn>;
@@ -15,6 +15,7 @@ interface QueryMock {
   supportedModels: ReturnType<typeof vi.fn>;
   supportedCommands: ReturnType<typeof vi.fn>;
   rewindFiles: ReturnType<typeof vi.fn>;
+  cancelAsyncMessage: ReturnType<typeof vi.fn>;
   [Symbol.asyncIterator]: () => AsyncIterator<Record<string, unknown>, void>;
 }
 
@@ -139,6 +140,7 @@ function createScriptedQuery(params: {
     supportedModels: vi.fn(async () => [{ value: "opus", displayName: "Opus" }]),
     supportedCommands: vi.fn(async () => []),
     rewindFiles: vi.fn(async () => ({ canRewind: true })),
+    cancelAsyncMessage: vi.fn(async () => true),
     emit: (message: Record<string, unknown>) => {
       output.push(message);
     },
@@ -193,6 +195,18 @@ async function collectUntilTerminal(
     }
   }
   return events;
+}
+
+/** Pulls the stream forward without closing it, so the caller can keep reading afterwards. */
+async function consumeUntil(
+  stream: AsyncGenerator<AgentStreamEvent>,
+  matches: (event: AgentStreamEvent) => boolean,
+): Promise<void> {
+  while (true) {
+    const next = await stream.next();
+    if (next.done) throw new Error("Stream ended before the expected event");
+    if (matches(next.value)) return;
+  }
 }
 
 function collectAssistantText(events: AgentStreamEvent[]): string {
@@ -282,6 +296,95 @@ test("interrupt only calls query.interrupt and leaves the query open", async () 
     reason: "Interrupted",
   });
 
+  await session.close();
+});
+
+async function startSteeredTurn(sessionId: string): Promise<{
+  session: AgentSession;
+  query: () => ScriptedQuery | null;
+  turn: AsyncGenerator<AgentStreamEvent>;
+}> {
+  let query: ScriptedQuery | null = null;
+  queryFactory.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+    query = createScriptedQuery({ prompt, sessionId });
+    return query;
+  });
+
+  const session = await new ClaudeAgentClient({
+    logger: createTestLogger(),
+    queryFactory,
+    resolveBinary: async () => "/test/claude/bin",
+  }).createSession({ provider: "claude", cwd: process.cwd() });
+
+  const turn = streamSession(session, "original running prompt");
+  const start = await turn.next();
+  if (!start.value || start.value.type !== "turn_started" || !start.value.turnId) {
+    throw new Error("Expected the original Claude turn to start");
+  }
+  await waitFor(() => query?.prompts.length === 1);
+
+  const steered = await session.steerActiveTurn!("queued steer", {
+    expectedTurnId: start.value.turnId,
+    clientMessageId: "steer-client",
+  });
+  expect(steered).toEqual({ status: "accepted" });
+  await waitFor(() => query?.prompts.length === 2);
+
+  return { session, query: () => query, turn };
+}
+
+test("interrupt discards a queued steer so it cannot resume the stopped turn", async () => {
+  const { session, query, turn } = await startSteeredTurn("queued-steer-discard-session");
+
+  await session.interrupt();
+  await waitFor(() => query()?.interrupt.mock.calls.length === 1);
+
+  expect(query()?.cancelAsyncMessage).toHaveBeenCalledWith(query()?.prompts[1]?.uuid);
+  expect(await collectUntilTerminal(turn)).toContainEqual(
+    expect.objectContaining({ type: "turn_canceled" }),
+  );
+
+  // Nothing is queued any more, so a second interrupt has no steer left to discard.
+  query()?.cancelAsyncMessage.mockClear();
+  await session.interrupt();
+  await waitFor(() => query()?.interrupt.mock.calls.length === 2);
+  expect(query()?.cancelAsyncMessage).not.toHaveBeenCalled();
+
+  await session.close();
+});
+
+test("interrupt still stops the turn when Claude has already dequeued the steer", async () => {
+  const { session, query, turn } = await startSteeredTurn("queued-steer-declined-session");
+  query()?.cancelAsyncMessage.mockResolvedValue(false);
+
+  await session.interrupt();
+  await waitFor(() => query()?.interrupt.mock.calls.length === 1);
+
+  expect(query()?.cancelAsyncMessage).toHaveBeenCalledWith(query()?.prompts[1]?.uuid);
+  expect(await collectUntilTerminal(turn)).toContainEqual(
+    expect.objectContaining({ type: "turn_canceled" }),
+  );
+
+  await session.close();
+});
+
+test("a steer Claude has already read is no longer discardable on interrupt", async () => {
+  const { session, query, turn } = await startSteeredTurn("queued-steer-completed-session");
+
+  query()?.emit({
+    type: "command_lifecycle",
+    command_uuid: query()?.prompts[1]?.uuid,
+    state: "completed",
+  });
+  // Frames are translated in order, so the marker landing proves the lifecycle frame was read.
+  query()?.emit({ type: "assistant", message: { content: "STEER_READ" } });
+  await consumeUntil(turn, (event) => collectAssistantText([event]).includes("STEER_READ"));
+
+  await session.interrupt();
+  await waitFor(() => query()?.interrupt.mock.calls.length === 1);
+
+  expect(query()?.cancelAsyncMessage).not.toHaveBeenCalled();
+  await collectUntilTerminal(turn);
   await session.close();
 });
 
