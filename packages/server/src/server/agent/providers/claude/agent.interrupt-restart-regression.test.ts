@@ -620,6 +620,83 @@ test("creates an autonomous live turn when assistant output arrives without a fo
   await session.close();
 });
 
+test("steers an autonomous turn through its existing query without restarting it", async () => {
+  const logger = createTestLogger();
+  let queryRef: ScriptedQuery | null = null;
+
+  queryFactory.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+    queryRef = createScriptedQuery({
+      prompt,
+      sessionId: "autonomous-steer-session",
+      async handlePrompt({ promptRecord, query }) {
+        if (promptRecord.text === "seed prompt") {
+          query.emit({
+            type: "assistant",
+            message: { content: "SEED_RESPONSE" },
+            session_id: "autonomous-steer-session",
+          });
+          query.emit(buildSuccessResult("autonomous-steer-session"));
+          return;
+        }
+        if (promptRecord.text === "steer prompt") {
+          query.emit({
+            type: "assistant",
+            message: { content: "STEERED_RESPONSE" },
+            session_id: "autonomous-steer-session",
+          });
+          query.emit(buildSuccessResult("autonomous-steer-session"));
+        }
+      },
+    });
+    return queryRef;
+  });
+
+  const session = await new ClaudeAgentClient({
+    logger,
+    queryFactory,
+    resolveBinary: async () => "/test/claude/bin",
+  }).createSession({ provider: "claude", cwd: process.cwd() });
+
+  await collectUntilTerminal(streamSession(session, "seed prompt"));
+  const autonomousEvents = subscribeToEvents(session);
+  queryRef?.emit({
+    type: "assistant",
+    message: { content: "AUTONOMOUS_RESPONSE" },
+    session_id: "autonomous-steer-session",
+  });
+  const autonomousStart = await autonomousEvents.next();
+  const autonomousTimeline = await autonomousEvents.next();
+  const autonomousTurnId = autonomousStart.value?.turnId;
+  expect(autonomousTurnId).toBeTruthy();
+
+  const steer = await session.steerActiveTurn!("steer prompt", {
+    expectedTurnId: autonomousTurnId!,
+    clientMessageId: "steer-client",
+  });
+  const steeredTimeline = await autonomousEvents.next();
+  const completion = await autonomousEvents.next();
+
+  expect(steer).toEqual({ status: "accepted" });
+  expect(queryFactory).toHaveBeenCalledTimes(1);
+  expect(queryRef?.interrupt).not.toHaveBeenCalled();
+  expect(queryRef?.prompts.map((prompt) => prompt.text)).toEqual(["seed prompt", "steer prompt"]);
+  expect(autonomousTimeline.value).toMatchObject({ turnId: autonomousTurnId });
+  expect(steeredTimeline.value).toMatchObject({
+    type: "timeline",
+    turnId: autonomousTurnId,
+    item: { type: "assistant_message", text: "STEERED_RESPONSE" },
+  });
+  expect(completion.value).toMatchObject({ type: "turn_completed", turnId: autonomousTurnId });
+  expect(
+    [autonomousStart.value, autonomousTimeline.value, steeredTimeline.value, completion.value].map(
+      (event) => event?.turnId,
+    ),
+  ).toEqual([autonomousTurnId, autonomousTurnId, autonomousTurnId, autonomousTurnId]);
+
+  autonomousEvents.close();
+  await session.close();
+});
+
 test("auto-completes an open autonomous turn when a foreground prompt starts", async () => {
   const logger = createTestLogger();
   let queryRef: ScriptedQuery | null = null;

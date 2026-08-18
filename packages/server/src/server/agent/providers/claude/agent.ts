@@ -2266,7 +2266,8 @@ class ClaudeAgentSession implements AgentSession {
     if (this.resolveSlashCommandInvocation(prompt)) {
       return { status: "unavailable" };
     }
-    if (this.compacting || this.activeForegroundTurnId !== options.expectedTurnId) {
+    const activeTurnId = this.activeForegroundTurnId ?? this.autonomousTurn?.id;
+    if (this.compacting || activeTurnId !== options.expectedTurnId) {
       return { status: "unavailable" };
     }
 
@@ -2280,7 +2281,7 @@ class ClaudeAgentSession implements AgentSession {
     const message = this.toSdkUserMessage(prompt);
     message.priority = "next";
     if (
-      this.activeForegroundTurnId !== options.expectedTurnId ||
+      (this.activeForegroundTurnId ?? this.autonomousTurn?.id) !== options.expectedTurnId ||
       this.activeForegroundQuery !== query ||
       this.activeForegroundInput !== input ||
       this.query !== query ||
@@ -3479,6 +3480,8 @@ class ClaudeAgentSession implements AgentSession {
         this.syncTurnState("foreground turn terminal");
       } else if (this.autonomousTurn) {
         this.autonomousTurn = null;
+        this.activeForegroundQuery = null;
+        this.activeForegroundInput = null;
         this.activeTurnHasAssistantText = false;
         this.syncTurnState("autonomous turn terminal");
       }
@@ -3492,6 +3495,8 @@ class ClaudeAgentSession implements AgentSession {
     this.autonomousTurn = {
       id: this.createTurnId("autonomous"),
     };
+    this.activeForegroundQuery = this.query;
+    this.activeForegroundInput = this.input;
     this.activeTurnHasAssistantText = false;
     this.contextUsage.beginTurn();
     this.notifySubscribers({ type: "turn_started", provider: "claude" });
@@ -3504,6 +3509,8 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.notifySubscribers({ type: "turn_completed", provider: "claude" });
     this.autonomousTurn = null;
+    this.activeForegroundQuery = null;
+    this.activeForegroundInput = null;
     this.activeTurnHasAssistantText = false;
     this.syncTurnState("autonomous turn completed");
   }
