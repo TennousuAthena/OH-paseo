@@ -468,6 +468,21 @@ function findGroupPathById(
   return null;
 }
 
+/**
+ * The group holding the node at `targetPath`, or null when that node is the whole tree.
+ *
+ * Ask `targetPath`, never the parent path: `targetPath.slice(0, -1)` is empty both for "this node
+ * is the root" and for "this node is a direct child of the root group". Treating the second case as
+ * parentless wraps root-level panes in a redundant group on every split, which reparents the
+ * existing pane and remounts its whole subtree.
+ */
+function findParentGroup(root: SplitNodeInternal, targetPath: number[]): SplitNodeInternal | null {
+  if (targetPath.length === 0) {
+    return null;
+  }
+  return getNodeAtPath(root, targetPath.slice(0, -1));
+}
+
 function getNodeAtPath(node: SplitNodeInternal, path: number[]): SplitNodeInternal {
   let current = node;
   for (const index of path) {
@@ -869,7 +884,7 @@ function insertSplitInternal(input: InsertSplitInternalInput): InsertSplitIntern
 
   const parentPath = targetPath.slice(0, -1);
   const targetIndex = targetPath[targetPath.length - 1] ?? 0;
-  const parentNode = parentPath.length > 0 ? getNodeAtPath(detached.root, parentPath) : null;
+  const parentNode = findParentGroup(detached.root, targetPath);
 
   if (parentNode?.kind === "group" && parentNode.group.direction === direction) {
     const targetSize = parentNode.group.sizes[targetIndex] ?? 0;
@@ -1448,7 +1463,7 @@ export function splitPaneEmptyInLayout(
 
   const parentPath = targetPath.slice(0, -1);
   const targetIndex = targetPath[targetPath.length - 1] ?? 0;
-  const parentNode = parentPath.length > 0 ? getNodeAtPath(layout.root, parentPath) : null;
+  const parentNode = findParentGroup(layout.root, targetPath);
 
   let nextRoot: SplitNodeInternal;
   if (parentNode?.kind === "group" && parentNode.group.direction === direction) {
