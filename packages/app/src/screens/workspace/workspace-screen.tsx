@@ -1404,7 +1404,15 @@ function toggleWorkspaceExplorerPane(input: ToggleWorkspaceExplorerPaneInput): v
       store.hidePane(input.persistenceKey, explorerPane.id);
       return;
     }
-    if (explorerPane.tabIds.length === 0) {
+    // The companion pane can already hold an unrelated tab (the setup
+    // progress tab auto-opens here) before the user ever toggles it, so
+    // "empty" is the wrong signal for "needs a Changes tab seeded". Check
+    // for the working_diff tab specifically.
+    const layoutTabs = collectAllTabs(layout.root);
+    const hasWorkingDiffTab = explorerPane.tabIds.some(
+      (tabId) => layoutTabs.find((tab) => tab.tabId === tabId)?.target.kind === "working_diff",
+    );
+    if (!hasWorkingDiffTab) {
       const tabId = parentTabId
         ? store.openChildTabFocused(input.persistenceKey, { kind: "working_diff" }, parentTabId)
         : store.openTabFocused(input.persistenceKey, { kind: "working_diff" });
