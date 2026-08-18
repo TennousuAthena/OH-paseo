@@ -388,6 +388,160 @@ test("a steer Claude has already read is no longer discardable on interrupt", as
   await session.close();
 });
 
+function buildStoppedTaskNotification(sessionId: string) {
+  return {
+    type: "system",
+    subtype: "task_notification",
+    uuid: "task-notification-1",
+    task_id: "task-slow",
+    status: "stopped",
+    summary: "Sleep 5 seconds",
+    session_id: sessionId,
+  };
+}
+
+function buildAbortedResult(sessionId: string) {
+  return {
+    type: "result",
+    subtype: "error_during_execution",
+    errors: ["Request was aborted."],
+    session_id: sessionId,
+  };
+}
+
+function buildRejectedToolResult(sessionId: string) {
+  return {
+    type: "user",
+    parent_tool_use_id: null,
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "toolu_slow",
+          is_error: true,
+          content: "The user doesn't want to proceed with this tool use.",
+        },
+      ],
+    },
+    uuid: "rejected-tool-result-1",
+    session_id: sessionId,
+  };
+}
+
+async function startInterruptedToolTurn(sessionId: string): Promise<{
+  session: AgentSession;
+  query: () => ScriptedQuery | null;
+  observed: AgentStreamEvent[];
+  canceledIndex: number;
+  unsubscribe: () => void;
+}> {
+  let query: ScriptedQuery | null = null;
+  queryFactory.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+    query = createScriptedQuery({
+      prompt,
+      sessionId,
+      async handlePrompt({ promptRecord, query: scripted }) {
+        if (promptRecord.text !== "run the slow tool") {
+          return;
+        }
+        scripted.emit({
+          type: "assistant",
+          message: {
+            content: [
+              { type: "tool_use", id: "toolu_slow", name: "Bash", input: { command: "sleep 5" } },
+            ],
+          },
+          session_id: sessionId,
+        });
+      },
+    });
+    return query;
+  });
+
+  const session = await new ClaudeAgentClient({
+    logger: createTestLogger(),
+    queryFactory,
+    resolveBinary: async () => "/test/claude/bin",
+  }).createSession({ provider: "claude", cwd: process.cwd() });
+
+  const observed: AgentStreamEvent[] = [];
+  const unsubscribe = session.subscribe((event) => {
+    observed.push(event);
+  });
+
+  const turn = streamSession(session, "run the slow tool");
+  await turn.next();
+  await waitFor(() => query?.prompts.length === 1);
+
+  await session.interrupt();
+  await collectUntilTerminal(turn);
+
+  const canceledIndex = observed.findIndex((event) => event.type === "turn_canceled");
+  expect(canceledIndex).toBeGreaterThanOrEqual(0);
+
+  return { session, query: () => query, observed, canceledIndex, unsubscribe };
+}
+
+/**
+ * Claude keeps reporting on the request it was told to kill: the notification for the tool it just
+ * stopped, the aborted result, then the tool rejection. None of that is new work, so none of it may
+ * put the agent back into a running turn.
+ */
+test("trailing output from an interrupted request does not start a turn", async () => {
+  const sessionId = "interrupt-window-session";
+  const { session, query, observed, canceledIndex, unsubscribe } =
+    await startInterruptedToolTurn(sessionId);
+
+  query()?.emit(buildStoppedTaskNotification(sessionId));
+  query()?.emit(buildAbortedResult(sessionId));
+  query()?.emit(buildRejectedToolResult(sessionId));
+
+  // Frames are translated in order, so the rejection landing proves the two before it were read.
+  await waitFor(() =>
+    observed.some(
+      (event) =>
+        event.type === "timeline" &&
+        event.item.type === "tool_call" &&
+        event.item.callId === "toolu_slow" &&
+        event.item.status === "failed",
+    ),
+  );
+  unsubscribe();
+
+  expect(
+    observed.slice(canceledIndex + 1).filter((event) => event.type === "turn_started"),
+  ).toEqual([]);
+
+  await session.close();
+});
+
+test("Claude can still wake into an autonomous turn once the interrupted request has settled", async () => {
+  const sessionId = "interrupt-window-then-wake-session";
+  const { session, query, observed, canceledIndex, unsubscribe } =
+    await startInterruptedToolTurn(sessionId);
+
+  query()?.emit(buildStoppedTaskNotification(sessionId));
+  query()?.emit(buildAbortedResult(sessionId));
+  query()?.emit({
+    type: "assistant",
+    message: { content: "AUTONOMOUS_WAKE_RESPONSE" },
+    session_id: sessionId,
+  });
+  query()?.emit(buildSuccessResult(sessionId));
+
+  await waitFor(() =>
+    observed.slice(canceledIndex + 1).some((event) => event.type === "turn_completed"),
+  );
+  unsubscribe();
+
+  const afterCancel = observed.slice(canceledIndex + 1);
+  expect(afterCancel.filter((event) => event.type === "turn_started")).toHaveLength(1);
+  expect(collectAssistantText(afterCancel)).toContain("AUTONOMOUS_WAKE_RESPONSE");
+
+  await session.close();
+});
+
 test("reuses the existing query after interrupt before starting the next prompt", async () => {
   const logger = createTestLogger();
   const queries: ScriptedQuery[] = [];

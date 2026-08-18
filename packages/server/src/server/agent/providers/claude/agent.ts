@@ -3723,13 +3723,26 @@ class ClaudeAgentSession implements AgentSession {
     );
   }
 
+  /**
+   * Claude keeps talking about the request it was told to kill — the notification for the tool it
+   * just stopped, trailing assistant output. That is not new work, so it must not open a turn: the
+   * only message that would close that turn is the result shouldSuppressStaleResult drops, leaving
+   * the agent stuck reporting "running" forever.
+   */
+  private shouldStartAutonomousTurn(message: SDKMessage): boolean {
+    if (this.activeForegroundTurnId || this.pendingInterruptAbort) {
+      return false;
+    }
+    return this.isAssistantishMessage(message);
+  }
+
   private async routeSdkMessageFromPump(message: SDKMessage): Promise<void> {
     if (this.shouldSuppressStaleResult(message)) {
       return;
     }
 
     const isForeground = Boolean(this.activeForegroundTurnId);
-    if (!isForeground && this.isAssistantishMessage(message)) {
+    if (this.shouldStartAutonomousTurn(message)) {
       this.startAutonomousTurn();
     }
     if (!isForeground && !this.autonomousTurn && message.type === "result") {
