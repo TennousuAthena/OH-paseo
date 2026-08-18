@@ -101,16 +101,11 @@ async function gateSecondToolCall(page: Page, agentId: string) {
         firstCallId = toolCall.callId;
       }
       if (toolCall.callId === firstCallId) {
-        if (toolCall.status === "running" || toolCall.status === "executing") {
-          return;
-        }
+        ws.send(message);
         if (toolCall.status === "completed") {
-          // The mock tool completes inside the daemon's coalescing window, so the
-          // browser naturally receives its authoritative completed state first.
-          ws.send(message);
           resolveFirstCompleted();
-          return;
         }
+        return;
       }
 
       secondCallId ??= toolCall.callId;
@@ -148,6 +143,7 @@ async function gateSecondToolCall(page: Page, agentId: string) {
     waitForSecondRunning: () => secondRunning,
     releaseSecondRunning() {
       releaseSecondRequested = true;
+      pauseServerMessages = false;
       if (secondRunningMessage) {
         forwardSecondRunning?.();
       }
