@@ -140,6 +140,7 @@ interface ReorderFocusedPaneTabsInLayoutInput {
 interface CloseTabInLayoutInput {
   layout: WorkspaceLayout;
   tabId: string;
+  preserveEmptyPaneId?: string | null;
 }
 
 interface SplitPaneInLayoutInput {
@@ -211,6 +212,8 @@ export interface WorkspaceTabSnapshot {
 }
 
 const DEFAULT_PANE_ID = "main";
+export const DEFAULT_EXPLORER_PANE_ID = "explorer";
+const DEFAULT_LAYOUT_GROUP_ID = "workspace-root";
 
 function trimNonEmpty(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -1051,6 +1054,22 @@ export function createDefaultLayout(): WorkspaceLayout {
   };
 }
 
+/** The desktop companion pane exists before it is first shown. */
+export function createWorkspaceLayoutWithExplorer(): WorkspaceLayout {
+  return {
+    root: createGroupNode({
+      id: DEFAULT_LAYOUT_GROUP_ID,
+      direction: "horizontal",
+      children: [
+        createPaneNode({ id: DEFAULT_PANE_ID }),
+        createPaneNode({ id: DEFAULT_EXPLORER_PANE_ID, hidden: true }),
+      ],
+      sizes: [0.5, 0.5],
+    }),
+    focusedPaneId: DEFAULT_PANE_ID,
+  };
+}
+
 export function insertSplit(
   root: SplitNode,
   targetPaneId: string,
@@ -1079,7 +1098,10 @@ export function removePaneFromTree(root: SplitNode, paneId: string): SplitNode {
 }
 
 export function removeTabFromTree(root: SplitNode, tabId: string): SplitNode {
-  return detachTabFromTree(asInternalNode(root), { tabId }).root;
+  return detachTabFromTree(asInternalNode(root), {
+    tabId,
+    preserveEmptyPaneId: DEFAULT_PANE_ID,
+  }).root;
 }
 
 function insertNewTabIntoFocusedPane(input: {
@@ -1182,6 +1204,9 @@ export function closeTabInLayout(input: CloseTabInLayoutInput): WorkspaceLayout 
   if (!pane) {
     return null;
   }
+  const preserveEmptyPaneId =
+    input.preserveEmptyPaneId ??
+    (pane.id === DEFAULT_PANE_ID || pane.id === DEFAULT_EXPLORER_PANE_ID ? pane.id : null);
 
   const closeSuccessorTabId = getCloseSuccessorTabId({
     pane,
@@ -1190,7 +1215,10 @@ export function closeTabInLayout(input: CloseTabInLayoutInput): WorkspaceLayout 
     parentTabIdByTabId: input.layout.parentTabIdByTabId,
   });
   const fallbackPaneId = findNearestSiblingPaneId(internalLayout.root, pane.id);
-  const nextRoot = removeTabFromTree(internalLayout.root, input.tabId) as SplitNodeInternal;
+  const nextRoot = detachTabFromTree(internalLayout.root, {
+    tabId: input.tabId,
+    preserveEmptyPaneId,
+  }).root;
   const parentTabIdByTabId = normalizeParentTabMap({
     raw: input.layout.parentTabIdByTabId,
     openTabIds: new Set(collectAllTabs(nextRoot).map((tab) => tab.tabId)),

@@ -53,9 +53,10 @@ import { traceInstant } from "@/performance/native-trace";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
   collectAllTabs,
-  createDefaultLayout,
+  createWorkspaceLayoutWithExplorer,
   findPaneById,
   getFocusedBrowserId,
+  resolveExplorerPaneId,
   type WorkspaceLayout,
   useWorkspaceLayoutStore,
   useWorkspaceLayoutStoreHydrated,
@@ -1360,8 +1361,12 @@ function buildWorkspaceTerminalScopeKey(serverId: string, workspaceId: string): 
   return `${serverId}:${workspaceId}`;
 }
 
-function canObservePullRequest(isRouteFocused: boolean, isGitCheckout: boolean): boolean {
-  return isRouteFocused && isGitCheckout;
+function canObservePullRequest(
+  isRouteFocused: boolean,
+  isGitCheckout: boolean,
+  isCompact: boolean,
+): boolean {
+  return isRouteFocused && isGitCheckout && !isCompact && supportsDesktopPaneSplits();
 }
 
 interface ToggleWorkspaceExplorerPaneInput {
@@ -1383,15 +1388,28 @@ function toggleWorkspaceExplorerPane(input: ToggleWorkspaceExplorerPaneInput): v
   }
 
   const store = useWorkspaceLayoutStore.getState();
-  const layout = store.layoutByWorkspace[input.persistenceKey] ?? createDefaultLayout();
+  const layout =
+    store.layoutByWorkspace[input.persistenceKey] ?? createWorkspaceLayoutWithExplorer();
   const parentTabId = findPaneById(layout.root, layout.focusedPaneId)?.focusedTabId ?? null;
-  const explorerPaneId = store.explorerPaneIdByWorkspace[input.persistenceKey] ?? null;
+  const explorerPaneId = resolveExplorerPaneId(
+    layout,
+    store.explorerPaneIdByWorkspace[input.persistenceKey],
+  );
   const explorerPane = findPaneById(layout.root, explorerPaneId);
   if (explorerPane) {
     if (explorerPane.hidden === true) {
       store.showPane(input.persistenceKey, explorerPane.id);
     } else {
       store.hidePane(input.persistenceKey, explorerPane.id);
+      return;
+    }
+    if (explorerPane.tabIds.length === 0) {
+      const tabId = parentTabId
+        ? store.openChildTabFocused(input.persistenceKey, { kind: "working_diff" }, parentTabId)
+        : store.openTabFocused(input.persistenceKey, { kind: "working_diff" });
+      if (tabId) {
+        store.moveTabToPane(input.persistenceKey, tabId, explorerPane.id);
+      }
     }
     return;
   }
@@ -1415,8 +1433,10 @@ function isWorkspaceExplorerPaneOpen(
   if (!persistenceKey) {
     return false;
   }
-  const paneId = state.explorerPaneIdByWorkspace[persistenceKey];
   const layout = state.layoutByWorkspace[persistenceKey];
+  const paneId = layout
+    ? resolveExplorerPaneId(layout, state.explorerPaneIdByWorkspace[persistenceKey])
+    : null;
   const pane = paneId && layout ? findPaneById(layout.root, paneId) : null;
   return Boolean(pane && pane.hidden !== true);
 }
@@ -1706,7 +1726,7 @@ function WorkspaceScreenContent({
     workspaceKey: persistenceKey,
     serverId: normalizedServerId,
     cwd: workspaceDirectory,
-    enabled: canObservePullRequest(isRouteFocused, isGitCheckout),
+    enabled: canObservePullRequest(isRouteFocused, isGitCheckout, isMobile),
   });
 
   const isCompactExplorerOpen = usePanelStore((state) =>
@@ -1784,6 +1804,12 @@ function WorkspaceScreenContent({
   });
   const openWorkspaceTabInBackground = useWorkspaceLayoutStore(
     (state) => state.openTabInBackground,
+  );
+  const openWorkspaceTabInExplorerPaneBackground = useWorkspaceLayoutStore(
+    (state) => state.openTabInExplorerPaneBackground,
+  );
+  const openWorkspaceTabInExplorerPaneFocused = useWorkspaceLayoutStore(
+    (state) => state.openTabInExplorerPaneFocused,
   );
   const focusWorkspaceTab = useWorkspaceLayoutStore((state) => state.focusTab);
   const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
@@ -1994,7 +2020,6 @@ function WorkspaceScreenContent({
       ),
     [normalizedWorkspaceId, uiTabs],
   );
-
   const navigateToTabId = useCallback(
     function navigateToTabId(tabId: string) {
       if (!tabId || !persistenceKey) {
@@ -2019,6 +2044,64 @@ function WorkspaceScreenContent({
 
   const emptyWorkspaceSeedRef = useRef<string | null>(null);
   const autoOpenedSetupTabWorkspaceRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isRouteFocused) {
+      return;
+    }
+    if (!persistenceKey) {
+      return;
+    }
+    if (!workspaceSetupSnapshot || !showWorkspaceSetup) {
+      if (autoOpenedSetupTabWorkspaceRef.current === persistenceKey) {
+        autoOpenedSetupTabWorkspaceRef.current = null;
+      }
+      return;
+    }
+
+    const snapshotAge = Date.now() - workspaceSetupSnapshot.updatedAt;
+    const shouldAutoOpen =
+      workspaceSetupSnapshot.status === "running" ||
+      snapshotAge <= WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS;
+    if (!shouldAutoOpen) {
+      return;
+    }
+    if (hasSetupTab) {
+      autoOpenedSetupTabWorkspaceRef.current = persistenceKey;
+      return;
+    }
+    if (autoOpenedSetupTabWorkspaceRef.current === persistenceKey) {
+      return;
+    }
+
+    const target = normalizeWorkspaceTabTarget({
+      kind: "setup",
+      workspaceId: normalizedWorkspaceId,
+    });
+    if (!target) {
+      return;
+    }
+
+    const tabId =
+      isMobile || !supportsDesktopPaneSplits()
+        ? openWorkspaceTabInBackground(persistenceKey, target)
+        : openWorkspaceTabInExplorerPaneBackground(persistenceKey, target);
+    if (!tabId) {
+      return;
+    }
+
+    autoOpenedSetupTabWorkspaceRef.current = persistenceKey;
+  }, [
+    hasSetupTab,
+    isMobile,
+    isRouteFocused,
+    normalizedWorkspaceId,
+    openWorkspaceTabInBackground,
+    openWorkspaceTabInExplorerPaneBackground,
+    persistenceKey,
+    showWorkspaceSetup,
+    workspaceSetupSnapshot,
+  ]);
 
   useEffect(() => {
     if (!isRouteFocused || !client || !normalizedServerId || !normalizedWorkspaceId) {
@@ -2073,59 +2156,6 @@ function WorkspaceScreenContent({
     tabs.length,
     workspaceDirectory,
     workspaceAgentVisibility.activeAgentIds.size,
-  ]);
-
-  useEffect(() => {
-    if (!isRouteFocused) {
-      return;
-    }
-    if (!persistenceKey) {
-      return;
-    }
-    if (!workspaceSetupSnapshot || !showWorkspaceSetup) {
-      if (autoOpenedSetupTabWorkspaceRef.current === persistenceKey) {
-        autoOpenedSetupTabWorkspaceRef.current = null;
-      }
-      return;
-    }
-
-    const snapshotAge = Date.now() - workspaceSetupSnapshot.updatedAt;
-    const shouldAutoOpen =
-      workspaceSetupSnapshot.status === "running" ||
-      snapshotAge <= WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS;
-    if (!shouldAutoOpen) {
-      return;
-    }
-    if (hasSetupTab) {
-      autoOpenedSetupTabWorkspaceRef.current = persistenceKey;
-      return;
-    }
-    if (autoOpenedSetupTabWorkspaceRef.current === persistenceKey) {
-      return;
-    }
-
-    const target = normalizeWorkspaceTabTarget({
-      kind: "setup",
-      workspaceId: normalizedWorkspaceId,
-    });
-    if (!target) {
-      return;
-    }
-
-    const tabId = openWorkspaceTabInBackground(persistenceKey, target);
-    if (!tabId) {
-      return;
-    }
-
-    autoOpenedSetupTabWorkspaceRef.current = persistenceKey;
-  }, [
-    hasSetupTab,
-    isRouteFocused,
-    normalizedWorkspaceId,
-    openWorkspaceTabInBackground,
-    persistenceKey,
-    showWorkspaceSetup,
-    workspaceSetupSnapshot,
   ]);
 
   const handleOpenFileFromExplorer = useCallback(
@@ -2704,8 +2734,18 @@ function WorkspaceScreenContent({
     if (!target) {
       return;
     }
-    openWorkspaceTabFocused(persistenceKey, target);
-  }, [normalizedWorkspaceId, openWorkspaceTabFocused, persistenceKey]);
+    if (isMobile || !supportsDesktopPaneSplits()) {
+      openWorkspaceTabFocused(persistenceKey, target);
+      return;
+    }
+    openWorkspaceTabInExplorerPaneFocused(persistenceKey, { target });
+  }, [
+    isMobile,
+    normalizedWorkspaceId,
+    openWorkspaceTabFocused,
+    openWorkspaceTabInExplorerPaneFocused,
+    persistenceKey,
+  ]);
 
   const handleBulkCloseTabs = useCallback(
     async (input: { tabsToClose: WorkspaceTabDescriptor[]; title: string; logLabel: string }) => {
