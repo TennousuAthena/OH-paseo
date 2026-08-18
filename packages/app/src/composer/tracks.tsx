@@ -156,11 +156,18 @@ function ComposerTrackPillTrigger({
  * means travelling past every row it affects, which is the right price for it, and it cannot sit
  * under a thumb that was aiming for the nearest subagent.
  */
-export function ComposerTrackActions({ children }: { children: ReactNode }): ReactElement {
+export function ComposerTrackActions({
+  children,
+  /** False when the list below is empty — a divider with nothing under it separates nothing. */
+  divided = true,
+}: {
+  children: ReactNode;
+  divided?: boolean;
+}): ReactElement {
   return (
     <>
       {children}
-      <MenuSeparator />
+      {divided ? <MenuSeparator /> : null}
     </>
   );
 }

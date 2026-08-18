@@ -83,7 +83,7 @@ export function SubagentsTrack({
       statusBucket={pill.statusBucket}
     >
       {showArchiveFinished && onArchiveFinished ? (
-        <ComposerTrackActions>
+        <ComposerTrackActions divided={rows.length > 0}>
           <ArchiveFinishedRow
             status={archiveFinishedStatus}
             disabled={isArchivingFinished}
