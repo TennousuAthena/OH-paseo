@@ -9,6 +9,8 @@ import {
   clickNewChat,
   clickNewTerminal,
   countTabsOfKind,
+  waitForTabBar,
+  pressNewTabShortcut,
   getTabTestIds,
   waitForTabWithTitle,
   measureTileTransition,
@@ -27,10 +29,14 @@ import {
   seedTerminalProfiles,
   type TerminalProfile,
 } from "../support/helpers/new-workspace-launch";
+import { gotoAppShell } from "../support/helpers/app";
+import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
+import { getServerId } from "../support/helpers/server-id";
 
 // ─── Shared state ──────────────────────────────────────────────────────────
 
 let workspace: SeededWorkspace;
+let secondWorkspaceId: string | null = null;
 
 const EMPTY_PROMPT_PROFILE: TerminalProfile = {
   id: "e2e-empty-prompt",
@@ -41,6 +47,14 @@ const EMPTY_PROMPT_PROFILE: TerminalProfile = {
 
 test.beforeAll(async () => {
   workspace = await seedWorkspace({ repoPrefix: "launcher-e2e-" });
+  const created = await workspace.client.createWorkspace({
+    source: { kind: "directory", path: workspace.repoPath, projectId: workspace.projectId },
+    title: "launcher-e2e-cmd-t-switch-target",
+  });
+  if (!created.workspace) {
+    throw new Error(created.error ?? "Failed to create secondary workspace for cmd+t switch test");
+  }
+  secondWorkspaceId = created.workspace.id;
 });
 
 test.afterAll(async () => {
@@ -52,6 +66,40 @@ test.afterAll(async () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test.describe("Tab creation", () => {
+  test("Cmd+T keeps opening the New tab menu after workspace switches", async ({ page }) => {
+    if (!secondWorkspaceId) {
+      throw new Error("Secondary workspace was not created");
+    }
+
+    const serverId = getServerId();
+    const newTabMenuItem = page.getByRole("menuitem", { name: /^Agent/ });
+
+    const switchWorkspaceRow = async (workspaceId: string) => {
+      const row = page.getByTestId(`sidebar-workspace-row-${serverId}:${workspaceId}`).first();
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      await row.click();
+      // The shortcut must follow the route, so prove the route actually moved first.
+      await expect(page).toHaveURL(new RegExp(`workspace/${workspaceId}(\\b|/|$)`), {
+        timeout: 15_000,
+      });
+      await waitForTabBar(page);
+    };
+
+    await gotoAppShell(page);
+    await waitForSidebarHydration(page);
+
+    const sequence = [workspace.workspaceId, secondWorkspaceId];
+    for (let i = 0; i < 8; i++) {
+      await switchWorkspaceRow(sequence[i % sequence.length]);
+      await pressNewTabShortcut(page);
+      await expect(newTabMenuItem, `New tab menu did not open after switch ${i}`).toBeVisible({
+        timeout: 5_000,
+      });
+      await page.keyboard.press("Escape");
+      await expect(newTabMenuItem).toBeHidden({ timeout: 5_000 });
+    }
+  });
+
   test("retained inactive workspaces cannot own New tab shortcuts", async ({ page }) => {
     await gotoWorkspace(page, workspace.workspaceId);
     const workspaceUrl = page.url();

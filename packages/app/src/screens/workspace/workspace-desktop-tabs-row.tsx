@@ -104,6 +104,7 @@ import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { TrailingActionScrim } from "@/components/ui/trailing-action-scrim";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import { buildWorkspaceKeyboardHandlerId } from "@/keyboard/handler-id";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 
 const DROPDOWN_WIDTH = 220;
@@ -1489,7 +1490,12 @@ function ResolvedWorkspaceDesktopTabsRow({
   );
 
   useKeyboardActionHandler({
-    handlerId: `workspace-new-tab-menu:${normalizedServerId}:${paneId ?? "main"}`,
+    handlerId: buildWorkspaceKeyboardHandlerId({
+      name: "workspace-new-tab-menu",
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+      paneId,
+    }),
     actions: [
       "workspace.tab.menu.open",
       "workspace.tab.target.agent",
