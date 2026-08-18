@@ -1696,7 +1696,7 @@ export const ptBR: TranslationResources = {
     title: "Subagentes",
     pillLabelOne: "1 subagente",
     pillLabelMany: "{{count}} subagentes",
-    pillLabelRunning: "{{count}} em execução",
+    pillLabelWorking: "{{count}} em execução",
     pillLabelFailed: "{{count}} com falha",
     pillLabelNeedsInputOne: "1 precisa de resposta",
     pillLabelNeedsInputMany: "{{count}} precisam de resposta",

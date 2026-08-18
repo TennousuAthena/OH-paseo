@@ -1644,7 +1644,7 @@ export const zhCN: TranslationResources = {
     title: "Subagent",
     pillLabelOne: "1 个 subagent",
     pillLabelMany: "{{count}} 个 subagent",
-    pillLabelRunning: "{{count}} 个运行中",
+    pillLabelWorking: "{{count}} 个运行中",
     pillLabelFailed: "{{count}} 个失败",
     pillLabelNeedsInputOne: "1 个需要输入",
     pillLabelNeedsInputMany: "{{count}} 个需要输入",

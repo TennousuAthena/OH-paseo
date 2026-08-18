@@ -1699,7 +1699,7 @@ export const ru: TranslationResources = {
     title: "Субагенты",
     pillLabelOne: "1 субагент",
     pillLabelMany: "{{count}} субагентов",
-    pillLabelRunning: "{{count}} в работе",
+    pillLabelWorking: "{{count}} в работе",
     pillLabelFailed: "{{count}} с ошибкой",
     pillLabelNeedsInputOne: "1 ожидает ввода",
     pillLabelNeedsInputMany: "{{count}} ожидают ввода",
