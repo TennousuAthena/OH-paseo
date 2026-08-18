@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
   MenuRoot,
+  MenuSeparator,
   MenuSurface,
   MenuTrigger,
   useMenuContext,
@@ -143,6 +144,24 @@ function ComposerTrackPillTrigger({
         {label}
       </Text>
     </MenuTrigger>
+  );
+}
+
+/**
+ * Actions that apply to the whole panel rather than one row — bulk archive today. Still rows:
+ * they live on a menu surface, and a bordered button inside a list of menu items reads as a
+ * foreign object. The divider is what separates them from the list, not their chrome.
+ *
+ * They go above the rows because the pointer arrives from the pill below. Reaching a bulk action
+ * means travelling past every row it affects, which is the right price for it, and it cannot sit
+ * under a thumb that was aiming for the nearest subagent.
+ */
+export function ComposerTrackActions({ children }: { children: ReactNode }): ReactElement {
+  return (
+    <>
+      {children}
+      <MenuSeparator />
+    </>
   );
 }
 

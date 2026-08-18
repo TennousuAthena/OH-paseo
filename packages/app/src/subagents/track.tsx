@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Archive, Unlink } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { getProviderIcon } from "@/components/provider-icons";
-import { ComposerTrackPill, ComposerTrackRow } from "@/composer/tracks";
+import { ComposerTrackActions, ComposerTrackPill, ComposerTrackRow } from "@/composer/tracks";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
@@ -82,6 +82,15 @@ export function SubagentsTrack({
       panelTitle={t("subagents.title")}
       statusBucket={pill.statusBucket}
     >
+      {showArchiveFinished && onArchiveFinished ? (
+        <ComposerTrackActions>
+          <ArchiveFinishedRow
+            status={archiveFinishedStatus}
+            disabled={isArchivingFinished}
+            onPress={onArchiveFinished}
+          />
+        </ComposerTrackActions>
+      ) : null}
       {rows.map((row) => (
         <SubagentsTrackRow
           key={row.id}
@@ -92,21 +101,13 @@ export function SubagentsTrack({
           onDetachSubagent={onDetachSubagent}
         />
       ))}
-      {showArchiveFinished && onArchiveFinished ? (
-        <ArchiveFinishedRow
-          status={archiveFinishedStatus}
-          disabled={isArchivingFinished}
-          onPress={onArchiveFinished}
-        />
-      ) : null}
     </ComposerTrackPill>
   );
 }
 
 /**
- * Bulk archive, as a row at the foot of the panel rather than an icon next to the count. The
- * pill has no header to hang an icon off, and a destructive-ish action reads better with its
- * name attached.
+ * Bulk archive, as a row above the list rather than an icon next to the count. The pill has no
+ * header to hang an icon off, and a destructive-ish action reads better with its name attached.
  */
 function ArchiveFinishedRow({
   status,
