@@ -223,7 +223,7 @@ describe("searchDirectoryEntries", () => {
     expect(suffixRootBrowses).toEqual([rootEntries, rootEntries]);
   });
 
-  it("anchors rooted one-segment queries to their root parent", async () => {
+  it("matches rooted queries against the full path at any depth", async () => {
     mkdirSync(path.join(searchRoot, "nested", "pso-global"), { recursive: true });
     mkdirSync(path.join(searchRoot, "pso-root"), { recursive: true });
     const absoluteQuery = path.join(configuredSearchRoot, "pso");
@@ -236,7 +236,11 @@ describe("searchDirectoryEntries", () => {
       pathQueryPolicy: "rooted" as const,
       rootAliases: ["~"],
     };
-    const expected = [{ path: "pso-root", kind: "directory" }];
+    const expected = [
+      { path: "pso-root", kind: "directory" },
+      { path: "nested/pso-global", kind: "directory" },
+      { path: "projects/paseo-desktop", kind: "directory" },
+    ];
 
     await expect(searchDirectoryEntries({ ...common, query: "~/pso" })).resolves.toEqual(expected);
     await expect(searchDirectoryEntries({ ...common, query: "./pso" })).resolves.toEqual(expected);
@@ -264,7 +268,10 @@ describe("searchDirectoryEntries", () => {
         { path: "projects", kind: "directory" },
         { path: "src", kind: "directory" },
       ],
-      projectEntries: [{ path: "projects/paseo-desktop", kind: "directory" }],
+      projectEntries: [
+        { path: "projects", kind: "directory" },
+        { path: "projects/paseo-desktop", kind: "directory" },
+      ],
     });
   });
 
@@ -899,5 +906,47 @@ describe("relative typed-entry configuration", () => {
     });
 
     expect(results).toEqual([{ path: "src/components", kind: "directory" }]);
+  });
+
+  it("matches a path fragment anywhere in the full file path", async () => {
+    const targetPath = path.join(
+      workspaceDir,
+      "something",
+      "something-else",
+      "skills",
+      "paseo-advisor",
+      "SKILL.md",
+    );
+    mkdirSync(path.dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, "skill\n");
+
+    const results = await searchRelativeDirectoryEntries({
+      cwd: workspaceDir,
+      query: "skills/",
+      limit: 20,
+      includeFiles: true,
+      includeDirectories: false,
+    });
+
+    expect(results).toEqual([
+      {
+        path: "something/something-else/skills/paseo-advisor/SKILL.md",
+        kind: "file",
+      },
+    ]);
+  });
+
+  it("fuzzy-matches natural language against the full path", async () => {
+    mkdirSync(path.join(workspaceDir, "blankpage", "editor"), { recursive: true });
+
+    const results = await searchRelativeDirectoryEntries({
+      cwd: workspaceDir,
+      query: "blank page editor",
+      limit: 20,
+      includeFiles: false,
+      includeDirectories: true,
+    });
+
+    expect(results).toEqual([{ path: "blankpage/editor", kind: "directory" }]);
   });
 });
