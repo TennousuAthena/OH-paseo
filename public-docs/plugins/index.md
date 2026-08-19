@@ -8,6 +8,10 @@ category: Plugins
 
 # Plugin quickstart
 
+> **Experimental:** Plugins are intended for personal, local use and are not designed for
+> distribution yet. The plugin API is still evolving, so expect breaking changes and updates to
+> your plugins as Paseo evolves.
+
 Paseo plugins add native workspace panels, Command Center items, global surfaces, daemon behavior, and composer attachment sources. They run on every Paseo client connected to the host, including mobile.
 
 Plugins are trusted local code. Install only code you trust: backend code runs unsandboxed with access to the daemon machine, and client contributions run inside the Paseo app.
