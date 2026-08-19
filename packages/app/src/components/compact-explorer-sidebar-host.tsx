@@ -101,7 +101,9 @@ export function CompactExplorerSidebarHost({ children, enabled }: CompactExplore
   const model = useActiveCompactExplorerSidebarModel(enabled);
   const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
-  const openWorkspaceTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
+  const openWorkspaceTabInFocusedPane = useWorkspaceLayoutStore(
+    (state) => state.openTabInFocusedPane,
+  );
   const focusWorkspaceTab = useWorkspaceLayoutStore((state) => state.focusTab);
 
   const handleOpenExplorer = useCallback(() => {
@@ -127,11 +129,11 @@ export function CompactExplorerSidebarHost({ children, enabled }: CompactExplore
         filePath,
         persistenceKey: model.persistenceKey,
         showMobileAgent,
-        openWorkspaceTabFocused,
+        openWorkspaceTabInFocusedPane,
         focusWorkspaceTab,
       });
     },
-    [focusWorkspaceTab, model, openWorkspaceTabFocused, showMobileAgent],
+    [focusWorkspaceTab, model, openWorkspaceTabInFocusedPane, showMobileAgent],
   );
 
   return (

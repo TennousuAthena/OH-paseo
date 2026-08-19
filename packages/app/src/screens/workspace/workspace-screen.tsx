@@ -1466,6 +1466,10 @@ interface WorkspaceTerminalTabActionsInput {
     target: WorkspaceTabTarget,
     options?: WorkspaceTabOpenOptions,
   ) => string | null;
+  openWorkspaceTabInFocusedPane: (
+    workspaceKey: string,
+    target: WorkspaceTabTarget,
+  ) => string | null;
   labels: {
     workspacePathUnavailable: string;
     terminalQueued: string;
@@ -1487,6 +1491,7 @@ interface WorkspaceTerminalTabActions {
 function useWorkspaceTerminalTabActions({
   persistenceKey,
   openWorkspaceTabFocused,
+  openWorkspaceTabInFocusedPane,
   labels,
   toast,
 }: WorkspaceTerminalTabActionsInput): WorkspaceTerminalTabActions {
@@ -1495,18 +1500,22 @@ function useWorkspaceTerminalTabActions({
       if (!persistenceKey) {
         return;
       }
-      openWorkspaceTabFocused(persistenceKey, { kind: "terminal", terminalId }, { paneId });
+      if (paneId) {
+        openWorkspaceTabFocused(persistenceKey, { kind: "terminal", terminalId }, { paneId });
+      } else {
+        openWorkspaceTabInFocusedPane(persistenceKey, { kind: "terminal", terminalId });
+      }
     },
-    [openWorkspaceTabFocused, persistenceKey],
+    [openWorkspaceTabFocused, openWorkspaceTabInFocusedPane, persistenceKey],
   );
   const handleScriptTerminalSelected = useCallback(
     (terminalId: string) => {
       if (!persistenceKey) {
         return;
       }
-      openWorkspaceTabFocused(persistenceKey, { kind: "terminal", terminalId });
+      openWorkspaceTabInFocusedPane(persistenceKey, { kind: "terminal", terminalId });
     },
-    [openWorkspaceTabFocused, persistenceKey],
+    [openWorkspaceTabInFocusedPane, persistenceKey],
   );
   const handleWorkspacePathUnavailable = useCallback(() => {
     toast.error(labels.workspacePathUnavailable);
@@ -1608,8 +1617,14 @@ function WorkspaceScreenContent({
     [normalizedServerId, normalizedWorkspaceId],
   );
   const openWorkspaceTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
+  const openWorkspaceTabInFocusedPane = useWorkspaceLayoutStore(
+    (state) => state.openTabInFocusedPane,
+  );
   const openWorkspaceChildTabFocused = useWorkspaceLayoutStore(
     (state) => state.openChildTabFocused,
+  );
+  const openWorkspaceChildTabInFocusedPane = useWorkspaceLayoutStore(
+    (state) => state.openChildTabInFocusedPane,
   );
   // File targets stay identity-stable so the same path reuses its tab. Keep navigation
   // requests separate so clicking an unchanged path:line can still recenter the pane.
@@ -1657,6 +1672,7 @@ function WorkspaceScreenContent({
   } = useWorkspaceTerminalTabActions({
     persistenceKey,
     openWorkspaceTabFocused,
+    openWorkspaceTabInFocusedPane,
     labels: {
       workspacePathUnavailable: t("workspace.header.toasts.workspacePathUnavailable"),
       terminalQueued: t("workspace.header.toasts.terminalQueued"),
@@ -1951,6 +1967,7 @@ function WorkspaceScreenContent({
 
   const openWorkspaceDraftTab = useCallback(
     function openWorkspaceDraftTab(input?: {
+      ambient?: boolean;
       draftId?: string;
       focus?: boolean;
       paneId?: string | null;
@@ -1964,13 +1981,25 @@ function WorkspaceScreenContent({
         draftId: trimNonEmpty(input?.draftId) ?? generateDraftId(),
       });
       invariant(target?.kind === "draft", "Draft tab target must be valid");
-      const placement = { paneId: input?.paneId };
-      if (input?.focus === false) {
-        return openWorkspaceTabInBackground(persistenceKey, target, placement);
+      if (input?.ambient) {
+        return openWorkspaceTabFocused(persistenceKey, target);
       }
-      return openWorkspaceTabFocused(persistenceKey, target, placement);
+      if (input?.focus === false) {
+        return openWorkspaceTabInBackground(persistenceKey, target, {
+          paneId: input?.paneId,
+        });
+      }
+      if (input?.paneId) {
+        return openWorkspaceTabFocused(persistenceKey, target, { paneId: input.paneId });
+      }
+      return openWorkspaceTabInFocusedPane(persistenceKey, target);
     },
-    [openWorkspaceTabFocused, openWorkspaceTabInBackground, persistenceKey],
+    [
+      openWorkspaceTabFocused,
+      openWorkspaceTabInBackground,
+      openWorkspaceTabInFocusedPane,
+      persistenceKey,
+    ],
   );
 
   useEffect(() => {
@@ -2000,12 +2029,16 @@ function WorkspaceScreenContent({
         terminalsHydrated: terminalsQuery.isSuccess,
         knownTerminalIds,
         standaloneTerminalIds,
+        hasActivePendingTerminalCreate:
+          createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
         hasActivePendingDraftCreate: hasActivePendingDraftCreateInWorkspace,
       }),
     );
   }, [
     hasHydratedAgents,
     hasHydratedWorkspaceLayoutStore,
+    pendingTerminalCreateInput,
+    createTerminalMutation.isPending,
     isRouteFocused,
     normalizedServerId,
     normalizedWorkspaceId,
@@ -2047,12 +2080,12 @@ function WorkspaceScreenContent({
       if (!persistenceKey) {
         return;
       }
-      const tabId = openWorkspaceTabFocused(persistenceKey, { kind: "agent", agentId });
+      const tabId = openWorkspaceTabInFocusedPane(persistenceKey, { kind: "agent", agentId });
       if (tabId) {
         navigateToTabId(tabId);
       }
     },
-    [navigateToTabId, openWorkspaceTabFocused, persistenceKey],
+    [navigateToTabId, openWorkspaceTabInFocusedPane, persistenceKey],
   );
 
   const emptyWorkspaceSeedRef = useRef<string | null>(null);
@@ -2155,7 +2188,7 @@ function WorkspaceScreenContent({
       return;
     }
     emptyWorkspaceSeedRef.current = workspaceKey;
-    openWorkspaceDraftTab();
+    openWorkspaceDraftTab({ ambient: true });
   }, [
     normalizedServerId,
     normalizedWorkspaceId,
@@ -2180,12 +2213,15 @@ function WorkspaceScreenContent({
       if (!location) {
         return;
       }
-      const tabId = openWorkspaceTabFocused(persistenceKey, createWorkspaceFileTabTarget(location));
+      const tabId = openWorkspaceTabInFocusedPane(
+        persistenceKey,
+        createWorkspaceFileTabTarget(location),
+      );
       if (tabId) {
         navigateToTabId(tabId);
       }
     },
-    [navigateToTabId, openWorkspaceTabFocused, persistenceKey],
+    [navigateToTabId, openWorkspaceTabInFocusedPane, persistenceKey],
   );
 
   const handleOpenFileFromChat = useCallback(
@@ -2202,8 +2238,8 @@ function WorkspaceScreenContent({
       }
       const target = createWorkspaceFileTabTarget(normalizedLocation);
       const tabId = options?.parentTabId
-        ? openWorkspaceChildTabFocused(persistenceKey, target, options.parentTabId)
-        : openWorkspaceTabFocused(persistenceKey, target);
+        ? openWorkspaceChildTabInFocusedPane(persistenceKey, target, options.parentTabId)
+        : openWorkspaceTabInFocusedPane(persistenceKey, target);
       if (tabId) {
         requestFileNavigation(tabId);
         navigateToTabId(tabId);
@@ -2212,8 +2248,8 @@ function WorkspaceScreenContent({
     [
       isMobile,
       navigateToTabId,
-      openWorkspaceChildTabFocused,
-      openWorkspaceTabFocused,
+      openWorkspaceChildTabInFocusedPane,
+      openWorkspaceTabInFocusedPane,
       persistenceKey,
       requestFileNavigation,
       showMobileAgent,
@@ -2379,13 +2415,19 @@ function WorkspaceScreenContent({
         return;
       }
       const { browserId } = createWorkspaceBrowser();
-      openWorkspaceTabFocused(
-        persistenceKey,
-        { kind: "browser", browserId },
-        { paneId: input?.paneId },
-      );
+      if (input?.paneId) {
+        openWorkspaceTabFocused(
+          persistenceKey,
+          { kind: "browser", browserId },
+          {
+            paneId: input.paneId,
+          },
+        );
+      } else {
+        openWorkspaceTabInFocusedPane(persistenceKey, { kind: "browser", browserId });
+      }
     },
-    [openWorkspaceTabFocused, persistenceKey],
+    [openWorkspaceTabFocused, openWorkspaceTabInFocusedPane, persistenceKey],
   );
 
   const handleOpenUrlInBrowserTab = useCallback(
@@ -2746,14 +2788,14 @@ function WorkspaceScreenContent({
       return;
     }
     if (isMobile || !supportsDesktopPaneSplits()) {
-      openWorkspaceTabFocused(persistenceKey, target);
+      openWorkspaceTabInFocusedPane(persistenceKey, target);
       return;
     }
     openWorkspaceTabInExplorerPaneFocused(persistenceKey, { target });
   }, [
     isMobile,
     normalizedWorkspaceId,
-    openWorkspaceTabFocused,
+    openWorkspaceTabInFocusedPane,
     openWorkspaceTabInExplorerPaneFocused,
     persistenceKey,
   ]);
