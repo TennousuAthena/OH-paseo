@@ -693,7 +693,7 @@ describe("relative typed-entry configuration", () => {
       path.join(workspaceDir, "src", "components", "chat-input.tsx"),
       "export const ChatInput = null;\n",
     );
-    writeFileSync(path.join(workspaceDir, "docs", "notes.md"), "notes\n");
+    writeFileSync(path.join(workspaceDir, "docs", "search-notes.md"), "notes\n");
   });
 
   afterEach(() => {
@@ -808,11 +808,11 @@ describe("relative typed-entry configuration", () => {
   it("resolves an exact gitignored path while keeping it out of discovery results", async () => {
     initGitRepo(workspaceDir, "generated/\n");
     mkdirSync(path.join(workspaceDir, "generated"), { recursive: true });
-    writeFileSync(path.join(workspaceDir, "generated", "notes.md"), "generated notes\n");
+    writeFileSync(path.join(workspaceDir, "generated", "search-notes.md"), "generated notes\n");
 
     const exactResults = await searchRelativeDirectoryEntries({
       cwd: workspaceDir,
-      query: "generated/notes.md",
+      query: "generated/search-notes.md",
       limit: 1,
       includeFiles: true,
       includeDirectories: false,
@@ -821,7 +821,7 @@ describe("relative typed-entry configuration", () => {
     });
     const fuzzyResults = await searchRelativeDirectoryEntries({
       cwd: workspaceDir,
-      query: "notes",
+      query: "search-notes",
       limit: 20,
       includeFiles: true,
       includeDirectories: false,
@@ -829,8 +829,8 @@ describe("relative typed-entry configuration", () => {
     });
 
     expect({ exactResults, fuzzyResults }).toEqual({
-      exactResults: [{ path: "generated/notes.md", kind: "file" }],
-      fuzzyResults: [{ path: "docs/notes.md", kind: "file" }],
+      exactResults: [{ path: "generated/search-notes.md", kind: "file" }],
+      fuzzyResults: [{ path: "docs/search-notes.md", kind: "file" }],
     });
   });
 
@@ -853,7 +853,7 @@ describe("relative typed-entry configuration", () => {
       });
       const staysInside = await searchRelativeDirectoryEntries({
         cwd: workspaceDir,
-        query: "inside-link/notes.md",
+        query: "inside-link/search-notes.md",
         limit: 1,
         includeFiles: true,
         includeDirectories: false,
@@ -862,7 +862,7 @@ describe("relative typed-entry configuration", () => {
 
       expect({ escaping, staysInside }).toEqual({
         escaping: [],
-        staysInside: [{ path: "inside-link/notes.md", kind: "file" }],
+        staysInside: [{ path: "inside-link/search-notes.md", kind: "file" }],
       });
     },
   );
@@ -905,7 +905,10 @@ describe("relative typed-entry configuration", () => {
       includeDirectories: true,
     });
 
-    expect(results).toEqual([{ path: "src/components", kind: "directory" }]);
+    expect(results).toEqual([
+      { path: "src/components", kind: "directory" },
+      { path: "src/components/chat-input.tsx", kind: "file" },
+    ]);
   });
 
   it("matches a path fragment anywhere in the full file path", async () => {
