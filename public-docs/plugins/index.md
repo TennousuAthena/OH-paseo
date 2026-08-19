@@ -46,7 +46,7 @@ Plugins run on desktop, browser, iOS, and Android. Paseo ships several themes. C
 Replace `main.client.tsx` with:
 
 ```tsx
-import { type PluginWorkspacePanelProps, useWorkspace } from "@paseo/plugin";
+import { type PluginWorkspacePanelProps, useWorkspace } from "@getpaseo/plugin";
 import { useMemo } from "react";
 import { Text, View } from "react-native";
 
@@ -83,7 +83,7 @@ export function WorkspaceOverview({ theme, layout, workspaceId }: PluginWorkspac
 Replace `index.ts` with:
 
 ```ts
-import type { PluginContext } from "@paseo/plugin";
+import type { PluginContext } from "@getpaseo/plugin";
 import { WorkspaceOverview } from "./main.client";
 
 export default function contribute(plugin: PluginContext) {
