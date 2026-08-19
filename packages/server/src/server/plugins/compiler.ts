@@ -5,6 +5,9 @@ import path from "node:path";
 import { parse } from "@babel/parser";
 import type { Plugin } from "esbuild";
 
+const nodeRequire = createRequire(import.meta.url);
+const ESBUILD_BINARY_PATH = "ESBUILD_BINARY_PATH";
+
 // esbuild resolves its own platform binary via require.resolve() the first time its
 // module is evaluated. Inside the packaged desktop app that resolves to a path under
 // app.asar even though electron-builder unpacks the real binary to app.asar.unpacked.
@@ -38,19 +41,28 @@ export function resolveExistingAsarUnpackedEsbuildBinary(
 }
 
 function resolveAsarUnpackedEsbuildBinary(): string | null {
-  const require = createRequire(import.meta.url);
   let esbuildDir: string;
   try {
-    esbuildDir = path.dirname(require.resolve("esbuild/package.json"));
+    esbuildDir = path.dirname(nodeRequire.resolve("esbuild/package.json"));
   } catch {
     return null;
   }
   return resolveExistingAsarUnpackedEsbuildBinary(esbuildDir);
 }
 
-if (!process.env.ESBUILD_BINARY_PATH) {
+function loadEsbuild(): typeof import("esbuild") {
+  const previousBinaryPath = process.env[ESBUILD_BINARY_PATH];
   const unpackedBinary = resolveAsarUnpackedEsbuildBinary();
-  if (unpackedBinary) process.env.ESBUILD_BINARY_PATH = unpackedBinary;
+  if (unpackedBinary) process.env[ESBUILD_BINARY_PATH] = unpackedBinary;
+
+  try {
+    // esbuild reads this variable while its CommonJS module is evaluated. Keep
+    // the compatibility bridge local so it cannot become an agent's environment.
+    return nodeRequire("esbuild") as typeof import("esbuild");
+  } finally {
+    if (previousBinaryPath === undefined) delete process.env[ESBUILD_BINARY_PATH];
+    else process.env[ESBUILD_BINARY_PATH] = previousBinaryPath;
+  }
 }
 
 type PluginBuildTarget = "client" | "server";
@@ -278,7 +290,7 @@ function createUnusedPlatformModulePlugin(target: PluginBuildTarget): Plugin {
 }
 
 async function compileTarget(entryPath: string, target: PluginBuildTarget): Promise<string> {
-  const { build } = await import("esbuild");
+  const { build } = loadEsbuild();
   const source = await readFile(entryPath, "utf8");
   const filteredSource = filterEntrypoint(source, target);
   const result = await build({
