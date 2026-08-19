@@ -12,6 +12,9 @@ category: Plugins
 > distribution yet. The plugin API is still evolving, so expect breaking changes and updates to
 > your plugins as Paseo evolves.
 
+See the [plugin roadmap](https://github.com/getpaseo/paseo/labels/plugins) for planned contribution
+surfaces and their current status.
+
 Paseo plugins add native workspace panels, Command Center items, global surfaces, daemon behavior, and composer attachment sources. They run on every Paseo client connected to the host, including mobile.
 
 Plugins are trusted local code. Install only code you trust: backend code runs unsandboxed with access to the daemon machine, and client contributions run inside the Paseo app.
