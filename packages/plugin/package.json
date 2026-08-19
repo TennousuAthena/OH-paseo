@@ -13,6 +13,11 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "source": "./src/server.ts",
+      "default": "./dist/server.js"
+    },
     "./host": {
       "types": "./dist/host.d.ts",
       "source": "./src/host.ts",

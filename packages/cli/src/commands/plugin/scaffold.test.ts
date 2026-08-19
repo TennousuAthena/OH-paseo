@@ -50,7 +50,7 @@ describe("plugin scaffold", () => {
     await Promise.all([
       writeFile(
         path.join(directory, "inspect.shared.ts"),
-        `import { defineRpc } from "@paseo/plugin";
+        `import { defineRpc } from "@paseo/plugin/server";
 import { z } from "zod";
 
 export const inspect = defineRpc({
@@ -62,7 +62,7 @@ export const inspect = defineRpc({
       ),
       writeFile(
         path.join(directory, "inspect.server.ts"),
-        `import type { PluginHandlerContext } from "@paseo/plugin";
+        `import type { PluginHandlerContext } from "@paseo/plugin/server";
 import type { output as ZodOutput } from "zod";
 import { inspect } from "./inspect.shared";
 

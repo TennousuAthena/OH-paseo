@@ -597,7 +597,7 @@ export function Surface() {
       ),
       writeFile(
         path.join(directory, "inspect.shared.ts"),
-        `import { defineRpc } from "@paseo/plugin";
+        `import { defineRpc } from "@paseo/plugin/server";
 import { z } from "zod";
 
 export const inspectRpc = defineRpc({

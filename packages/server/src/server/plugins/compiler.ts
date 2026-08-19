@@ -1,7 +1,57 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { parse } from "@babel/parser";
-import { build, type Plugin } from "esbuild";
+import type { Plugin } from "esbuild";
+
+// esbuild resolves its own platform binary via require.resolve() the first time its
+// module is evaluated. Inside the packaged desktop app that resolves to a path under
+// app.asar even though electron-builder unpacks the real binary to app.asar.unpacked.
+// child_process.spawn bypasses Electron's asar fs shim, so the OS rejects that path
+// with ENOTDIR. Point esbuild at the real unpacked binary before its module loads.
+export function unpackedEsbuildBinaryFromPackageDir(
+  esbuildPackageDir: string,
+  platform: NodeJS.Platform,
+  arch: string,
+): string | null {
+  const asarSegment = `${path.sep}app.asar${path.sep}`;
+  const asarIndex = esbuildPackageDir.indexOf(asarSegment);
+  if (asarIndex === -1) return null;
+  return path.join(
+    esbuildPackageDir.slice(0, asarIndex),
+    "app.asar.unpacked",
+    "node_modules",
+    `@esbuild/${platform}-${arch}`,
+    ...(platform === "win32" ? ["esbuild.exe"] : ["bin", "esbuild"]),
+  );
+}
+
+export function resolveExistingAsarUnpackedEsbuildBinary(
+  esbuildPackageDir: string,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+  exists: (file: string) => boolean = existsSync,
+): string | null {
+  const binaryPath = unpackedEsbuildBinaryFromPackageDir(esbuildPackageDir, platform, arch);
+  return binaryPath && exists(binaryPath) ? binaryPath : null;
+}
+
+function resolveAsarUnpackedEsbuildBinary(): string | null {
+  const require = createRequire(import.meta.url);
+  let esbuildDir: string;
+  try {
+    esbuildDir = path.dirname(require.resolve("esbuild/package.json"));
+  } catch {
+    return null;
+  }
+  return resolveExistingAsarUnpackedEsbuildBinary(esbuildDir);
+}
+
+if (!process.env.ESBUILD_BINARY_PATH) {
+  const unpackedBinary = resolveAsarUnpackedEsbuildBinary();
+  if (unpackedBinary) process.env.ESBUILD_BINARY_PATH = unpackedBinary;
+}
 
 type PluginBuildTarget = "client" | "server";
 
@@ -228,6 +278,7 @@ function createUnusedPlatformModulePlugin(target: PluginBuildTarget): Plugin {
 }
 
 async function compileTarget(entryPath: string, target: PluginBuildTarget): Promise<string> {
+  const { build } = await import("esbuild");
   const source = await readFile(entryPath, "utf8");
   const filteredSource = filterEntrypoint(source, target);
   const result = await build({
@@ -245,13 +296,14 @@ async function compileTarget(entryPath: string, target: PluginBuildTarget): Prom
       target === "client"
         ? [
             "@paseo/plugin",
+            "@paseo/plugin/server",
             "@tanstack/react-query",
             "react",
             "react/jsx-runtime",
             "react-native",
             "zod",
           ]
-        : ["@paseo/plugin", "zod"],
+        : ["@paseo/plugin", "@paseo/plugin/server", "zod"],
     plugins: [createRuntimeBoundaryPlugin(target), createUnusedPlatformModulePlugin(target)],
     logLevel: "silent",
     treeShaking: true,

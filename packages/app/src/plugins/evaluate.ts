@@ -159,6 +159,9 @@ export function evaluatePluginClientBundle(id: string, bundle: string): Evaluate
         useRpc,
       };
     }
+    if (name === "@paseo/plugin/server") {
+      return { defineAttachmentSource, defineRpc };
+    }
     if (name === "@tanstack/react-query") return ReactQuery;
     if (name === "zod") return Zod;
     throw new Error(`Module "${name}" is not available in plugin client code`);
