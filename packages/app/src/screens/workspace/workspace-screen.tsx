@@ -58,6 +58,7 @@ import {
   getFocusedBrowserId,
   resolveExplorerPaneId,
   type WorkspaceLayout,
+  type WorkspaceTabOpenOptions,
   useWorkspaceLayoutStore,
   useWorkspaceLayoutStoreHydrated,
 } from "@/stores/workspace-layout-store";
@@ -1460,8 +1461,11 @@ function resolveExplorerOpen(
 
 interface WorkspaceTerminalTabActionsInput {
   persistenceKey: string | null;
-  focusWorkspacePane: (workspaceKey: string, paneId: string) => void;
-  openWorkspaceTabFocused: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
+  openWorkspaceTabFocused: (
+    workspaceKey: string,
+    target: WorkspaceTabTarget,
+    options?: WorkspaceTabOpenOptions,
+  ) => string | null;
   labels: {
     workspacePathUnavailable: string;
     terminalQueued: string;
@@ -1482,7 +1486,6 @@ interface WorkspaceTerminalTabActions {
 
 function useWorkspaceTerminalTabActions({
   persistenceKey,
-  focusWorkspacePane,
   openWorkspaceTabFocused,
   labels,
   toast,
@@ -1492,12 +1495,9 @@ function useWorkspaceTerminalTabActions({
       if (!persistenceKey) {
         return;
       }
-      if (paneId) {
-        focusWorkspacePane(persistenceKey, paneId);
-      }
-      openWorkspaceTabFocused(persistenceKey, { kind: "terminal", terminalId });
+      openWorkspaceTabFocused(persistenceKey, { kind: "terminal", terminalId }, { paneId });
     },
-    [focusWorkspacePane, openWorkspaceTabFocused, persistenceKey],
+    [openWorkspaceTabFocused, persistenceKey],
   );
   const handleScriptTerminalSelected = useCallback(
     (terminalId: string) => {
@@ -1656,7 +1656,6 @@ function WorkspaceScreenContent({
     handleTerminalCreateFailed,
   } = useWorkspaceTerminalTabActions({
     persistenceKey,
-    focusWorkspacePane,
     openWorkspaceTabFocused,
     labels: {
       workspacePathUnavailable: t("workspace.header.toasts.workspacePathUnavailable"),
@@ -1951,7 +1950,11 @@ function WorkspaceScreenContent({
   }, [isRouteFocused, normalizedServerId, setFocusedAgentId, setFocusedTerminalId]);
 
   const openWorkspaceDraftTab = useCallback(
-    function openWorkspaceDraftTab(input?: { draftId?: string; focus?: boolean }) {
+    function openWorkspaceDraftTab(input?: {
+      draftId?: string;
+      focus?: boolean;
+      paneId?: string | null;
+    }) {
       if (!persistenceKey) {
         return null;
       }
@@ -1961,10 +1964,11 @@ function WorkspaceScreenContent({
         draftId: trimNonEmpty(input?.draftId) ?? generateDraftId(),
       });
       invariant(target?.kind === "draft", "Draft tab target must be valid");
+      const placement = { paneId: input?.paneId };
       if (input?.focus === false) {
-        return openWorkspaceTabInBackground(persistenceKey, target);
+        return openWorkspaceTabInBackground(persistenceKey, target, placement);
       }
-      return openWorkspaceTabFocused(persistenceKey, target);
+      return openWorkspaceTabFocused(persistenceKey, target, placement);
     },
     [openWorkspaceTabFocused, openWorkspaceTabInBackground, persistenceKey],
   );
@@ -2355,12 +2359,9 @@ function WorkspaceScreenContent({
 
   const handleCreateDraftTab = useCallback(
     (input?: { paneId?: string }) => {
-      if (input?.paneId && persistenceKey) {
-        focusWorkspacePane(persistenceKey, input.paneId);
-      }
-      openWorkspaceDraftTab();
+      openWorkspaceDraftTab({ paneId: input?.paneId });
     },
-    [focusWorkspacePane, openWorkspaceDraftTab, persistenceKey],
+    [openWorkspaceDraftTab],
   );
 
   const handleCreateTerminal = useStableEvent(createTerminal);
@@ -2377,13 +2378,14 @@ function WorkspaceScreenContent({
       if (!persistenceKey || !getIsElectron()) {
         return;
       }
-      if (input?.paneId) {
-        focusWorkspacePane(persistenceKey, input.paneId);
-      }
       const { browserId } = createWorkspaceBrowser();
-      openWorkspaceTabFocused(persistenceKey, { kind: "browser", browserId });
+      openWorkspaceTabFocused(
+        persistenceKey,
+        { kind: "browser", browserId },
+        { paneId: input?.paneId },
+      );
     },
-    [focusWorkspacePane, openWorkspaceTabFocused, persistenceKey],
+    [openWorkspaceTabFocused, persistenceKey],
   );
 
   const handleOpenUrlInBrowserTab = useCallback(
@@ -3149,10 +3151,9 @@ function WorkspaceScreenContent({
           if (!persistenceKey) {
             return;
           }
-          if (input.focusPaneBeforeOpen && input.paneId) {
-            focusWorkspacePane(persistenceKey, input.paneId);
-          }
-          const tabId = openWorkspaceChildTabFocused(persistenceKey, target, input.tab.tabId);
+          const tabId = openWorkspaceChildTabFocused(persistenceKey, target, input.tab.tabId, {
+            paneId: input.focusPaneBeforeOpen ? input.paneId : null,
+          });
           if (tabId) {
             navigateToTabId(tabId);
           }
@@ -3178,7 +3179,6 @@ function WorkspaceScreenContent({
       }),
     [
       handleCloseTabById,
-      focusWorkspacePane,
       fileNavigationRevisionByTabId,
       handleOpenWorkspaceFileFromPane,
       navigateToTabId,
