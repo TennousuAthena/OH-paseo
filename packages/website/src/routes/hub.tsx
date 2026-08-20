@@ -37,10 +37,10 @@ function Hub() {
       <p className="text-white/40 text-sm mt-3">Self-host now. Hosted version coming later.</p>
 
       <div className="space-y-20 mt-16">
-        <QuickStart />
         <Triggers />
         <Agents />
         <Shape />
+        <QuickStart />
         <Access />
         <FaqSection />
       </div>
@@ -51,10 +51,9 @@ function Hub() {
 function QuickStart() {
   return (
     <section className="space-y-6">
-      <h2 className="text-xl font-medium">Run it yourself</h2>
+      <h2 className="text-xl font-medium">Get started</h2>
       <p className="text-white/70 leading-relaxed max-w-2xl">
-        Start with an embedded database and finish setup in the browser. No Docker, PostgreSQL, or
-        environment variables required.
+        Run one command, then finish setup in the browser.
       </p>
       <pre className="w-fit max-w-full overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 font-mono text-sm text-white/90">
         <code>npx @getpaseo/hub</code>
@@ -70,8 +69,9 @@ function QuickStart() {
           href="https://github.com/getpaseo/hub"
           target="_blank"
           rel="noopener noreferrer"
-          className={LINK_CLASS}
+          className="inline-flex items-center gap-2 rounded-md border border-white/15 px-4 py-2 text-sm font-medium text-white/80 hover:border-white/25 hover:text-white transition-colors"
         >
+          <GitHubIcon className="h-4 w-4" />
           View the source
         </a>
       </div>
