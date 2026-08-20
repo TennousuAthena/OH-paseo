@@ -442,9 +442,8 @@ function FaqSection() {
           covers more involved deployments.
         </FAQItem>
         <FAQItem question="What do I need to run it?">
-          Node.js and a running Paseo daemon. Hub uses an embedded database by default and guides
-          you through connecting the provider apps you want. PostgreSQL, Docker, and environment
-          variables are optional deployment choices.
+          Node.js and a running Paseo daemon. Hub guides you through connecting the provider apps
+          you want.
         </FAQItem>
         <FAQItem question="Will there be a hosted version?">
           Yes. Join the Paseo Discord and watch the <code>#paseo-hub</code> channel. The hosted
