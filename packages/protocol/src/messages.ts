@@ -4266,6 +4266,14 @@ export const FetchAgentTimelineResponseMessageSchema = z.object({
   }),
 });
 
+export const AgentTimelineReplacementMessageSchema = z.object({
+  type: z.literal("agent.timeline.replacement"),
+  payload: z.object({
+    agentId: z.string(),
+    epoch: z.string(),
+  }),
+});
+
 export const AgentTimelineListPromptsResponseMessageSchema = z.object({
   type: z.literal("agent.timeline.list_prompts.response"),
   payload: z.object({
@@ -6222,6 +6230,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ArchiveWorkspaceResponseMessageSchema,
   FetchAgentResponseMessageSchema,
   FetchAgentTimelineResponseMessageSchema,
+  AgentTimelineReplacementMessageSchema,
   AgentTimelineListPromptsResponseMessageSchema,
   ProviderSubagentListResponseMessageSchema,
   ProviderSubagentTimelineResponseMessageSchema,
@@ -6829,6 +6838,7 @@ export const WSHelloMessageSchema = z.object({
       [CLIENT_CAPS.providerSubagents]: z.boolean().optional(),
       [CLIENT_CAPS.projectUpdates]: z.boolean().optional(),
       [CLIENT_CAPS.compactProviderSnapshots]: z.boolean().optional(),
+      [CLIENT_CAPS.timelineReplacementInvalidation]: z.boolean().optional(),
       [CLIENT_CAPS.browserHost]: BrowserAutomationHostCapabilitySchema.optional(),
     })
     .passthrough()
