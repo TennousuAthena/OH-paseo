@@ -33,6 +33,7 @@ import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
+import { getLauncherActionOrder, type LauncherAction } from "@/panels/new-tab-action-order";
 import type { PanelRegistration } from "@/panels/panel-registry";
 import { resolvePluginIcon } from "@/plugins/icons";
 import { useInstalledPlugins } from "@/plugins/registry";
@@ -91,6 +92,16 @@ const PULL_REQUEST_SELECTION: NewTabSelection = {
 const AGENT_SELECTION: NewTabSelection = { kind: "agent" };
 const TERMINAL_SELECTION: NewTabSelection = { kind: "terminal" };
 const BROWSER_SELECTION: NewTabSelection = { kind: "browser" };
+
+interface LauncherActionDefinition {
+  label: string;
+  Icon: LucideIcon;
+  disabled?: boolean;
+  hidden?: boolean;
+  selection: NewTabSelection;
+  shortcut?: string;
+  testID: string;
+}
 
 function LauncherIcon({ Icon, color = "" }: { Icon: LucideIcon; color?: string }) {
   return <Icon size={LAUNCHER_ICON_SIZE} color={color} />;
@@ -255,7 +266,7 @@ function useNewTabDescriptor() {
 const NewTabPanel = memo(function NewTabPanel(): ReactElement {
   const { t } = useTranslation();
   const router = useRouter();
-  const { serverId, tabId } = usePaneContext();
+  const { isSidePanel, serverId, tabId } = usePaneContext();
   const { isInteractive, focusPane } = usePaneFocus();
   const launcher = useContext(NewTabLauncherContext);
   invariant(launcher, "NewTabLauncherProvider is required");
@@ -273,6 +284,53 @@ const NewTabPanel = memo(function NewTabPanel(): ReactElement {
   const editTerminalProfiles = useCallback(() => {
     router.push(buildSettingsHostSectionRoute(serverId, "terminals") as Href);
   }, [router, serverId]);
+  const launcherActions: Record<LauncherAction, LauncherActionDefinition> = {
+    agent: {
+      label: t("workspace.tabs.fallback.agent"),
+      Icon: SquarePen,
+      selection: AGENT_SELECTION,
+      shortcut: "workspace-tab-target-agent",
+      testID: "workspace-new-tab-agent",
+    },
+    terminal: {
+      label: t("workspace.tabs.fallback.terminal"),
+      Icon: SquareTerminal,
+      disabled: launcher.terminalDisabled,
+      selection: TERMINAL_SELECTION,
+      shortcut: "workspace-terminal-new",
+      testID: "workspace-new-tab-terminal",
+    },
+    changes: {
+      label: t("workspace.tabs.actions.changes"),
+      Icon: FileDiff,
+      hidden: !launcher.showChanges,
+      selection: CHANGES_SELECTION,
+      shortcut: "workspace-tab-target-changes",
+      testID: "workspace-new-tab-changes",
+    },
+    files: {
+      label: t("workspace.tabs.actions.files"),
+      Icon: FolderTree,
+      selection: FILES_SELECTION,
+      shortcut: "workspace-tab-target-files",
+      testID: "workspace-new-tab-files",
+    },
+    browser: {
+      label: t("workspace.tabs.fallback.browser"),
+      Icon: Globe,
+      hidden: !launcher.showBrowser,
+      selection: BROWSER_SELECTION,
+      shortcut: "workspace-tab-target-browser",
+      testID: "workspace-new-tab-browser",
+    },
+    pullRequest: {
+      label: t("workspace.tabs.actions.pullRequest"),
+      Icon: GitPullRequest,
+      hidden: !launcher.showPullRequest,
+      selection: PULL_REQUEST_SELECTION,
+      testID: "workspace-new-tab-pull-request",
+    },
+  };
 
   useEffect(() => {
     if (!isWeb || !isInteractive) return;
@@ -380,54 +438,11 @@ const NewTabPanel = memo(function NewTabPanel(): ReactElement {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.rail}>
           <View style={styles.group}>
-            <LauncherRow
-              label={t("workspace.tabs.fallback.agent")}
-              Icon={SquarePen}
-              selection={AGENT_SELECTION}
-              shortcut="workspace-tab-target-agent"
-              testID="workspace-new-tab-agent"
-            />
-            <LauncherRow
-              label={t("workspace.tabs.fallback.terminal")}
-              Icon={SquareTerminal}
-              disabled={launcher.terminalDisabled}
-              selection={TERMINAL_SELECTION}
-              shortcut="workspace-terminal-new"
-              testID="workspace-new-tab-terminal"
-            />
-            {launcher.showChanges ? (
-              <LauncherRow
-                label={t("workspace.tabs.actions.changes")}
-                Icon={FileDiff}
-                selection={CHANGES_SELECTION}
-                shortcut="workspace-tab-target-changes"
-                testID="workspace-new-tab-changes"
-              />
-            ) : null}
-            <LauncherRow
-              label={t("workspace.tabs.actions.files")}
-              Icon={FolderTree}
-              selection={FILES_SELECTION}
-              shortcut="workspace-tab-target-files"
-              testID="workspace-new-tab-files"
-            />
-            {launcher.showBrowser ? (
-              <LauncherRow
-                label={t("workspace.tabs.fallback.browser")}
-                Icon={Globe}
-                selection={BROWSER_SELECTION}
-                shortcut="workspace-tab-target-browser"
-                testID="workspace-new-tab-browser"
-              />
-            ) : null}
-            {launcher.showPullRequest ? (
-              <LauncherRow
-                label={t("workspace.tabs.actions.pullRequest")}
-                Icon={GitPullRequest}
-                selection={PULL_REQUEST_SELECTION}
-                testID="workspace-new-tab-pull-request"
-              />
-            ) : null}
+            {getLauncherActionOrder(isSidePanel).map((actionId) => {
+              const action = launcherActions[actionId];
+              if (action.hidden) return null;
+              return <LauncherRow key={actionId} {...action} />;
+            })}
             {pluginPanels.map(({ pluginId, panel }) => (
               <PluginLauncherRow
                 key={`${pluginId}:${panel.id}`}

@@ -64,6 +64,7 @@ import {
   findPaneById,
   getFocusedBrowserId,
   FOCUSED_PANE_PLACEMENT,
+  selectSidePanelPaneId,
   type WorkspaceLayout,
   type WorkspaceTabPlacement,
   useWorkspaceLayoutStore,
@@ -1745,6 +1746,9 @@ function WorkspaceScreenContent({
   const workspaceLayout = useWorkspaceLayoutStore((state) =>
     persistenceKey ? (state.layoutByWorkspace[persistenceKey] ?? null) : null,
   );
+  const sidePanelPaneId = useWorkspaceLayoutStore((state) =>
+    persistenceKey ? selectSidePanelPaneId(state, persistenceKey) : null,
+  );
   const hasHydratedWorkspaceLayoutStore = useWorkspaceLayoutStoreHydrated();
   const workspaceSetupSnapshot = useWorkspaceSetupStore((state) =>
     persistenceKey ? (state.snapshots[persistenceKey] ?? null) : null,
@@ -3360,6 +3364,8 @@ function WorkspaceScreenContent({
         tab: input.tab,
         normalizedServerId,
         normalizedWorkspaceId,
+        isSidePanel:
+          canRenderDesktopPaneSplits && input.paneId !== null && input.paneId === sidePanelPaneId,
         fileNavigationRevision: fileNavigationRevisionByTabId[input.tab.tabId] ?? 0,
         onOpenTab: (target) => {
           if (!persistenceKey) {
@@ -3415,11 +3421,13 @@ function WorkspaceScreenContent({
       navigateToTabId,
       normalizedServerId,
       normalizedWorkspaceId,
+      canRenderDesktopPaneSplits,
       openImportSheet,
       revealWorkspaceChildTab,
       persistenceKey,
       replaceWorkspaceTabTarget,
       setWorkspaceTabState,
+      sidePanelPaneId,
     ],
   );
   const focusedPaneId = useMemo(
