@@ -519,18 +519,13 @@ const styles = StyleSheet.create((theme) => ({
   rowFocused: { borderColor: theme.colors.borderAccent },
   rowPressed: { opacity: 0.85 },
   rowLabel: { flex: 1, color: theme.colors.foreground },
-  // The rows below establish both rails at `spacing[3] + borderWidth[1]`: their icon
-  // glyphs on the left, their shortcut badges on the right. The label sits on the
-  // first directly; the pencil's own padding is subtracted so its glyph — not its
-  // hover box — lands on the second.
+  // The section header shares the launcher rows' outer rails. The pencil's own
+  // padding is subtracted so its glyph — not its hover box — lands on the right rail.
   groupHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingLeft: theme.spacing[3] + theme.borderWidth[1],
-    // Optical: the pencil's stroke stops short of its own box, so the box rail
-    // needs a pixel back to put the ink on the rows' trailing rail.
-    paddingRight: theme.spacing[3] + theme.borderWidth[1] + 3,
+    paddingHorizontal: 2,
     marginBottom: theme.spacing[1],
   },
   groupLabel: {
