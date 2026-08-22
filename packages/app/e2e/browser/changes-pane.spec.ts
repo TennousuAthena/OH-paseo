@@ -996,6 +996,23 @@ test("canvas diff creates, edits, and deletes an inline review without DOM code 
   await expect(page.locator('[data-testid^="diff-code-row-"]')).toHaveCount(0);
 });
 
+test("autofocusing an inline review keeps the Changes tab focused", async ({ page }) => {
+  const workspace = await createWorkspaceWithMountedTabDiff();
+  await useUnwrappedDiffLines(page);
+  await openWorkspaceChanges(page, workspace);
+
+  const changesTab = page.getByTestId("workspace-tab-working_diff").filter({ visible: true });
+  const focusedBackground = await changesTab.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
+
+  await startReviewOnFirstChangedLine(page);
+  await expect(page.getByTestId("inline-review-editor-input")).toBeFocused();
+  await expect
+    .poll(() => changesTab.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .toBe(focusedBackground);
+});
+
 test("split canvas creates a review on the changed side and keeps it in that column", async ({
   page,
 }) => {
@@ -1095,7 +1112,7 @@ test("canvas diff copies a dragged character selection without opening a review"
   await expect(page.getByTestId("inline-review-editor")).toHaveCount(0);
 });
 
-test("the first click after a canvas selection only dismisses the selection", async ({ page }) => {
+test("clicking the canvas dismisses a selection without opening a review", async ({ page }) => {
   const workspace = await createWorkspaceWithExactSelectionDiff("ABCDEFGHIJ");
   await useUnwrappedDiffLines(page);
   await openSelectionWorkspaceChanges(page, workspace);
@@ -1105,7 +1122,7 @@ test("the first click after a canvas selection only dismisses the selection", as
   await expect(page.getByTestId("inline-review-editor")).toHaveCount(0);
 
   await clickFirstChangedLine(page);
-  await expect(page.getByTestId("inline-review-editor")).toBeVisible();
+  await expect(page.getByTestId("inline-review-editor")).toHaveCount(0);
 });
 
 test("canvas diff replaces a selection with forward and backward drags", async ({
@@ -1537,7 +1554,8 @@ async function startReviewOnFirstChangedLine(
   if (!bodyBounds) throw new Error("Expanded diff body has no bounds");
   const lineHeight = Math.round(fontSize * 1.5);
   const columnLeft = side === "right" ? bodyBounds.x + bodyBounds.width / 2 : bodyBounds.x;
-  await page.mouse.click(columnLeft + 20, bodyBounds.y + lineHeight * 1.5);
+  await page.mouse.move(columnLeft + 20, bodyBounds.y + lineHeight * 1.5);
+  await page.getByRole("button", { name: "Add review comment" }).click();
   await expect(page.getByTestId("inline-review-editor")).toBeVisible();
 }
 

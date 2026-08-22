@@ -1709,6 +1709,7 @@ export const zhCN: TranslationResources = {
       label: "文件",
       subtitle: "工作区文件",
       tooltip: "浏览工作区文件",
+      chooseFile: "选择文件",
     },
     pullRequest: {
       label: "拉取请求",

@@ -1729,6 +1729,7 @@ export const ar: TranslationResources = {
       label: "الملفات",
       subtitle: "ملفات مساحة العمل",
       tooltip: "تصفح ملفات مساحة العمل",
+      chooseFile: "اختر ملفًا",
     },
     pullRequest: {
       label: "طلب السحب",
