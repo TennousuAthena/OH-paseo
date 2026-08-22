@@ -380,6 +380,21 @@ const NewTabPanel = memo(function NewTabPanel(): ReactElement {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.rail}>
           <View style={styles.group}>
+            <LauncherRow
+              label={t("workspace.tabs.fallback.agent")}
+              Icon={SquarePen}
+              selection={AGENT_SELECTION}
+              shortcut="workspace-tab-target-agent"
+              testID="workspace-new-tab-agent"
+            />
+            <LauncherRow
+              label={t("workspace.tabs.fallback.terminal")}
+              Icon={SquareTerminal}
+              disabled={launcher.terminalDisabled}
+              selection={TERMINAL_SELECTION}
+              shortcut="workspace-terminal-new"
+              testID="workspace-new-tab-terminal"
+            />
             {launcher.showChanges ? (
               <LauncherRow
                 label={t("workspace.tabs.actions.changes")}
@@ -396,29 +411,6 @@ const NewTabPanel = memo(function NewTabPanel(): ReactElement {
               shortcut="workspace-tab-target-files"
               testID="workspace-new-tab-files"
             />
-            {launcher.showPullRequest ? (
-              <LauncherRow
-                label={t("workspace.tabs.actions.pullRequest")}
-                Icon={GitPullRequest}
-                selection={PULL_REQUEST_SELECTION}
-                testID="workspace-new-tab-pull-request"
-              />
-            ) : null}
-            <LauncherRow
-              label={t("workspace.tabs.fallback.agent")}
-              Icon={SquarePen}
-              selection={AGENT_SELECTION}
-              shortcut="workspace-tab-target-agent"
-              testID="workspace-new-tab-agent"
-            />
-            <LauncherRow
-              label={t("workspace.tabs.fallback.terminal")}
-              Icon={SquareTerminal}
-              disabled={launcher.terminalDisabled}
-              selection={TERMINAL_SELECTION}
-              shortcut="workspace-terminal-new"
-              testID="workspace-new-tab-terminal"
-            />
             {launcher.showBrowser ? (
               <LauncherRow
                 label={t("workspace.tabs.fallback.browser")}
@@ -426,6 +418,14 @@ const NewTabPanel = memo(function NewTabPanel(): ReactElement {
                 selection={BROWSER_SELECTION}
                 shortcut="workspace-tab-target-browser"
                 testID="workspace-new-tab-browser"
+              />
+            ) : null}
+            {launcher.showPullRequest ? (
+              <LauncherRow
+                label={t("workspace.tabs.actions.pullRequest")}
+                Icon={GitPullRequest}
+                selection={PULL_REQUEST_SELECTION}
+                testID="workspace-new-tab-pull-request"
               />
             ) : null}
             {pluginPanels.map(({ pluginId, panel }) => (
