@@ -1106,7 +1106,7 @@ function renderWorkspaceContent(input: RenderWorkspaceContentInput): React.React
       </View>
     );
   }
-  if (!hasHydratedAgents || !hasLoadedTerminals) {
+  if (!activeTabDescriptor && (!hasHydratedAgents || !hasLoadedTerminals)) {
     return (
       <View style={styles.emptyState}>
         <ThemedLoadingSpinner uniProps={mutedColorMapping} />
@@ -1545,6 +1545,12 @@ function WorkspaceScreenContent({
     [workspaceId],
   );
   const workspaceDescriptor = useWorkspace(normalizedServerId, normalizedWorkspaceId);
+  useEffect(() => {
+    if (!normalizedServerId || !normalizedWorkspaceId || workspaceDescriptor) return;
+    void getHostRuntimeStore()
+      .prepareWorkspaceRoute(normalizedServerId, normalizedWorkspaceId)
+      .catch(() => undefined);
+  }, [normalizedServerId, normalizedWorkspaceId, workspaceDescriptor]);
   const workspaceScripts = getWorkspaceScripts(workspaceDescriptor);
   const { handleRetryHost, handleManageHost, handleDismissMissingWorkspace } =
     useWorkspaceRouteActions(normalizedServerId);
@@ -1907,6 +1913,13 @@ function WorkspaceScreenContent({
     routeFocused: isRouteFocused,
     focusedPaneOnly: syncFocusedPaneOnly,
   });
+  useEffect(() => {
+    for (const agentId of visibleAgentIds) {
+      void getHostRuntimeStore()
+        .prepareAgentTimeline(normalizedServerId, agentId)
+        .catch(() => undefined);
+    }
+  }, [normalizedServerId, visibleAgentIds]);
   useLayoutEffect(() => {
     if (!persistenceKey || !viewedTimelineSync) {
       return;
