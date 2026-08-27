@@ -610,6 +610,12 @@ failures stay inside the plugin error boundary.
 paseo plugin init /absolute/path/to/plugin
 paseo plugin install /absolute/path/to/plugin
 paseo plugin install /absolute/path/to/plugin --id another-runtime-id
+paseo plugin add owner/repository
+paseo plugin add https://git.example.com/owner/repository.git --ref main
+paseo plugin add owner/monorepo --path plugins/review
+paseo plugin status [id]
+paseo plugin update <id>
+paseo plugin update --all
 paseo plugin ls
 paseo plugin reload my-plugin
 paseo plugin logs my-plugin
@@ -618,7 +624,14 @@ paseo plugin enable my-plugin
 paseo plugin remove my-plugin
 ```
 
-Pass `--host <url>` to management commands when the target is not the CLI's default daemon. `remove` deletes only the daemon configuration; it never deletes the source directory. The install-time `--id` is the runtime ID and allows the same directory to be installed more than once.
+Pass `--host <url>` to management commands when the target is not the CLI's default daemon. `remove`
+never deletes a directory source; it deletes the managed checkout for a Git source. The install-time
+`--id` is the runtime ID and allows the same directory or repository to be installed more than once.
+
+An existing directory wins over `owner/repository` GitHub shorthand. Omit `--ref` to track the
+default branch. Explicit branches track updates; tags and commits stay pinned. Git installation
+runs no package manager and no install scripts. `update` validates and compiles the candidate before
+activation, then restores the installed commit if startup fails.
 
 Run `npm run typecheck` before install or reload. Never edit the daemon config directly.
 

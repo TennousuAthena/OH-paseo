@@ -1,9 +1,9 @@
-# Local plugins
+# Plugins
 
 Local plugins contribute daemon RPCs, native app surfaces, workspace panels, Command Center items,
 app themes, and composer attachment sources from one `index.ts`. Paseo executes the server contribution in a
 subprocess and evaluates the client contribution in the app runtime. Plugin code is trusted code;
-this first slice does not sandbox it.
+Paseo does not sandbox it.
 
 ## Install a directory source
 
@@ -74,8 +74,33 @@ backend code can access the daemon machine, while client contributions run insid
 
 Source changes are explicit. Run `paseo plugin reload <id>` to stop and fully tear down the old
 plugin before compiling and starting from disk. A failed reload stays failed; Paseo does not restore
-the old code. Use `enable`, `disable`, and `remove` to manage one plugin. Remove deletes only its
-configuration, never its source directory. The global `pluginsEnabled` switch remains available.
+the old code. Use `enable`, `disable`, and `remove` to manage one plugin. Removing a directory source
+never deletes it. The global `pluginsEnabled` switch remains available.
+
+## Install a Git source
+
+GitHub repositories use an `owner/repository` shorthand. Other hosts use a Git URL. An existing
+directory always wins over shorthand resolution.
+
+```bash
+paseo plugin add owner/repository
+paseo plugin add https://git.example.com/owner/repository.git
+paseo plugin add owner/monorepo --path plugins/review
+paseo plugin add owner/repository --ref main
+paseo plugin status
+paseo plugin update review
+paseo plugin update --all
+```
+
+Omitting `--ref` tracks the remote's default branch. A branch passed with `--ref` also tracks;
+tags and commits stay pinned. `status` fetches tracked refs and reports the installed and available
+commits. `update` checks out a new version, validates its manifest, compiles both bundles, and starts
+it before changing the configured path. A compilation or startup failure restores the running
+version. Removing a Git source deletes Paseo's managed checkout.
+
+Git installation does not run a package manager or install script. A distributable source plugin
+uses Paseo's host-provided modules or commits any other bundled source it needs. Native React Native
+dependencies work only when the Paseo app already ships the native module.
 
 Server contributions can write to stdout and stderr with normal Node logging. Paseo adds `[paseo]`
 entries for loading, ready, stopping, and stopped transitions. Compilation and load failures are
