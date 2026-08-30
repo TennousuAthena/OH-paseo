@@ -101,7 +101,7 @@ export function MockupWindow({ state }: { state: MockupStateId }) {
   return (
     <MotionConfig transition={reduceMotion ? INSTANT_TRANSITION : MOCKUP_TRANSITION}>
       <div
-        className="relative flex overflow-hidden bg-mock-surface0 text-mock-fg antialiased"
+        className="relative flex select-none overflow-hidden bg-mock-surface0 text-mock-fg antialiased"
         style={WINDOW_STYLE}
       >
         {/* Three full-height columns, each owning its own header. The middle

@@ -267,13 +267,15 @@ export function Sidebar({ state }: { state: MockupStateId }) {
   return (
     <div className="flex shrink-0 flex-col overflow-hidden bg-mock-sidebar" style={SIDEBAR_STYLE}>
       {/* The sidebar is one full-height column with no header border of its own. */}
-      <div className="flex shrink-0 items-center gap-[10px] px-[13px]" style={TITLEBAR_STYLE}>
-        <div className="flex items-center gap-[7px]">
+      <div className="flex shrink-0 items-center gap-[8px] px-[18px]" style={TITLEBAR_STYLE}>
+        <div className="flex h-[24px] items-center gap-[7px]">
           <i className="block size-[10px] rounded-full bg-[#ff5f57]" />
           <i className="block size-[10px] rounded-full bg-[#febc2e]" />
           <i className="block size-[10px] rounded-full bg-[#28c840]" />
         </div>
-        <PanelLeftGlyph />
+        <span className="flex size-[24px] shrink-0 items-center justify-center">
+          <PanelLeftGlyph />
+        </span>
       </div>
 
       <div className="px-[8px] pt-[7px]">
@@ -334,5 +336,5 @@ export function Sidebar({ state }: { state: MockupStateId }) {
 }
 
 function PanelLeftGlyph() {
-  return <PanelLeft size={15} strokeWidth={1.8} className="text-mock-fg-muted" />;
+  return <PanelLeft size={15} strokeWidth={1.8} className="translate-y-px text-mock-fg-muted" />;
 }

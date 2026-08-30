@@ -4,57 +4,89 @@
 // an addition, so the whole gutter runs green). Reuses the shared `Code`
 // highlighter and the `--color-mock-diff-*` tokens.
 
-import { ChevronDown, GitBranch, MoreHorizontal, RefreshCw, SquarePlus, X } from "lucide-react";
+import {
+  ChevronDown,
+  FileDiff,
+  Files,
+  GitBranch,
+  GitPullRequest,
+  MoreHorizontal,
+  RefreshCw,
+  SquareDot,
+  X,
+} from "lucide-react";
 import { Code } from "../atoms";
 import { ReactFileIcon } from "../icons";
 
-// Every visible line of the new atoms.tsx — all additions. Long lines are
-// clipped by the phone width exactly as they are in the app.
-const ADDED_LINES: { n: number; text: string }[] = [
-  { n: 1, text: "// Shared bits of the Paseo UI, drawn small. Every" },
-  { n: 2, text: "// no state, no interactivity. Colors come from th" },
-  { n: 3, text: "// styles.css, which are copied from the app's def" },
-  { n: 4, text: "" },
-  { n: 5, text: 'import type * as React from "react";' },
-  { n: 6, text: "" },
-  { n: 7, text: "/**" },
-  { n: 8, text: " * The `+12 −18` footnote. A diff stat is a *statu" },
-  { n: 9, text: " * uses statusSuccess/statusDanger — see the comme" },
-  { n: 10, text: " * packages/app/src/styles/theme.ts." },
-  { n: 11, text: " */" },
-  { n: 12, text: "export function DiffStat({ add, remove }: { add: st" },
-  { n: 13, text: "  return (" },
-  { n: 14, text: '    <span className="flex shrink-0 items-center ga' },
-  { n: 15, text: '      <span className="text-mock-success">+{add}</s' },
-  { n: 16, text: '      <span className="text-mock-danger">-{remove}<' },
-  { n: 17, text: "    </span>" },
-  { n: 18, text: "  );" },
-  { n: 19, text: "}" },
-  { n: 20, text: "" },
-  { n: 21, text: 'export type DotTone = "success" | "danger" | "warni' },
-  { n: 22, text: "" },
-  { n: 23, text: "const DOT_TONE: Record<DotTone, string> = {" },
-  { n: 24, text: '  success: "bg-mock-dot-success",' },
-  { n: 25, text: '  danger: "bg-mock-dot-danger",' },
-  { n: 26, text: '  warning: "bg-mock-dot-warning",' },
-  { n: 27, text: '  running: "bg-mock-dot-running",' },
-  { n: 28, text: '  idle: "bg-mock-surface3",' },
-  { n: 29, text: "};" },
-  { n: 30, text: "" },
-  { n: 31, text: "/** The 6pt disc on a sidebar row that carries the" },
-  { n: 32, text: "export function StatusDot({ tone }: { tone: DotTone" },
-  { n: 33, text: "  return <span className={`size-[7px] shrink-0 rou" },
+type MobileDiffMark = "add" | "remove" | "context";
+
+interface MobileDiffLine {
+  n: number;
+  text: string;
+  mark: MobileDiffMark;
+}
+
+const ROW_COLOR: Record<MobileDiffMark, string> = {
+  add: "bg-mock-diff-add",
+  remove: "bg-mock-diff-remove",
+  context: "",
+};
+
+const NUMBER_COLOR: Record<MobileDiffMark, string> = {
+  add: "text-mock-success",
+  remove: "text-mock-danger",
+  context: "text-mock-fg-muted",
+};
+
+const DIFF_LINES: MobileDiffLine[] = [
+  { n: 7, text: 'type DotTone = "success" | "danger" | "idle";', mark: "remove" },
+  { n: 7, text: "export type DotTone =", mark: "add" },
+  { n: 8, text: '  | "success"', mark: "add" },
+  { n: 9, text: '  | "danger"', mark: "add" },
+  { n: 10, text: '  | "warning"', mark: "add" },
+  { n: 11, text: '  | "running"', mark: "add" },
+  { n: 12, text: '  | "idle";', mark: "add" },
+  { n: 13, text: "", mark: "context" },
+  { n: 14, text: "interface DiffStatProps {", mark: "context" },
+  { n: 15, text: "  add: string;", mark: "context" },
+  { n: 16, text: "  remove: string;", mark: "context" },
+  { n: 17, text: "}", mark: "context" },
+  { n: 18, text: "", mark: "context" },
+  { n: 19, text: "/** Compact diff summary. */", mark: "add" },
+  { n: 20, text: "export function DiffStat({", mark: "add" },
+  { n: 21, text: "  add,", mark: "add" },
+  { n: 22, text: "  remove,", mark: "add" },
+  { n: 23, text: "}: DiffStatProps) {", mark: "add" },
+  { n: 24, text: "  return (", mark: "context" },
+  { n: 25, text: '    <span className="flex gap-1">', mark: "remove" },
+  { n: 25, text: '    <span className="flex gap-[4px]">', mark: "add" },
+  { n: 26, text: '      <span className="text-mock-success">', mark: "context" },
+  { n: 27, text: "        +{add}", mark: "context" },
+  { n: 28, text: "      </span>", mark: "context" },
+  { n: 29, text: '      <span className="text-mock-danger">', mark: "context" },
+  { n: 30, text: "        -{remove}", mark: "context" },
+  { n: 31, text: "      </span>", mark: "context" },
+  { n: 32, text: "    </span>", mark: "context" },
+  { n: 33, text: "  )", mark: "remove" },
+  { n: 33, text: "  );", mark: "add" },
+  { n: 34, text: "}", mark: "context" },
 ];
 
 function Tabs() {
   return (
-    <div className="flex shrink-0 items-center gap-[16px] px-[18px] pt-[4px] pb-[14px]">
-      <div className="flex items-center gap-[6px] rounded-[11px] bg-mock-surface2 p-[3px]">
-        <span className="rounded-[8px] bg-mock-fg px-[15px] py-[6px] text-[16px] font-semibold text-mock-surface0">
-          Changes
-        </span>
-        <span className="px-[13px] py-[6px] text-[16px] text-mock-fg-muted">Files</span>
-      </div>
+    <div className="flex shrink-0 items-center gap-[5px] px-[18px] pt-[4px] pb-[14px]">
+      <span className="flex items-center gap-[7px] rounded-[8px] px-[10px] py-[6px] text-[16px] text-mock-fg-muted">
+        <Files size={17} strokeWidth={1.8} />
+        Files
+      </span>
+      <span className="flex items-center gap-[7px] rounded-[8px] bg-mock-surface2 px-[10px] py-[6px] text-[16px] text-mock-fg">
+        <FileDiff size={17} strokeWidth={1.8} />
+        Changes
+      </span>
+      <span className="flex items-center gap-[7px] rounded-[8px] px-[10px] py-[6px] text-[16px] text-mock-fg-muted tabular-nums">
+        <GitPullRequest size={17} strokeWidth={1.8} />
+        3981
+      </span>
       <span className="flex-1" />
       <X size={22} className="text-mock-fg-muted" strokeWidth={1.9} />
     </div>
@@ -106,25 +138,26 @@ function FileHeader() {
         packages/website/src/componen…
       </span>
       <span className="flex shrink-0 items-center gap-[3px] text-[14px] tabular-nums">
-        <span className="text-mock-success">+175</span>
-        <span className="text-mock-fg-xmuted">-0</span>
+        <span className="text-mock-success">+56</span>
+        <span className="text-mock-danger">-18</span>
       </span>
-      <SquarePlus size={17} className="shrink-0 text-mock-fg-muted" strokeWidth={1.7} />
+      <SquareDot size={17} className="shrink-0 text-mock-warning" strokeWidth={1.7} />
     </div>
   );
 }
 
-function DiffLine({ n, text }: { n: number; text: string }) {
+function DiffLine({ n, text, mark }: MobileDiffLine) {
+  const comment = text.trimStart().startsWith("/") || text.trimStart().startsWith("*");
   return (
-    <div className="flex items-center bg-mock-diff-add" style={ROW_STYLE}>
+    <div className={`flex items-center ${ROW_COLOR[mark]}`} style={ROW_STYLE}>
       <span
-        className="shrink-0 pr-[10px] text-right font-mono text-[13px] tabular-nums text-mock-success"
+        className={`shrink-0 pr-[10px] text-right font-mono text-[13px] tabular-nums ${NUMBER_COLOR[mark]}`}
         style={GUTTER_STYLE}
       >
         {n}
       </span>
       <span className="min-w-0 flex-1 overflow-hidden whitespace-pre pl-[12px] font-mono text-[14px] leading-[26px]">
-        <Code line={text} />
+        {comment ? <span className="text-mock-fg-muted">{text}</span> : <Code line={text} />}
       </span>
     </div>
   );
@@ -151,11 +184,11 @@ export function MobileDiff() {
         <div className="flex items-center bg-mock-surface-diff-empty" style={ROW_STYLE}>
           <span className="shrink-0" style={GUTTER_STYLE} />
           <span className="pl-[12px] font-mono text-[13px] text-mock-fg-muted">
-            @@ -0,0 +1,175 @@
+            @@ -7,20 +7,28 @@
           </span>
         </div>
-        {ADDED_LINES.map((line) => (
-          <DiffLine key={line.n} n={line.n} text={line.text} />
+        {DIFF_LINES.map((line) => (
+          <DiffLine key={`${line.n}-${line.mark}-${line.text}`} {...line} />
         ))}
       </div>
       <div className="flex h-[52px] shrink-0 items-center border-t border-mock-border px-[18px] pb-[16px] text-[16px] text-mock-fg">

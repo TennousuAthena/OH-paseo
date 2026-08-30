@@ -15,6 +15,21 @@ const SCREEN_SCALE = {
   height: PHONE_H,
   transform: `scale(tan(atan2(100cqw, ${PHONE_W}px)))`,
 };
+type PhoneDepth = "front" | "left" | "right";
+
+const SLAB_STYLE: Record<Exclude<PhoneDepth, "front">, React.CSSProperties> = {
+  left: { transform: "translate3d(-5px, 0, -8px)" },
+  right: { transform: "translate3d(5px, 0, -8px)" },
+};
+const CONTACT_SHADOW_STYLE: Record<PhoneDepth, React.CSSProperties> = {
+  front: { transform: "translate3d(0, 4px, -12px)" },
+  left: { transform: "translate3d(-2px, 3px, -12px)" },
+  right: { transform: "translate3d(2px, 3px, -12px)" },
+};
+const GLASS_STYLE = {
+  background:
+    "linear-gradient(122deg, rgba(255,255,255,0.048) 0%, rgba(255,255,255,0.016) 25%, transparent 43%), radial-gradient(circle at 78% 10%, rgba(255,255,255,0.026), transparent 31%)",
+};
 
 /** iOS status bar: time, dynamic island, and the signal/wifi/battery cluster. */
 function StatusBar({ time }: { time: string }) {
@@ -71,20 +86,54 @@ function HomeIndicator() {
   );
 }
 
-export function PhoneFrame({ time, children }: { time: string; children: React.ReactNode }) {
+function FrontButtons() {
   return (
-    <div
-      className="relative w-full overflow-hidden rounded-[13.5%/6.2%] border-[3px] border-black bg-black shadow-2xl outline outline-[3px] outline-white/20"
-      style={FRAME_ASPECT}
-    >
-      <div className="absolute -inset-[3px] [container-type:inline-size]">
-        <div className="absolute top-0 left-0 origin-top-left" style={SCREEN_SCALE}>
-          <div className="relative flex h-[874px] w-[402px] flex-col overflow-hidden bg-mock-surface0 text-mock-fg antialiased">
-            <StatusBar time={time} />
-            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
-            <HomeIndicator />
+    <>
+      <span className="pointer-events-none absolute top-[18%] -left-[2px] h-[8%] w-[3px] rounded-l-[2px] bg-[#1b1e1d]" />
+      <span className="pointer-events-none absolute top-[28%] -left-[2px] h-[5%] w-[3px] rounded-l-[2px] bg-[#1b1e1d]" />
+      <span className="pointer-events-none absolute top-[25%] -right-[2px] h-[13%] w-[3px] rounded-r-[2px] bg-[#151716]" />
+    </>
+  );
+}
+
+export function PhoneFrame({
+  time,
+  children,
+  depth = "front",
+}: {
+  time: string;
+  children: React.ReactNode;
+  depth?: PhoneDepth;
+}) {
+  return (
+    <div className="relative w-full select-none [transform-style:preserve-3d]" style={FRAME_ASPECT}>
+      <div
+        className="pointer-events-none absolute right-[8%] -bottom-[0.8%] left-[8%] h-[3.5%] rounded-full bg-black/25 blur-[10px]"
+        style={CONTACT_SHADOW_STYLE[depth]}
+      />
+
+      {depth === "front" ? (
+        <FrontButtons />
+      ) : (
+        <div
+          className="pointer-events-none absolute inset-0 rounded-[13.5%/6.2%] border border-white/7 bg-[linear-gradient(180deg,#303432_0%,#1b1e1d_42%,#0b0d0c_100%)] shadow-[0_8px_22px_rgba(0,0,0,0.2)]"
+          style={SLAB_STYLE[depth]}
+        />
+      )}
+
+      <div className="absolute inset-0 overflow-hidden rounded-[13.5%/6.2%] border-[3px] border-black bg-black shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)] outline outline-[1px] outline-white/25">
+        <div className="absolute -inset-[3px] [container-type:inline-size]">
+          <div className="absolute top-0 left-0 origin-top-left" style={SCREEN_SCALE}>
+            <div className="relative flex h-[874px] w-[402px] flex-col overflow-hidden bg-mock-surface0 text-mock-fg antialiased">
+              <StatusBar time={time} />
+              <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+                {children}
+              </div>
+              <HomeIndicator />
+            </div>
           </div>
         </div>
+        <div className="pointer-events-none absolute inset-0 z-20" style={GLASS_STYLE} />
       </div>
     </div>
   );

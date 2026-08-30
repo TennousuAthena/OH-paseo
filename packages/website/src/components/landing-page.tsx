@@ -1238,7 +1238,7 @@ function PhoneShowcase() {
           role="img"
           aria-label="Paseo workspace drawer"
         >
-          <PhoneFrame time="18:54">
+          <PhoneFrame time="18:54" depth="right">
             <MobileSidebar />
           </PhoneFrame>
         </motion.div>
@@ -1264,7 +1264,7 @@ function PhoneShowcase() {
           role="img"
           aria-label="Paseo diff view"
         >
-          <PhoneFrame time="18:55">
+          <PhoneFrame time="18:55" depth="left">
             <MobileDiff />
           </PhoneFrame>
         </motion.div>

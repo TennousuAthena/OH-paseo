@@ -128,9 +128,11 @@ function Composer() {
         <span className="block text-[16px] text-mock-fg-xmuted">Message, @files, /commands</span>
         <div className="flex items-center gap-[13px] pt-[26px]">
           <Plus size={20} className="shrink-0 text-mock-fg-muted" strokeWidth={1.9} />
-          <CodexIcon size={19} className="shrink-0 text-mock-fg" />
-          <span className="shrink-0 whitespace-nowrap text-[16px] text-mock-fg">GPT-5.6-Sol</span>
-          <span className="shrink-0 whitespace-nowrap text-[16px] text-mock-fg-muted">Medium</span>
+          <span className="flex shrink-0 items-center gap-[5px]">
+            <CodexIcon size={19} className="shrink-0 text-mock-fg" />
+            <span className="whitespace-nowrap text-[16px] text-mock-fg">GPT-5.6-Sol</span>
+            <span className="whitespace-nowrap text-[16px] text-mock-fg-muted">Medium</span>
+          </span>
           <span className="flex-1" />
           <LoaderCircle size={19} className="shrink-0 text-mock-fg-muted" strokeWidth={1.8} />
           <Mic size={19} className="shrink-0 text-mock-fg-muted" strokeWidth={1.8} />
