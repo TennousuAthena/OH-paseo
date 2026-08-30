@@ -17,9 +17,9 @@ function Home() {
     <LandingPage
       title={
         <>
-          Orchestrate coding agents
+          The control plane
           <br />
-          from your desk and your phone
+          for coding agents
         </>
       }
       subtitle="Run any coding agent from your phone, desktop, or terminal. Self-hosted, multi-provider, open source."

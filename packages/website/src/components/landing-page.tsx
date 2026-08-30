@@ -27,20 +27,23 @@ const DURATION_05: Transition = { duration: 0.5 };
 const VIEWPORT_60 = { once: true, margin: "-60px" };
 
 const SVG_OVERFLOW_VISIBLE_STYLE = { overflow: "visible" as const };
-const PHONE_PERSPECTIVE_STYLE = { minHeight: 480, perspective: 1200 };
+// A ~240px-wide phone rotated 15° only foreshortens a couple percent at
+// perspective 1200 — it reads as a flat, skewed card. The side phones already
+// sit on a correctly projecting plane (the frame and its scaled interior share
+// one flattened texture), so the interior just needs the projection to be
+// strong enough to see: a tighter perspective gives the trio a real book-fold.
+const PHONE_PERSPECTIVE_STYLE = { minHeight: 480, perspective: 700 };
 import { CursorFieldProvider } from "~/components/butterfly";
 import { CommandDialog } from "~/components/command-dialog";
 import { AGENT_PAGES } from "~/data/agent-pages";
 import {
   appStoreUrl,
   playStoreUrl,
-  webAppUrl,
   getDownloadOptions,
   useDetectedPlatform,
   AppleIcon,
   PlayStoreIcon,
   TerminalIcon,
-  GlobeIcon,
 } from "~/downloads";
 import { useRelease } from "~/routes/__root";
 import { HeroMockup } from "~/components/hero-mockup";
@@ -52,7 +55,7 @@ import {
   PiIcon,
 } from "~/components/agent-icons";
 import { DiscordIcon, GitHubIcon, SlackIcon } from "~/components/brand-icons";
-import { ClaudeIcon } from "~/components/mockup";
+import { ClaudeIcon, MobileChat, MobileDiff, MobileSidebar, PhoneFrame } from "~/components/mockup";
 import { FAQItem } from "~/components/faq-item";
 import { SiteFooter } from "~/components/site-footer";
 import { SiteHeader } from "~/components/site-header";
@@ -68,7 +71,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
     <CursorFieldProvider>
       {/* Hero section with background image */}
       <div className="relative bg-cover bg-center bg-no-repeat">
-        <div className="relative p-6 pb-10 md:px-32 md:pt-20 md:pb-12 max-w-7xl mx-auto">
+        <div className="relative px-6 pt-4 pb-10 md:px-32 md:pt-6 md:pb-12 max-w-7xl mx-auto">
           <Nav />
           <Hero title={title} subtitle={subtitle} />
           <GetStarted />
@@ -79,7 +82,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
           initial={FADE_IN_UP_40}
           animate={FADE_IN}
           transition={EASE_OUT_08_DELAY_05}
-          className="relative px-6 md:px-8 pb-8 md:pb-16"
+          className="relative px-6 md:px-8 pt-4 md:pt-8 pb-8 md:pb-16"
         >
           <div className="max-w-7xl mx-auto">
             <HeroMockup />
@@ -112,7 +115,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
 
 function Nav() {
   return (
-    <nav className="mb-16">
+    <nav className="mb-20 md:mb-24">
       <SiteHeader />
     </nav>
   );
@@ -120,9 +123,9 @@ function Nav() {
 
 function Hero({ title, subtitle }: { title: React.ReactNode; subtitle: string }) {
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl md:text-5xl font-medium tracking-tight">{title}</h1>
-      <p className="text-white/70 text-lg leading-relaxed max-w-lg">{subtitle}</p>
+    <div className="space-y-6 text-center">
+      <h1 className="text-4xl md:text-6xl font-medium tracking-tight leading-[0.95]">{title}</h1>
+      <p className="text-white/70 text-lg leading-relaxed max-w-lg mx-auto">{subtitle}</p>
     </div>
   );
 }
@@ -861,22 +864,13 @@ function ShipPanel() {
 function GetStarted() {
   return (
     <div className="pt-10">
-      <div className="flex flex-row flex-wrap gap-3">
+      <div className="flex flex-row flex-wrap justify-center gap-3">
         <DownloadButton />
-        <a
-          href={webAppUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
-        >
-          <GlobeIcon className="h-4 w-4" />
-          Web App
-        </a>
         <a
           href={appStoreUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors"
+          className="inline-flex items-center justify-center rounded-lg border border-white/12 px-3 py-2 text-white hover:bg-white/10 transition-colors"
           aria-label="App Store"
         >
           <AppleIcon className="h-5 w-5" />
@@ -885,22 +879,14 @@ function GetStarted() {
           href={playStoreUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors"
+          className="inline-flex items-center justify-center rounded-lg border border-white/12 px-3 py-2 text-white hover:bg-white/10 transition-colors"
           aria-label="Google Play"
         >
           <PlayStoreIcon className="h-5 w-5" />
         </a>
         <ServerInstallButton />
       </div>
-      <div className="pt-3">
-        <a
-          href="/download"
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          All download options
-        </a>
-      </div>
-      <div className="flex items-center gap-2 pt-6">
+      <div className="flex items-center justify-center gap-2 pt-6">
         <span className="text-xs text-muted-foreground">Supports</span>
         <div className="flex items-center gap-1">
           <AgentBadge name="Claude Code" icon={CLAUDE_CODE_BADGE_ICON} />
@@ -940,7 +926,7 @@ function DownloadButton() {
 }
 
 const SERVER_INSTALL_TRIGGER = (
-  <span className="inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors">
+  <span className="inline-flex items-center justify-center rounded-lg border border-white/12 px-3 py-2 text-white hover:bg-white/10 transition-colors">
     <TerminalIcon className="h-5 w-5" />
   </span>
 );
@@ -1245,54 +1231,42 @@ function PhoneShowcase() {
         className="relative flex items-center justify-center overflow-x-clip w-full"
         style={PHONE_PERSPECTIVE_STYLE}
       >
-        {/* Left phone — rotated to face inward */}
-        <motion.div style={leftPhoneStyle} className="w-[160px] md:w-[240px] absolute">
-          <img
-            src="/phone-1-480.webp"
-            srcSet="/phone-1-320.webp 320w, /phone-1-480.webp 480w"
-            sizes="(min-width: 768px) 240px, 160px"
-            alt="Paseo sessions list"
-            width={480}
-            height={1044}
-            loading="lazy"
-            decoding="async"
-            className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
-          />
+        {/* Left phone — workspace drawer, rotated to face inward */}
+        <motion.div
+          style={leftPhoneStyle}
+          className="w-[160px] md:w-[240px] absolute"
+          role="img"
+          aria-label="Paseo workspace drawer"
+        >
+          <PhoneFrame time="18:54">
+            <MobileSidebar />
+          </PhoneFrame>
         </motion.div>
 
-        {/* Center phone */}
+        {/* Center phone — agent chat */}
         <motion.div
           initial={FADE_IN_UP_XL}
           animate={centerPhoneAnimate}
           transition={EASE_OUT_06_DELAY_01}
           className="w-[220px] md:w-[240px] relative z-10"
+          role="img"
+          aria-label="Paseo agent chat"
         >
-          <img
-            src="/phone-2-480.webp"
-            srcSet="/phone-2-320.webp 320w, /phone-2-480.webp 480w"
-            sizes="(min-width: 768px) 240px, 220px"
-            alt="Paseo agent chat"
-            width={480}
-            height={1044}
-            loading="lazy"
-            decoding="async"
-            className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
-          />
+          <PhoneFrame time="18:53">
+            <MobileChat />
+          </PhoneFrame>
         </motion.div>
 
-        {/* Right phone — rotated to face inward */}
-        <motion.div style={rightPhoneStyle} className="w-[160px] md:w-[240px] absolute">
-          <img
-            src="/phone-3-480.webp"
-            srcSet="/phone-3-320.webp 320w, /phone-3-480.webp 480w"
-            sizes="(min-width: 768px) 240px, 160px"
-            alt="Paseo diff view"
-            width={480}
-            height={1044}
-            loading="lazy"
-            decoding="async"
-            className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
-          />
+        {/* Right phone — diff view, rotated to face inward */}
+        <motion.div
+          style={rightPhoneStyle}
+          className="w-[160px] md:w-[240px] absolute"
+          role="img"
+          aria-label="Paseo diff view"
+        >
+          <PhoneFrame time="18:55">
+            <MobileDiff />
+          </PhoneFrame>
         </motion.div>
       </div>
     </div>
