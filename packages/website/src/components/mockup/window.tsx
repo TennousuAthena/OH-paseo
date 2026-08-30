@@ -16,6 +16,7 @@ const PANEL_OPEN = { width: RIGHT_PANEL_W + 1, opacity: 1 };
 /** Which center pane a state shows. States sharing a key keep it mounted. */
 function centerKey(state: MockupStateId): string {
   if (state === "review") return "review";
+  if (state === "extend") return "extend";
   return "chat";
 }
 

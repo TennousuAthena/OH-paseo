@@ -22,7 +22,13 @@ function Home() {
           for coding agents
         </>
       }
-      subtitle="Run any coding agent from your phone, desktop, or terminal. Self-hosted, multi-provider, open source."
+      subtitle={
+        <>
+          Run any coding agent from anywhere.
+          <br />
+          Self-hosted, multi-provider, open source
+        </>
+      }
     />
   );
 }

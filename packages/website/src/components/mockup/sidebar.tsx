@@ -25,6 +25,8 @@ import type { MockupStateId } from "./states";
 
 const SIDEBAR_STYLE = { width: SIDEBAR_W };
 const TITLEBAR_STYLE = { height: TITLEBAR_H };
+const NAV_DEFAULT_LAYOUT = { height: 97 };
+const NAV_EXTENDED_LAYOUT = { height: 127 };
 
 // --- data -------------------------------------------------------------------
 
@@ -278,12 +280,18 @@ export function Sidebar({ state }: { state: MockupStateId }) {
         </span>
       </div>
 
-      <div className="px-[8px] pt-[7px]">
+      <motion.div
+        initial={false}
+        animate={extending ? NAV_EXTENDED_LAYOUT : NAV_DEFAULT_LAYOUT}
+        className="overflow-hidden px-[8px] pt-[7px]"
+      >
         <NavItem icon={NEW_WORKSPACE_ICON} label="New workspace" />
         <NavItem icon={HISTORY_ICON} label="History" />
         <NavItem icon={SCHEDULES_ICON} label="Schedules" />
-        {extending ? <NavItem icon={PLUGIN_ICON} label="Release Radar" active /> : null}
-      </div>
+        <motion.div initial={false} animate={extending ? FADE_IN : FADE_OUT}>
+          <NavItem icon={PLUGIN_ICON} label="Release Radar" active />
+        </motion.div>
+      </motion.div>
 
       <div className="mt-[9px] h-px bg-mock-border" />
 
