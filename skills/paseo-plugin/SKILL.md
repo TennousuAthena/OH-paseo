@@ -29,13 +29,13 @@ Pick the contribution that matches the request. Each row names the registration,
 | Sidebar surface      | `addSurface` + `addSidebarItem`                  | A full screen of plugin UI reachable from the sidebar                                                         | reference.md → Surfaces and sidebar items; `plugin-examples/local-plugin`                          |
 | Workspace panel      | `addWorkspacePanel`                              | UI that lives as a tab beside agents, terminals, files, and diffs; `locations: ["explorer"]` for the Explorer | reference.md → Workspace panels                                                                    |
 | Command Center item  | `addCommandCenterItem`                           | A global, workspace, or agent action reachable from ⌘K                                                        | reference.md → Command Center items                                                                |
-| Client slash command | `addClientSlashCommand`                          | A `/command args` in the composer that runs plugin code instead of prompting the agent                        | reference.md → Client slash commands                                                               |
-| Composer pill        | `addClientSide` + `client.addComposerPill`       | A per-agent button in the composer track bar next to Tasks and Subagents                                      | reference.md → Composer pills                                                                      |
+| Client slash command | `addSlashCommand`                                | A `/command args` in the composer that runs plugin code instead of prompting the agent                        | reference.md → Client slash commands                                                               |
+| Composer pill        | `addComposerPill`                                | A per-agent button in the composer track bar next to Tasks and Subagents                                      | reference.md → Composer pills                                                                      |
 | Timeline transformer | `addTimelineTransformer` + `addTimelineRenderer` | Replace, explode, or hide a built-in timeline item, including while it streams                                | reference.md → Timeline items; `plugin-examples/timeline-items`, `plugin-examples/inline-thinking` |
 | Timeline row         | `paseo.agents.ref(id).timeline.append(...)`      | Push a plugin-owned row into an agent timeline from a server handler and update it later                      | reference.md → Append a timeline row from the daemon                                               |
-| Attachment source    | `addAttachmentSource` + `plugin.handle`          | Let the user attach a searchable external resource, such as an issue, to a prompt                             | reference.md → Add a composer attachment source; `plugin-examples/linear`                          |
+| Attachment source    | `client.addAttachmentSource` + `server.handle`   | Let the user attach a searchable external resource, such as an issue, to a prompt                             | reference.md → Add a composer attachment source; `plugin-examples/linear`                          |
 | Theme                | `addTheme`                                       | A light or dark palette under Settings → Appearance                                                           | reference.md → Contribute a theme; `plugin-examples/catppuccin`                                    |
-| Plugin RPC           | `defineRpc` + `plugin.handle` + `useRpc`         | Daemon-side work that is not a normal Paseo operation: vendor APIs, credentials, local files                  | reference.md → Add plugin-specific backend behavior                                                |
+| Plugin RPC           | `defineRpc` + `server.handle` + `useRpc`         | Daemon-side work that is not a normal Paseo operation: vendor APIs, credentials, local files                  | reference.md → Add plugin-specific backend behavior                                                |
 | Paseo SDK            | `usePaseo()` / handler `{ paseo }`               | Normal Paseo operations: workspaces, agents, providers, config                                                | reference.md → Use the Paseo SDK                                                                   |
 
 ## Create the project
@@ -53,10 +53,13 @@ The generated project contains:
 ```text
 my-plugin/
   paseo-plugin.json
-  index.ts
-  main.client.tsx
   package.json
   tsconfig.json
+  index.client.tsx
+  index.server.ts
+  client/greeting.tsx
+  server/greeting.ts
+  shared/greeting.ts
 ```
 
 The manifest supplies the default install ID:
@@ -65,28 +68,48 @@ The manifest supplies the default install ID:
 { "id": "my-plugin" }
 ```
 
-Keep `index.ts` to contribution wiring. Runtime code lives behind filename boundaries, and the compiler strips client registrations from the server bundle and server registrations from the client bundle:
+Each runtime has its own optional entry. A plugin must have at least one. Both entries accept
+`.ts` or `.tsx`; use `.tsx` when an entry imports components.
 
-| Suffix         | Owns                                                            |
-| -------------- | --------------------------------------------------------------- |
-| `*.client.tsx` | React, React Native, hooks, styles, surfaces, panels, callbacks |
-| `*.server.ts`  | Node APIs, filesystem and process access, credentials, handlers |
-| `*.shared.ts`  | Zod RPC contracts and plain values used by both runtimes        |
+| Path                             | Runtime           |
+| -------------------------------- | ----------------- |
+| `index.client.tsx` and `client/` | App               |
+| `index.server.ts` and `server/`  | Daemon subprocess |
+| `shared/`                        | Both              |
 
-Importing a `*.server` module from a client module, or a `*.client` module from a server module, fails compilation. Top-level React Native calls belong in `*.client.tsx`.
+Do not put any other code modules in the plugin root.
 
-Default-export one contribution function. It must return cleanup, even when there is nothing to clean:
+A client import of `server/`, a server import of `client/`, and every `node:` import reachable from
+client code is a compile error. A relative import to another code file in the plugin root is also a
+compile error; move it into `client/`, `server/`, or `shared/`. Shared modules contain Zod contracts
+and plain values; they do not import Node or React Native runtime APIs.
+
+Default-export one contribution function from each entry and return cleanup:
 
 ```tsx
-import type { PluginContext } from "@getpaseo/plugin";
+// index.client.tsx
+import type { PluginClientContext } from "@getpaseo/plugin";
 
-export default function contribute(plugin: PluginContext) {
-  // Register contributions here.
+export default function contribute(client: PluginClientContext) {
+  // Register components and client callbacks here.
   return () => {};
 }
 ```
 
-Cleanup can be async. Use it for timers, watchers, sockets, and other resources created by plugin code. Paseo removes registrations, unmounts surfaces, rejects pending RPCs, closes the plugin session, and stops the subprocess when the plugin stops.
+```ts
+// index.server.ts
+import type { PluginServerContext } from "@getpaseo/plugin";
+
+export default function contribute(server: PluginServerContext) {
+  // Register daemon-side RPC handlers here.
+  return () => {};
+}
+```
+
+Cleanup can be async. Use it for timers, watchers, sockets, subscriptions, and other resources
+created by plugin code. Every client `add*` method returns an idempotent remover. Paseo calls the
+entry cleanup first, removes registrations that remain, rejects pending RPCs, closes the plugin
+session, and stops the subprocess when the plugin stops.
 
 ## Add a workspace panel
 
@@ -95,7 +118,11 @@ mobile, and Paseo has multiple themes. Every `Text` must take its color from `th
 Use `layout.compact` for padding and stacking. Unstyled text is black and fails in dark themes.
 
 ```tsx
-import { type PluginContext, type PluginWorkspacePanelProps, useWorkspace } from "@getpaseo/plugin";
+import {
+  type PluginClientContext,
+  type PluginWorkspacePanelProps,
+  useWorkspace,
+} from "@getpaseo/plugin";
 import { useMemo } from "react";
 import { Text, View } from "react-native";
 
@@ -120,15 +147,15 @@ function Overview({ theme, layout, workspaceId }: PluginWorkspacePanelProps) {
   );
 }
 
-export default function contribute(plugin: PluginContext) {
-  plugin.addWorkspacePanel({
+export default function contribute(client: PluginClientContext) {
+  client.addWorkspacePanel({
     id: "overview",
     title: "Workspace overview",
     icon: "PanelsTopLeft",
     context: "workspace",
     Component: Overview,
   });
-  plugin.addCommandCenterItem({
+  client.addCommandCenterItem({
     id: "open-overview",
     title: "Open workspace overview",
     icon: "PanelsTopLeft",
@@ -151,7 +178,7 @@ the active workspace or agent. Command callbacks receive the selected host's `pa
 Plugin surfaces use React Native primitives and work across desktop, browser, iOS, and Android. Register the surface before its sidebar item. Color text from `theme.colors` and pad from `layout.compact`.
 
 ```tsx
-import type { PluginContext, PluginSurfaceProps } from "@getpaseo/plugin";
+import type { PluginClientContext, PluginSurfaceProps } from "@getpaseo/plugin";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -186,9 +213,9 @@ function Counter({ theme, layout }: PluginSurfaceProps) {
   );
 }
 
-export default function contribute(plugin: PluginContext) {
-  plugin.addSurface("main", Counter);
-  plugin.addSidebarItem({
+export default function contribute(client: PluginClientContext) {
+  client.addSurface("main", Counter);
+  client.addSidebarItem({
     id: "main",
     title: "Counter",
     icon: "ListPlus",
@@ -200,13 +227,33 @@ export default function contribute(plugin: PluginContext) {
 
 Icons are Lucide icon names. `theme` is a typed `PluginTheme` on every surface and panel. Primary text uses `theme.colors.foreground`; labels use `theme.colors.foregroundMuted`; the root view uses `theme.colors.surface0`. `layout.compact` is true on mobile and narrow windows. Paseo owns the route, header, host picker, close action, error boundary, and per-installation query client.
 
-Client code may import `react`, `react-native`, `@tanstack/react-query`, `zod`, `@getpaseo/plugin`, `@getpaseo/plugin/react-native`, and `@getpaseo/plugin/server`. Install dependencies locally for typechecking; Paseo supplies these runtime modules. JSX compiles with the automatic runtime, so no `React` import is needed for JSX.
+Client code may import `react`, `react-native`, `@tanstack/react-query`, `zod`, `@getpaseo/plugin`, and `@getpaseo/plugin/react-native`. Install dependencies locally for typechecking; Paseo supplies these runtime modules. JSX compiles with the automatic runtime, so no `React` import is needed for JSX. Importing a `node:` module from client code is a compile error.
 
-| Module                          | Use it for                                                               |
-| ------------------------------- | ------------------------------------------------------------------------ |
-| `@getpaseo/plugin`              | contribution contracts, `usePaseo`, `useRpc`, `useWorkspace`, `useAgent` |
-| `@getpaseo/plugin/react-native` | Paseo UI: `Icon`, `Modal`, `useToast`, `useRevealedText`                 |
-| `@getpaseo/plugin/server`       | `defineRpc`, `defineAttachmentSource`, handler types                     |
+| Module                          | Use it for                                                                                               |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `@getpaseo/plugin`              | contribution contracts, shared definitions, RPC input/output types, `usePaseo`, `useRpc`, and data hooks |
+| `@getpaseo/plugin/react-native` | Paseo UI: `Icon`, `Modal`, `useToast`, `useRevealedText`                                                 |
+| `@getpaseo/plugin/server`       | handler-only types such as `PluginHandlerContext`                                                        |
+
+## Works on mobile
+
+Before reporting a plugin done:
+
+- Use React Native primitives only: `View`, `Text`, `Pressable`, `ScrollView`, and `TextInput`.
+- Do not use HTML elements, `className`, CSS strings, or `onClick`.
+- Do not put `"DOM"` in `tsconfig.json` or use `/// <reference lib="dom" />`. Put DOM globals only in
+  `client/web.ts`, declare only what that module uses, gate every export on `Platform.OS === "web"`,
+  and provide the native alternative or a no-op.
+- Take colors from `theme.colors`.
+- Check the compact layout.
+
+Run this audit on `client/`:
+
+```bash
+rg -n "document\.|window\.|localStorage|navigator\.|<[a-z]+[ >]|className=|onClick=" client/
+```
+
+A hit outside `client/web.ts` is a bug.
 
 ## Choose the correct API
 
@@ -247,12 +294,12 @@ The API covers workspaces, agents, providers, and daemon config. It omits connec
 
 ### Add daemon-side behavior
 
-Define one Zod contract, register its subprocess handler, and call it with `useRpc()`:
+Define one Zod contract in `shared/`, register its subprocess handler in `index.server.ts`, and
+call it from client code with `useRpc()`:
 
-```tsx
-import type { PluginContext } from "@getpaseo/plugin";
-import { useRpc } from "@getpaseo/plugin";
-import { defineRpc } from "@getpaseo/plugin/server";
+```ts
+// shared/greeting.ts
+import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 const greeting = defineRpc({
@@ -260,20 +307,39 @@ const greeting = defineRpc({
   input: z.object({ name: z.string() }),
   output: z.object({ message: z.string() }),
 });
+```
+
+```ts
+// server/greeting.ts
+import type { RpcInput } from "@getpaseo/plugin";
+import { greeting } from "../shared/greeting";
+
+export async function createGreeting({ name }: RpcInput<typeof greeting>) {
+  return { message: `Hello, ${name}!` };
+}
+```
+
+```ts
+// index.server.ts
+import type { PluginServerContext } from "@getpaseo/plugin";
+import { createGreeting } from "./server/greeting";
+import { greeting } from "./shared/greeting";
+
+export default function contribute(server: PluginServerContext) {
+  server.handle(greeting, createGreeting);
+  return () => {};
+}
+```
+
+```tsx
+// client/greeting.tsx
+import { useRpc } from "@getpaseo/plugin";
+import { greeting } from "../shared/greeting";
 
 function Greeting() {
   const createGreeting = useRpc(greeting);
   // Use createGreeting({ name: "Ada" }) in a query, mutation, or event.
   return null;
-}
-
-export default function contribute(plugin: PluginContext) {
-  plugin.handle(greeting, async ({ name }, { paseo }) => {
-    const { config } = await paseo.config.get();
-    return { message: `${name}: plugins are ${config.pluginsEnabled ? "on" : "off"}` };
-  });
-  plugin.addSurface("main", Greeting);
-  return () => {};
 }
 ```
 
@@ -301,11 +367,12 @@ daemon log. Never log credentials or other secrets.
 
 ## Add a composer attachment source
 
-Define a search RPC and register a declarative source:
+Define a search RPC and declarative source in `shared/`, handle it on the server, and register it on
+the client:
 
-```tsx
-import type { PluginContext } from "@getpaseo/plugin";
-import { defineAttachmentSource, defineRpc } from "@getpaseo/plugin/server";
+```ts
+// shared/issues.ts
+import { defineAttachmentSource, defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 const searchIssues = defineRpc({
@@ -334,10 +401,26 @@ const issues = defineAttachmentSource({
   searchPlaceholder: "Search by identifier or title",
   search: searchIssues,
 });
+```
 
-export default function contribute(plugin: PluginContext) {
-  plugin.handle(searchIssues, ({ query }) => searchAcmeIssues(query));
-  plugin.addAttachmentSource(issues);
+```ts
+// index.server.ts
+import type { PluginServerContext } from "@getpaseo/plugin";
+import { searchIssues } from "./shared/issues";
+
+export default function contribute(server: PluginServerContext) {
+  server.handle(searchIssues, ({ query }) => searchAcmeIssues(query));
+  return () => {};
+}
+```
+
+```tsx
+// index.client.tsx
+import type { PluginClientContext } from "@getpaseo/plugin";
+import { issues } from "./shared/issues";
+
+export default function contribute(client: PluginClientContext) {
+  client.addAttachmentSource(issues);
   return () => {};
 }
 ```
@@ -349,7 +432,7 @@ Return complete text snapshots. Paseo owns the composer menu, picker, pills, dra
 A slash command runs plugin code in the app when the user submits `/name args`. Nothing is sent to the agent. `args` is the raw text after the command name, trimmed; parse it in the plugin.
 
 ```ts
-plugin.addClientSlashCommand({
+client.addSlashCommand({
   name: "review",
   description: "Run the review bot",
   argumentHint: "[scope]",
@@ -361,11 +444,11 @@ plugin.addClientSlashCommand({
 });
 ```
 
-The callback receives the same context as the matching Command Center item plus `args`. Paseo owns the autocomplete row, input clearing, and the error toast; put pending UI in a pill or panel. Precedence is built-in client commands, then plugin commands, then provider commands; a lower-precedence collision is dropped. Commands do not run while the composer has attachments. Server-side slash commands do not exist yet; the name is qualified so they can.
+The callback receives the same context as the matching Command Center item plus `args`. Paseo owns the autocomplete row, input clearing, and the error toast; put pending UI in a pill or panel. Precedence is built-in client commands, then plugin commands, then provider commands; a lower-precedence collision is dropped. Commands do not run while the composer has attachments. Server-side slash commands do not exist.
 
 ## Add a composer pill
 
-A pill is a per-agent button in the composer track bar next to Tasks and Subagents. Register a headless client entrypoint with `addClientSide`, then add and remove pills from that lifecycle. `addComposerPill` exists only on `PluginClientContext`.
+A pill is a per-agent button in the composer track bar next to Tasks and Subagents. Add and remove pills from the client entry lifecycle. `addComposerPill` exists on `PluginClientContext`.
 
 ```tsx
 export function contributeClient(client: PluginClientContext) {
@@ -395,14 +478,14 @@ export function contributeClient(client: PluginClientContext) {
 }
 ```
 
-Wire it with `plugin.addClientSide(contributeClient)`. The component owns its icon and text; Paseo owns the pressable, chrome, pending state, error reporting, and placement. Removal functions are idempotent, and Paseo removes every pill when the plugin, client entrypoint, or host connection is torn down.
+Call `contributeClient(client)` from `index.client.tsx`, or move its body into that entry. The component owns its icon and text; Paseo owns the pressable, chrome, pending state, error reporting, and placement. Removal functions are idempotent, and Paseo removes every pill when the plugin, client entrypoint, or host connection is torn down.
 
 ## Transform and render timeline items
 
 Timeline transformers and renderers are client contributions. A transformer selects one built-in `AgentTimelineItem.type`, inspects the item, and returns zero or more versioned plugin items. `undefined` keeps the source item, `items` replaces it, `[]` removes it. A renderer draws one `kind` and `version` after validating `data` with its Zod schema.
 
 ```ts
-plugin.addTimelineTransformer({
+client.addTimelineTransformer({
   id: "inline-thinking",
   query: { itemType: "reasoning" },
   transform: ({ item, phase }) => ({
@@ -411,7 +494,7 @@ plugin.addTimelineTransformer({
     ],
   }),
 });
-plugin.addTimelineRenderer({
+client.addTimelineRenderer({
   kind: "inline-thinking",
   version: 1,
   schema: z.object({ text: z.string(), phase: z.enum(["streaming", "complete"]) }),
@@ -426,7 +509,7 @@ Transformers run while the render model is built, on fetched history and on ever
 A server handler can push a plugin-owned row into any agent timeline. The same renderer registration draws it.
 
 ```ts
-plugin.handle(publishReview, async ({ agentId, verdict }, { paseo }) => {
+server.handle(publishReview, async ({ agentId, verdict }, { paseo }) => {
   await paseo.agents.ref(agentId).timeline.append({
     type: "plugin",
     id: "review",
@@ -445,7 +528,7 @@ The daemon stamps `pluginId` from the plugin session, so only plugin code can ca
 `addTheme` takes a small light or dark palette; Paseo expands it into the full token set. Every color is a hex string.
 
 ```ts
-plugin.addTheme({
+client.addTheme({
   id: "mocha",
   name: "Catppuccin Mocha",
   appearance: "dark",
@@ -462,7 +545,7 @@ plugin.addTheme({
 });
 ```
 
-It appears under Settings → Appearance. A daemon that predates `addTheme` fails to start the plugin with `plugin.addTheme is not a function`; update the host. See `plugin-examples/catppuccin`.
+It appears under Settings → Appearance. A client that predates `addTheme` cannot evaluate the entry and reports `client.addTheme is not a function`; update the client. See `plugin-examples/catppuccin`.
 
 ## Hosts and trust
 
@@ -514,6 +597,8 @@ paseo plugin remove my-plugin
 Use `--host <url>` when managing a daemon other than the CLI default. A Git source that must install or generate something declares `build` in `paseo-plugin.json` as a list of argv arrays; Paseo runs them without a shell on install and update and keeps the old version if one fails. Plugin source edits require `paseo plugin reload`; config changes to the global switch require `paseo reload`. A failed plugin reload stays failed; inspect `paseo plugin ls` for the load error and `paseo plugin logs <id>` for subprocess output, fix the source, typecheck, and reload again. `remove` deletes configuration, never the source directory.
 
 Do not restart the daemon to load source changes. Restarting it can kill the agent performing the work.
+
+For an old mixed entry, follow the standalone [runtime-entry migration guide](https://paseo.sh/docs/plugins/migration.md) mechanically.
 
 ## Verify the outcome
 
