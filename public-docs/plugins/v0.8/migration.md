@@ -85,13 +85,30 @@ Use this table as the complete registration checklist.
 | `import { defineRpc, defineAttachmentSource } from "@getpaseo/plugin/server"` in shared files | `import { defineRpc, defineAttachmentSource } from "@getpaseo/plugin"`                                       |
 | `ZodOutput<typeof contract.input>` handler parameter types                                    | `RpcInput<typeof contract>` from `@getpaseo/plugin`; `RpcOutput` for return types                            |
 
-Import `PluginClientContext` in the client entry and `PluginServerContext` in the server entry.
-Remove imports of the old context type. `@getpaseo/plugin/server` now exports only handler-side
-types such as `PluginHandlerContext`. Every client `add*` now returns an idempotent removal
-function. Preserve any remover the plugin calls before teardown; Paseo removes outstanding
+Import `PluginClientContext` from `@getpaseo/plugin/client` and `PluginServerContext` from
+`@getpaseo/plugin/server`. Remove imports of the old context type. Every client `add*` now returns an idempotent removal function. Preserve any remover the plugin calls before teardown; Paseo removes outstanding
 registrations after the entry cleanup runs.
 
 ## 4. Separate imports
+
+Move hooks (`usePaseo`, `useRpc`, `useSettings`, `useAgent`, `useWorkspace`) and client contribution
+types from `@getpaseo/plugin` to `@getpaseo/plugin/client`. Move `Icon` to
+`@getpaseo/plugin/client/react-native`. Import server contexts and lifecycle contracts from
+`@getpaseo/plugin/server`. Shared helpers (`defineRpc`, `defineSettings`, `defineAttachmentSource`),
+schemas, and plain data types stay on the root. These rules include type imports. See
+[Runtime modules](reference#runtime-modules) for the complete contract.
+
+Move the remaining SDK subpaths under their runtime owner:
+
+| Old entry                       | 0.8 entry                              |
+| ------------------------------- | -------------------------------------- |
+| `@getpaseo/plugin/react-native` | `@getpaseo/plugin/client/react-native` |
+| `@getpaseo/plugin/ui`           | `@getpaseo/plugin/client/ui`           |
+| `@getpaseo/plugin/provider`     | `@getpaseo/plugin/server/provider`     |
+| `@getpaseo/plugin/acp`          | `@getpaseo/plugin/server/acp`          |
+
+The old entries and the pre-0.8 `@paseo/plugin` scope are removed. `/client/host` is private to
+Paseo's app integration and is never a plugin-author import.
 
 The client entry imports only `client/`, `shared/`, and client-safe packages. The server entry imports
 only `server/`, `shared/`, and server-safe packages. A `node:` import in the client entry or anything
@@ -169,7 +186,7 @@ local-plugin/
 
 ```tsx
 // index.client.tsx
-import type { PluginClientContext } from "@getpaseo/plugin";
+import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { contributeClient, ExamplePanel } from "./client/main";
 
 export default function contribute(client: PluginClientContext) {
@@ -196,7 +213,7 @@ export default function contribute(client: PluginClientContext) {
 
 ```ts
 // index.server.ts
-import type { PluginServerContext } from "@getpaseo/plugin";
+import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { increment } from "./server/increment";
 import { incrementRpc } from "./shared/increment";
 

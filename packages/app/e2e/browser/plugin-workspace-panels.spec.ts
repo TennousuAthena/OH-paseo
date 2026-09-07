@@ -30,7 +30,8 @@ function isSettledWorkspaceUrl(url: URL): boolean {
 function pluginClientSource(input: { workspaceId: string; agentId: string }): string {
   return `import React, { useRef } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Icon, useAgent, useWorkspace } from "@getpaseo/plugin";
+import { Icon } from "@getpaseo/plugin/client/react-native";
+import { useAgent, useWorkspace } from "@getpaseo/plugin/client";
 import { recordComposerOpen } from "./shared/rpc";
 
 function WorkspacePanel({ workspaceId, host, layout }) {

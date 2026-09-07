@@ -158,7 +158,7 @@ Do not put any other code modules in the plugin root.
 
 Shared files import contract helpers and types from `@getpaseo/plugin`. Server handler files import
 `PluginHandlerContext` from `@getpaseo/plugin/server`. Client files import Paseo UI from
-`@getpaseo/plugin/react-native`. Its `Icon` resolves a Lucide name using the client's installed icon
+`@getpaseo/plugin/client/react-native`. Its `Icon` resolves a Lucide name using the client's installed icon
 set; an unknown name renders nothing so it cannot break the plugin surface.
 Its controlled modal keeps presentation metadata on `<Modal title="…" icon={…}>` and body UI in
 `<Modal.Content>`. Body layout, sheet-aware scrolling, and clipboard actions follow the
@@ -167,16 +167,37 @@ Plugin UI runs on desktop and mobile across multiple themes: color every `Text` 
 `theme.colors.foreground` or `theme.colors.foregroundMuted`, and size layout from `layout.compact`.
 See `public-docs/plugins/v0.8/reference.md`.
 
-| Module                          | Use it for                                                                                |
-| ------------------------------- | ----------------------------------------------------------------------------------------- |
-| `@getpaseo/plugin`              | contribution contracts, shared definitions, RPC input/output types, and client data hooks |
-| `@getpaseo/plugin/react-native` | Paseo React Native components and UI hooks                                                |
-| `@getpaseo/plugin/server`       | handler-only types such as `PluginHandlerContext`                                         |
-| `@getpaseo/plugin/provider`     | provider registration, connection, session, input, event, and timeline contracts          |
-| `@getpaseo/plugin/acp`          | command-backed ACP adapter and focused transformer hooks                                  |
+### SDK import boundaries
 
-The compiler rejects a client import of `server/`, a server import of `client/`, and every `node:`
-import reachable from client code. Shared modules cannot import runtime-owned modules. A relative
+Classify every SDK export before adding it. All client entry points and implementations live under
+`client/`; all server entry points and implementations live under `server/`. The package root is shared code: plain data types,
+Zod schemas, and functions that run in both runtimes. A type-only import is still an architectural
+dependency; shared types must not refer to React components, hooks, Node APIs, or server contexts.
+
+| Entry                                                | Owns                                                                       | May depend on          |
+| ---------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------- |
+| `@getpaseo/plugin`                                   | Shared data, schemas, RPC/settings definitions, runtime-neutral helpers    | Shared code only       |
+| `@getpaseo/plugin/server`                            | Server contribution/handler contexts and lifecycle contracts               | Shared and server code |
+| `@getpaseo/plugin/server/provider`, `/server/acp`    | Server provider contracts and adapters                                     | Shared and server code |
+| `@getpaseo/plugin/client`                            | Client contribution contexts, hooks, navigation, and UI contribution types | Shared and client code |
+| `@getpaseo/plugin/client/react-native`, `/client/ui` | Host-provided UI components                                                | Shared and client code |
+| `@getpaseo/plugin/client/host`                       | App-owned rendering integration; not a plugin-author entry                 | Shared and client code |
+
+Server code imports shared helpers from the root and server capabilities from `/server`. Client
+code imports shared helpers from the root and client capabilities from `/client`. Neither runtime
+imports the other. Re-exports follow the same rule; tree shaking does not establish a boundary.
+React, React Native, JSX runtimes, and client hooks must never be reachable from the root or any
+server entry. Node and platform-specific code must never be reachable from the shared root.
+
+The SDK boundary checks and real plugin-subprocess tests enforce these rules. Every SDK change
+must preserve them and update the public reference, migration guide, scaffold, and examples when
+an author-facing import changes. The plugin compiler enforces the same runtime entry rules for
+plugin-authored code. Keep the package export map and host-provided module maps consistent.
+
+The compiler rejects imports across runtime directories or SDK entries, React dependencies in
+server code, and Node imports in client code (including bare names such as `fs`). Shared modules
+cannot import runtime-owned modules. Forbidden imports fail compilation; never replace them with
+empty module stubs. A relative
 import to any other code file in the plugin root is also rejected; move it into `client/`, `server/`,
 or `shared/`. These are compile errors naming the importing file and boundary rule. Top-level React
 Native calls such as `StyleSheet.create` belong in `client/`.
@@ -190,7 +211,7 @@ pattern.
 
 ```ts
 // index.server.ts
-import type { PluginServerContext } from "@getpaseo/plugin";
+import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { createGreeting } from "./server/greeting";
 import { greetRpc } from "./shared/greeting";
 
@@ -202,7 +223,7 @@ export default function contribute(server: PluginServerContext) {
 
 ```tsx
 // index.client.tsx
-import type { PluginClientContext } from "@getpaseo/plugin";
+import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { Greeting } from "./client/greeting";
 
 export default function contribute(client: PluginClientContext) {
@@ -279,8 +300,8 @@ Register a provider from `index.server.ts`. The provider connection is callback-
 of its sessions; plugin RPC is not part of the provider data path.
 
 ```ts
-import type { PluginServerContext } from "@getpaseo/plugin";
-import type { ProviderRegistration } from "@getpaseo/plugin/provider";
+import type { PluginServerContext } from "@getpaseo/plugin/server";
+import type { ProviderRegistration } from "@getpaseo/plugin/server/provider";
 import { createProvider } from "./server/provider";
 
 export default function contribute(server: PluginServerContext) {
@@ -306,7 +327,7 @@ persistence. Providers re-read credentials, environment, global configuration, a
 `session.open`; there is no provider reload input.
 
 For an ACP command, register `runAcpProvider({ id, label, command })` from
-`@getpaseo/plugin/acp`. Its transformer hooks cover narrow vendor differences; do not translate the
+`@getpaseo/plugin/server/acp`. Its transformer hooks cover narrow vendor differences; do not translate the
 whole provider event stream. The direct and ACP examples live in `plugin-examples/provider-direct`
 and `plugin-examples/provider-acp-transformer`.
 
@@ -438,7 +459,7 @@ credentials and vendor API calls stay in the daemon handler.
 
 ```ts
 // index.server.ts
-import type { PluginServerContext } from "@getpaseo/plugin";
+import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { search } from "./server/issues";
 import { searchIssues } from "./shared/issues";
 
@@ -450,7 +471,7 @@ export default function contribute(server: PluginServerContext) {
 
 ```tsx
 // index.client.tsx
-import type { PluginClientContext } from "@getpaseo/plugin";
+import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { issues } from "./shared/issues";
 
 export default function contribute(client: PluginClientContext) {

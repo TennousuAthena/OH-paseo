@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
 import { z } from "zod";
-import { settingsRpc } from "@getpaseo/plugin/host";
+import { settingsRpc } from "@getpaseo/plugin";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 
