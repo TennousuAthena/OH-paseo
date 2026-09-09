@@ -1703,6 +1703,7 @@ export class AgentManager {
     const { archivedAt } = await this.markRecordArchived(stored);
     agent.updatedAt = new Date(archivedAt);
     await this.closeAgentRuntime(agentId);
+    await this.syncNativeArchiveState(stored.provider, stored.persistence, "archive");
     this.discardRetainedAgentState(agentId);
 
     await this.cascadeArchiveChildren(agentId);
@@ -1761,8 +1762,6 @@ export class AgentManager {
       archivedAt,
       updatedAt: archivedAt,
     });
-
-    await this.syncNativeArchiveState(record.provider, record.persistence, "archive");
 
     if (this.agents.has(record.id)) {
       this.notifyAgentState(record.id);
@@ -2090,6 +2089,8 @@ export class AgentManager {
       return false;
     }
 
+    // Archived history may have loaded a runtime that still owns the native writer.
+    await this.closeAgent(agentId);
     await this.syncNativeArchiveState(record.provider, record.persistence, "restore");
 
     await registry.upsert({

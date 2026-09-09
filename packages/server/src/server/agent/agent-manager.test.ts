@@ -7765,6 +7765,53 @@ test("fires onAgentArchived for stored-only snapshot archives", async () => {
   expect(archivedIds).toEqual([storedOnly.id]);
 });
 
+test("native archive and restore release the loaded session writer", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-native-archive-writer-"));
+  class WriterClient extends NativeArchiveRecordingClient {
+    session: CloseRecordingTestAgentSession | undefined;
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      this.session = new CloseRecordingTestAgentSession(config);
+      return this.session;
+    }
+    override async resumeSession(
+      _handle: AgentPersistenceHandle,
+      config?: Partial<AgentSessionConfig>,
+    ): Promise<AgentSession> {
+      return this.createSession({ provider: "codex", cwd: workdir, ...config });
+    }
+    override async archiveNativeSession(handle: AgentPersistenceHandle): Promise<void> {
+      if (!this.session?.closed) throw new Error("native thread has an active writer");
+      await super.archiveNativeSession(handle);
+    }
+    override async unarchiveNativeSession(handle: AgentPersistenceHandle): Promise<void> {
+      if (!this.session?.closed) throw new Error("native thread has an active writer");
+      await super.unarchiveNativeSession(handle);
+    }
+  }
+  const client = new WriterClient();
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  try {
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    await manager.archiveAgent(agent.id);
+    expect(client.archivedHandles).toHaveLength(1);
+    // Opening archived history can retain a writer, including records archived by older daemons.
+    await ensureAgentLoaded(agent.id, { agentManager: manager, agentStorage: storage, logger });
+    expect(client.session?.closed).toBe(false);
+    await manager.unarchiveSnapshot(agent.id);
+    expect(client.unarchivedHandles).toHaveLength(1);
+    expect((await storage.get(agent.id))?.archivedAt).toBeNull();
+    expect(client.session?.closed).toBe(true);
+    await ensureAgentLoaded(agent.id, { agentManager: manager, agentStorage: storage, logger });
+    expect(client.session?.closed).toBe(false);
+  } finally {
+    for (const agent of manager.listAgents()) await manager.closeAgent(agent.id);
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
 test("unarchiveSnapshot skips native provider unarchive for active records", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-unarchive-active-"));
   const storagePath = join(workdir, "agents");
