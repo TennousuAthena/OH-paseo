@@ -24,7 +24,7 @@ If an extension point is missing, describe the workflow in [Discussions](https:/
 
 ## Report bugs
 
-Open a [GitHub issue](https://github.com/getpaseo/paseo/issues) or report it in [Discord](https://discord.gg/jz8T2uahpH). GitHub is preferred because the issue template helps collect the necessary information.
+Open a [GitHub issue](https://github.com/getpaseo/paseo/issues) and fill out the bug report template.
 
 Include:
 
@@ -38,7 +38,7 @@ Focused fixes for reproducible bugs are welcome. If you submit one, follow the p
 
 ## Discuss workflows before proposing features
 
-Feature requests belong in [GitHub Discussions](https://github.com/getpaseo/paseo/discussions) or the product discussion forum in [Discord](https://discord.gg/jz8T2uahpH). Feature requests opened as issues will be closed.
+Product discussions, including feature requests, belong in [GitHub Discussions](https://github.com/getpaseo/paseo/discussions). Feature requests opened as issues will be closed.
 
 Explain:
 
