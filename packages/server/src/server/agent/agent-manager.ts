@@ -2885,6 +2885,9 @@ export class AgentManager {
     response: AgentPermissionResponse,
   ): Promise<AgentPermissionResult | void> {
     const agent = this.requireAgent(agentId);
+    if (agent.inFlightPermissionResponses.has(requestId)) {
+      throw new Error("A response to this permission request is already being submitted");
+    }
     agent.inFlightPermissionResponses.add(requestId);
 
     try {
@@ -3079,8 +3082,11 @@ export class AgentManager {
           epoch: this.timelineStore.getEpoch(agentId),
         });
       }
-      await this.refreshRuntimeInfo(agent);
+      // Rewind stages provider events under the run lock; publish its final state directly.
+      this.refreshSessionPersistence(agent);
+      await this.refreshSessionState(agent, { emit: false });
       await this.persistSnapshot(agent);
+      this.emitState(agent, { persist: false });
       this.logger.info(
         { agentId, provider: agent.provider, messageId, mode },
         "agent.rewind.complete",
@@ -4231,14 +4237,18 @@ export class AgentManager {
 
   private onStreamThreadStarted(agent: ActiveManagedAgent): void {
     const previousSessionId = agent.persistence?.sessionId ?? null;
+    this.refreshSessionPersistence(agent);
+    if (agent.persistence?.sessionId !== previousSessionId) {
+      this.emitState(agent);
+    }
+    void this.refreshRuntimeInfo(agent);
+  }
+
+  private refreshSessionPersistence(agent: ActiveManagedAgent): void {
     const handle = agent.session.describePersistence();
     if (handle) {
       agent.persistence = attachPersistenceCwd(handle, agent.cwd);
-      if (agent.persistence?.sessionId !== previousSessionId) {
-        this.emitState(agent);
-      }
     }
-    void this.refreshRuntimeInfo(agent);
   }
 
   private async onStreamTimelineEvent(params: {
@@ -4443,6 +4453,7 @@ export class AgentManager {
   ): void {
     const hadPendingPermissions = agent.pendingPermissions.size > 0;
     agent.pendingPermissions.set(event.request.id, event.request);
+    this.refreshSessionPersistence(agent);
     if (!hadPendingPermissions && !agent.internal) {
       this.broadcastAgentAttention(agent, "permission");
     }
@@ -4457,6 +4468,7 @@ export class AgentManager {
   }): void {
     const { agent, event, options, flags } = params;
     agent.pendingPermissions.delete(event.requestId);
+    this.refreshSessionPersistence(agent);
     if (!options?.fromHistory && agent.inFlightPermissionResponses.has(event.requestId)) {
       agent.bufferedPermissionResolutions.set(event.requestId, event);
       flags.shouldDispatchEvent = false;
