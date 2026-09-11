@@ -9,6 +9,7 @@ export const en = {
       copy: "Copy",
       copyLine: "Copy line",
       dismiss: "Dismiss",
+      reload: "Reload",
       retry: "Retry",
       search: "Search",
       select: "Select",

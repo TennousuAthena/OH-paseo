@@ -12,6 +12,7 @@ export const ru: TranslationResources = {
       copy: "Копировать",
       copyLine: "Копировать строку",
       dismiss: "Отклонить",
+      reload: "Перезагрузить",
       retry: "Повторить",
       search: "Поиск",
       select: "Выбрать",

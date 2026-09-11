@@ -12,6 +12,7 @@ export const ar: TranslationResources = {
       copy: "ينسخ",
       copyLine: "نسخ السطر",
       dismiss: "رفض",
+      reload: "إعادة التحميل",
       retry: "أعد المحاولة",
       search: "يبحث",
       select: "يختار",

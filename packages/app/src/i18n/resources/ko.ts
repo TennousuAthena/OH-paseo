@@ -12,6 +12,7 @@ export const ko: TranslationResources = {
       copy: "복사",
       copyLine: "줄 복사",
       dismiss: "닫기",
+      reload: "다시 로드",
       retry: "다시 시도",
       search: "검색",
       select: "선택",

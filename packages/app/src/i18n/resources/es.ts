@@ -12,6 +12,7 @@ export const es: TranslationResources = {
       copy: "Copiar",
       copyLine: "Copiar línea",
       dismiss: "Despedir",
+      reload: "Volver a cargar",
       retry: "Rever",
       search: "Buscar",
       select: "Seleccionar",
