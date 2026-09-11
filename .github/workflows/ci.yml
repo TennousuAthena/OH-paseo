@@ -296,7 +296,7 @@ jobs:
         run: node scripts/npm-retry.mjs ci
 
       - name: Build client dependencies
-        run: npm run build:client
+        run: npm run build:relay && npm run build:client
 
       - name: Build plugin SDK
         run: npm run build:plugin

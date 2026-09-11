@@ -155,6 +155,11 @@ export async function runAttachCommand(
     const unsubscribe = client.subscribeAgentTimeline(resolvedId, (message) => {
       if (message.type === "agent.timeline.replacement") {
         console.log("\n[Timeline replaced; earlier output is no longer current]");
+      } else if (message.type === "agent.timeline.snapshot") {
+        console.log("\n[Reconnected; current recent history follows]");
+        for (const entry of message.payload.page.entries) printTimelineItem(entry.item);
+      } else if (message.type === "agent.timeline.error") {
+        console.error(`Timeline observation stopped: ${message.payload.error}`);
       } else {
         printStreamEvent(message.payload.event);
       }
