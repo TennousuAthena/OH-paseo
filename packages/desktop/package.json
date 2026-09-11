@@ -24,7 +24,8 @@
     "test:e2e:browser-tabs": "npm run build:main && node ./e2e/browser-tabs.e2e.mjs",
     "verify:electron-cdp": "node ./scripts/verify-electron-cdp.mjs",
     "test": "vitest run --exclude \"e2e/**\"",
-    "typecheck": "tsgo --noEmit -p tsconfig.json"
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test:e2e:lifecycle": "npm run build:main && node ./e2e/daemon-lifecycle.e2e.mjs"
   },
   "dependencies": {
     "@getpaseo/cli": "*",

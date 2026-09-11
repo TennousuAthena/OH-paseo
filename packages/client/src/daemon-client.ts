@@ -884,6 +884,16 @@ type CorrelatedResponsePayloads = {
 type CorrelatedResponsePayload<TType extends CorrelatedResponseType> =
   CorrelatedResponsePayloads[TType];
 
+export class DaemonConnectionError extends Error {
+  constructor(
+    message: string,
+    readonly code: "DAEMON_CONNECTION_LOST" | "DAEMON_REQUEST_TIMEOUT" = "DAEMON_CONNECTION_LOST",
+  ) {
+    super(message);
+    this.name = "DaemonConnectionError";
+  }
+}
+
 class DaemonRpcError extends Error {
   readonly requestId: string;
   readonly requestType?: string;
@@ -1580,7 +1590,7 @@ export class DaemonClient {
 
   private sendTransportFrame(frame: string | Uint8Array | ArrayBuffer): void {
     if (!this.transport) {
-      throw new Error("Transport not connected");
+      throw new DaemonConnectionError("Transport not connected");
     }
     const isOpen = this.beginTraceSection("paseo.ws.frame.outbound", {
       kind: typeof frame === "string" ? "text" : "binary",
@@ -1662,7 +1672,12 @@ export class DaemonClient {
           if (idx !== -1) {
             this.pendingSendQueue.splice(idx, 1);
           }
-          reject(new Error(`Timed out waiting for connection to send message`));
+          reject(
+            new DaemonConnectionError(
+              "Timed out waiting for connection to send message",
+              "DAEMON_REQUEST_TIMEOUT",
+            ),
+          );
         }, DEFAULT_SEND_QUEUE_TIMEOUT_MS);
 
         this.pendingSendQueue.push({ message, resolve, reject, timeoutHandle });
@@ -1670,7 +1685,7 @@ export class DaemonClient {
     }
 
     // Not connected and not connecting - fail immediately
-    return Promise.reject(new Error(`Transport not connected (status: ${status})`));
+    return Promise.reject(new DaemonConnectionError(`Transport not connected (status: ${status})`));
   }
 
   /**
@@ -1688,7 +1703,7 @@ export class DaemonClient {
           this.sendJsonMessage("session", payload.type, { type: "session", message: payload });
           pending.resolve();
         } else {
-          pending.reject(new Error("Connection lost before message could be sent"));
+          pending.reject(new DaemonConnectionError("Connection lost before message could be sent"));
         }
       } catch (error) {
         pending.reject(error instanceof Error ? error : new Error(String(error)));
@@ -1835,7 +1850,7 @@ export class DaemonClient {
 
   private sendSessionMessageStrict(message: SessionInboundMessage): void {
     if (!this.transport || this.connectionState.status !== "connected") {
-      throw new Error("Transport not connected");
+      throw new DaemonConnectionError("Transport not connected");
     }
     const payload = SessionInboundMessageSchema.parse(message);
     try {
@@ -3467,7 +3482,11 @@ export class DaemonClient {
     return payload.notice ?? null;
   }
 
-  async restartServer(reason?: string, requestId?: string): Promise<RestartRequestedStatusPayload> {
+  async restartServer(
+    reason?: string,
+    requestId?: string,
+    options?: { timeout?: number },
+  ): Promise<RestartRequestedStatusPayload> {
     const resolvedRequestId = this.createRequestId(requestId);
     const message = SessionInboundMessageSchema.parse({
       type: "restart_server_request",
@@ -3477,6 +3496,7 @@ export class DaemonClient {
     return this.sendRequest({
       requestId: resolvedRequestId,
       message,
+      timeout: options?.timeout,
       options: { skipQueue: true },
       select: (msg) => {
         if (msg.type !== "status") {
@@ -4801,6 +4821,10 @@ export class DaemonClient {
   }
 
   async getDaemonStatus(options?: DaemonStatusOptions): Promise<DaemonStatusPayload> {
+    if (!this.lastServerInfoMessage) throw new DaemonConnectionError("Transport not connected");
+    if (this.lastServerInfoMessage?.features?.daemonStatusRpc !== true) {
+      throw new Error("Update the host to read daemon status.");
+    }
     return this.sendCorrelatedSessionRequest({
       requestId: options?.requestId,
       message: {
@@ -6122,9 +6146,9 @@ export class DaemonClient {
 
     // Clear all pending waiters and queued sends since the connection was lost
     // and responses from the previous connection will never arrive.
-    this.clearWaiters(new Error(reason ?? "Connection lost"));
-    this.rejectPendingSendQueue(new Error(reason ?? "Connection lost"));
-    this.rejectPingProbe(new Error(reason ?? "Connection lost"));
+    this.clearWaiters(new DaemonConnectionError(reason ?? "Connection lost"));
+    this.rejectPendingSendQueue(new DaemonConnectionError(reason ?? "Connection lost"));
+    this.rejectPingProbe(new DaemonConnectionError(reason ?? "Connection lost"));
     this.terminalStreams.clearSlots();
     this.lastServerInfoMessage = null;
 
@@ -6387,7 +6411,10 @@ export class DaemonClient {
     options?: WaitOptions,
   ): WaitHandle<T> {
     // Capture stack trace at call site, not inside setTimeout
-    const timeoutError = new Error(`Timeout waiting for message (${timeout}ms)`);
+    const timeoutError = new DaemonConnectionError(
+      `Timeout waiting for message (${timeout}ms)`,
+      "DAEMON_REQUEST_TIMEOUT",
+    );
 
     let waiter: Waiter<T> | null = null;
     let settled = false;

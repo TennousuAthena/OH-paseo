@@ -1281,6 +1281,7 @@ export const ko: TranslationResources = {
       detail: "로컬 데몬을 중지하는 중입니다.",
     },
     daemon: {
+      lifecycle: en.desktop.daemon.lifecycle,
       title: "데몬",
       status: {
         title: "상태",

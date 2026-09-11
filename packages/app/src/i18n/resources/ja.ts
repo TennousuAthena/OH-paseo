@@ -1286,6 +1286,7 @@ export const ja: TranslationResources = {
       detail: "ローカルデーモンを停止中。",
     },
     daemon: {
+      lifecycle: en.desktop.daemon.lifecycle,
       title: "デーモン",
       status: {
         title: "ステータス",

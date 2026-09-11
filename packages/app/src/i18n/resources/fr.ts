@@ -1308,6 +1308,7 @@ export const fr: TranslationResources = {
       detail: "Arrêt du démon local.",
     },
     daemon: {
+      lifecycle: en.desktop.daemon.lifecycle,
       title: "Daemon",
       status: {
         title: "Statut",

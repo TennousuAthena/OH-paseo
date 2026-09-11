@@ -158,19 +158,15 @@ function getShellCommand(script) {
 }
 
 function createDefaultDaemonEnv(extraEnv) {
-  const env = {
-    ...process.env,
+  return {
+    ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("PASEO_"))),
     ...extraEnv,
   };
-
-  delete env.PASEO_HOME;
-  delete env.PASEO_LISTEN;
-  return env;
 }
 
 function createIsolatedDesktopEnv({ home, listen, userData, cdpPort }) {
   return {
-    ...process.env,
+    ...createDefaultDaemonEnv({ HOME: home, USERPROFILE: home }),
     PASEO_HOME: home,
     PASEO_LISTEN: listen,
     PASEO_ELECTRON_USER_DATA_DIR: userData,
@@ -657,24 +653,15 @@ async function smokeColdCliDaemonStart({ appPath }) {
   const pidPath = path.join(home, "paseo.pid");
   const port = await reserveLocalTcpPort();
   const listen = `127.0.0.1:${port}`;
-  const env = createDefaultDaemonEnv();
+  const env = createDefaultDaemonEnv({ HOME: home, USERPROFILE: home });
+  configureIsolatedDaemonHome(home, listen);
 
   try {
     console.log("Packaged desktop smoke: cold-starting daemon through bundled CLI shim");
     await runCliShimCommand({
       appPath,
       env,
-      args: [
-        "daemon",
-        "start",
-        "--home",
-        home,
-        "--listen",
-        listen,
-        "--no-relay",
-        "--no-mcp",
-        "--no-inject-mcp",
-      ],
+      args: ["daemon", "start", "--home", home],
       label: "Bundled CLI shim cold daemon start",
     });
 
