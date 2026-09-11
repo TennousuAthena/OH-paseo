@@ -335,3 +335,20 @@ export function readLegacySkillSelection(): Promise<AgentSkillSelection | null> 
 export async function deleteLegacySkillSelection(): Promise<void> {
   await invokeDesktopCommand("delete_legacy_skill_selection");
 }
+
+export interface DesktopSandboxDiagnostics {
+  enabled: boolean;
+  reason: string;
+}
+
+export async function getDesktopSandboxDiagnostics(): Promise<DesktopSandboxDiagnostics> {
+  const result: unknown = await invokeDesktopCommand("desktop_sandbox_diagnostics");
+  if (
+    !isRecord(result) ||
+    typeof result.enabled !== "boolean" ||
+    typeof result.reason !== "string"
+  ) {
+    throw new Error("Unexpected desktop sandbox diagnostics response.");
+  }
+  return { enabled: result.enabled, reason: result.reason };
+}
