@@ -25,7 +25,7 @@ import type { Agent } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { useAgentControlCommandCenterActions } from "@/command-center/agent-control-registration";
-import { requestWorkspaceDraftAgent } from "@/composer/draft/create-agent-request";
+import { encodeImages } from "@/utils/encode-images";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import {
@@ -137,6 +137,7 @@ function resolveDraftModeId(input: {
 }
 
 async function submitDraftCreateRequest(input: {
+  draftId: string;
   attempt: { clientMessageId: string };
   text: string;
   images?: UserMessageImageAttachment[];
@@ -196,14 +197,18 @@ async function submitDraftCreateRequest(input: {
   });
 
   const attachmentsArray = Array.isArray(attachments) ? attachments : undefined;
-  const result = await requestWorkspaceDraftAgent(client, {
+  const imagesData = await encodeImages(images);
+  const options = {
+    idempotencyKey: input.draftId,
     config,
     workspaceId,
-    text,
+    initialPrompt: text,
     clientMessageId: attempt.clientMessageId,
-    ...(images ? { images } : {}),
-    ...(attachmentsArray ? { attachments: attachmentsArray } : {}),
-  });
+    ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
+    ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
+  };
+  const creation = useWorkspaceDraftSubmissionStore.getState().creationByDraftId[input.draftId];
+  const result = creation ? await creation.retry(options) : await client.createAgent(options);
 
   return {
     agentId: result.id,
@@ -390,10 +395,7 @@ export function WorkspaceDraftAgentTab({
   );
   const autoSubmitConfig = resolveAutoSubmitConfig(pendingAutoSubmit);
   const initialCreateAttempt = useMemo<DraftCreateAttempt | null>(() => {
-    if (!pendingAutoSubmit || !pendingCreateAttempt) {
-      return null;
-    }
-    if (pendingAutoSubmit.clientMessageId !== pendingCreateAttempt.clientMessageId) {
+    if (!pendingCreateAttempt) {
       return null;
     }
     return {
@@ -407,7 +409,7 @@ export function WorkspaceDraftAgentTab({
         ? { attachments: pendingCreateAttempt.attachments }
         : {}),
     };
-  }, [pendingAutoSubmit, pendingCreateAttempt]);
+  }, [pendingCreateAttempt]);
   const allowsEmptyAutoSubmit = pendingAutoSubmit?.allowEmptyText === true;
   const isCompactFormFactor = useIsCompactFormFactor();
   const { onLayout: onInputAreaLayout, isBelow: isCompactComposerLayout } = useContainerWidthBelow(
@@ -487,8 +489,13 @@ export function WorkspaceDraftAgentTab({
         composerState,
         selectModelMessage: t("workspaceSetup.errors.selectModel"),
       }),
-    createRequest: async ({ attempt, text, images, attachments, cwd }) =>
-      submitDraftCreateRequest({
+    createRequest: async ({ attempt, text, images, attachments, cwd }) => {
+      if (pendingAutoSubmit?.agentCreation) {
+        const result = await pendingAutoSubmit.agentCreation.result;
+        return { agentId: result.id, result };
+      }
+      return submitDraftCreateRequest({
+        draftId,
         attempt,
         text,
         images,
@@ -501,7 +508,8 @@ export function WorkspaceDraftAgentTab({
         composerState,
         hostDisconnectedMessage: t("workspace.terminal.hostDisconnected"),
         selectModelMessage: t("workspaceSetup.errors.selectModel"),
-      }),
+      });
+    },
     onCreateSuccess: ({ result }) => {
       clearDraftInput("sent");
       clearWorkspaceAttachments({ scopeKey: draftAttachmentScopeKey });
