@@ -1,4 +1,5 @@
 import type { createPluginHosts } from "./hosts";
+import { openExternalUrl } from "@/utils/open-external-url";
 import * as pluginUiRuntime from "./react-native/ui";
 import { useSettings } from "./settings/use-settings";
 import * as pluginSharedRuntime from "@getpaseo/plugin";
@@ -379,6 +380,7 @@ export function runPluginClientBundle(
       return {
         ...pluginClientRuntime,
         useSettings,
+        openExternalUrl,
         getPaseoClient: (serverId: string) => runtime.hosts.getPaseoClient(serverId),
         useHosts: () =>
           React.useSyncExternalStore(

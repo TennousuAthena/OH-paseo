@@ -151,32 +151,105 @@ in your browser and crashes on a phone is the most common plugin bug. The rules:
 | `onPress`                                                                  | `onClick`, `onMouseEnter`, or other DOM handlers                            |
 | `Linking`, `Clipboard`-style React Native APIs                             | `window`, `document`, `localStorage`, `navigator`, `location` in components |
 
-The scaffold's `tsconfig.json` omits the DOM library, so `document` and `window` are type errors
-everywhere by default. The one place browser APIs are allowed is `client/web.ts`. It declares the
-narrow shape of each global it uses, gates every export on `Platform.OS`, and gives native the
-alternative:
+The scaffold's `tsconfig.json` omits the DOM library. Keep DOM globals out of cross-platform
+components; do not add `/// <reference lib="dom" />` or `"DOM"` to `lib`.
+`layout.platform` carries the same value as React Native's `Platform.OS` for rendering decisions.
 
-`client/web.ts`:
+### External links and workspace browsers
 
-```ts
-import { Linking, Platform } from "react-native";
+Use `ExternalLink` to open documentation outside Paseo:
 
-// This plugin typechecks without the DOM library. Declare only what this module uses.
-declare const window: { open(url: string, target: string, features: string): unknown };
+```tsx
+import { ExternalLink } from "@getpaseo/plugin/client/ui";
 
-export async function openExternal(url: string): Promise<void> {
-  if (Platform.OS === "web") {
-    window.open(url, "_blank", "noopener,noreferrer");
-    return;
-  }
-  await Linking.openURL(url);
+export function DocumentationLink() {
+  return <ExternalLink href="https://paseo.sh/docs">Open documentation</ExternalLink>;
 }
 ```
 
-Do not add `/// <reference lib="dom" />` or `"DOM"` to `lib`; either one turns DOM types back on
-for the whole project and hides the next mistake. Components import `openExternal` and never touch
-`window` themselves. `layout.platform` on surface and panel props carries the same value as
-`Platform.OS` for rendering decisions.
+The component has accessible link semantics and uses the same opener as
+`openExternalUrl(url: string): Promise<void>`:
+
+```ts
+import { openExternalUrl } from "@getpaseo/plugin/client";
+
+export async function openDocumentation() {
+  await openExternalUrl("https://paseo.sh/docs");
+}
+```
+
+Call the function directly from a user interaction so the browser permits a new tab.
+
+| Platform      | External links                     | `navigation.openBrowser`                         |
+| ------------- | ---------------------------------- | ------------------------------------------------ |
+| Electron      | System browser                     | Available; creates a local workspace browser tab |
+| Browser web   | New tab with `noopener,noreferrer` | `undefined`                                      |
+| iOS / Android | OS URL handler                     | `undefined`                                      |
+
+#### ExternalLink props
+
+| Prop                            | Required | Behavior / default                                     |
+| ------------------------------- | -------- | ------------------------------------------------------ |
+| `href: string`                  | Yes      | Absolute HTTP(S) destination                           |
+| `children: ReactNode`           | Yes      | Link text or inline React Native content               |
+| `accessibilityLabel: string`    | No       | Overrides the accessible name derived from the content |
+| `testID: string`                | No       | Test identifier; unset by default                      |
+| `onError(error: unknown): void` | No       | Receives opening errors; defaults to logging them      |
+
+#### Open a workspace browser
+
+Use `navigation.openBrowser` from a surface or panel. Check availability before rendering
+the action. This workspace panel chooses an external link on other platforms:
+
+```tsx
+import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
+import { ExternalLink } from "@getpaseo/plugin/client/ui";
+import { Pressable, Text } from "react-native";
+
+export function DocumentationPanel({ navigation, workspaceId, theme }: PluginWorkspacePanelProps) {
+  const openBrowser = navigation?.openBrowser;
+  const url = "https://paseo.sh/docs";
+
+  if (!openBrowser) {
+    return <ExternalLink href={url}>Open documentation</ExternalLink>;
+  }
+
+  return (
+    <Pressable accessibilityRole="button" onPress={() => openBrowser({ url, workspaceId })}>
+      <Text style={{ color: theme.colors.foreground }}>Open in workspace browser</Text>
+    </Pressable>
+  );
+}
+```
+
+`navigation.openBrowser({ url, workspaceId, serverId? }): void` creates and focuses a new tab.
+It never opens externally as an automatic fallback.
+
+| Option                | Required | Behavior / default                                                |
+| --------------------- | -------- | ----------------------------------------------------------------- |
+| `url: string`         | Yes      | Absolute HTTP(S) destination                                      |
+| `workspaceId: string` | Yes      | Workspace already present in the target host's app workspace list |
+| `serverId: string`    | No       | Defaults to the surface or panel's selected host                  |
+
+To target another host, pass its ID with that host's workspace ID:
+
+```ts
+openBrowser({ url, workspaceId: remoteWorkspaceId, serverId: remoteServerId });
+```
+
+`serverId` selects workspace ownership. The page runs on your local desktop, including
+for remote workspaces; `localhost` URLs refer to that desktop.
+
+#### Errors and refusal
+
+| Condition                                                             | Result                                                                         |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| External URL is malformed or uses a non-HTTP(S) scheme                | Ignored; `openExternalUrl` resolves without opening anything                   |
+| OS opener fails                                                       | `openExternalUrl` rejects; `ExternalLink` calls `onError` or logs the error    |
+| Browser blocks a new external tab                                     | Cannot be distinguished from a successful `noopener` open                      |
+| In-app browser URL is malformed or uses a non-HTTP(S) scheme          | Throws `Only absolute HTTP(S) URLs are supported.` before creating a tab       |
+| In-app browser workspace ID is empty                                  | Throws `workspaceId is required.` before creating a tab                        |
+| Target host/workspace is unknown or its workspace list has not loaded | Throws `Workspace is unavailable on the requested host.` before creating a tab |
 
 Use the [settings API](#settings-screens) for typed host-scoped persistence across clients.
 Use `openSettings`, `openSurface`, and `openPanel` for your own registered contributions.
@@ -614,12 +687,12 @@ export default function contribute(client: PluginClientContext) {
 
 `PluginSurfaceProps` contains:
 
-| Field        | Meaning                                                                                                                                                                           |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `theme`      | Typed `PluginTheme` color tokens for the active Paseo theme.                                                                                                                      |
-| `host`       | Selected host `id` and display `label`.                                                                                                                                           |
-| `layout`     | `compact` and the `ios`, `android`, or `web` platform.                                                                                                                            |
-| `navigation` | Optional client navigation. `openAgent({ agentId, serverId? })` and `openWorkspace({ workspaceId, serverId? })` open targets on `serverId`, or on the selected host when omitted. |
+| Field        | Meaning                                                                                                                                                                                                                                                                                                                           |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `theme`      | Typed `PluginTheme` color tokens for the active Paseo theme.                                                                                                                                                                                                                                                                      |
+| `host`       | Selected host `id` and display `label`.                                                                                                                                                                                                                                                                                           |
+| `layout`     | `compact` and the `ios`, `android`, or `web` platform.                                                                                                                                                                                                                                                                            |
+| `navigation` | Optional client navigation. `openAgent({ agentId, serverId? })` and `openWorkspace({ workspaceId, serverId? })` open targets on `serverId`, or on the selected host when omitted. `openBrowser({ url, workspaceId, serverId? })` is available only on Electron; see [links and browsers](#external-links-and-workspace-browsers). |
 
 Paseo owns the route, header, close action, host picker, error boundary, and query client. The plugin owns the surface body.
 
