@@ -27,7 +27,13 @@ function isSettledWorkspaceUrl(url: URL): boolean {
   return url.pathname.includes("/workspace/") && !url.searchParams.has("open");
 }
 
-function pluginClientSource(input: { workspaceId: string; agentId: string }): string {
+function pluginClientSource(input: {
+  workspaceId: string;
+  agentId: string;
+  remoteServerId: string;
+  remoteWorkspaceId: string;
+  remoteAgentId: string;
+}): string {
   return `import React, { useRef } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Icon } from "@getpaseo/plugin/client/react-native";
@@ -53,6 +59,8 @@ function DirectCollisionSurface({ navigation }) {
     {navigation ? <>
       <Pressable accessibilityRole="button" onPress={() => navigation.openWorkspace({ workspaceId: ${JSON.stringify(input.workspaceId)} })}><Text>Open workspace from plugin</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => navigation.openAgent({ agentId: ${JSON.stringify(input.agentId)} })}><Text>Open agent from plugin</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => navigation.openWorkspace({ serverId: ${JSON.stringify(input.remoteServerId)}, workspaceId: ${JSON.stringify(input.remoteWorkspaceId)} })}><Text>Open remote workspace from plugin</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => navigation.openAgent({ serverId: ${JSON.stringify(input.remoteServerId)}, agentId: ${JSON.stringify(input.remoteAgentId)} })}><Text>Open remote agent from plugin</Text></Pressable>
     </> : null}
   </View>;
 }
@@ -148,7 +156,13 @@ export default function contribute(server) {
 
 async function writePluginSources(
   directory: string,
-  input: { workspaceId: string; agentId: string },
+  input: {
+    workspaceId: string;
+    agentId: string;
+    remoteServerId: string;
+    remoteWorkspaceId: string;
+    remoteAgentId: string;
+  },
 ): Promise<void> {
   await mkdir(path.join(directory, "shared"), { recursive: true });
   await Promise.all([
@@ -182,6 +196,44 @@ async function runCommand(page: Page, title: string): Promise<void> {
   await expect(panel).not.toBeVisible();
 }
 
+interface RemoteNavigationTarget {
+  serverId: string;
+  workspaceId: string;
+  agentId: string;
+}
+
+function remoteWorkspaceRoute(target: RemoteNavigationTarget): RegExp {
+  return new RegExp(
+    `/h/${encodeURIComponent(target.serverId)}/workspace/${encodeURIComponent(target.workspaceId)}(?:\\?.*)?$`,
+  );
+}
+
+async function openRemoteWorkspaceFromPlugin(
+  page: Page,
+  target: RemoteNavigationTarget,
+): Promise<void> {
+  await page
+    .getByRole("button", { name: "Open remote workspace from plugin", exact: true })
+    .click();
+  await page.waitForURL(remoteWorkspaceRoute(target));
+  await expect(
+    page
+      .getByTestId(`workspace-deck-entry-${target.serverId}:${target.workspaceId}`)
+      .getByTestId("workspace-header-title"),
+  ).toBeVisible();
+}
+
+async function openRemoteAgentFromPlugin(
+  page: Page,
+  target: RemoteNavigationTarget,
+): Promise<void> {
+  await page.getByRole("button", { name: "Open remote agent from plugin", exact: true }).click();
+  await page.waitForURL(remoteWorkspaceRoute(target));
+  await expect(
+    page.getByTestId(`workspace-tab-agent_${target.agentId}`).filter({ visible: true }).first(),
+  ).toBeVisible();
+}
+
 async function openCompactSidebar(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Open menu", exact: true }).click();
   await expect(page.getByTestId("sidebar-search")).toBeVisible();
@@ -208,6 +260,14 @@ test.describe("plugin workspace panels and Command Center", () => {
       repoPrefix: "plugin-panel-secondary-",
       port: secondaryDaemon.port,
     });
+    const secondaryAgent = await secondary.client.createAgent({
+      provider: "mock",
+      cwd: secondary.repoPath,
+      workspaceId: secondary.workspaceId,
+      title: "Remote plugin navigation agent",
+      model: "ten-second-stream",
+      modeId: "load-test",
+    });
     await writeFile(
       path.join(directory, "paseo-plugin.json"),
       JSON.stringify({ id: PLUGIN_ID, requirements: pluginRequirements }),
@@ -215,6 +275,9 @@ test.describe("plugin workspace panels and Command Center", () => {
     await writePluginSources(directory, {
       workspaceId: primary.workspaceId,
       agentId: "missing-agent",
+      remoteServerId: secondaryDaemon.serverId,
+      remoteWorkspaceId: secondary.workspaceId,
+      remoteAgentId: secondaryAgent.id,
     });
 
     try {
@@ -294,6 +357,9 @@ test.describe("plugin workspace panels and Command Center", () => {
         await writePluginSources(directory, {
           workspaceId: primary.workspaceId,
           agentId: navigationAgentId,
+          remoteServerId: secondaryDaemon.serverId,
+          remoteWorkspaceId: secondary.workspaceId,
+          remoteAgentId: secondaryAgent.id,
         });
         await primaryClient.reloadPlugin(PLUGIN_ID);
 
@@ -306,6 +372,23 @@ test.describe("plugin workspace panels and Command Center", () => {
             .filter({ visible: true })
             .first(),
         ).toBeVisible();
+      });
+
+      await test.step("surface navigation opens a workspace and agent on another host", async () => {
+        const remoteTarget = {
+          serverId: secondaryDaemon.serverId,
+          workspaceId: secondary.workspaceId,
+          agentId: secondaryAgent.id,
+        };
+        await runCommand(page, "Open direct collision surface");
+        await openRemoteWorkspaceFromPlugin(page, remoteTarget);
+        await switchWorkspaceViaSidebar({
+          page,
+          serverId: getServerId(),
+          workspaceId: primary.workspaceId,
+        });
+        await runCommand(page, "Open direct collision surface");
+        await openRemoteAgentFromPlugin(page, remoteTarget);
       });
 
       await test.step("switching hosts removes commands from an uninstalled host", async () => {
