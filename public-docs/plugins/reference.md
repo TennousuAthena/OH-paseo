@@ -8,9 +8,9 @@ category: Plugins
 
 # Plugin reference
 
-> **For Paseo v0.8 beta.** Return to the [v0.8 quickstart](/docs/plugins/v0.8).
+Start with the [plugin quickstart](/docs/plugins) to create your first plugin.
 
-Migrating an existing plugin? Follow the standalone [runtime-entry migration guide](/docs/plugins/v0.8/migration).
+Migrating an existing plugin? Follow the standalone [runtime-entry migration guide](/docs/plugins/migration).
 
 Local plugins are directory sources installed into one Paseo daemon. A plugin can contribute:
 
@@ -42,11 +42,22 @@ my-plugin/
   tsconfig.json
 ```
 
-The required root manifest is `paseo-plugin.json`. It contains the default plugin ID and supported Paseo versions:
+The required root manifest is `paseo-plugin.json`:
 
 ```json
-{ "id": "my-plugin", "requirements": { "paseo": ">=0.8.0" } }
+{
+  "id": "my-plugin",
+  "description": "Reviews changes before merge",
+  "requirements": { "paseo": ">=0.8.0" }
+}
 ```
+
+| Field          | Required | Behavior                                                               |
+| -------------- | -------- | ---------------------------------------------------------------------- |
+| `id`           | Yes      | Default installation ID.                                               |
+| `description`  | No       | Non-empty summary shown below the plugin ID in **Settings → Plugins**. |
+| `requirements` | No       | Supported Paseo versions, described below.                             |
+| `build`        | No       | Preparation commands, described in the CLI reference.                  |
 
 ### Requirements
 
@@ -67,8 +78,8 @@ Prerelease Paseo versions also satisfy a range their stable core (`major.minor.p
 for typechecking. Raise the minimum when adopting a newer API. Add an upper bound when a later
 release is incompatible; a minimum alone does not promise protection from future breaking changes.
 
-The daemon checks its version before installing, running Git build commands, or loading a plugin,
-and checks again on startup, enable, and reload. A rejected Git update keeps the installed revision.
+The daemon checks its version before installing, running preparation commands, or loading a plugin,
+and checks again on startup, enable, and reload. A rejected update keeps the installed revision.
 Each connected app checks its own version before evaluating client code and shows incompatibility
 in Settings → Plugins. A compatible daemon does not make an older app compatible. A plugin with no
 client entry does not require the connected app to match.
@@ -85,7 +96,7 @@ and cannot show this new diagnostic.
 | `index.server.ts`  | Daemon subprocess     | `PluginServerContext` | When the plugin contributes handlers, hooks, settings persistence, or providers |
 
 At least one entry is required; both accept `.ts` or `.tsx`. A directory that still has only the
-old `index.ts` fails to load and points at the [migration guide](/docs/plugins/v0.8/migration).
+old `index.ts` fails to load and points at the [migration guide](/docs/plugins/migration).
 
 Plugin, surface, sidebar-item, workspace-panel, Command Center item, attachment-source, and
 slash-command IDs start with a lowercase letter and contain lowercase letters, numbers, or hyphens.
@@ -264,7 +275,7 @@ process, credential, and other machine-local work under `server/`. A plugin with
 
 ### Providers
 
-Follow [Build a provider plugin](/docs/plugins/v0.8/providers) for direct and ACP implementations,
+Follow [Build a provider plugin](/docs/plugins/providers) for direct and ACP implementations,
 session lifecycle, composer settings, timeline renderers, testing, and distribution.
 
 Call `server.registerProvider()` with a `ProviderRegistration` from
@@ -1873,6 +1884,88 @@ remove Command Center items and clear the installation's query state. An already
 remains as unavailable until its matching contribution returns or the user closes it. Panel render
 failures stay inside the plugin error boundary.
 
+## Plugin sources
+
+Paste one of these source identifiers into **Settings → Plugins**, or pass it to
+`paseo plugin install`. `paseo plugin add <source>` and `paseo plugin install <source>` are aliases.
+Absolute host paths are recommended because relative paths resolve against the daemon's working
+directory. The app does not expand `~`; your shell may expand it before the CLI runs.
+
+| Source                     | Accepted form                                                              | Example                                       |
+| -------------------------- | -------------------------------------------------------------------------- | --------------------------------------------- |
+| Host directory             | Absolute or relative path on the daemon host                               | `/srv/paseo/plugins/review`                   |
+| GitHub repository          | `github:owner/repository` or `owner/repository`                            | `github:acme/paseo-review`                    |
+| Git repository             | `git:<URL or SCP source>`; the prefix is optional for URLs and SCP sources | `git:https://git.example.com/acme/review.git` |
+| npm package                | `npm:<name>[@<version, tag, or range>]`; `npm:` is optional                | `npm:@acme/paseo-review@^1.2.0`               |
+| Plugin below a source root | Append `:relative/plugin/path` to any source                               | `github:acme/monorepo:plugins/review`         |
+
+Git URLs use `https://`, `http://`, `ssh://`, `git://`, or `file://`. SCP sources use
+`user@host:path`. `file://` selects Git acquisition, not directory installation.
+
+npm names are lowercase unscoped `name` or scoped `@scope/name`. Each component starts with a
+letter or digit and then contains letters, digits, `.`, `_`, or `-`. After the package name, an
+optional `@` introduces an exact version, distribution tag, or npm semver range. Omitting it means
+`latest`. Quote shell arguments containing spaces or comparison operators. npm aliases, tarball
+URLs, and npm's `file:` specifications are not plugin source identifiers; use a directory or Git
+source for those locations. Use the `npm:` prefix for an unscoped package with both a selector
+and subdirectory (`npm:review@1.2.0:nested`); without it, `user@host:path` is an SCP Git source.
+The package registry validates the selected version, tag, or range.
+
+Paseo resolves an identifier in this order:
+
+1. An existing directory matching the complete identifier on the daemon host wins, including a
+   literal directory containing `:`.
+2. Otherwise, recognize `npm:`, `github:`, or `git:` before interpreting a subdirectory suffix.
+   `git://` is a Git URL scheme. An explicit prefix selects acquisition of that kind.
+3. Recognize a final `:relative/plugin/path` only when its suffix contains no empty, `.` or `..`
+   segments. A lone `.` selects the source root. Both `/` and `\` separate suffix segments; use `/`
+   across hosts. URL ports and the separator in an SCP source stay part of the source. A suffix
+   that does not satisfy these rules stays part of the identifier.
+4. Without an explicit prefix, an existing directory matching the remaining source wins.
+5. Resolve Git URLs and SCP sources as Git; expand exact `owner/repository` shorthand to GitHub
+   HTTPS. `github:` requires that shorthand; `git:` accepts it as well as URLs and SCP sources.
+6. Resolve a remaining npm package name with its optional selector through the host's registry.
+   Reject anything else.
+
+Directory lookup happens on the daemon host. The app uses the `paseo-plugin.json` ID; the CLI
+accepts `--id <runtime-id>` to override it. An existing installation ID is rejected without changing
+its enabled state or files.
+
+```bash
+paseo plugin install /srv/paseo/plugins/review
+paseo plugin install github:acme/paseo-review
+paseo plugin install git:https://git.example.com:8443/acme/monorepo.git:plugins/review --ref main
+paseo plugin install git@git.example.com:acme/review.git
+paseo plugin install file:///srv/repos/monorepo:plugins/review
+paseo plugin install npm:paseo-review@1.2.0
+paseo plugin install npm:@acme/paseo-review@next
+paseo plugin install 'npm:@acme/paseo-review@>=1.2.0 <2.0.0' --id review-staging
+paseo plugin install npm:@acme/plugins@^1.2.0:plugins/review
+```
+
+`--ref` applies only to Git and accepts a branch, tag, or commit for this installation. Without it,
+Paseo installs the remote's default HEAD. Installation selectors do not constrain later updates. The legacy
+`--path relative/plugin/path` option is equivalent to a subdirectory suffix, including for npm.
+
+### npm installation and publishing
+
+Install Node.js with npm on the **daemon host** and make `npm` available on the daemon's `PATH`.
+The daemon uses that host's npm user/global configuration and environment for registry selection
+and authentication, including scope-specific registries. The client does not download packages or
+run npm. Loading, enabling, and reloading an installed plugin do not need npm.
+
+The daemon installs each candidate and its production dependencies in an isolated directory. It
+keeps the complete dependency tree and `package-lock.json` when activating it. The installed
+package and lockfile provide its current version and artifact integrity. A version, tag, or range
+chooses content for this installation only.
+
+For package contents, dependencies, preparation, and private registries, see
+[Publish a plugin](/docs/plugins/publishing).
+
+A failed download, dependency installation, manifest check, preparation command, compilation, or
+activation discards the candidate. Other installed plugins keep running. Removing an npm plugin
+deletes its managed files; removing a directory plugin keeps your source directory.
+
 ## CLI reference
 
 ```bash
@@ -1884,7 +1977,10 @@ paseo plugin add https://git.example.com/owner/repository.git --ref main
 paseo plugin add owner/monorepo:plugins/review
 paseo plugin ls [id]
 paseo plugin update <id>
-paseo plugin update --all
+paseo plugin update --all --check
+paseo plugin update --all --yes
+paseo plugin update my-plugin --version 1.2.0
+paseo plugin update my-plugin --ref v2
 paseo plugin reload my-plugin
 paseo plugin logs my-plugin
 paseo plugin disable my-plugin
@@ -1892,18 +1988,36 @@ paseo plugin enable my-plugin
 paseo plugin remove my-plugin
 ```
 
-`ls` reports runtime state, source details, and the installed commit without contacting the remote.
-Use `update` when you want Paseo to contact a tracked Git remote and install an available update.
+`ls` and Settings show source identity and the current installed revision without contacting the
+remote. Identity includes the selected subdirectory and excludes installation selectors.
+
+`update <id>` checks for an update, shows the current and proposed revision with available review
+links, and asks for approval. Declining leaves the installed content unchanged.
+
+- npm checks the package's `latest` version. It offers only a newer version; an installed version
+  newer than latest stays installed. Host npm registry/auth configuration governs resolution.
+- Git checks the remote's current default HEAD, regardless of the branch, tag, or commit selected
+  during installation.
+- Directory plugins are skipped; edit the directory and use `reload`.
+
+`--check` only previews, including with an explicit target or `--yes`. `--yes` skips the question.
+`--all` checks each configured plugin and reports independent results; one failure does not stop
+others. Neither flag permits ordinary npm downgrades.
+
+`--version <version|tag|range>` or `--ref <branch|tag|commit>` selects one matching plugin's update
+content and applies it without another question. An explicit npm version can be older. The next
+ordinary update checks latest again. Explicit targets cannot be combined with `--all`.
+JSON and noninteractive ordinary updates require `--yes`.
+
+Approval acquires exactly the reviewed commit or npm artifact. If it is unavailable or the installed
+plugin changed while reviewing, the update fails and asks you to check again. Failed preparation or
+activation retains the previous installation. Manual app update review is not available yet.
 
 Put `--host <url>` before a management command when the target is not the CLI's default daemon. `remove`
-never deletes a directory source; it deletes the managed checkout for a Git source. The install-time
+never deletes a directory source; it deletes managed files for Git and npm sources. The install-time
 `--id` is the runtime ID and allows the same directory or repository to be installed more than once.
 
-> **Trust every plugin you add.** `paseo plugin add` and `paseo plugin install` mean “I trust this codebase.” Server code and Git preparation commands run unsandboxed with the daemon user's access on the daemon host; client contributions run inside Paseo. Dependencies and future updates are part of that decision. With the global `--host` option, commands run on the remote daemon host.
-
-An existing directory wins over `owner/repository` GitHub shorthand. Append `:relative/path` when
-the plugin lives below the repository root. Omit `--ref` to track the default branch. Explicit
-branches track updates; tags and commits stay pinned.
+> **Trust every plugin you add.** `paseo plugin add` and `paseo plugin install` mean “I trust this codebase.” Server code and preparation commands run unsandboxed with the daemon user's access on the daemon host; client contributions run inside Paseo. Dependencies and future updates are part of that decision. With the global `--host` option, commands run on the remote daemon host.
 
 Most plugins should omit `build`. Use it only when the staged checkout must install a dependency
 that Paseo does not provide, generate source or assets, or perform another required preparation
@@ -1913,10 +2027,7 @@ step:
 {
   "id": "review",
   "requirements": { "paseo": ">=0.8.0" },
-  "build": [
-    ["npm", "ci"],
-    ["npm", "run", "build"]
-  ]
+  "build": [["npm", "ci", "--omit=dev"]]
 }
 ```
 
@@ -1927,7 +2038,8 @@ compilation, activation, or replacement. A failing command reports its output, d
 candidate, and leaves the installed/running version intact. The daemon log records each command and
 output; with the global `--host` option, execution is on that daemon host.
 
-Run `npm run typecheck` before install or reload. Manage plugin source entries with the CLI or Settings.
+Run `npm run typecheck` before install or reload. Manage plugin source entries with the CLI or
+Settings; see [Plugin sources](#plugin-sources) for install syntax.
 
 The daemon-wide **Enable plugins** switch lives under **Settings → Plugins**. A configured plugin remains `disabled` until that switch and the plugin's own enabled state are both on.
 
@@ -1939,7 +2051,7 @@ Use `paseo plugin ls` to read the current status and error.
 
 | Symptom                                                               | Check                                                                                                                                   |
 | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `This plugin was made for an older version of Paseo`                  | The directory has only an `index.ts` entry. Follow the [migration guide](/docs/plugins/v0.8/migration).                                 |
+| `This plugin was made for an older version of Paseo`                  | The directory has only an `index.ts` entry. Follow the [migration guide](/docs/plugins/migration).                                      |
 | `Plugin entry points are missing`                                     | Neither `index.client.tsx` nor `index.server.ts` exists with that exact name.                                                           |
 | `server-only module cannot be imported into the plugin client bundle` | Client code imports `server/`. Move the work behind an RPC and import its contract from `shared/`.                                      |
 | `client-only module cannot be imported into the plugin server bundle` | Server code imports `client/`. Register that contribution from `index.client.tsx` instead.                                              |
