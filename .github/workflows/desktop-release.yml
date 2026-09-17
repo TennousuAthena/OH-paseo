@@ -102,8 +102,10 @@ jobs:
         include:
           - runner: macos-14
             electron_arch: arm64
+            node_heap_mb: 4096
           - runner: macos-15-intel
             electron_arch: x64
+            node_heap_mb: 8192
     permissions:
       contents: write
       packages: read
@@ -161,6 +163,10 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           PASEO_DESKTOP_SMOKE: "1"
           PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
+          # Metro's jest workers OOM on the generated ws-outbound.aot.js validator,
+          # the last module in the web bundle. Node's default heap is sized from
+          # runner RAM, which is not enough on the Intel runner.
+          NODE_OPTIONS: --max-old-space-size=${{ matrix.node_heap_mb }}
         run: |
           set -euo pipefail
           build_args=(-- --publish never --mac --${{ matrix.electron_arch }})
