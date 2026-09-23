@@ -996,27 +996,44 @@ describe("WorkspaceGitService checkout observation", () => {
 
   test("origin/main refreshes a main checkout without configured upstream", async () => {
     const watcher = createWatcherHarness();
-    const getCheckoutSnapshotFacts = vi.fn(async (cwd: string) => ({
-      ...createCheckoutFacts(cwd),
-      currentBranch: "main",
-      remoteUrl: REMOTE_URL,
-      resolvedBaseRef: "main",
-      comparisonBaseRef: null,
-      branchRemoteName: null,
-      branchMergeRef: null,
-      upstreamStatus: null,
+    const releaseInitialFacts = createDeferred<void>();
+    const getCheckoutSnapshotFacts = vi.fn(async (cwd: string) => {
+      await releaseInitialFacts.promise;
+      return {
+        ...createCheckoutFacts(cwd),
+        currentBranch: "main",
+        remoteUrl: REMOTE_URL,
+        resolvedBaseRef: "main",
+        comparisonBaseRef: null,
+        branchRemoteName: null,
+        branchMergeRef: null,
+        upstreamStatus: null,
+      };
+    });
+    const runGitFetch = vi.fn(async () => ({
+      changes: [],
+      nonRemoteRefsChanged: false,
+      error: null,
     }));
-    const service = createService(watcher, { getCheckoutSnapshotFacts });
+    const service = createService(watcher, { getCheckoutSnapshotFacts, runGitFetch });
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
     await vi.waitFor(() => {
       expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(1);
     });
 
-    watcher.records
-      .find((record) => record.directory === GIT_DIR)
-      ?.callback(null, [
-        { path: path.join(GIT_DIR, "refs", "remotes", "origin", "main"), type: "update" },
-      ]);
+    releaseInitialFacts.resolve();
+    await vi.waitFor(() => {
+      expect(getWatcherRecordsForDirectory(watcher, GIT_DIR)).toHaveLength(1);
+      expect(service.getMetrics().workspaceRefreshInFlightCount).toBe(0);
+      expect(service.getMetrics().workspaceObservationSetupInFlightCount).toBe(0);
+      expect(service.getMetrics().fetchInFlightCount).toBe(0);
+      expect(runGitFetch).toHaveBeenCalledTimes(1);
+    });
+    expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(1);
+    const repoWatcher = getWatcherRecordsForDirectory(watcher, GIT_DIR)[0]!;
+    repoWatcher.callback(null, [
+      { path: path.join(GIT_DIR, "refs", "remotes", "origin", "main"), type: "update" },
+    ]);
     await vi.advanceTimersByTimeAsync(1_000);
     await vi.waitFor(() => {
       expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(2);
