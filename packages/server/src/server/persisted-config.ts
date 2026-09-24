@@ -438,7 +438,7 @@ export function loadPersistedConfig(paseoHome: string, logger?: LoggerLike): Per
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = parseConfigText(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[Config] Invalid JSON in ${configPath}: ${message}`, {
@@ -472,7 +472,14 @@ export function readPersistedConfig(
       return options.defaultsIfMissing ? structuredClone(DEFAULT_PERSISTED_CONFIG) : {};
     throw error;
   }
-  return PersistedConfigSchema.parse(stripRemovedConfigFields(JSON.parse(raw))) as PersistedConfig;
+  return PersistedConfigSchema.parse(
+    stripRemovedConfigFields(parseConfigText(raw)),
+  ) as PersistedConfig;
+}
+
+/** Editors such as Windows Notepad save UTF-8 with a byte order mark, which JSON.parse rejects. */
+function parseConfigText(raw: string): unknown {
+  return JSON.parse(raw.replace(/^\uFEFF/, ""));
 }
 
 function configPathParts(field: string): string[] {
