@@ -3710,7 +3710,7 @@ class HeldTurnAgentSession implements AgentSession {
     this.activeTurnId = turnId;
     setTimeout(() => {
       this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
-      if (!this.holdTurns) {
+      if (!this.holdTurns && this.activeTurnId === turnId) {
         this.finishTurn();
       }
     }, 0);
@@ -3765,7 +3765,19 @@ class HeldTurnAgentSession implements AgentSession {
     return { provider: this.provider, sessionId: this.id };
   }
 
-  async interrupt(): Promise<void> {}
+  async interrupt(): Promise<void> {
+    const turnId = this.activeTurnId;
+    if (!turnId) {
+      return;
+    }
+    this.activeTurnId = null;
+    this.pushEvent({
+      type: "turn_canceled",
+      provider: this.provider,
+      reason: "interrupted",
+      turnId,
+    });
+  }
 
   async close(): Promise<void> {}
 }
@@ -4000,6 +4012,66 @@ describe("send_agent_prompt MCP tool", () => {
       });
     } finally {
       vi.useRealTimers();
+      rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+  it("notifies the caller once when it prompts a created child that is still running", async () => {
+    const workdir = await mkdtemp(join(tmpdir(), "mcp-send-running-child-"));
+    const storage = new AgentStorage(join(workdir, "agents"), logger);
+    const parentClient = new HeldTurnAgentClient("claude", false);
+    const childClient = new HeldTurnAgentClient("codex", true);
+    const agentManager = new AgentManager({
+      clients: { claude: parentClient, codex: childClient },
+      registry: storage,
+      logger,
+    });
+
+    try {
+      const parent = await agentManager.createAgent(
+        { provider: "claude", cwd: existingCwd },
+        undefined,
+        { workspaceId: "wks_parent" },
+      );
+      const server = await createAgentMcpServer({
+        agentManager,
+        agentStorage: storage,
+        callerAgentId: parent.id,
+        providerSnapshotManager: createOpenCodeManager().manager,
+        logger,
+      });
+
+      const created = await invokeToolWithParsedInput(registeredTool(server, "create_agent"), {
+        relationship: { kind: "subagent" },
+        workspace: { kind: "current" },
+        title: "Busy Child",
+        provider: "codex/gpt-5.4",
+        initialPrompt: "Run a long command",
+      });
+      const childId = z.object({ agentId: z.string() }).parse(created.structuredContent).agentId;
+      await vi.waitFor(() => expect(agentManager.getAgent(childId)?.lifecycle).toBe("running"));
+
+      const sent = await invokeToolWithParsedInput(registeredTool(server, "send_agent_prompt"), {
+        agentId: childId,
+        prompt: "Stop and reply instead",
+      });
+      expect(sent.structuredContent).toMatchObject({
+        success: true,
+        status: "running",
+      });
+      const childSession = childClient.sessions[0]!;
+      await vi.waitFor(() => expect(childSession.prompts).toHaveLength(2));
+
+      childSession.finishTurn();
+
+      function finishNotifications() {
+        return (parentClient.sessions[0]?.prompts ?? []).filter((prompt) =>
+          prompt.includes(`Agent ${childId} (Busy Child) finished.`),
+        );
+      }
+      await vi.waitFor(() => expect(finishNotifications()).not.toHaveLength(0));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(finishNotifications()).toHaveLength(1);
+    } finally {
       rmSync(workdir, { recursive: true, force: true });
     }
   });
