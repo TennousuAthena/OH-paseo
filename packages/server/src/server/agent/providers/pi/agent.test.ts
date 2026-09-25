@@ -120,6 +120,42 @@ function readUtf8File(pathname: string): string {
 
 type PaseoExtensionListener = (event: unknown, context?: unknown) => unknown;
 
+interface PiSessionEntry {
+  type: "message";
+  id: string;
+  parentId: string | null;
+  message: { role: string; content: unknown };
+}
+
+function piUserEntry(input: { id: string; parentId: string | null; text: string }): PiSessionEntry {
+  return {
+    type: "message",
+    id: input.id,
+    parentId: input.parentId,
+    message: { role: "user", content: input.text },
+  };
+}
+
+function piAssistantEntry(id: string, parentId: string): PiSessionEntry {
+  return { type: "message", id, parentId, message: { role: "assistant", content: [] } };
+}
+
+// Pi's context path: the entries from the root to the leaf.
+function piBranchTo(entries: PiSessionEntry[], leafId: string): PiSessionEntry[] {
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const branch: PiSessionEntry[] = [];
+  for (let entry = byId.get(leafId); entry; entry = byId.get(entry.parentId ?? "")) {
+    branch.unshift(entry);
+  }
+  return branch;
+}
+
+function parseEntryCapture(notification: string): unknown {
+  const prefix = "PASEO_ENTRY_CAPTURE ";
+  expect(notification.startsWith(prefix)).toBe(true);
+  return JSON.parse(notification.slice(prefix.length));
+}
+
 async function loadPaseoExtensionListeners(
   extensionPath: string,
 ): Promise<Map<string, PaseoExtensionListener>> {
@@ -921,7 +957,8 @@ describe("PiRpcAgentSession", () => {
     })) as PiRpcAgentSession;
     const events = new SessionEvents(session);
     const fakeSession = pi.latestSession();
-    fakeSession.capturedUserEntries = [{ id: "entry-old", parentId: null, text: "old prompt" }];
+    fakeSession.treeUserEntries = [{ id: "entry-old", parentId: null, text: "old prompt" }];
+    fakeSession.contextUserEntries = fakeSession.treeUserEntries;
 
     await session.startTurn("new prompt", { clientMessageId: "client-new" });
     fakeSession.finishSubmittedUserMessage({
@@ -1509,6 +1546,47 @@ describe("PiRpcAgentSession", () => {
     ]);
 
     await session.close();
+  });
+
+  test("captures the session's user entries apart from the ones on the current branch", async () => {
+    const pi = new FakePi();
+    const session = await createClient(pi).createSession(createConfig());
+    onTestFinished(() => session.close());
+    const listeners = await loadPaseoExtensionListeners(pi.recordedLaunches[0]!.extensionPaths[0]!);
+    // "abandoned" was rewound; "two" was sent from the same parent afterwards.
+    const entries = [
+      piUserEntry({ id: "one", parentId: null, text: "first" }),
+      piAssistantEntry("one-reply", "one"),
+      piUserEntry({ id: "abandoned", parentId: "one-reply", text: "rewound away" }),
+      piAssistantEntry("abandoned-reply", "abandoned"),
+      piUserEntry({ id: "two", parentId: "one-reply", text: "second" }),
+      piAssistantEntry("two-reply", "two"),
+    ];
+    const notifications: string[] = [];
+    const context = {
+      sessionManager: {
+        getEntries: () => entries,
+        buildContextEntries: () => piBranchTo(entries, "two-reply"),
+      },
+      ui: { notify: (message: string) => notifications.push(message) },
+    };
+
+    await listeners.get("session_start")?.({}, context);
+
+    expect(notifications.map(parseEntryCapture)).toEqual([
+      {
+        reason: "session_start",
+        treeEntries: [
+          { id: "one", parentId: null, text: "first" },
+          { id: "abandoned", parentId: "one-reply", text: "rewound away" },
+          { id: "two", parentId: "one-reply", text: "second" },
+        ],
+        contextEntries: [
+          { id: "one", parentId: null, text: "first" },
+          { id: "two", parentId: "one-reply", text: "second" },
+        ],
+      },
+    ]);
   });
 
   test("appends agent and daemon prompts after Pi's discovered system prompt", async () => {
@@ -2856,10 +2934,11 @@ describe("PiRpcAgentClient", () => {
 
   test("rewinds conversation through the Pi tree navigation bridge", async () => {
     const { pi, session, events } = await createSession();
-    pi.latestSession().capturedUserEntries = [
+    pi.latestSession().treeUserEntries = [
       { id: "entry-1", parentId: null, text: "first prompt" },
       { id: "entry-3", parentId: "entry-2", text: "second prompt" },
     ];
+    pi.latestSession().contextUserEntries = pi.latestSession().treeUserEntries;
 
     await session.startTurn("first prompt");
     pi.latestSession().finishTurn({ role: "assistant", content: [] });
@@ -2873,6 +2952,23 @@ describe("PiRpcAgentClient", () => {
       supportsRewindBoth: false,
     });
     expect(pi.latestSession().treeNavigationRequests).toEqual(["entry-1"]);
+  });
+
+  test("rewinds a row whose Pi entry compaction summarized away", async () => {
+    const { pi, session } = await createSession();
+    const fakeSession = pi.latestSession();
+    // Compaction summarized entry-1, so the replayed branch starts at entry-3.
+    fakeSession.treeUserEntries = [
+      { id: "entry-1", parentId: null, text: "first prompt" },
+      { id: "entry-3", parentId: "entry-2", text: "second prompt" },
+    ];
+    fakeSession.contextUserEntries = [
+      { id: "entry-3", parentId: "entry-2", text: "second prompt" },
+    ];
+
+    await session.revertConversation?.({ messageId: "entry-1" });
+
+    expect(fakeSession.treeNavigationRequests).toEqual(["entry-1"]);
   });
 
   test("injects MCP servers without replacing the Pi global MCP config", async () => {
