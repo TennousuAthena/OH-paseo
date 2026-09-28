@@ -1,10 +1,10 @@
 # Changelog
 
-## 0.10.0-beta.1 - 2026-09-27
+## 0.10.0 - 2026-09-28
 
 ### Added
 
-- Added OpenCode v2 support, selected automatically from the installed `opencode` version ([#5198](https://github.com/getpaseo/paseo/pull/5198) by [@karrots](https://github.com/karrots), [@dsingal0](https://github.com/dsingal0))
+- Added OpenCode v2 support, selected automatically from the installed `opencode` version ([#5198](https://github.com/getpaseo/paseo/pull/5198), [#5526](https://github.com/getpaseo/paseo/pull/5526) by [@karrots](https://github.com/karrots), [@dsingal0](https://github.com/dsingal0), [@gszep](https://github.com/gszep))
 - Added task lists from rpiv-todo, pi-goal-x, and Pi's example todo extension to Pi chats ([#5309](https://github.com/getpaseo/paseo/pull/5309))
 - Added subagent runs from pi-subagents, Tintinweb pi-subagents, and Gotgenes pi-subagents to the Subagents track ([#5309](https://github.com/getpaseo/paseo/pull/5309))
 - Added rpiv-ask-user-question dialogs to Pi chats as one question form ([#5309](https://github.com/getpaseo/paseo/pull/5309))
