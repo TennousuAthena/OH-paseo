@@ -8,7 +8,6 @@ import type { SessionInfo, SessionMessageInfo } from "@opencode/client";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Logger } from "pino";
 import type {
-  AgentLaunchContext,
   AgentMode,
   AgentPermissionResponse,
   AgentPersistenceHandle,
@@ -36,6 +35,7 @@ import { features } from "./configuration.js";
 import { commands } from "./commands.js";
 import { messages } from "./history.js";
 import { SessionPermissions } from "./permissions.js";
+
 export class OpenCodeV2Session implements AgentSession {
   readonly provider = "opencode";
   readonly capabilities = V2_CAPABILITIES;
@@ -106,8 +106,9 @@ export class OpenCodeV2Session implements AgentSession {
   private get client() {
     return this.connection.client;
   }
-  async initialize(launch?: AgentLaunchContext) {
-    this.launchEnv = launch?.env;
+  async initialize(environment?: Record<string, string>) {
+    // OpenCode replaces the whole local shell environment, rather than overlaying it.
+    this.launchEnv = environment;
     this.watchExit(this.connection);
     await this.configureConnection();
     const location = { directory: this.config.cwd };
@@ -130,8 +131,6 @@ export class OpenCodeV2Session implements AgentSession {
     await waitForLocationReady({ client: this.client, location, signal: this.abort.signal });
     if (this.requiresPaseoPlugin)
       await awaitPaseoPlugin({ client: this.client, location, signal: this.abort.signal });
-    if (this.launchEnv)
-      await this.client.session.environment({ sessionID: this.id, variables: this.launchEnv });
     for (const [server, config] of Object.entries(this.config.mcpServers ?? {})) {
       await this.client.mcp.add({
         server,
@@ -389,6 +388,10 @@ export class OpenCodeV2Session implements AgentSession {
     }
   }
   private async reconcileConnection() {
+    // Session environments are process-local. Reapply this agent's snapshot before
+    // reconciling a new connection, including event-stream reconnections.
+    if (this.launchEnv)
+      await this.client.session.environment({ sessionID: this.id, variables: this.launchEnv });
     await this.reconcile();
     await this.children.reconcile(this.id);
     const active = await this.client.session.active();
