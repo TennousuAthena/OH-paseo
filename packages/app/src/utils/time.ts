@@ -92,6 +92,16 @@ export function formatCompactTimeAgo(date: Date, now: Date = new Date()): string
 }
 
 /**
+ * A compact label put back into a sentence, for a tooltip or a line with room for prose:
+ * "now" → "just now", "5m" → "5m ago", "Jan 15" stays a date.
+ */
+export function formatCompactTimeAgoAsProse(label: string): string {
+  if (label === "now") return "just now";
+  if (/^\d/.test(label)) return `${label} ago`;
+  return label;
+}
+
+/**
  * How many local midnights lie between two instants: 0 for the same day, 1 for yesterday.
  * Counted on the calendar rather than in elapsed time, so six days and 23 hours ago on
  * today's weekday is 7, and rounded so a DST day of 23 or 25 hours still counts as one.

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   describeCompactTimeAgo,
   formatCompactTimeAgo,
+  formatCompactTimeAgoAsProse,
   formatDuration,
   formatMessageTimestamp,
   formatTimeAgo,
@@ -60,6 +61,15 @@ describe("describeCompactTimeAgo", () => {
   it("keeps formatCompactTimeAgo as the label alone", () => {
     const date = new Date("2026-07-16T10:00:00.000Z");
     expect(formatCompactTimeAgo(date, now)).toBe(describeCompactTimeAgo(date, now).label);
+  });
+});
+
+describe("formatCompactTimeAgoAsProse", () => {
+  it("puts elapsed labels back into prose and leaves dates alone", () => {
+    expect(formatCompactTimeAgoAsProse("now")).toBe("just now");
+    expect(formatCompactTimeAgoAsProse("3m")).toBe("3m ago");
+    expect(formatCompactTimeAgoAsProse("2h")).toBe("2h ago");
+    expect(formatCompactTimeAgoAsProse("Jan 15")).toBe("Jan 15");
   });
 });
 
