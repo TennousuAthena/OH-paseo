@@ -4017,6 +4017,38 @@ describe("HostRuntimeStore initial connection hint bootstrap", () => {
     expect(store.getSnapshot("srv_deep")?.connectionStatus).toBe("error");
     store.syncHosts([]);
   });
+  it("stops connecting to a host removed while its first probe is pending", async () => {
+    useHostRuntimeClock();
+    const firstProbe = createDeferred<void>();
+    let connectCalls = 0;
+    const store = new HostRuntimeStore({
+      storage: createMemoryHostRuntimeStorage(),
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async ({ host }) => {
+          connectCalls += 1;
+          if (connectCalls === 1) await firstProbe.promise;
+          return {
+            client: makeConnectedProbeClient(5) as unknown as DaemonClient,
+            serverId: host.serverId,
+            hostname: host.label ?? null,
+          };
+        },
+        getClientId: async () => "cid_test_removed_host",
+      },
+    });
+    await store.upsertDirectConnection({ serverId: "srv_removed", endpoint: "lan:6767" });
+    await vi.waitFor(() => expect(connectCalls).toBe(1));
+
+    await store.removeHost("srv_removed");
+    firstProbe.resolve();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(connectCalls).toBe(1);
+    expect(store.getSnapshot("srv_removed")).toBeNull();
+    expect(useSessionStore.getState().sessions["srv_removed"]).toBeUndefined();
+  });
+
   it("saves and reconnects a rejected saved host after changing its password", async () => {
     const store = new HostRuntimeStore({
       storage: createMemoryHostRuntimeStorage(),
