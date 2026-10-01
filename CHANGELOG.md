@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.11.0-beta.2 - 2026-10-01
+
+### Added
+
+- Added Usage discovery of ChatGPT logins from Codex CLI, OpenCode, Pi, and OMP ([#5844](https://github.com/getpaseo/paseo/pull/5844))
+- Added Usage discovery of Claude logins from the Claude Code credential file, the macOS keychain, Pi, and OMP ([#5844](https://github.com/getpaseo/paseo/pull/5844))
+
+### Changed
+
+- Changed Usage to show one card per subscription account ([#5844](https://github.com/getpaseo/paseo/pull/5844))
+- Changed Usage to try the account's next login when one is missing, expired, or signed into a different account ([#5844](https://github.com/getpaseo/paseo/pull/5844))
+- Changed the sidebar Usage summary to stay hidden until a usage window has data ([#5844](https://github.com/getpaseo/paseo/pull/5844))
+
+### Fixed
+
+- Fixed built-in plugins, including usage sources, failing to start in packaged desktop apps ([#5844](https://github.com/getpaseo/paseo/pull/5844))
+- Fixed each Paseo skill appearing twice in Codex's skill list ([#5827](https://github.com/getpaseo/paseo/pull/5827) by [@3ae3ae](https://github.com/3ae3ae))
+- Fixed plugin client code failing to import npm packages that declare only `main` or `module` ([#5838](https://github.com/getpaseo/paseo/pull/5838))
+
 ## 0.11.0-beta.1 - 2026-10-01
 
 ### Added
