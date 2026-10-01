@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.0-beta.3 - 2026-10-02
+
+### Added
+
+- Added a pin button to Usage window rows, shown on hover and filled when the window is pinned ([#5876](https://github.com/getpaseo/paseo/pull/5876))
+
+### Changed
+
+- Changed usage source plugins to implement `discover()` and `fetch()` instead of `identify()` ([#5876](https://github.com/getpaseo/paseo/pull/5876))
+
+### Fixed
+
+- Fixed a Usage card disappearing when its login expired; the card now shows the expiry and the command that refreshes it ([#5876](https://github.com/getpaseo/paseo/pull/5876))
+- Fixed a Usage card disappearing when its login was rejected; the card now shows the HTTP status ([#5876](https://github.com/getpaseo/paseo/pull/5876))
+- Fixed an extra Usage card appearing when a usage source failed to discover accounts ([#5876](https://github.com/getpaseo/paseo/pull/5876))
+
 ## 0.11.0-beta.2 - 2026-10-01
 
 ### Added
