@@ -994,7 +994,7 @@ function DesktopDownloadButton({ platform }: { platform: DesktopPlatform }) {
   const download = getDesktopDownload(useRelease(), platform);
   const Icon = download.icon;
   return (
-    <a href={download.href} target="_blank" rel="noopener noreferrer" className={PRIMARY_CTA_CLASS}>
+    <a href={download.href} className={PRIMARY_CTA_CLASS}>
       <Icon className="h-4 w-4" />
       Download for {download.label}
     </a>
