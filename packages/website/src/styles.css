@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/geist";
 
 * {
   scrollbar-color: var(--color-scrollbar-handle) transparent;
@@ -661,7 +661,7 @@
 }
 
 @theme {
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
 
   --color-background: #101615;
   --color-foreground: #fafafa;
