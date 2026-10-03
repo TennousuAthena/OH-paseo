@@ -297,7 +297,19 @@ test.describe("macOS terminal shortcuts", () => {
   });
 });
 
+async function useLinuxKeyboardPlatform(page: Page) {
+  // A user agent alone leaves navigator.platform as MacIntel on macOS hosts.
+  // Emulate both browser identity fields before the app reads its keyboard policy.
+  const session = await page.context().newCDPSession(page);
+  await session.send("Emulation.setUserAgentOverride", {
+    userAgent:
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    platform: "Linux x86_64",
+  });
+}
+
 test("Linux terminal chords keep Control, Alt and Meta distinct", async ({ page }) => {
+  await useLinuxKeyboardPlatform(page);
   await openKeyboardCapture(page);
   await expectTerminalChords(page, [
     { key: "Meta+ArrowLeft", bytes: "" },
@@ -318,6 +330,7 @@ test("Linux terminal chords keep Control, Alt and Meta distinct", async ({ page 
 });
 
 test("opens Find with Control+f on Linux without sending ^F to cat", async ({ page }) => {
+  await useLinuxKeyboardPlatform(page);
   await openControlCharacterTerminal(page);
   await pressTerminalShortcut(page, "Control+f");
   await expect(query(page)).toBeFocused();
