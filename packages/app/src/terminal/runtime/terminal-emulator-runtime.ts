@@ -17,7 +17,6 @@ import {
   type PendingTerminalModifiers,
   hasPendingTerminalModifiers,
   isAppleHandheldPlatform,
-  isMacLikePlatform,
   isTerminalModifierDomKey,
   mergeTerminalModifiers,
   normalizeDomTerminalKey,
@@ -60,7 +59,6 @@ export interface TerminalEmulatorRuntimeMountInput {
   theme: ITheme;
   fontFamily?: string;
   fontSize?: number;
-  isMacLikePlatform?: boolean;
 }
 
 export interface TerminalEmulatorRuntimeCallbacks {
@@ -144,16 +142,6 @@ declare global {
   interface Window {
     __paseoTerminal?: Terminal;
   }
-}
-
-function detectMacLikePlatform(): boolean {
-  return (
-    typeof navigator !== "undefined" &&
-    isMacLikePlatform({
-      userAgent: navigator.userAgent,
-      platform: (navigator as Navigator & { platform?: string }).platform,
-    })
-  );
 }
 
 const isAppleHandheld =
@@ -262,7 +250,6 @@ export class TerminalEmulatorRuntime {
   private hasUngatedWrites = false;
   private readonly inputModeDecoder = new TextDecoder();
   private suppressInput = false;
-  private isMacLikePlatform = false;
   private readonly inputModeTracker = new TerminalInputModeTracker();
   private lastInputModeState: TerminalInputModeState = this.inputModeTracker.getState();
   private themeBackgroundElements: HTMLElement[] = [];
@@ -395,7 +382,7 @@ export class TerminalEmulatorRuntime {
         ...modifiers,
       });
 
-      if (this.pendingModifiers.ctrl || this.pendingModifiers.shift || this.pendingModifiers.alt) {
+      if (hasPendingTerminalModifiers(this.pendingModifiers)) {
         this.callbacks.onPendingModifiersConsumed?.();
       }
 
@@ -454,7 +441,7 @@ export class TerminalEmulatorRuntime {
     terminal: Pick<Terminal, "input" | "scrollToBottom">,
     event: KeyboardEvent,
   ): boolean {
-    if (!this.isMacLikePlatform || hasPendingTerminalModifiers(this.pendingModifiers)) {
+    if (!this.options.isMac || hasPendingTerminalModifiers(this.pendingModifiers)) {
       return false;
     }
     const editingShortcutData = resolveMacTerminalEditingShortcut(event);
@@ -475,7 +462,6 @@ export class TerminalEmulatorRuntime {
 
     input.host.innerHTML = "";
     this.lastSize = null;
-    this.isMacLikePlatform = input.isMacLikePlatform ?? detectMacLikePlatform();
     this.inputModeTracker.reset();
     this.emitInputModeChange();
 

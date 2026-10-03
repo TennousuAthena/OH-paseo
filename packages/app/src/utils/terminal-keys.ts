@@ -82,19 +82,10 @@ export function hasPendingTerminalModifiers(modifiers: PendingTerminalModifiers)
   return modifiers.ctrl || modifiers.shift || modifiers.alt;
 }
 
-interface MacPlatformDetectionInput {
+interface AppleHandheldDetectionInput {
   userAgent: string | null | undefined;
   platform: string | null | undefined;
-}
-
-interface AppleHandheldDetectionInput extends MacPlatformDetectionInput {
   maxTouchPoints: number | null | undefined;
-}
-
-// Matches macOS and iPadOS (which reports a Mac user agent in WKWebView); both
-// follow the same cmd/option editing conventions on hardware keyboards.
-export function isMacLikePlatform(input: MacPlatformDetectionInput): boolean {
-  return /Macintosh|Mac OS/i.test(input.userAgent ?? "") || /Mac/i.test(input.platform ?? "");
 }
 
 // iPadOS 13+ WKWebView reports navigator.platform="MacIntel" and a Mac UA string. Distinguish

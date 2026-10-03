@@ -77,7 +77,7 @@ interface CreateTerminalHostInput {
   width: number;
   height: number;
   scrollback?: number;
-  isMacLikePlatform?: boolean;
+  isMac?: boolean;
 }
 
 function createTerminalHost(input: CreateTerminalHostInput): MountedTerminal {
@@ -100,7 +100,9 @@ function createTerminalHost(input: CreateTerminalHostInput): MountedTerminal {
   const terminalKeys: TerminalKeyRecord[] = [];
   const inputModeChanges: TerminalInputModeState[] = [];
   const openedUrls: string[] = [];
-  const runtime = new TerminalEmulatorRuntime();
+  const runtime = new TerminalEmulatorRuntime(
+    input.isMac === undefined ? undefined : { isMac: input.isMac },
+  );
   runtime.setCallbacks({
     callbacks: {
       onInput: (data) => {
@@ -125,7 +127,6 @@ function createTerminalHost(input: CreateTerminalHostInput): MountedTerminal {
     host,
     initialSnapshot: null,
     scrollback: input.scrollback ?? 10_000,
-    isMacLikePlatform: input.isMacLikePlatform,
     theme: {
       background: "#0b0b0b",
       foreground: "#e6e6e6",
@@ -527,7 +528,7 @@ describe("terminal emulator runtime in a real browser", () => {
 
   it("translates mac editing shortcuts into shell editing sequences", async () => {
     await page.viewport(900, 600);
-    const mounted = createTerminalHost({ width: 720, height: 360, isMacLikePlatform: true });
+    const mounted = createTerminalHost({ width: 720, height: 360, isMac: true });
 
     await waitFor({ predicate: () => mounted.sizes.length > 0 });
 
@@ -550,9 +551,23 @@ describe("terminal emulator runtime in a real browser", () => {
     expect(mounted.terminalKeys).toEqual([]);
   });
 
+  it.each([true, false])("keeps pending modifier chips authoritative (isMac=%s)", async (isMac) => {
+    const mounted = createTerminalHost({ width: 720, height: 360, isMac });
+    await waitFor({ predicate: () => mounted.sizes.length > 0 });
+    mounted.runtime.setPendingModifiers({
+      pendingModifiers: { ctrl: true, alt: false, shift: false },
+    });
+    dispatchTerminalKey({ host: mounted.host, key: "ArrowLeft", keyCode: 37, altKey: true });
+    await nextFrame();
+    expect(mounted.inputs).toEqual([]);
+    expect(mounted.terminalKeys).toEqual([
+      { key: "ArrowLeft", ctrl: true, alt: true, shift: false, meta: false },
+    ]);
+  });
+
   it("keeps cmd+shift+arrow free for app-level shortcuts", async () => {
     await page.viewport(900, 600);
-    const mounted = createTerminalHost({ width: 720, height: 360, isMacLikePlatform: true });
+    const mounted = createTerminalHost({ width: 720, height: 360, isMac: true });
 
     await waitFor({ predicate: () => mounted.sizes.length > 0 });
 
@@ -571,7 +586,7 @@ describe("terminal emulator runtime in a real browser", () => {
 
   it("does not remap modified arrows on non-mac platforms", async () => {
     await page.viewport(900, 600);
-    const mounted = createTerminalHost({ width: 720, height: 360, isMacLikePlatform: false });
+    const mounted = createTerminalHost({ width: 720, height: 360, isMac: false });
 
     await waitFor({ predicate: () => mounted.sizes.length > 0 });
 
