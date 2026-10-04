@@ -291,7 +291,7 @@ function FooterIconButton({
   buttonRef?: RefObject<View | null>;
 }) {
   const isCompact = useIsCompactFormFactor();
-  const iconSize = isCompact ? theme.iconSize.xl : theme.iconSize.md;
+  const iconSize = isCompact ? theme.iconSize.lg : theme.iconSize.md;
 
   return (
     <Tooltip delayDuration={300}>
