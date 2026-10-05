@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import os from "node:os";
@@ -14,6 +15,7 @@ import {
   type ProviderInput,
 } from "@getpaseo/plugin/server/provider";
 import type { UsageSourceRegistration } from "@getpaseo/plugin/server";
+import { execCommand } from "@getpaseo/plugin/server";
 import contribute from "../index.server.js";
 
 const connections: ProviderConnection[] = [];
@@ -460,6 +462,25 @@ for (const [env, expected] of [
     expect(await h.provider.status!({ launch: h.launch })).toEqual(expected);
   });
 }
+test("status preserves the version-probe command and stderr diagnostic", async () => {
+  const h = await harness("catalog-controls", {
+    MUSE_TEST_VERSION_ERROR: "Muse version probe could not read its installation metadata",
+  });
+  // Compare against the original execFile callback: wrapping in MuseError only changed its kind.
+  const previousDiagnostic = await new Promise<string>((resolve, reject) => {
+    execFile(h.launch.command, [...h.launch.args, "--version"], { env: h.launch.env }, (error) => {
+      if (error) resolve(error.message);
+      else reject(new Error("Expected the version probe to fail"));
+    });
+  });
+  const status = await h.provider.status!({ launch: h.launch });
+  expect(status).toEqual({ available: false, diagnostic: previousDiagnostic });
+  expect(status.diagnostic).toContain("--version");
+  expect(status.diagnostic).toContain(
+    "Muse version probe could not read its installation metadata",
+  );
+  expect(await h.recorded()).toEqual([]);
+});
 test("status reports a missing executable", async () => {
   const h = await harness();
   expect(
@@ -1530,3 +1551,90 @@ test("Muse window identity follows the reported duration instead of assuming fiv
     ],
   });
 });
+
+test("status accepts initialization slower than the account deadline without isolating history", async () => {
+  const h = await harness("catalog-controls", { MUSE_TEST_INITIALIZE_DELAY_MS: "3500" });
+  expect(await h.provider.status!({ launch: h.launch })).toEqual({ available: true });
+  expect(await h.recorded()).toContainEqual({ event: "hostClosed" });
+}, 10000);
+
+for (const extension of ["cmd", "bat"]) {
+  test.runIf(process.platform === "win32")(
+    `launches the discovered Muse .${extension} for status, catalog and sessions`,
+    async () => {
+      const h = await harness("catalog-controls");
+      const shim = path.join(h.root, `muse launcher.${extension}`);
+      await writeFile(shim, `@echo off\r\n"${process.execPath}" "${h.launch.args[0]}" %*\r\n`);
+      h.launch.command = shim;
+      h.launch.args = [];
+      expect(await h.provider.status!({ launch: h.launch })).toEqual({ available: true });
+      await h.send({ type: "catalog", requestId: "shim-catalog" });
+      expect(await h.wait((event) => event.type === "catalog")).toMatchObject({
+        requestId: "shim-catalog",
+      });
+      await h.open();
+      expect(await h.wait((event) => event.type === "session.opened")).toMatchObject({
+        sessionId: "paseo-session",
+      });
+    },
+    20000,
+  );
+}
+
+test("force-stops a Muse host that ignores stdin EOF", async () => {
+  const h = await stubbornHostHarness();
+  try {
+    const result = await Promise.race([
+      h.provider.status!({ launch: h.launch }),
+      delay(10000).then(() => {
+        throw new Error("Muse status did not finish closing its host");
+      }),
+    ]);
+    expect(result).toEqual({ available: true });
+    const hosts = (await h.recorded()).filter((row) => row.event === "stubbornHost");
+    expect(hosts).toHaveLength(1);
+    expect(() => process.kill(hosts[0].pid, 0)).toThrow();
+  } finally {
+    await cleanupStubbornHosts(h);
+  }
+}, 15000);
+
+test("closes the whole Muse host after an uncorrelated MSP error", async () => {
+  const h = await stubbornHostHarness({ MUSE_TEST_NULL_ERROR_ID: "1" });
+  try {
+    const result = await h.provider.status!({ launch: h.launch });
+    expect(result).toEqual({ available: false, diagnostic: "Cannot recover request id" });
+    const recorded = await h.recorded();
+    expect(recorded.some((row) => row.event === "hostClosed")).toBe(true);
+    const hosts = recorded.filter((row) => row.event === "stubbornHost");
+    expect(hosts).toHaveLength(1);
+    expect(() => process.kill(hosts[0].pid, 0)).toThrow();
+  } finally {
+    await cleanupStubbornHosts(h);
+  }
+}, 15000);
+
+async function stubbornHostHarness(env: Record<string, string> = {}) {
+  const h = await harness("catalog-controls", { MUSE_TEST_STUBBORN: "1", ...env });
+  if (process.platform === "win32") {
+    const shim = path.join(h.root, "stubborn muse.cmd");
+    await writeFile(shim, `@echo off\r\n"${process.execPath}" "${h.launch.args[0]}" %*\r\n`);
+    h.launch.command = shim;
+    h.launch.args = [];
+  }
+  return h;
+}
+async function cleanupStubbornHosts(h: Awaited<ReturnType<typeof harness>>) {
+  // Keep a failing Windows regression from leaving its deliberately stubborn child alive.
+  for (const host of (await h.recorded()).filter((row) => row.event === "stubbornHost")) {
+    if (process.platform === "win32") {
+      await execCommand("taskkill.exe", ["/PID", String(host.pid), "/T", "/F"], {
+        shell: false,
+      }).catch(() => {});
+    } else {
+      try {
+        process.kill(host.pid, "SIGKILL");
+      } catch {}
+    }
+  }
+}

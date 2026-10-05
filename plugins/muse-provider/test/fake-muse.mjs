@@ -6,8 +6,19 @@ import { fileURLToPath } from "node:url";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const scenario = process.env.MUSE_TEST_SCENARIO || "text-reasoning";
 if (process.argv.includes("--version")) {
+  if (process.env.MUSE_TEST_VERSION_ERROR) {
+    process.stderr.write(process.env.MUSE_TEST_VERSION_ERROR + "\n");
+    process.exit(17);
+  }
   process.stdout.write(`Muse Code ${process.env.MUSE_TEST_VERSION || "1.4.1"}\n`);
   process.exit(0);
+}
+if (process.env.MUSE_TEST_STUBBORN) {
+  setInterval(() => {}, 1000);
+  appendFileSync(
+    process.env.MUSE_TEST_REQUESTS,
+    JSON.stringify({ event: "stubbornHost", pid: process.pid }) + "\n",
+  );
 }
 const rows = readFixture(scenario);
 if (process.env.MUSE_TEST_REQUESTS)
@@ -22,6 +33,14 @@ const receipts = new Set();
 const lines = createInterface({ input: process.stdin });
 lines.on("line", receive);
 function receive(line) {
+  const parsed = JSON.parse(line);
+  if (parsed.method === "initialize" && process.env.MUSE_TEST_INITIALIZE_DELAY_MS) {
+    setTimeout(() => receiveFrame(line), Number(process.env.MUSE_TEST_INITIALIZE_DELAY_MS));
+    return;
+  }
+  receiveFrame(line);
+}
+function receiveFrame(line) {
   const frame = JSON.parse(line);
   if (process.env.MUSE_TEST_REQUESTS)
     appendFileSync(process.env.MUSE_TEST_REQUESTS, JSON.stringify(frame) + "\n");
