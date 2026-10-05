@@ -84,6 +84,7 @@ async function harness(
   async function open(
     persistence?: Extract<ProviderInput, { type: "session.open" }>["persistence"],
     mode = "onRequest",
+    model: string | null = "meta/muse-spark-1.3",
   ) {
     await send({
       type: "session.open",
@@ -97,7 +98,7 @@ async function harness(
         mcpServers: {},
         persist: true,
         mode,
-        model: "meta/muse-spark-1.3",
+        model: model ?? undefined,
         thinkingOption: "high",
         systemPrompt: "Test instructions",
       },
@@ -610,12 +611,15 @@ test("ordinary subagent tool calls render sub_agent details without inventing ch
     }),
   );
 });
-for (const [variants, reasoningEffortVariants, expected] of [
-  [["low", "high"], ["medium"], ["medium"]],
-  [["low", "high"], "unknown", ["low", "high"]],
-  [[], [], ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]],
+for (const [variants, expected] of [
+  [
+    ["low", "high"],
+    ["low", "high"],
+  ],
+  ["unknown", ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]],
+  [[], ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]],
 ] as const) {
-  test(`catalogue effort discovery ${JSON.stringify(reasoningEffortVariants)} with variants ${JSON.stringify(variants)}`, async () => {
+  test(`catalogue effort discovery with variants ${JSON.stringify(variants)}`, async () => {
     const model = {
       modelId: "test-model",
       providerId: "meta",
@@ -623,7 +627,6 @@ for (const [variants, reasoningEffortVariants, expected] of [
       contextLimit: 123456,
       isDefault: true,
       variants,
-      reasoningEffortVariants,
       defaultReasoningEffort: "high",
     };
     const h = await harness("catalog-controls", { MUSE_TEST_MODELS: JSON.stringify([model]) });
@@ -634,6 +637,153 @@ for (const [variants, reasoningEffortVariants, expected] of [
         defaultModel: "test-model",
         models: [
           { contextWindowMaxTokens: 123456, thinkingOptions: expected.map((id) => ({ id })) },
+        ],
+      },
+    });
+  });
+}
+test("catalogue loads models whose effort tiers carry descriptions", async () => {
+  const deepest = "Use this for deepest analysis and complex fixes.";
+  const row = (modelId: string, isDefault: boolean) => ({
+    modelId,
+    providerId: "meta",
+    displayLabel: modelId,
+    contextLimit: 1000000,
+    isDefault,
+    defaultReasoningEffort: "max",
+    variants: ["minimal", "low", "medium", "high", "xhigh", "max"],
+    reasoningEffortVariants: isDefault ? [] : [{ tier: "xhigh", description: deepest }],
+  });
+  const models = [
+    row("muse-spark-1.3", true),
+    row("muse-spark-1.3-contributor", false),
+    row("muse-spark-1.2", false),
+    row("muse-spark-1.2-contributor", false),
+  ];
+  const h = await harness("catalog-controls", { MUSE_TEST_MODELS: JSON.stringify(models) });
+  await h.send({ type: "catalog", requestId: "models" });
+  const result = await h.wait(
+    (event) => event.type === "catalog" || event.type === "request.failed",
+  );
+  const offered = [
+    { id: "minimal" },
+    { id: "low" },
+    { id: "medium" },
+    { id: "high" },
+    { id: "xhigh" },
+    { id: "max", isDefault: true },
+  ];
+  expect(result).toMatchObject({
+    type: "catalog",
+    catalog: {
+      defaultModel: "muse-spark-1.3",
+      models: [
+        { id: "muse-spark-1.3", defaultThinkingOptionId: "max" },
+        { id: "muse-spark-1.3-contributor", thinkingOptions: offered },
+        { id: "muse-spark-1.2", thinkingOptions: offered },
+        { id: "muse-spark-1.2-contributor", thinkingOptions: offered },
+      ],
+    },
+  });
+});
+for (const [configuredModel, catalogModels, expectedModel] of [
+  ["configured-model", [], "configured-model"],
+  [
+    "",
+    [
+      {
+        modelId: "catalog-model",
+        providerId: "meta",
+        displayLabel: "Catalog model",
+        contextLimit: null,
+        isDefault: true,
+        variants: ["high"],
+      },
+    ],
+    "catalog-model",
+  ],
+  ["", [], undefined],
+] as const) {
+  test(`null session model preserves ${expectedModel ?? "unset model"}`, async () => {
+    const h = await harness("text-reasoning", {
+      MUSE_TEST_NULL_MODEL: "1",
+      MUSE_TEST_MODELS: JSON.stringify(catalogModels),
+    });
+    expect(await h.open(undefined, "onRequest", configuredModel || null)).toEqual({
+      type: "session.ready",
+      requestId: "open",
+      sessionId: "paseo-session",
+    });
+    const config = await h.wait((event) => event.type === "session.config");
+    if (config.type !== "session.config") throw new Error("Expected session config");
+    expect(config.config.model).toBe(expectedModel);
+    const saved = h.events.findLast((event) => event.type === "session.persistence");
+    if (!saved) throw new Error("Expected persistence");
+    expect(saved.persistence.data.model).toBe(expectedModel);
+    await h.prompt();
+    await h.wait((event) => event.type === "session.turn" && event.state === "completed");
+  });
+}
+test("session startup accepts described catalog efforts and publishes the complete list", async () => {
+  const model = {
+    modelId: "meta/muse-spark-1.3",
+    providerId: "meta",
+    displayLabel: "Muse Spark",
+    contextLimit: null,
+    isDefault: true,
+    defaultReasoningEffort: "max",
+    variants: ["minimal", "low", "medium", "high", "xhigh", "max"],
+    reasoningEffortVariants: [{ tier: "xhigh", description: "Deepest analysis" }],
+  };
+  const h = await harness("text-reasoning", { MUSE_TEST_MODELS: JSON.stringify([model]) });
+  expect(await h.open()).toEqual({
+    type: "session.ready",
+    requestId: "open",
+    sessionId: "paseo-session",
+  });
+  expect(await h.wait((event) => event.type === "session.config")).toMatchObject({
+    config: {
+      models: [{ id: model.modelId, defaultThinkingOptionId: "max" }],
+      thinkingOptions: model.variants.map((id) => ({ id, isDefault: id === "max" })),
+    },
+  });
+  await h.send({
+    type: "session.configure",
+    requestId: "choose-max",
+    sessionId: "paseo-session",
+    changes: { thinkingOption: "max" },
+  });
+  await h.wait((event) => event.type === "request.completed" && event.requestId === "choose-max");
+  await h.prompt();
+  await h.wait((event) => event.type === "session.turn" && event.state === "completed");
+  expect(
+    (await h.recorded()).find((frame) => frame.method === "turn/start").params.reasoningEffort,
+  ).toBe("max");
+});
+for (const metadata of [
+  "unknown",
+  [{ tier: "future-tier", description: { text: "Future metadata" } }],
+]) {
+  test(`catalog ignores unused effort descriptions ${JSON.stringify(metadata)}`, async () => {
+    const model = {
+      modelId: "test-model",
+      providerId: "meta",
+      displayLabel: "Muse Spark",
+      contextLimit: null,
+      isDefault: true,
+      defaultReasoningEffort: "high",
+      variants: ["low", "high"],
+      reasoningEffortVariants: metadata,
+    };
+    const h = await harness("catalog-controls", { MUSE_TEST_MODELS: JSON.stringify([model]) });
+    await h.send({ type: "catalog", requestId: "models" });
+    expect(
+      await h.wait((event) => event.type === "catalog" || event.type === "request.failed"),
+    ).toMatchObject({
+      type: "catalog",
+      catalog: {
+        models: [
+          { id: model.modelId, thinkingOptions: [{ id: "low" }, { id: "high", isDefault: true }] },
         ],
       },
     });
@@ -1072,6 +1222,46 @@ test("resuming a session reapplies its provider options to the new host", async 
     ["serve", "--sandbox-network", "restricted"],
   ]);
   expect(frames.some((f) => f.method === "session/resume")).toBe(true);
+});
+test("an uncorrelated MSP parse error keeps the provider diagnostic", async () => {
+  const h = await harness("text-reasoning", { MUSE_TEST_NULL_ERROR_ID: "1" });
+  expect(await h.open()).toMatchObject({
+    type: "request.failed",
+    error: { code: "parseError", message: "Cannot recover request id" },
+  });
+});
+test("text deltas with an omitted field stream as text", async () => {
+  const h = await harness("text-reasoning", { MUSE_TEST_IMPLICIT_TEXT_DELTA: "1" });
+  await h.open();
+  await h.wait((e) => e.type === "session.ready");
+  await h.prompt();
+  await h.wait((e) => e.type === "session.turn" && e.state === "completed");
+  expect(
+    h.events.some(
+      (e) =>
+        e.type === "timeline.item" &&
+        e.item.type === "assistant_message" &&
+        e.item.text === "Sum with",
+    ),
+  ).toBe(true);
+});
+test("sessions with a null model import and resume without a null persistence model", async () => {
+  const h = await harness("resume-without-cursor", { MUSE_TEST_NULL_MODEL: "1" });
+  await h.send({
+    type: "sessions",
+    requestId: "null-list",
+    cwd: "/tmp/muse-phase0/repo",
+    limit: 2,
+  });
+  const listed = await h.wait((e) => e.type === "sessions");
+  if (listed.type !== "sessions") throw new Error("Expected sessions");
+  expect(listed.sessions).toHaveLength(2);
+  expect(listed.sessions[0]!.persistence.data.model).toBeUndefined();
+  await h.open(listed.sessions[0]!.persistence);
+  await h.wait((e) => e.type === "session.ready");
+  expect(
+    h.events.some((e) => e.type === "session.config" && e.config.model === "meta/muse-spark-1.3"),
+  ).toBe(true);
 });
 test("sessions list filters workspace and imported persistence opens via resume", async () => {
   const h = await harness("resume-without-cursor");
