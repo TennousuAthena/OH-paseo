@@ -60,7 +60,7 @@ export function BrowsePage({
           <CategoryNav plugins={matches} query={query} />
         </aside>
         <div className="min-w-0 flex-1">
-          <div className="mb-6 flex items-baseline justify-between gap-4">
+          <div className="mb-8 flex items-baseline justify-between gap-4">
             <h1 className="text-3xl font-medium tracking-tight">
               {query.q ? `Results for “${query.q}”${category ? ` in ${title}` : ""}` : title}
               <span className="ml-3 align-middle text-sm font-normal tabular-nums text-extra-muted-foreground">
@@ -73,8 +73,7 @@ export function BrowsePage({
               </a>
             )}
           </div>
-          <PluginSection>
-            <SortTabs query={query} />
+          <PluginSection header={<SortTabs query={query} />}>
             {results.length === 0 && query.q && (
               <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-10 text-center">
                 <p className="text-sm text-muted-foreground">No plugins match.</p>
