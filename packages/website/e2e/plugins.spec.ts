@@ -451,7 +451,7 @@ test.describe("registry fixture layout", () => {
     await openPlugins(page);
     await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("Featured");
     const featured = page.getByRole("region", { name: "Featured" });
-    await expect(featured).toContainText("Hand-picked by the maintainer.");
+    await expect(featured).toContainText("A selection of hand picked plugins");
     await expect(featured.getByRole("link", { name: /Added/ })).toHaveText([
       /Dracula/,
       /Herald/,
