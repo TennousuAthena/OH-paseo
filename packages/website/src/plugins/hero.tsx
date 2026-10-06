@@ -24,8 +24,7 @@ export function PluginsHero({ pluginCount, authorCount, searchScope }: PluginsHe
         </span>
       </h1>
       <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-        Extend Paseo with plugins that can add new themes, workspace panels and new functionality.
-        Plugins work on web, desktop and mobile.
+        Browse community plugins that extend Paseo with new functionality.
       </p>
       <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-3">
