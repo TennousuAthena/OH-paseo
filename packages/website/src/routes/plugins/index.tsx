@@ -131,10 +131,16 @@ function PluginsPage() {
       <div className="mt-10 flex flex-col gap-14">
         {featured.length > 0 && (
           <PluginSection labelledBy="featured">
-            <div>
-              <PluginSectionTitle id="featured">Featured</PluginSectionTitle>
-              <p className="mt-1 text-sm text-muted-foreground">Hand-picked plugins that show what is possible</p>
-            </div>
+            <PluginSectionHeader>
+              <div>
+                <PluginSectionTitle id="featured">Featured</PluginSectionTitle>
+                <p className="mt-1 text-sm text-muted-foreground">A selection of hand picked plugins</p>
+              </div>
+              <a href={browseHref({ sort: "installs", window: DEFAULT_WINDOW })} className={SEE_ALL_CLASS}>
+                See all plugins
+                <ChevronRight className="h-3.5 w-3.5" />
+              </a>
+            </PluginSectionHeader>
             <div className={CARD_ROW_CLASS}>
               {featured.map((plugin) => (
                 <NewPluginCard key={plugin.id} plugin={plugin} added={addedAgo(plugin, now)} />
