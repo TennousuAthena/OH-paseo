@@ -133,7 +133,7 @@ function PluginsPage() {
           <PluginSection labelledBy="featured">
             <div>
               <PluginSectionTitle id="featured">Featured</PluginSectionTitle>
-              <p className="mt-1 text-sm text-muted-foreground">Hand-picked by the maintainer.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Hand-picked plugins that show what is possible</p>
             </div>
             <div className={CARD_ROW_CLASS}>
               {featured.map((plugin) => (
