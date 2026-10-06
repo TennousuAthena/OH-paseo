@@ -112,7 +112,7 @@ describe("registry images", () => {
     "./icon.png",
     "//example.com/x",
   ])("does not load %s in cards or icons", (url) => {
-    const plugin = { ...registry.plugins[0], icon: url, screenshots: [url] } as Plugin;
+    const plugin = { ...registry.plugins[0], icon: url, media: [url] } as Plugin;
     for (const component of [
       createElement(PluginTile, { plugin, size: "sm" }),
       createElement(PluginCard, { plugin }),
@@ -129,7 +129,7 @@ it("uses the first HTTPS screenshot when an earlier screenshot is rejected", () 
   const plugin = {
     ...registry.plugins[0],
     icon: undefined,
-    screenshots: ["data:image/png;base64,AAAA", source],
+    media: ["data:image/png;base64,AAAA", source],
   } as Plugin;
   const nodes = elements(renderToStaticMarkup(createElement(PluginCard, { plugin })));
   expect(

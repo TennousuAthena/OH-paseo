@@ -26,16 +26,16 @@ export function ContributeSection() {
   return (
     <section
       aria-labelledby="build-your-own"
-      className="mt-20 rounded-xl border border-white/10 bg-white/[0.03] px-6 py-8 sm:px-8"
+      className="mt-20 rounded-xl border border-white/10 bg-white/[0.03] px-6 py-8 text-center sm:px-8"
     >
       <h2 id="build-your-own" className="text-lg font-medium">
         Build your own plugin
       </h2>
-      <p className="mt-2 max-w-lg text-sm text-muted-foreground">
+      <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
         Plugins add themes, workspace panels, slash commands, and agent hooks to Paseo. Write one
         with the plugin docs, then submit it to get it listed here.
       </p>
-      <div className="mt-6 flex flex-wrap gap-3">
+      <div className="mt-6 flex flex-wrap justify-center gap-3">
         <a href={DOCS_URL} className={PRIMARY_BUTTON_CLASS}>
           Read the docs
         </a>

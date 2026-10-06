@@ -1,9 +1,17 @@
 import {
-  PublishedPluginDetailSchema,
+  PluginRegistryArtifactSchema,
+  PluginRegistryIdSchema,
   type PluginRegistries,
   type PluginRegistryIdentity,
 } from "@getpaseo/protocol/plugin-registry";
 import type { PluginUpdateTarget } from "@getpaseo/protocol/messages";
+import { z } from "zod";
+
+// Install reads only these fields; the rest of a published plugin is the directory's display data.
+const RegistryInstallDocumentSchema = z.object({
+  id: PluginRegistryIdSchema,
+  artifact: PluginRegistryArtifactSchema,
+});
 
 export interface RegistryOptions {
   defaultUrl?: string;
@@ -49,7 +57,7 @@ export async function resolveRegistryPlugin(
   }
   if (!response.ok)
     throw new Error(`Registry ${base.host} returned ${response.status} for ${identity.id}`);
-  const plugin = PublishedPluginDetailSchema.parse(await response.json());
+  const plugin = RegistryInstallDocumentSchema.parse(await response.json());
   if (plugin.id !== identity.id) throw new Error("Registry returned a different plugin ID");
   const artifact = plugin.artifact;
   const target: PluginUpdateTarget =

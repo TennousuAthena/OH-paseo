@@ -312,7 +312,7 @@ test.describe("registry fixture layout", () => {
     page,
   }) => {
     const plugin = registry.plugins.find((entry) => entry.id === "alhassanaraouf/base2tone")!;
-    const source = plugin.screenshots[0];
+    const source = plugin.media[0];
     await openPlugins(page);
     await expectThumbnailCard(
       page.getByRole("region", { name: "What’s new" }).getByRole("link", { name: /Base2Tone/ }),
@@ -326,6 +326,85 @@ test.describe("registry fixture layout", () => {
     await expect(
       page.getByRole("img", { name: "Base2Tone screenshot 1", exact: true }),
     ).toHaveAttribute("src", source);
+  });
+
+  test("shows images and videos as gallery tiles in registry order and opens each in the viewer", async ({
+    page,
+  }) => {
+    const plugin = registry.plugins.find((entry) => entry.id === "omercnet/dracula")!;
+    const [firstImage, video] = plugin.media;
+    await page.goto(`/plugins/${plugin.id}`);
+    const tiles = page.getByRole("link", { name: /^Dracula (screenshot|video) \d$/ });
+    await expect(tiles).toHaveCount(3);
+    const layout = await tiles.evaluateAll(galleryTiles);
+    expect(layout.map((tile) => tile.href)).toEqual(plugin.media);
+    expect(new Set(layout.map((tile) => tile.size)).size).toBe(1);
+    const preview = tiles.nth(1).locator("video");
+    await expect(preview).toHaveAttribute("preload", "metadata");
+    await expect(preview).not.toHaveAttribute("controls");
+    await expect(preview).not.toHaveAttribute("autoplay");
+    expect(await preview.evaluate((element: HTMLVideoElement) => element.muted)).toBe(true);
+
+    const viewer = page.getByRole("dialog");
+    await tiles.nth(1).click();
+    const playing = viewer.getByLabel("Dracula video 2");
+    await expect(playing).toHaveAttribute("src", video);
+    await expect(playing).toHaveAttribute("controls", "");
+    await expect.poll(() => playing.evaluate(isPaused)).toBe(false);
+    // The fixture video is 320x240, so it has to scale up to fill the viewer.
+    await expect.poll(() => playing.evaluate(viewerFill)).toBeCloseTo(1, 2);
+    await page.keyboard.press("Escape");
+    await expect(viewer).toBeHidden();
+    await expect(page.locator("dialog video")).toHaveCount(0);
+
+    await tiles.first().click();
+    await expect(viewer.getByRole("img", { name: "Dracula screenshot 1" })).toHaveAttribute(
+      "src",
+      firstImage,
+    );
+    await viewer.getByRole("button", { name: "Close" }).click();
+    await expect(viewer).toBeHidden();
+    expect(page.context().pages()).toHaveLength(1);
+
+    const newTab = page.context().waitForEvent("page");
+    await tiles.first().click({ modifiers: ["ControlOrMeta"] });
+    await expect(await newTab).toHaveURL(firstImage);
+    await expect(viewer).toBeHidden();
+  });
+
+  test("keeps a video that fails to load visible in the viewer", async ({ page }) => {
+    const plugin = registry.plugins.find((entry) => entry.id === "gpambrozio/launchd-jobs")!;
+    await page.route(plugin.media[0], (route) => route.abort());
+    await page.goto(`/plugins/${plugin.id}`);
+    await page.getByRole("link", { name: "launchd Jobs video 1" }).click();
+    const video = page.getByRole("dialog").getByLabel("launchd Jobs video 1");
+    await expect(video).toBeVisible();
+    await expect(video).toHaveCSS("opacity", "1");
+  });
+
+  test("shows the plugin tile on cards when its media has no image", async ({ page }) => {
+    await page.goto("/plugins/all");
+    const card = page.getByRole("main").getByRole("link", { name: /launchd Jobs/ });
+    await expect(card.locator("img, video")).toHaveCount(0);
+    await card.click();
+    await expect(
+      page.getByRole("link", { name: "launchd Jobs video 1" }).locator("video"),
+    ).toHaveAttribute(
+      "src",
+      registry.plugins.find((entry) => entry.id === "gpambrozio/launchd-jobs")!.media[0],
+    );
+  });
+
+  test("features listed plugins above What's new in the registry's order", async ({ page }) => {
+    await openPlugins(page);
+    await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("Featured");
+    const featured = page.getByRole("region", { name: "Featured" });
+    await expect(featured).toContainText("Hand-picked by the maintainer.");
+    await expect(featured.getByRole("link", { name: /Added/ })).toHaveText([
+      /Dracula/,
+      /Herald/,
+      /launchd Jobs/,
+    ]);
   });
 
   test("lists the nine categories in order with counts, and the newest plugins first", async ({
@@ -342,6 +421,23 @@ test.describe("registry fixture layout", () => {
     ).toHaveText([/Base2Tone/, /Sayr/, /PromptKit/, /Defer/]);
   });
 });
+
+function galleryTiles(links: Element[]) {
+  return links.map((link) => ({
+    href: link.getAttribute("href"),
+    size: `${link.clientWidth}x${link.clientHeight}`,
+  }));
+}
+
+/** The share of the viewer's room the media fills along its limiting axis; 1 fills it. */
+function viewerFill(media: HTMLElement) {
+  const box = media.getBoundingClientRect();
+  return Math.max(box.width / (window.innerWidth * 0.9), box.height / (window.innerHeight * 0.85));
+}
+
+function isPaused(video: HTMLVideoElement) {
+  return video.paused;
+}
 
 async function expectThumbnailCard(card: Locator, source: string, id: string) {
   // Card screenshots are decorative and hidden from the accessibility tree.

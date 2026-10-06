@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import {
+  addedAgo,
+  featuredPlugins,
   formatInstalls,
   installCommand,
   mostInstalled,
@@ -26,7 +28,7 @@ const plugin: Plugin = {
     resolved: "https://registry.npmjs.org/example.tgz",
     integrity: "sha512-YWJj",
   },
-  screenshots: [],
+  media: [],
   submittedAt: "2026-10-03",
   reviewedAt: "2026-10-03",
   updatedAt: "2026-10-03",
@@ -40,6 +42,7 @@ describe("plugin registry", () => {
       registry: { name: "Internal", url: "https://example.test" },
       categories: [],
       plugins: [plugin],
+      featured: [plugin.id],
       generatedAt: "2026-10-03",
     };
     const detail = { ...plugin, readme: "# Example" };
@@ -60,8 +63,46 @@ describe("plugin registry", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
-  it("orders by submission date and by installs in a window, keeping index order for ties", () => {
-    const older = { ...plugin, id: "acme/older", submittedAt: "2026-09-01" };
+  it("features listed plugins once each, in the registry's order, dropping IDs that are not listed", () => {
+    const listed = [
+      { ...plugin, id: "acme/first" },
+      { ...plugin, id: "acme/second" },
+      { ...plugin, id: "acme/third" },
+    ];
+    const featured = ["acme/third", "acme/not-published", "acme/first", "acme/third"];
+    expect(featuredPlugins(listed, featured).map((p) => p.id)).toEqual([
+      "acme/third",
+      "acme/first",
+    ]);
+    expect(featuredPlugins(listed, ["acme/not-published"])).toEqual([]);
+  });
+  it("lists what's new by first-listing date, not submission or update dates", () => {
+    const listedFirst = {
+      ...plugin,
+      id: "acme/listed-first",
+      submittedAt: "2026-09-20",
+      reviewedAt: "2026-09-21",
+      updatedAt: "2026-10-02",
+      publishedAt: "2026-09-02",
+    };
+    const listedLater = {
+      ...plugin,
+      id: "acme/listed-later",
+      submittedAt: "2026-09-01",
+      reviewedAt: "2026-09-01",
+      updatedAt: "2026-09-01",
+      publishedAt: "2026-09-30",
+    };
+    expect(newestFirst([listedFirst, listedLater]).map((p) => p.id)).toEqual([
+      "acme/listed-later",
+      "acme/listed-first",
+    ]);
+    const now = "2026-10-03T12:00:00.000Z";
+    expect(addedAgo(listedLater, now)).toBe("3d ago");
+    expect(addedAgo(listedFirst, now)).toBe("4w ago");
+  });
+  it("orders by listing date and by installs in a window, keeping index order for ties", () => {
+    const older = { ...plugin, id: "acme/older", publishedAt: "2026-09-01" };
     const twin = { ...plugin, id: "acme/twin" };
     expect(newestFirst([older, plugin, twin]).map((p) => p.id)).toEqual([
       "acme/example",
@@ -155,6 +196,7 @@ describe("plugin registry", () => {
           registry: { name: "Internal", url: base },
           categories: [],
           plugins: [plugin],
+          featured: [],
           generatedAt: "2026-10-03",
         },
       }),

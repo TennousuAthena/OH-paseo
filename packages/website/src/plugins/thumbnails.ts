@@ -1,3 +1,4 @@
+import { pluginMediaKind } from "@getpaseo/protocol/plugin-registry";
 import type { Plugin } from "./registry";
 
 // The single-column grid reaches 591px just below sm (640px minus 48px padding).
@@ -17,7 +18,7 @@ function pluginThumbnailUrl(id: string, source: string, scale: 1 | 2): string {
   return `/plugins/thumb/${CARD_WIDTH * scale}/${encodeURIComponent(source)}?plugin=${encodeURIComponent(id)}`;
 }
 
-/** Only registry-listed screenshots are eligible for transformation or original fallback. */
+/** Only images listed in the plugin's media are eligible for transformation or original fallback. */
 export async function handlePluginThumbnailRequest(
   request: Request,
   plugins: Plugin[],
@@ -38,7 +39,7 @@ export async function handlePluginThumbnailRequest(
   if (!source) return new Response("Invalid thumbnail source", { status: 400 });
 
   const plugin = plugins.find((entry) => entry.id === url.searchParams.get("plugin"));
-  if (!plugin?.screenshots.includes(source))
+  if (!plugin?.media.includes(source) || pluginMediaKind(source) !== "image")
     return new Response("Screenshot not found", { status: 404 });
 
   const format = negotiatedFormat(request.headers.get("accept") ?? "");

@@ -5,6 +5,7 @@ import type { InstallCounts } from "./installs";
 import { type BrowseQuery, browseHref } from "./links";
 import { PLUGIN_GRID_CLASS, PluginCard } from "./plugin-card";
 import { PluginSearch } from "./plugin-search";
+import { PluginSection } from "./section";
 import {
   addedAgo,
   CATEGORIES,
@@ -72,36 +73,38 @@ export function BrowsePage({
               </a>
             )}
           </div>
-          <SortTabs query={query} />
-          {results.length === 0 && query.q && (
-            <div className="mt-8 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-10 text-center">
-              <p className="text-sm text-muted-foreground">No plugins match.</p>
-              <a
-                href={clearHref}
-                className="mt-2 inline-block text-xs text-extra-muted-foreground transition-colors hover:text-muted-foreground"
-              >
-                Clear filters
-              </a>
-            </div>
-          )}
-          {results.length === 0 && !query.q && (
-            <p className="mt-8 text-sm text-muted-foreground">No plugins in this category yet.</p>
-          )}
-          {results.length > 0 && (
-            <div className={`mt-8 ${PLUGIN_GRID_CLASS}`}>
-              {results.map((plugin) =>
-                query.sort === "new" ? (
-                  <PluginCard key={plugin.id} plugin={plugin} added={addedAgo(plugin, now)} />
-                ) : (
-                  <PluginCard
-                    key={plugin.id}
-                    plugin={plugin}
-                    installs={installs[plugin.id]?.[query.window] ?? 0}
-                  />
-                ),
-              )}
-            </div>
-          )}
+          <PluginSection>
+            <SortTabs query={query} />
+            {results.length === 0 && query.q && (
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-10 text-center">
+                <p className="text-sm text-muted-foreground">No plugins match.</p>
+                <a
+                  href={clearHref}
+                  className="mt-2 inline-block text-xs text-extra-muted-foreground transition-colors hover:text-muted-foreground"
+                >
+                  Clear filters
+                </a>
+              </div>
+            )}
+            {results.length === 0 && !query.q && (
+              <p className="text-sm text-muted-foreground">No plugins in this category yet.</p>
+            )}
+            {results.length > 0 && (
+              <div className={PLUGIN_GRID_CLASS}>
+                {results.map((plugin) =>
+                  query.sort === "new" ? (
+                    <PluginCard key={plugin.id} plugin={plugin} added={addedAgo(plugin, now)} />
+                  ) : (
+                    <PluginCard
+                      key={plugin.id}
+                      plugin={plugin}
+                      installs={installs[plugin.id]?.[query.window] ?? 0}
+                    />
+                  ),
+                )}
+              </div>
+            )}
+          </PluginSection>
         </div>
       </div>
     </SiteShell>
@@ -186,7 +189,7 @@ function SortTabs({ query }: { query: BrowseQuery }) {
     <WindowSwitch current={query.window} hrefs={windowHrefs} />
   );
   return (
-    <>
+    <div>
       <div className="flex items-baseline justify-between gap-6 border-b border-white/10">
         <div className="flex gap-6">
           <a
@@ -207,6 +210,6 @@ function SortTabs({ query }: { query: BrowseQuery }) {
         {windowSwitch && <div className="hidden pb-2 sm:block">{windowSwitch}</div>}
       </div>
       {windowSwitch && <div className="mt-4 sm:hidden">{windowSwitch}</div>}
-    </>
+    </div>
   );
 }

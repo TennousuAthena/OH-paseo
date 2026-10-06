@@ -433,7 +433,7 @@ describe("registry plugin sources", () => {
             commit,
             pluginPath: "packages/example",
           },
-          screenshots: [],
+          media: [],
           submittedAt: "2026-10-03",
           reviewedAt: "2026-10-03",
           updatedAt: "2026-10-03",
@@ -516,20 +516,10 @@ it("installs and updates only the npm artifacts pinned by the plugin registry", 
   const server = createServer((request, response) => {
     intents.push(request.headers["x-paseo-install"]);
     response.end(
+      // Install reads only the ID and artifact, so the document omits the directory's display fields.
       JSON.stringify({
         id: "acme/example",
-        name: "Example",
-        description: "Test",
-        categories: [],
-        author: { github: "acme" },
-        repository: { url: "https://github.com/acme/example" },
         artifact: { kind: "npm", package: "paseo-fixture-plugin", ...pin },
-        screenshots: [],
-        submittedAt: "2026-10-03",
-        reviewedAt: "2026-10-03",
-        updatedAt: "2026-10-03",
-        publishedAt: "2026-10-03",
-        readme: "# Example",
       }),
     );
   });

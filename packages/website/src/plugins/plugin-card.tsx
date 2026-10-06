@@ -1,16 +1,15 @@
-import { pluginOverviewUrl } from "@getpaseo/protocol/plugin-overview";
 import { Download } from "lucide-react";
 import { pluginCardScreenshot } from "./thumbnails";
 import { pluginHref } from "./links";
 import { PluginTile } from "./plugin-tile";
-import { formatInstalls, getCategory, type Plugin } from "./registry";
+import { firstMediaImage, formatInstalls, getCategory, type Plugin } from "./registry";
 
 export const PLUGIN_GRID_CLASS =
   "grid gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
 
-/** First allowed screenshot, or the plugin tile on a quiet backdrop when there is none. */
+/** First allowed image, or the plugin tile on a quiet backdrop when there is none. */
 function PluginShot({ plugin }: { plugin: Plugin }) {
-  const url = plugin.screenshots.find(pluginOverviewUrl);
+  const url = firstMediaImage(plugin);
   return (
     <div
       aria-hidden
@@ -101,11 +100,9 @@ export function PluginRankRow({
   return (
     <a
       href={pluginHref(plugin.id)}
-      className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-white/[0.04]"
+      className="flex items-center gap-3 rounded-lg px-4 py-2.5 transition-colors hover:bg-white/[0.04]"
     >
-      <span className="w-4 text-right text-sm tabular-nums text-extra-muted-foreground">
-        {rank}
-      </span>
+      <span className="text-sm tabular-nums text-extra-muted-foreground">{rank}</span>
       <PluginTile plugin={plugin} size="sm" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-white">{plugin.name}</p>
