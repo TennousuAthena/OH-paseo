@@ -64,7 +64,7 @@ function PluginPage() {
       </a>
       <h1 className="mt-4 text-3xl font-medium tracking-tight">{plugin.name}</h1>
       <p className="mt-3 text-lg leading-relaxed text-white/70">{plugin.description}</p>
-      <div className="mt-6">
+      <div className="mt-6 w-fit max-w-full">
         <CodeBlock size="sm">{installCommand(plugin)}</CodeBlock>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2 text-xs text-extra-muted-foreground [&>*+*]:before:mr-2 [&>*+*]:before:content-['·'_/_'']">
