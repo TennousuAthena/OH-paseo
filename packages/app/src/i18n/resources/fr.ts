@@ -387,6 +387,9 @@ export const fr: TranslationResources = {
         completed: "Terminée",
       },
     },
+    turnFooter: {
+      workedFor: "A travaillé pendant {{duration}}",
+    },
     compaction: {
       loading: "Compaction…",
       auto: "Contexte compacté automatiquement",
@@ -995,6 +998,44 @@ export const fr: TranslationResources = {
           viewPullRequest: "Voir",
           openOn: "Ouvrir sur {{brand}}",
         },
+        checksOverview: {
+          headline: {
+            actionRequired: "Certaines vérifications demandent votre attention",
+            failure: "Certaines vérifications ont échoué",
+            pending: "Certaines vérifications ne sont pas terminées",
+            success: "Toutes les vérifications ont réussi",
+            none: "Aucune vérification",
+          },
+          count: {
+            actionRequired: "{{count}} à traiter",
+            warning: "{{count}} avec avertissement",
+            failure: "{{count}} en échec",
+            pending: "{{count}} en cours",
+            manual: "{{count}} manuelle(s)",
+            success: "{{count}} réussie(s)",
+            ignored: "{{count}} ignorée(s)",
+          },
+          detailOne: "Vérification : {{parts}}",
+          detailMany: "Vérifications : {{parts}}",
+          groupOne: {
+            actionRequired: "{{count}} vérification à traiter",
+            warning: "{{count}} vérification avec avertissement",
+            failure: "{{count}} vérification en échec",
+            pending: "{{count}} vérification en cours",
+            manual: "{{count}} vérification manuelle",
+            success: "{{count}} vérification réussie",
+            ignored: "{{count}} vérification ignorée",
+          },
+          groupMany: {
+            actionRequired: "{{count}} vérifications à traiter",
+            warning: "{{count}} vérifications avec avertissement",
+            failure: "{{count}} vérifications en échec",
+            pending: "{{count}} vérifications en cours",
+            manual: "{{count}} vérifications manuelles",
+            success: "{{count}} vérifications réussies",
+            ignored: "{{count}} vérifications ignorées",
+          },
+        },
         checksSummary: {
           passedLabel: "réussies",
           failedLabel: "en échec",
@@ -1115,6 +1156,13 @@ export const fr: TranslationResources = {
     },
   },
   sidebar: {
+    statusBucket: {
+      needsInput: "Attend une réponse",
+      failed: "Échec",
+      readyToReview: "À relire",
+      working: "En cours",
+      done: "Terminé",
+    },
     display: {
       trigger: "Préférences d’affichage",
       heading: "Affichage",

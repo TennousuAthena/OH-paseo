@@ -386,6 +386,9 @@ export const ru: TranslationResources = {
         completed: "Завершена",
       },
     },
+    turnFooter: {
+      workedFor: "Время работы: {{duration}}",
+    },
     compaction: {
       loading: "Сжатие контекста...",
       auto: "Контекст сжат автоматически",
@@ -988,6 +991,44 @@ export const ru: TranslationResources = {
           viewPullRequest: "Просмотреть",
           openOn: "Открыть на {{brand}}",
         },
+        checksOverview: {
+          headline: {
+            actionRequired: "Некоторые проверки требуют внимания",
+            failure: "Некоторые проверки не пройдены",
+            pending: "Некоторые проверки ещё не завершены",
+            success: "Все проверки пройдены",
+            none: "Нет проверок",
+          },
+          count: {
+            actionRequired: "требует действий: {{count}}",
+            warning: "с предупреждением: {{count}}",
+            failure: "не пройдено: {{count}}",
+            pending: "выполняется: {{count}}",
+            manual: "вручную: {{count}}",
+            success: "пройдено: {{count}}",
+            ignored: "пропущено: {{count}}",
+          },
+          detailOne: "Проверка ({{parts}})",
+          detailMany: "Проверки ({{parts}})",
+          groupOne: {
+            actionRequired: "Требует действий: {{count}}",
+            warning: "С предупреждением: {{count}}",
+            failure: "Не пройдена: {{count}}",
+            pending: "Выполняется: {{count}}",
+            manual: "Ручная: {{count}}",
+            success: "Пройдена: {{count}}",
+            ignored: "Пропущена: {{count}}",
+          },
+          groupMany: {
+            actionRequired: "Требуют действий: {{count}}",
+            warning: "С предупреждением: {{count}}",
+            failure: "Не пройдены: {{count}}",
+            pending: "Выполняются: {{count}}",
+            manual: "Ручные: {{count}}",
+            success: "Пройдены: {{count}}",
+            ignored: "Пропущены: {{count}}",
+          },
+        },
         checksSummary: {
           passedLabel: "успешно",
           failedLabel: "ошибка",
@@ -1105,6 +1146,13 @@ export const ru: TranslationResources = {
     },
   },
   sidebar: {
+    statusBucket: {
+      needsInput: "Ожидает ввода",
+      failed: "Ошибка",
+      readyToReview: "На проверку",
+      working: "В работе",
+      done: "Готово",
+    },
     display: {
       trigger: "Настройки отображения",
       heading: "Отображение",

@@ -386,6 +386,9 @@ export const ptBR: TranslationResources = {
         completed: "Concluída",
       },
     },
+    turnFooter: {
+      workedFor: "Trabalhou por {{duration}}",
+    },
     compaction: {
       loading: "Compactando...",
       auto: "Contexto compactado automaticamente",
@@ -994,6 +997,44 @@ export const ptBR: TranslationResources = {
           viewPullRequest: "Ver",
           openOn: "Abrir no {{brand}}",
         },
+        checksOverview: {
+          headline: {
+            actionRequired: "Algumas verificações precisam da sua atenção",
+            failure: "Algumas verificações não foram bem-sucedidas",
+            pending: "Algumas verificações ainda não terminaram",
+            success: "Todas as verificações foram aprovadas",
+            none: "Nenhuma verificação",
+          },
+          count: {
+            actionRequired: "{{count}} com ação pendente",
+            warning: "{{count}} com aviso",
+            failure: "{{count}} com falha",
+            pending: "{{count}} em andamento",
+            manual: "{{count}} manual(is)",
+            success: "{{count}} aprovada(s)",
+            ignored: "{{count}} ignorada(s)",
+          },
+          detailOne: "Verificação: {{parts}}",
+          detailMany: "Verificações: {{parts}}",
+          groupOne: {
+            actionRequired: "{{count}} verificação com ação pendente",
+            warning: "{{count}} verificação com aviso",
+            failure: "{{count}} verificação com falha",
+            pending: "{{count}} verificação em andamento",
+            manual: "{{count}} verificação manual",
+            success: "{{count}} verificação aprovada",
+            ignored: "{{count}} verificação ignorada",
+          },
+          groupMany: {
+            actionRequired: "{{count}} verificações com ação pendente",
+            warning: "{{count}} verificações com aviso",
+            failure: "{{count}} verificações com falha",
+            pending: "{{count}} verificações em andamento",
+            manual: "{{count}} verificações manuais",
+            success: "{{count}} verificações aprovadas",
+            ignored: "{{count}} verificações ignoradas",
+          },
+        },
         checksSummary: {
           passedLabel: "passou",
           failedLabel: "falhou",
@@ -1114,6 +1155,13 @@ export const ptBR: TranslationResources = {
     },
   },
   sidebar: {
+    statusBucket: {
+      needsInput: "Precisa de resposta",
+      failed: "Com falha",
+      readyToReview: "Para revisar",
+      working: "Em execução",
+      done: "Concluído",
+    },
     display: {
       trigger: "Preferências de exibição",
       heading: "Exibição",

@@ -382,6 +382,9 @@ export const zhCN: TranslationResources = {
         completed: "已完成",
       },
     },
+    turnFooter: {
+      workedFor: "工作了 {{duration}}",
+    },
     compaction: {
       loading: "正在压缩...",
       auto: "上下文已自动压缩",
@@ -963,6 +966,44 @@ export const zhCN: TranslationResources = {
           viewPullRequest: "查看",
           openOn: "在 {{brand}} 上打开",
         },
+        checksOverview: {
+          headline: {
+            actionRequired: "部分检查需要你处理",
+            failure: "部分检查未通过",
+            pending: "部分检查尚未完成",
+            success: "所有检查均已通过",
+            none: "没有检查",
+          },
+          count: {
+            actionRequired: "{{count}} 个需处理",
+            warning: "{{count}} 个警告",
+            failure: "{{count}} 个失败",
+            pending: "{{count}} 个进行中",
+            manual: "{{count}} 个手动",
+            success: "{{count}} 个成功",
+            ignored: "{{count}} 个已跳过",
+          },
+          detailOne: "检查：{{parts}}",
+          detailMany: "检查：{{parts}}",
+          groupOne: {
+            actionRequired: "{{count}} 个需处理的检查",
+            warning: "{{count}} 个有警告的检查",
+            failure: "{{count}} 个失败的检查",
+            pending: "{{count}} 个进行中的检查",
+            manual: "{{count}} 个手动检查",
+            success: "{{count}} 个成功的检查",
+            ignored: "{{count}} 个已跳过的检查",
+          },
+          groupMany: {
+            actionRequired: "{{count}} 个需处理的检查",
+            warning: "{{count}} 个有警告的检查",
+            failure: "{{count}} 个失败的检查",
+            pending: "{{count}} 个进行中的检查",
+            manual: "{{count}} 个手动检查",
+            success: "{{count}} 个成功的检查",
+            ignored: "{{count}} 个已跳过的检查",
+          },
+        },
         checksSummary: {
           passedLabel: "通过",
           failedLabel: "失败",
@@ -1080,6 +1121,13 @@ export const zhCN: TranslationResources = {
     },
   },
   sidebar: {
+    statusBucket: {
+      needsInput: "需要输入",
+      failed: "失败",
+      readyToReview: "待查看",
+      working: "运行中",
+      done: "已完成",
+    },
     display: {
       trigger: "显示偏好",
       heading: "显示",

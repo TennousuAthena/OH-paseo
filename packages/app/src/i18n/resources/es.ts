@@ -387,6 +387,9 @@ export const es: TranslationResources = {
         completed: "Completada",
       },
     },
+    turnFooter: {
+      workedFor: "Trabajó durante {{duration}}",
+    },
     compaction: {
       loading: "Compactando...",
       auto: "Contexto compactado automáticamente",
@@ -1004,6 +1007,44 @@ export const es: TranslationResources = {
           viewPullRequest: "Ver",
           openOn: "Abrir en {{brand}}",
         },
+        checksOverview: {
+          headline: {
+            actionRequired: "Algunas comprobaciones requieren tu atención",
+            failure: "Algunas comprobaciones no se superaron",
+            pending: "Algunas comprobaciones aún no han terminado",
+            success: "Todas las comprobaciones se superaron",
+            none: "Sin comprobaciones",
+          },
+          count: {
+            actionRequired: "{{count}} con acción pendiente",
+            warning: "{{count}} con advertencia",
+            failure: "{{count}} con error",
+            pending: "{{count}} en curso",
+            manual: "{{count}} manual(es)",
+            success: "{{count}} superada(s)",
+            ignored: "{{count}} omitida(s)",
+          },
+          detailOne: "Comprobación: {{parts}}",
+          detailMany: "Comprobaciones: {{parts}}",
+          groupOne: {
+            actionRequired: "{{count}} comprobación con acción pendiente",
+            warning: "{{count}} comprobación con advertencia",
+            failure: "{{count}} comprobación con error",
+            pending: "{{count}} comprobación en curso",
+            manual: "{{count}} comprobación manual",
+            success: "{{count}} comprobación superada",
+            ignored: "{{count}} comprobación omitida",
+          },
+          groupMany: {
+            actionRequired: "{{count}} comprobaciones con acción pendiente",
+            warning: "{{count}} comprobaciones con advertencia",
+            failure: "{{count}} comprobaciones con error",
+            pending: "{{count}} comprobaciones en curso",
+            manual: "{{count}} comprobaciones manuales",
+            success: "{{count}} comprobaciones superadas",
+            ignored: "{{count}} comprobaciones omitidas",
+          },
+        },
         checksSummary: {
           passedLabel: "pasó",
           failedLabel: "falló",
@@ -1124,6 +1165,13 @@ export const es: TranslationResources = {
     },
   },
   sidebar: {
+    statusBucket: {
+      needsInput: "Necesita datos",
+      failed: "Con error",
+      readyToReview: "Para revisar",
+      working: "En ejecución",
+      done: "Terminado",
+    },
     display: {
       trigger: "Preferencias de visualización",
       heading: "Visualización",
