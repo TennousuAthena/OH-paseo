@@ -6,8 +6,6 @@ import {
 import type { PluginUpdateTarget } from "@getpaseo/protocol/messages";
 
 export interface RegistryOptions {
-  /** Off: bare owner/repo is GitHub shorthand and no registry is contacted. */
-  enabled?: boolean;
   defaultUrl?: string;
   registries?: PluginRegistries;
 }
@@ -29,11 +27,26 @@ export async function resolveRegistryPlugin(
   const headers: Record<string, string> = {};
   if (authorization) headers.Authorization = authorization;
   if (install) headers["X-Paseo-Install"] = "1";
-  const response = await fetch(`${identity.url.replace(/\/+$/, "")}/plugins/${identity.id}.json`, {
-    headers,
-    redirect: "error",
-    signal: AbortSignal.timeout(30000),
-  });
+  const url = `${identity.url.replace(/\/+$/, "")}/plugins/${identity.id}.json`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers,
+      redirect: "error",
+      signal: AbortSignal.timeout(30000),
+    });
+  } catch (cause) {
+    const guidance = install
+      ? `Plugin ${identity.id} was not installed. Retry or use an explicit npm: or github: source.`
+      : `Could not check updates for ${identity.id}. Retry later.`;
+    throw new Error(`Could not reach plugin registry ${url}. ${guidance}`, { cause });
+  }
+  if (response.status === 404) {
+    const guidance = install
+      ? `If you intended a local directory, use ./${identity.id}. If you intended a GitHub source, use git:${identity.id}, or a full Git URL for another Git host.`
+      : "Check that the installed plugin is still published in this registry before updating.";
+    throw new Error(`Plugin ${identity.id} was not found in registry ${base.host}. ${guidance}`);
+  }
   if (!response.ok)
     throw new Error(`Registry ${base.host} returned ${response.status} for ${identity.id}`);
   const plugin = PublishedPluginDetailSchema.parse(await response.json());
