@@ -56,7 +56,7 @@ export function BrowsePage({
     <SiteShell width="wide">
       <div className="lg:flex lg:gap-12">
         <aside className="mb-8 lg:mb-0 lg:w-48 lg:flex-shrink-0">
-          <PluginSearch scope={query} className="mb-4 lg:mb-6" />
+          <PluginSearch scope={query} live className="mb-4 lg:mb-6" />
           <CategoryNav plugins={matches} query={query} />
         </aside>
         <div className="min-w-0 flex-1">

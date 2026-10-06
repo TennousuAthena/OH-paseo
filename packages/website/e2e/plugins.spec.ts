@@ -80,7 +80,7 @@ test("filters by search and clears to all plugins", async ({ page }) => {
   await page.goto("/");
   await openPlugins(page);
 
-  await searchPlugins(page, "graphite");
+  await submitSearch(page, "graphite");
   await expect(page).toHaveURL(/\/plugins\/all\?q=graphite$/);
   await expect(
     page.getByRole("heading", { level: 1, name: /^Results for “graphite”/ }),
@@ -98,7 +98,7 @@ test("filters by search and clears to all plugins", async ({ page }) => {
 
 test("keeps the directory's ranking window when searching", async ({ page }) => {
   await page.goto("/plugins?window=month");
-  await searchPlugins(page, "graphite");
+  await submitSearch(page, "graphite");
   await expect(page).toHaveURL(/\/plugins\/all\?q=graphite&window=month$/);
   await expect(page.getByRole("link", { name: "This month" })).toHaveAttribute(
     "aria-current",
@@ -122,13 +122,52 @@ test("clears the search with the clear button", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: /^All plugins/ })).toBeVisible();
 });
 
-test("replaces history while typing a search", async ({ page }) => {
+test("searches from the directory on submit, and Back returns to the directory", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openPlugins(page);
+  const entries = await historyLength(page);
+
+  await typeSearch(page, "gra");
+  await expect(page).toHaveURL(/\/plugins$/);
+  expect(await historyLength(page)).toBe(entries);
+
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/plugins\/all\?q=gra$/);
+  await expect(page.getByRole("heading", { level: 1, name: /^Results for “gra”/ })).toBeVisible();
+  expect(await historyLength(page)).toBe(entries + 1);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/plugins$/);
+  await expect(page.getByRole("heading", { level: 1, name: /^Plugins/ })).toBeVisible();
+});
+
+test("filters browse results as you type in one history entry", async ({ page }) => {
   await page.goto("/");
   await page.goto("/plugins/all");
-  await searchPlugins(page, "graphite");
-  await expect(page).toHaveURL(/\/plugins\/all\?q=graphite$/);
+  const entries = await historyLength(page);
+
+  await typeSearch(page, "gra");
+  await expect(page).toHaveURL(/\/plugins\/all\?q=gra$/);
+  await expect(page.getByRole("heading", { level: 1, name: /^Results for “gra”/ })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: /Graphite/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Dracula/ })).toHaveCount(0);
+  expect(await historyLength(page)).toBe(entries + 1);
+
   await page.goBack();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/plugins\/all$/);
+  await expect(page.getByRole("heading", { level: 1, name: /^All plugins/ })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search plugins" })).toHaveValue("");
+
+  await page.goForward();
+  await expect(page).toHaveURL(/\/plugins\/all\?q=gra$/);
+  await expect(page.getByRole("heading", { level: 1, name: /^Results for “gra”/ })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search plugins" })).toHaveValue("gra");
+
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: /^Results for “gra”/ })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search plugins" })).toHaveValue("gra");
 });
 
 test("keeps old category links working", async ({ page }) => {
@@ -260,6 +299,19 @@ test.describe("search engine visits without JavaScript", () => {
 
 async function searchPlugins(page: Page, term: string) {
   await page.getByRole("searchbox", { name: "Search plugins" }).fill(term);
+}
+
+async function submitSearch(page: Page, term: string) {
+  await searchPlugins(page, term);
+  await page.keyboard.press("Enter");
+}
+
+async function typeSearch(page: Page, term: string) {
+  await page.getByRole("searchbox", { name: "Search plugins" }).pressSequentially(term);
+}
+
+async function historyLength(page: Page): Promise<number> {
+  return page.evaluate(() => window.history.length);
 }
 
 async function expectPageMetadata(page: Page, title: string, path: string) {
