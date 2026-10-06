@@ -128,31 +128,19 @@ function PluginsPage() {
         </div>
       </div>
 
-      <div className="mt-10 space-y-14">
+      <div className="mt-10 flex flex-col gap-14">
         {featured.length > 0 && (
-          <PluginSection
-            labelledBy="featured"
-            header={
-              <PluginSectionHeader>
-                <div>
-                  <PluginSectionTitle id="featured">Featured</PluginSectionTitle>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    A selection of hand picked plugins
-                  </p>
-                </div>
-                <a
-                  href={browseHref({
-                    sort: "installs",
-                    window: DEFAULT_WINDOW,
-                  })}
-                  className={SEE_ALL_CLASS}
-                >
-                  See all plugins
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </a>
-              </PluginSectionHeader>
-            }
-          >
+          <PluginSection labelledBy="featured">
+            <PluginSectionHeader>
+              <div>
+                <PluginSectionTitle id="featured">Featured</PluginSectionTitle>
+                <p className="mt-1 text-sm text-muted-foreground">A selection of hand picked plugins</p>
+              </div>
+              <a href={browseHref({ sort: "installs", window: DEFAULT_WINDOW })} className={SEE_ALL_CLASS}>
+                See all plugins
+                <ChevronRight className="h-3.5 w-3.5" />
+              </a>
+            </PluginSectionHeader>
             <div className={CARD_ROW_CLASS}>
               {featured.map((plugin) => (
                 <NewPluginCard key={plugin.id} plugin={plugin} added={addedAgo(plugin, now)} />
@@ -161,21 +149,14 @@ function PluginsPage() {
           </PluginSection>
         )}
 
-        <PluginSection
-          labelledBy="whats-new"
-          header={
-            <PluginSectionHeader>
-              <PluginSectionTitle id="whats-new">What’s new</PluginSectionTitle>
-              <a
-                href={browseHref({ sort: "new", window: DEFAULT_WINDOW })}
-                className={SEE_ALL_CLASS}
-              >
-                See all
-                <ChevronRight className="h-3.5 w-3.5" />
-              </a>
-            </PluginSectionHeader>
-          }
-        >
+        <PluginSection labelledBy="whats-new">
+          <PluginSectionHeader>
+            <PluginSectionTitle id="whats-new">What’s new</PluginSectionTitle>
+            <a href={browseHref({ sort: "new", window: DEFAULT_WINDOW })} className={SEE_ALL_CLASS}>
+              See all
+              <ChevronRight className="h-3.5 w-3.5" />
+            </a>
+          </PluginSectionHeader>
           <div className={CARD_ROW_CLASS}>
             {newest.map((plugin) => (
               <NewPluginCard key={plugin.id} plugin={plugin} added={addedAgo(plugin, now)} />
@@ -183,10 +164,8 @@ function PluginsPage() {
           </div>
         </PluginSection>
 
-        <PluginSection
-          labelledBy="categories"
-          header={<PluginSectionTitle id="categories">Categories</PluginSectionTitle>}
-        >
+        <PluginSection labelledBy="categories">
+          <PluginSectionTitle id="categories">Categories</PluginSectionTitle>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {CATEGORIES.map((category) => {
               const Icon = CATEGORY_ICONS[category.slug];
@@ -213,21 +192,19 @@ function PluginsPage() {
           id="most-installed"
           labelledBy="most-installed-title"
           className="scroll-mt-8"
-          header={
-            <PluginSectionHeader>
-              <PluginSectionTitle id="most-installed-title">
-                <a
-                  href={browseHref({ sort: "installs", window })}
-                  className="group inline-flex items-center gap-1"
-                >
-                  Most installed
-                  <ChevronRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
-                </a>
-              </PluginSectionTitle>
-              <WindowSwitch current={window} hrefs={windowHrefs} />
-            </PluginSectionHeader>
-          }
         >
+          <PluginSectionHeader>
+            <PluginSectionTitle id="most-installed-title">
+              <a
+                href={browseHref({ sort: "installs", window })}
+                className="group inline-flex items-center gap-1"
+              >
+                Most installed
+                <ChevronRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
+              </a>
+            </PluginSectionTitle>
+            <WindowSwitch current={window} hrefs={windowHrefs} />
+          </PluginSectionHeader>
           <div className="-mx-4 grid gap-x-8 md:grid-cols-2">
             {top.map((plugin, index) => (
               <PluginRankRow

@@ -1,23 +1,20 @@
 import type { ReactNode } from "react";
 
-/** A block of a plugins page: its header, then its content 32px below. */
+/** A block of a plugins page: its header, then its content one fixed gap below. */
 export function PluginSection({
   id,
   labelledBy,
-  className,
-  header,
+  className = "",
   children,
 }: {
   id?: string;
   labelledBy?: string;
   className?: string;
-  header: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section id={id} aria-labelledby={labelledBy} className={className}>
-      {header}
-      <div className="mt-8">{children}</div>
+    <section id={id} aria-labelledby={labelledBy} className={`flex flex-col gap-8 ${className}`}>
+      {children}
     </section>
   );
 }
