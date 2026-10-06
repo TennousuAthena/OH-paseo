@@ -1,4 +1,5 @@
 import { Download } from "lucide-react";
+import { pluginCardScreenshot } from "./thumbnails";
 import { pluginHref } from "./links";
 import { PluginTile } from "./plugin-tile";
 import { formatInstalls, getCategory, type Plugin } from "./registry";
@@ -16,9 +17,10 @@ function PluginShot({ plugin }: { plugin: Plugin }) {
     >
       {url ? (
         <img
-          src={url}
+          {...pluginCardScreenshot(plugin.id, url)}
           alt=""
           loading="lazy"
+          decoding="async"
           className="h-full w-full object-cover object-left-top"
         />
       ) : (
