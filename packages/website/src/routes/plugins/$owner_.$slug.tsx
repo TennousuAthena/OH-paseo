@@ -6,7 +6,6 @@ import { SiteShell } from "~/components/site-shell";
 import { pageMeta } from "~/meta";
 import {
   firstMediaImage,
-  formatInstalls,
   getAuthor,
   getCategory,
   getRegistry,
@@ -16,7 +15,8 @@ import {
   pluginVersion,
   readmeBody,
 } from "~/plugins";
-import { AuthorLink } from "~/plugins/author-link";
+import { AuthorAvatar, AuthorLink } from "~/plugins/author-link";
+import { InstallCount } from "~/plugins/install-count";
 import { categoryHref } from "~/plugins/links";
 import { MediaGallery } from "~/plugins/media-gallery";
 import { PluginsNotFound } from "~/plugins/not-found";
@@ -48,6 +48,8 @@ export const Route = createFileRoute("/plugins/$owner_/$slug")({
 
 const META_LINK_CLASS =
   "inline-flex items-center gap-1 text-xs text-extra-muted-foreground transition-colors hover:text-muted-foreground";
+const AUTHOR_LINK_CLASS =
+  "inline-flex items-center gap-1.5 text-xs text-extra-muted-foreground transition-colors hover:text-muted-foreground";
 
 function PluginPage() {
   const { plugin, installs } = Route.useLoaderData();
@@ -67,7 +69,8 @@ function PluginPage() {
           <CodeBlock size="sm">{installCommand(plugin)}</CodeBlock>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2 text-xs text-extra-muted-foreground [&>*+*]:before:mr-2 [&>*+*]:before:content-['·'_/_'']">
-          <AuthorLink author={author} className={META_LINK_CLASS}>
+          <AuthorLink author={author} className={AUTHOR_LINK_CLASS}>
+            <AuthorAvatar author={author} size="xs" />
             {author.name}
           </AuthorLink>
           {category && (
@@ -75,7 +78,7 @@ function PluginPage() {
               {category.label}
             </a>
           )}
-          <span className="tabular-nums">{formatInstalls(installs)} installs</span>
+          <InstallCount count={installs} />
           <span className="font-mono">{pluginVersion(plugin)}</span>
           <PluginContentLink href={plugin.repository.url} className={META_LINK_CLASS}>
             Source
