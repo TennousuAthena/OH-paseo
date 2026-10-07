@@ -2,6 +2,10 @@
 
 ## 0.11.0 - 2026-10-07
 
+Paseo 0.11 adds support for the [plugin registry](https://paseo.sh/plugins). Browse community plugins there, install one with `paseo plugin add owner/slug`, or [submit your own](https://paseo.sh/docs/plugins/publishing#plugin-registry).
+
+**Before upgrading:** `paseo plugin add owner/repo` now installs from the registry, so use `github:owner/repo` to install straight from GitHub and `./path` for a local directory.
+
 ### Added
 
 - Added Muse Code as a provider, with model, approval mode, and reasoning effort controls ([#5719](https://github.com/getpaseo/paseo/pull/5719), [#5775](https://github.com/getpaseo/paseo/pull/5775) by [@millerben95](https://github.com/millerben95))
@@ -19,18 +23,21 @@
 - Added syntax highlighting for Vue files ([#6205](https://github.com/getpaseo/paseo/pull/6205) by [@Davnn1](https://github.com/Davnn1))
 - Added `agents.providers.<id>.options` in `config.json` as default options for every provider, with per-agent overrides ([#5780](https://github.com/getpaseo/paseo/pull/5780))
 - Added the terminal key bar and Paste to terminal panes on iPad and Android tablets ([#5712](https://github.com/getpaseo/paseo/pull/5712) by [@lardissone](https://github.com/lardissone))
-- Added screens and sidebar header and footer items to the plugin SDK ([#5685](https://github.com/getpaseo/paseo/pull/5685))
-- Added a display name, icon, screenshots, and videos to the plugin manifest ([#6263](https://github.com/getpaseo/paseo/pull/6263))
-- Added an `OVERVIEW.md` template to `paseo plugin init` for plugin registry listings ([#6226](https://github.com/getpaseo/paseo/pull/6226))
+
+### Plugins
+
+- Changed `paseo plugin add owner/slug` to install the reviewed plugin from the plugin registry, so local directories need a path such as `./slug` and direct GitHub installs need `github:owner/repo` ([#6224](https://github.com/getpaseo/paseo/pull/6224))
+- Added [screens and sidebar header and footer items](https://paseo.sh/docs/plugins/reference#screens-and-sidebar-items) to the plugin SDK ([#5685](https://github.com/getpaseo/paseo/pull/5685))
 - Added usage sources to the plugin SDK ([#5465](https://github.com/getpaseo/paseo/pull/5465), [#5876](https://github.com/getpaseo/paseo/pull/5876))
 - Added `spawnProcess()`, `execCommand()`, and `terminateProcess()` to the plugin SDK for launching CLIs, including Windows `.cmd` and `.bat` scripts ([#6151](https://github.com/getpaseo/paseo/pull/6151))
 - Added `client.playAudio()` to the plugin SDK for playing audio on every client ([#5976](https://github.com/getpaseo/paseo/pull/5976))
 - Added an `agent.closed` plugin lifecycle event ([#5971](https://github.com/getpaseo/paseo/pull/5971) by [@ilteoood](https://github.com/ilteoood))
 - Added command and environment overrides and availability diagnostics for plugin providers ([#5707](https://github.com/getpaseo/paseo/pull/5707))
+- Added a display name, icon, screenshots, and videos to the plugin manifest ([#6263](https://github.com/getpaseo/paseo/pull/6263))
+- Added an `OVERVIEW.md` template to `paseo plugin init` for plugin registry listings ([#6226](https://github.com/getpaseo/paseo/pull/6226))
 
 ### Changed
 
-- Changed `paseo plugin add owner/slug` to install the reviewed plugin from the plugin registry, so local directories need a path such as `./slug` and direct GitHub installs need `github:owner/repo` ([#6224](https://github.com/getpaseo/paseo/pull/6224))
 - Changed the context window details to show usage for the account the agent runs under, including custom `CLAUDE_CONFIG_DIR` and `CODEX_HOME` homes ([#5465](https://github.com/getpaseo/paseo/pull/5465))
 - Changed the context window details on desktop to a hover card with Refresh ([#5975](https://github.com/getpaseo/paseo/pull/5975), [#6185](https://github.com/getpaseo/paseo/pull/6185))
 - Changed the context window meter to show before an agent's first turn ([#6089](https://github.com/getpaseo/paseo/pull/6089))
