@@ -4290,6 +4290,9 @@ export class Session {
           workspaceId: resolvedIntent.intent.workspaceId,
           worktreeName,
           initialPrompt,
+          source: msg.callerAgentId
+            ? { kind: "agent-message", agentId: msg.callerAgentId }
+            : undefined,
           clientMessageId,
           outputSchema,
           images,
@@ -8094,6 +8097,9 @@ export class Session {
           agentStorage: this.agentStorage,
           agentId,
           prompt,
+          source: msg.sourceAgentId
+            ? { kind: "agent-message", agentId: msg.sourceAgentId }
+            : undefined,
           messageId: msg.messageId,
           activeTurnBehavior: msg.activeTurnBehavior ?? "interrupt",
           clearPendingPermissions: true,
@@ -8111,9 +8117,13 @@ export class Session {
         await this.messageReceipts.send({
           agentId,
           messageId: msg.messageId,
-          request: { prompt, activeTurnBehavior: msg.activeTurnBehavior ?? "interrupt" },
+          request: {
+            prompt,
+            sourceAgentId: msg.sourceAgentId,
+            activeTurnBehavior: msg.activeTurnBehavior ?? "interrupt",
+          },
           prepare: async () => {
-            await this.prepareAgentMessage(agentId, msg.text);
+            if (!msg.sourceAgentId) await this.prepareAgentMessage(agentId, msg.text);
           },
           send,
         });
