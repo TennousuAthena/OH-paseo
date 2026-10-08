@@ -3954,12 +3954,23 @@ test("a prompt after provider replacement reopens the stale session", async () =
       clients: { [provider]: replacement },
     });
 
-    const dispatch = await startAgentRun(manager, created.id, "continue after reload", logger);
+    const dispatch = await startAgentRun(manager, created.id, "continue after reload", logger, {
+      runOptions: { clientMessageId: "stale-session-retry" },
+    });
     expect(dispatch.disposition).toBe("turn_started");
     await replacement.waitForRetryStart();
     const result = await manager.waitForAgentEvent(created.id);
     expect(result.status).toBe("idle");
     expect(replacement.resumeOverrides).toHaveLength(1);
+    const timeline = manager.getTimeline(created.id);
+    expect(timeline.filter((item) => item.type === "user_message")).toMatchObject([
+      { text: "continue after reload", clientMessageId: "stale-session-retry" },
+    ]);
+    expect(
+      timeline.some(
+        (item) => item.type === "assistant_message" && item.text.includes("[System Error]"),
+      ),
+    ).toBe(false);
   } finally {
     await manager.closeAgent(created.id).catch(() => undefined);
     await manager.flush().catch(() => undefined);
@@ -8141,9 +8152,20 @@ test("streamAgent clears pending run when startTurn fails before a turn id exist
     { workspaceId: undefined },
   );
 
-  await expect(manager.runAgent(agent.id, "fail before turn id")).rejects.toThrow(
-    "Invalid request: missing field `text`",
-  );
+  await expect(
+    manager.runAgent(agent.id, "fail before turn id", {
+      clientMessageId: "rejected-prompt",
+    }),
+  ).rejects.toThrow("Invalid request: missing field `text`");
+  expect(manager.getTimeline(agent.id)).toEqual([
+    {
+      type: "user_message",
+      text: "fail before turn id",
+      clientMessageId: "rejected-prompt",
+      messageId: "rejected-prompt",
+    },
+    { type: "assistant_message", text: "[System Error] Invalid request: missing field `text`" },
+  ]);
 
   await expect(manager.runAgent(agent.id, "second turn")).resolves.toEqual(
     expect.objectContaining({

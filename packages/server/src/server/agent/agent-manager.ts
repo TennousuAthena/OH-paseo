@@ -2360,7 +2360,7 @@ export class AgentManager {
       return false;
     }
     if (options?.clientMessageId) {
-      this.recordSubmittedPrompt(agent, prompt, options.clientMessageId);
+      this.recordSubmittedPrompt(agent, prompt, options.clientMessageId, "accepted");
       this.emitState(agent);
     }
     const dispatch = (event: AgentStreamEvent): void => {
@@ -2456,6 +2456,12 @@ export class AgentManager {
       agent.pendingReplacement = false;
       const errorMsg = error instanceof Error ? error.message : "Failed to start turn";
       pendingRun.start = { status: "failed", error: errorMsg };
+      // A terminal rejection belongs after the submitted prompt even though no provider turn exists.
+      if (options?.clientMessageId) {
+        this.recordSubmittedPrompt(agent, prompt, options.clientMessageId, "rejected", {
+          messageId: options.clientMessageId,
+        });
+      }
       await this.handleStreamEvent(agent, {
         type: "turn_failed",
         provider: agent.provider,
@@ -2545,7 +2551,7 @@ export class AgentManager {
           )
         : undefined;
       if (options?.clientMessageId) {
-        this.recordSubmittedPrompt(agent, prompt, options.clientMessageId, {
+        this.recordSubmittedPrompt(agent, prompt, options.clientMessageId, "accepted", {
           messageId: options.clientMessageId,
           turnId,
           providerMessageId:
@@ -2851,7 +2857,7 @@ export class AgentManager {
     if (!clientMessageId) {
       return;
     }
-    this.recordSubmittedPrompt(agent, prompt, clientMessageId, {
+    this.recordSubmittedPrompt(agent, prompt, clientMessageId, "accepted", {
       messageId: clientMessageId,
       turnId: expectedTurnId,
     });
@@ -4696,6 +4702,7 @@ export class AgentManager {
     agent: ActiveManagedAgent,
     prompt: AgentPromptInput,
     clientMessageId: string,
+    outcome: "accepted" | "rejected",
     options?: { messageId?: string; providerMessageId?: string; turnId?: string },
   ): void {
     const item = projectAgentMessage({
@@ -4704,7 +4711,10 @@ export class AgentManager {
       clientMessageId,
       ...(options?.messageId ? { messageId: options.messageId } : {}),
     });
-    if (item) this.recordSubmittedPromptItem(agent, item, options);
+    if (!item) return;
+    // Human attempts stay in history on rejection; delivery notifications require acceptance.
+    if (outcome === "rejected" && item.type !== "user_message") return;
+    this.recordSubmittedPromptItem(agent, item, options);
   }
 
   private recordSubmittedPromptItem(
