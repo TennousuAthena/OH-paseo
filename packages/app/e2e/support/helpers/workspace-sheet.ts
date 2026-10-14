@@ -7,8 +7,8 @@ export function workspaceSheet(page: Page, label: string): Locator {
 
 /** Sheet height as a fraction of the viewport; mirrors the host's 92% snap point. */
 const SHEET_SNAP_FRACTION = 0.92;
-/** The dialog starts below the sheet's drag handle. */
-const SHEET_HANDLE_MAX_HEIGHT = 32;
+/** The header starts below the sheet's drag indicator, inside the handle. */
+const SHEET_INDICATOR_MAX_HEIGHT = 32;
 
 /**
  * The sheet rests at its snap point, docked to the bottom edge. A sheet pushed up past it
@@ -18,14 +18,16 @@ export async function expectWorkspaceSheetAtSnap(page: Page, label: string): Pro
   const viewportHeight = page.viewportSize()?.height ?? 0;
   const snapTop = Math.round(viewportHeight * (1 - SHEET_SNAP_FRACTION));
   const sheet = workspaceSheet(page, label);
+  const header = sheet.getByTestId("workspace-sheet-header");
+  const body = sheet.getByTestId("workspace-sheet-body");
   await expect
     .poll(async () => {
-      const box = await sheet.boundingBox();
-      if (!box) return null;
-      const top = Math.round(box.y);
+      const [headerBox, bodyBox] = await Promise.all([header.boundingBox(), body.boundingBox()]);
+      if (!headerBox || !bodyBox) return null;
+      const top = Math.round(headerBox.y);
       return {
-        dockedToBottom: Math.round(box.y + box.height) === viewportHeight,
-        topAtSnap: top >= snapTop && top <= snapTop + SHEET_HANDLE_MAX_HEIGHT,
+        dockedToBottom: Math.round(bodyBox.y + bodyBox.height) === viewportHeight,
+        topAtSnap: top >= snapTop && top <= snapTop + SHEET_INDICATOR_MAX_HEIGHT,
       };
     })
     .toEqual({ dockedToBottom: true, topAtSnap: true });
@@ -73,9 +75,11 @@ export async function selectTabFromSwitcher(page: Page, label: string): Promise<
   await expect(page.getByRole("button", { name: "Bottom sheet backdrop" })).toHaveCount(0);
 }
 
+/** Taps the top sheet's backdrop; each stacked sheet renders its own, top last. */
 export async function tapWorkspaceSheetBackdrop(page: Page): Promise<void> {
   await page
     .getByRole("button", { name: "Bottom sheet backdrop" })
+    .last()
     .click({ position: { x: 10, y: 10 } });
 }
 

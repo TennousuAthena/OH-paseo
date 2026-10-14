@@ -1,16 +1,31 @@
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
+  type BottomSheetHandleProps,
 } from "@gorhom/bottom-sheet";
 import { useIsFocused } from "@react-navigation/native";
-import { type ComponentType, useCallback, useEffect, useMemo, useRef } from "react";
-import { BackHandler, View } from "react-native";
+import {
+  type ComponentType,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
+import { View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { SheetHeaderView } from "@/components/adaptive-modal-sheet";
+import {
+  SheetBackground,
+  SheetHandle,
+  SheetHeaderView,
+  type SheetHeader,
+} from "@/components/adaptive-modal-sheet";
+import { systemBackPress } from "@/components/ui/isolated-bottom-sheet-modal";
+import { RetainedPanelActivity } from "@/components/retained-panel";
 import { Button } from "@/components/ui/button";
-import { isNative } from "@/constants/platform";
 import type { PanelIconProps } from "@/panels/panel-registry";
 import { getPanelRegistration } from "@/panels/panel-registry";
 import { ensurePanelsRegistered } from "@/panels/register-panels";
@@ -22,17 +37,7 @@ import {
 import { useWorkspaceLayoutStore, type WorkspaceSheet } from "@/stores/workspace-layout-store";
 
 const SNAP_POINTS = ["92%"];
-
-const ThemedBottomSheet = withUnistyles(BottomSheet, (theme) => ({
-  backgroundStyle: {
-    backgroundColor: theme.colors.surface0,
-    borderTopLeftRadius: theme.borderRadius["2xl"],
-    borderTopRightRadius: theme.borderRadius["2xl"],
-  },
-  handleIndicatorStyle: {
-    backgroundColor: theme.colors.palette.zinc[600],
-  },
-}));
+const NO_SHEETS: readonly WorkspaceSheet[] = [];
 
 function PanelIcon({
   icon: Icon,
@@ -46,6 +51,8 @@ const ThemedPanelIcon = withUnistyles(PanelIcon, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 
+// The workspace sheet is a Gorhom sheet rendered in place rather than a portaled modal, so the
+// backdrop closes the sheet itself instead of dismissing the top of the modal stack.
 function renderBackdrop(props: BottomSheetBackdropProps) {
   return (
     <BottomSheetBackdrop
@@ -55,6 +62,45 @@ function renderBackdrop(props: BottomSheetBackdropProps) {
       opacity={0.45}
       pressBehavior="close"
     />
+  );
+}
+
+// Stacked sheets share the bottom sheet's dim rather than darkening it again, but still catch the
+// tap so it closes the top sheet. The backdrop is clear rather than transparent: iOS skips views
+// under 0.01 opacity when hit testing, which would hand the tap to the sheet below.
+function renderStackedBackdrop(props: BottomSheetBackdropProps) {
+  return (
+    <BottomSheetBackdrop
+      {...props}
+      style={styles.clearBackdrop}
+      appearsOnIndex={0}
+      disappearsOnIndex={-1}
+      opacity={1}
+      pressBehavior="close"
+    />
+  );
+}
+
+interface WorkspaceSheetHandleValue {
+  header: SheetHeader;
+  onClose: () => void;
+}
+
+const WorkspaceSheetHandleContext = createContext<WorkspaceSheetHandleValue | null>(null);
+
+// Gorhom renders `handleComponent` as a component type, so it stays one module-level component and
+// reads the header from context; a per-render function would remount the header on every change.
+function WorkspaceSheetHandle(props: BottomSheetHandleProps) {
+  const value = useContext(WorkspaceSheetHandleContext);
+  if (!value) throw new Error("WorkspaceSheetHandle must render inside a workspace sheet");
+  return (
+    <SheetHandle {...props}>
+      <SheetHeaderView
+        header={value.header}
+        onClose={value.onClose}
+        testID="workspace-sheet-header"
+      />
+    </SheetHandle>
   );
 }
 
@@ -73,96 +119,54 @@ interface WorkspaceSheetPresentationProps extends Omit<
   "workspaceKey" | "onCloseTab"
 > {
   sheet: WorkspaceSheet;
-  onClose: () => Promise<void>;
-  onOpenAsTab: () => void;
+  /** Only the bottom sheet dims the workspace; the ones above share its dim. */
+  isBottom: boolean;
+  /** Only the top sheet answers Android Back; the ones below wait their turn. */
+  isTop: boolean;
+  onClose: (tabId: string) => Promise<void>;
+  onOpenAsTab: (tabId: string) => void;
 }
 
 /**
- * Hosts the workspace's sheet tab over the compact tab strip. It renders in the workspace tree,
- * not through a portal, so the panel keeps every context an ordinary pane has.
+ * Hosts the workspace's sheets over the compact tab strip, one Gorhom sheet per entry, top last.
+ * They render in the workspace tree, not through a portal, so each panel keeps every context an
+ * ordinary pane has. The shared sheet parts (`SheetBackground`, `SheetHandle`, `SheetHeaderView`)
+ * keep them looking and dragging like every other sheet.
  */
 export function WorkspaceSheetHost({ workspaceKey, onCloseTab, ...rest }: WorkspaceSheetHostProps) {
-  const sheet = useWorkspaceLayoutStore((state) =>
-    workspaceKey ? (state.sheetByWorkspace[workspaceKey] ?? null) : null,
+  const sheets = useWorkspaceLayoutStore((state) =>
+    workspaceKey ? (state.sheetsByWorkspace[workspaceKey] ?? NO_SHEETS) : NO_SHEETS,
   );
   const openSheetAsTab = useWorkspaceLayoutStore((state) => state.openSheetAsTab);
-  const sheetTabId = sheet?.tab.tabId ?? null;
-  const handleClose = useCallback(async () => {
-    if (sheetTabId) await onCloseTab(sheetTabId);
-  }, [onCloseTab, sheetTabId]);
-  const handleOpenAsTab = useCallback(() => {
-    if (workspaceKey) openSheetAsTab(workspaceKey);
-  }, [openSheetAsTab, workspaceKey]);
-  if (!sheet) return null;
+  const handleOpenAsTab = useCallback(
+    (tabId: string) => {
+      if (workspaceKey) openSheetAsTab(workspaceKey, tabId);
+    },
+    [openSheetAsTab, workspaceKey],
+  );
+  if (sheets.length === 0) return null;
   return (
-    <WorkspaceSheetPresentation
-      {...rest}
-      sheet={sheet}
-      onClose={handleClose}
-      onOpenAsTab={handleOpenAsTab}
-    />
+    <View style={styles.host} pointerEvents="box-none">
+      {sheets.map((sheet, index) => (
+        <WorkspaceSheetPresentation
+          // Keyed by tab id and kind, so the registration and its descriptor hook stay fixed.
+          key={`${sheet.tab.tabId}:${sheet.tab.target.kind}`}
+          {...rest}
+          sheet={sheet}
+          isBottom={index === 0}
+          isTop={index === sheets.length - 1}
+          onClose={onCloseTab}
+          onOpenAsTab={handleOpenAsTab}
+        />
+      ))}
+    </View>
   );
 }
 
 function WorkspaceSheetPresentation({
   sheet,
-  serverId,
-  workspaceId,
-  isWorkspaceFocused,
-  buildContent,
-  onClose,
-  onOpenAsTab,
-}: WorkspaceSheetPresentationProps) {
-  const sheetRef = useRef<BottomSheet>(null);
-  const isScreenFocused = useIsFocused();
-  const ownsBackPress = isNative && isWorkspaceFocused && isScreenFocused;
-  const handleChange = useCallback(
-    (index: number) => {
-      if (index !== -1) return;
-      // A declined close (unsaved changes) leaves the tab in the sheet, so bring it back up.
-      void onClose().then(() => sheetRef.current?.snapToIndex(0));
-    },
-    [onClose],
-  );
-  useEffect(() => {
-    // Hidden workspaces stay mounted in the deck and under Settings; only the visible one owns back.
-    if (!ownsBackPress) return;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      void onClose();
-      return true;
-    });
-    return () => subscription.remove();
-  }, [onClose, ownsBackPress]);
-
-  return (
-    <View style={styles.host} pointerEvents="box-none">
-      <ThemedBottomSheet
-        ref={sheetRef}
-        index={0}
-        snapPoints={SNAP_POINTS}
-        enableDynamicSizing={false}
-        enablePanDownToClose
-        enableContentPanningGesture={false}
-        backdropComponent={renderBackdrop}
-        onChange={handleChange}
-      >
-        <WorkspaceSheetBody
-          key={`${sheet.tab.tabId}:${sheet.tab.target.kind}`}
-          sheet={sheet}
-          serverId={serverId}
-          workspaceId={workspaceId}
-          isWorkspaceFocused={isWorkspaceFocused}
-          buildContent={buildContent}
-          onClose={onClose}
-          onOpenAsTab={onOpenAsTab}
-        />
-      </ThemedBottomSheet>
-    </View>
-  );
-}
-
-function WorkspaceSheetBody({
-  sheet,
+  isBottom,
+  isTop,
   serverId,
   workspaceId,
   isWorkspaceFocused,
@@ -172,17 +176,110 @@ function WorkspaceSheetBody({
 }: WorkspaceSheetPresentationProps) {
   const { t } = useTranslation();
   const { tab } = sheet;
+  const sheetRef = useRef<BottomSheet>(null);
+  const isScreenFocused = useIsFocused();
   ensurePanelsRegistered();
   const registration = getPanelRegistration(tab.target.kind);
   if (!registration) {
     throw new Error(`No panel registration for kind: ${tab.target.kind}`);
   }
-  // The body is keyed by tab id and kind, so the registration and its descriptor hook stay fixed.
   const descriptor = registration.useDescriptor(tab.target as never, {
     serverId,
     workspaceId,
     tabId: tab.tabId,
   });
+
+  const handleClose = useCallback(() => onClose(tab.tabId), [onClose, tab.tabId]);
+  const handleChange = useCallback(
+    (index: number) => {
+      if (index !== -1) return;
+      // A declined close (unsaved changes) leaves the tab in the sheet, so bring it back up.
+      void handleClose().then(() => sheetRef.current?.snapToIndex(0));
+    },
+    [handleClose],
+  );
+  // Hidden workspaces stay mounted in the deck and under Settings; only the visible one owns back.
+  const ownsBackPress = isTop && isWorkspaceFocused && isScreenFocused;
+  useEffect(() => {
+    if (!ownsBackPress) return;
+    return systemBackPress.subscribe(() => {
+      void handleClose();
+      return true;
+    });
+  }, [handleClose, ownsBackPress]);
+
+  const handleOpenAsTab = useCallback(() => onOpenAsTab(tab.tabId), [onOpenAsTab, tab.tabId]);
+  const header = useMemo<SheetHeader>(
+    () => ({
+      title: descriptor.label,
+      leading: <ThemedPanelIcon icon={descriptor.icon} size={16} />,
+      actions: sheet.policy.openAsTab ? (
+        <Button size="sm" variant="secondary" onPress={handleOpenAsTab}>
+          {t("workspace.sheet.openAsTab")}
+        </Button>
+      ) : undefined,
+    }),
+    [descriptor.icon, descriptor.label, handleOpenAsTab, sheet.policy.openAsTab, t],
+  );
+  const handleHeaderClose = useCallback(() => {
+    void handleClose();
+  }, [handleClose]);
+  const handleValue = useMemo<WorkspaceSheetHandleValue>(
+    () => ({ header, onClose: handleHeaderClose }),
+    [handleHeaderClose, header],
+  );
+
+  return (
+    // Gorhom renders the handle beside the content, so the dialog wraps the whole sheet.
+    <View
+      style={styles.sheetLayer}
+      pointerEvents="box-none"
+      role="dialog"
+      aria-label={descriptor.label}
+    >
+      {/* The header is the sheet's handle: the panel scrolls on its own, so dragging the content
+          would fight it, and the header is where people reach to pull the sheet down. */}
+      <WorkspaceSheetHandleContext.Provider value={handleValue}>
+        <BottomSheet
+          ref={sheetRef}
+          index={0}
+          snapPoints={SNAP_POINTS}
+          enableDynamicSizing={false}
+          enablePanDownToClose
+          enableContentPanningGesture={false}
+          backgroundComponent={SheetBackground}
+          handleComponent={WorkspaceSheetHandle}
+          backdropComponent={isBottom ? renderBackdrop : renderStackedBackdrop}
+          onChange={handleChange}
+          accessible={false}
+        >
+          {/* A covered sheet keeps its state but stops its live work until it is on top again. */}
+          <RetainedPanelActivity active={isTop}>
+            <WorkspaceSheetBody
+              tab={tab}
+              isPaneFocused={isTop && isWorkspaceFocused}
+              isWorkspaceFocused={isWorkspaceFocused}
+              buildContent={buildContent}
+            />
+          </RetainedPanelActivity>
+        </BottomSheet>
+      </WorkspaceSheetHandleContext.Provider>
+    </View>
+  );
+}
+
+function WorkspaceSheetBody({
+  tab,
+  isPaneFocused,
+  isWorkspaceFocused,
+  buildContent,
+}: {
+  tab: WorkspaceSheet["tab"];
+  /** Only the top sheet's pane is focused; the ones below are covered. */
+  isPaneFocused: boolean;
+  isWorkspaceFocused: boolean;
+  buildContent: (tab: WorkspaceTabDescriptor) => WorkspacePaneContentModel;
+}) {
   const tabDescriptor = useMemo<WorkspaceTabDescriptor>(
     () => ({
       key: tab.tabId,
@@ -194,38 +291,20 @@ function WorkspaceSheetBody({
     [tab],
   );
   const content = useMemo(() => buildContent(tabDescriptor), [buildContent, tabDescriptor]);
-  const handleClose = useCallback(() => {
-    void onClose();
-  }, [onClose]);
   // The sheet reaches the bottom of the screen, so it owns the system navigation inset.
   const { bottom: bottomInset } = useSafeAreaInsets();
   const contentStyle = useMemo(
     () => [styles.content, { paddingBottom: bottomInset }],
     [bottomInset],
   );
-  const header = useMemo(
-    () => ({
-      title: descriptor.label,
-      leading: <ThemedPanelIcon icon={descriptor.icon} size={16} />,
-      actions: sheet.policy.openAsTab ? (
-        <Button size="sm" variant="secondary" onPress={onOpenAsTab}>
-          {t("workspace.sheet.openAsTab")}
-        </Button>
-      ) : undefined,
-    }),
-    [descriptor.icon, descriptor.label, onOpenAsTab, sheet.policy.openAsTab, t],
-  );
 
   return (
-    <View style={styles.body} role="dialog" aria-label={descriptor.label}>
-      <SheetHeaderView header={header} onClose={handleClose} />
-      <View style={contentStyle}>
-        <WorkspacePaneContent
-          content={content}
-          isWorkspaceFocused={isWorkspaceFocused}
-          isPaneFocused={isWorkspaceFocused}
-        />
-      </View>
+    <View style={contentStyle} testID="workspace-sheet-body">
+      <WorkspacePaneContent
+        content={content}
+        isWorkspaceFocused={isWorkspaceFocused}
+        isPaneFocused={isPaneFocused}
+      />
     </View>
   );
 }
@@ -234,9 +313,11 @@ const styles = StyleSheet.create({
   host: {
     ...StyleSheet.absoluteFillObject,
   },
-  body: {
-    flex: 1,
-    minHeight: 0,
+  clearBackdrop: {
+    backgroundColor: "transparent",
+  },
+  sheetLayer: {
+    ...StyleSheet.absoluteFillObject,
   },
   content: {
     flex: 1,
