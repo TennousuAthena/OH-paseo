@@ -60,6 +60,9 @@ import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { reconcileMissingAgentStateWithPresentAgent } from "@/panels/agent-panel-load-state";
 import { TimelineSyncStatus } from "@/timeline/sync-status";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
+import { buildAgentFactsLine } from "@/panels/agent-facts-line";
+import { PaneSubtitle } from "@/panels/pane-subtitle";
+import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useHasPluginComposerPills } from "@/plugins";
@@ -1247,6 +1250,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   ) : null;
   const streamContent = (
     <View style={animatedStaticStyles.content}>
+      {showsComposer ? null : <SheetAgentFacts serverId={serverId} agentId={agentId} />}
       <RenderProfile id={`AgentStreamSection:${agentId}`}>
         <AgentStreamSection
           streamViewRef={streamViewRef}
@@ -1373,6 +1377,36 @@ function TimelineSyncErrorCallout({
       </View>
     </View>
   );
+}
+
+/**
+ * What the composer's controls and context meter would show, as one line, for an agent shown
+ * without its composer.
+ */
+function SheetAgentFacts({ serverId, agentId }: { serverId: string; agentId: string }) {
+  const agent = useSessionStore(
+    useShallow((state) => {
+      const current = state.sessions[serverId]?.agents.get(agentId);
+      return current
+        ? {
+            provider: current.provider,
+            cwd: current.cwd,
+            runtimeModelId: current.runtimeInfo?.model ?? null,
+            configuredModelId: current.model ?? null,
+            runtimeThinkingOptionId: current.runtimeInfo?.thinkingOptionId ?? null,
+            explicitThinkingOptionId: current.thinkingOptionId ?? null,
+            availableModes: current.availableModes,
+            currentModeId: current.currentModeId,
+            contextWindowUsedTokens: current.lastUsage?.contextWindowUsedTokens ?? null,
+            contextWindowMaxTokens: current.lastUsage?.contextWindowMaxTokens ?? null,
+          }
+        : null;
+    }),
+  );
+  const { entries } = useProvidersSnapshot(serverId, { cwd: agent?.cwd });
+  const models = entries?.find((entry) => entry.provider === agent?.provider)?.models ?? null;
+  const text = agent ? buildAgentFactsLine({ ...agent, models }) : null;
+  return text ? <PaneSubtitle text={text} testID="agent-pane-subtitle" /> : null;
 }
 
 const AgentStreamSection = memo(function AgentStreamSection({

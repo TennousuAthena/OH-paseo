@@ -111,13 +111,13 @@ export interface OpenWorkspaceTabInput {
 }
 
 /**
- * How the app shell lays out a workspace: compact (one tab at a time, plus the sheet), a single
+ * How the app shell lays out a workspace: compact (one tab at a time, plus sheets), a single
  * wide pane (touch tablets, which cannot render splits), or split panes.
  */
 export type WorkspaceLayoutMode = "compact" | "single-pane" | "split-panes";
 
-/** A tab hosted by the compact workspace sheet instead of a pane. */
-export interface WorkspaceSheet {
+/** A tab shown in a sheet over the compact workspace instead of in a pane. */
+export interface SheetTab {
   tab: WorkspaceTab;
   policy: CompactSheetPolicy;
   parentTabId: string | null;
@@ -127,10 +127,12 @@ interface WorkspaceLayoutStore {
   /** Published once by the app shell; callers never pass a form factor to open a tab. */
   layoutMode: WorkspaceLayoutMode;
   /**
-   * Each workspace's open sheets, bottom to top; only the top one is on screen. A workspace with
-   * no sheet has no entry. Not persisted: a reload returns to the tab strip.
+   * Each workspace's sheet tabs in the order they opened, so the last is the sheet on top. The
+   * list never reorders: the stack belongs to the sheet primitive, and moving a sheet would remount
+   * its panel. A workspace with no sheet has no entry. Not persisted: a reload returns to the tab
+   * strip.
    */
-  sheetsByWorkspace: Record<string, readonly WorkspaceSheet[]>;
+  sheetsByWorkspace: Record<string, readonly SheetTab[]>;
   layoutByWorkspace: Record<string, WorkspaceLayout>;
   splitSizesByWorkspace: Record<string, Record<string, number[]>>;
   explorerSidebarWidthByWorkspace: Record<string, number>;
@@ -143,10 +145,10 @@ interface WorkspaceLayoutStore {
   pullRequestTabAutoOpenedByWorkspace: Record<string, true>;
   /**
    * The one entry point for showing a target. On compact layouts a target whose panel declares
-   * `compactSheet` opens in the workspace sheet; the returned tab id is the sheet tab's id.
+   * `compactSheet` opens in a sheet; the returned tab id is the sheet tab's id.
    */
   openTab: (input: OpenWorkspaceTabInput) => string | null;
-  /** Whether `openTab` with this input would show the target in the sheet. */
+  /** Whether `openTab` with this input would show the target in a sheet. */
   opensInSheet: (
     input: Pick<OpenWorkspaceTabInput, "workspaceKey" | "target" | "intent">,
   ) => boolean;
@@ -684,12 +686,12 @@ function attachParentTab(input: {
   });
 }
 
-const NO_SHEETS: readonly WorkspaceSheet[] = [];
+const NO_SHEETS: readonly SheetTab[] = [];
 
 function getSheets(
   state: Pick<WorkspaceLayoutStore, "sheetsByWorkspace">,
   workspaceKey: string,
-): readonly WorkspaceSheet[] {
+): readonly SheetTab[] {
   return state.sheetsByWorkspace[workspaceKey] ?? NO_SHEETS;
 }
 
@@ -697,14 +699,14 @@ function findSheet(
   state: Pick<WorkspaceLayoutStore, "sheetsByWorkspace">,
   workspaceKey: string,
   tabId: string,
-): WorkspaceSheet | undefined {
+): SheetTab | undefined {
   return getSheets(state, workspaceKey).find((sheet) => sheet.tab.tabId === tabId);
 }
 
 function withSheets(
   state: Pick<WorkspaceLayoutStore, "sheetsByWorkspace">,
   workspaceKey: string,
-  sheets: readonly WorkspaceSheet[],
+  sheets: readonly SheetTab[],
 ): Pick<WorkspaceLayoutStore, "sheetsByWorkspace"> {
   if (sheets.length > 0) {
     return { sheetsByWorkspace: { ...state.sheetsByWorkspace, [workspaceKey]: sheets } };
@@ -732,7 +734,7 @@ function withSheetTab(
   state: Pick<WorkspaceLayoutStore, "sheetsByWorkspace">,
   workspaceKey: string,
   tabId: string,
-  update: (sheet: WorkspaceSheet) => WorkspaceSheet,
+  update: (sheet: SheetTab) => SheetTab,
 ): Pick<WorkspaceLayoutStore, "sheetsByWorkspace"> {
   return withSheets(
     state,
@@ -777,13 +779,13 @@ function resolveOpenParentTabId(
 
 function placeTargetInSheet(input: {
   /** The sheet whose tab the target keeps, if any. */
-  kept: WorkspaceSheet | undefined;
+  kept: SheetTab | undefined;
   target: WorkspaceTabTarget;
   intent: WorkspaceTabOpenIntent;
   policy: CompactSheetPolicy;
   parentTabId: string | null;
   state: JsonValue | undefined;
-}): WorkspaceSheet {
+}): SheetTab {
   if (input.kept) {
     return { ...input.kept, tab: { ...input.kept.tab, target: input.target } };
   }
@@ -857,14 +859,14 @@ function promoteSheetToTab(
  * A sheet holding unsaved work is never implicitly displaced: moving its tab would remount the
  * panel and drop the work. Only the explicit, guarded close removes it.
  */
-function sheetHoldsUnsavedWork(workspaceKey: string, sheet: WorkspaceSheet): boolean {
+function sheetHoldsUnsavedWork(workspaceKey: string, sheet: SheetTab): boolean {
   return isSheetTabModified(workspaceKey, sheet.tab.tabId);
 }
 
 /**
- * Where an open lands in the sheet stack, or null when it opens as a tab. A new target goes on
- * top. A reveal of a resource a sheet already shows keeps that sheet's tab and brings it back to
- * the top; the sheets above it close, except ones holding unsaved work, which stay beneath it.
+ * Where an open lands among the sheet tabs, or null when it opens as a tab. A new target goes on
+ * top. A reveal of a resource a sheet already shows keeps that sheet's tab and uncovers it by
+ * closing the sheets above it, except ones holding unsaved work, which stay where they are.
  */
 function resolveSheetPlacement(
   state: WorkspaceLayoutStore,
@@ -915,7 +917,7 @@ function openSheetTabInFront(
  */
 function sheetAgentNoLongerFits(
   workspaceKey: string,
-  sheet: WorkspaceSheet,
+  sheet: SheetTab,
   snapshot: WorkspaceTabSnapshot,
 ): boolean {
   if (sheet.tab.target.kind !== "agent" || !snapshot.agentsHydrated) return false;
@@ -1001,16 +1003,17 @@ export function createWorkspaceLayoutStore(
               parentTabId,
               state: input.state,
             });
-            const below =
+            const next =
               keptIndex === null
-                ? sheets
-                : [
-                    ...sheets.slice(0, keptIndex),
-                    ...sheets
-                      .slice(keptIndex + 1)
-                      .filter((above) => sheetHoldsUnsavedWork(normalizedWorkspaceKey, above)),
-                  ];
-            set((state) => withSheets(state, normalizedWorkspaceKey, [...below, sheet]));
+                ? [...sheets, sheet]
+                : sheets.flatMap((existing, index) => {
+                    if (index === keptIndex) return [sheet];
+                    if (index < keptIndex) return [existing];
+                    return sheetHoldsUnsavedWork(normalizedWorkspaceKey, existing)
+                      ? [existing]
+                      : [];
+                  });
+            set((state) => withSheets(state, normalizedWorkspaceKey, next));
             return sheet.tab.tabId;
           }
           const placement = getOpenTabPlacement(

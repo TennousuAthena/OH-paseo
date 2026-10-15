@@ -4592,7 +4592,7 @@ describe("compact workspace sheet", () => {
     expect(tabKinds(store)).toEqual(["terminal"]);
   });
 
-  it("brings a stacked target back to the top by dropping the sheets above it", () => {
+  it("uncovers a covered sheet by dropping the sheets above it", () => {
     const store = createCompactStore();
     const fileTabId = store
       .getState()
@@ -4878,13 +4878,15 @@ describe("compact workspace sheet", () => {
       });
     });
 
-    it("brings a covered sheet back to the top and keeps a modified sheet above it beneath", () => {
+    it("keeps a covered sheet in place under a modified sheet instead of reordering", () => {
       const store = createCompactStore();
       const otherTarget = { kind: "file" as const, path: "src/other.ts" };
       const otherTabId = store
         .getState()
         .openTab({ workspaceKey, target: otherTarget, intent: "reveal" });
       const modifiedSheetTabId = openModifiedFileSheet(store);
+      const unmodifiedTopTarget = { kind: "file" as const, path: "src/third.ts" };
+      store.getState().openTab({ workspaceKey, target: unmodifiedTopTarget, intent: "reveal" });
       const focusedBefore = focusedTabId(store);
 
       const tabId = store
@@ -4892,10 +4894,10 @@ describe("compact workspace sheet", () => {
         .openTab({ workspaceKey, target: otherTarget, intent: "reveal" });
 
       expect(tabId).toBe(otherTabId);
-      expect(sheetTargets(store)).toEqual([fileTarget, otherTarget]);
-      expect(store.getState().sheetsByWorkspace[workspaceKey]?.[0]?.tab.tabId).toBe(
-        modifiedSheetTabId,
-      );
+      // Moving a sheet would remount its panel, so the stack keeps its order: the modified sheet
+      // stays on top of the one revealed, and only the unmodified sheet above them closes.
+      expect(sheetTargets(store)).toEqual([otherTarget, fileTarget]);
+      expect(sheetTabId(store)).toBe(modifiedSheetTabId);
       expect(stripTab(store, tabId ?? "")).toBeNull();
       expect(focusedTabId(store)).toBe(focusedBefore);
     });

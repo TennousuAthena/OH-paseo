@@ -3,6 +3,7 @@ import {
   useComposerTabFullscreen,
 } from "@/composer/editing-session";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { SheetHostScope } from "@/components/ui/isolated-bottom-sheet-modal";
 import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import { getOpenAgentTabLabel } from "@getpaseo/protocol/agent-labels";
 import {
@@ -78,7 +79,7 @@ import {
   selectExplorerSidebarPaneId,
   selectPaneFocusSuspended,
   type WorkspaceLayout,
-  type WorkspaceSheet,
+  type SheetTab,
   type WorkspaceTabPlacement,
   useWorkspaceLayoutStore,
   useWorkspaceLayoutStoreHydrated,
@@ -165,7 +166,7 @@ import {
   type WorkspacePaneContentModel,
 } from "@/screens/workspace/workspace-pane-content";
 import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
-import { WorkspaceSheetHost } from "@/screens/workspace/workspace-sheet-host";
+import { SheetTabs } from "@/screens/workspace/sheet-tabs";
 import type { PaneHost } from "@/panels/panel-manifest";
 import { WorkspaceFocusProvider } from "@/workspace/focus";
 import { DiffDocumentWorkspaceCacheProvider } from "@/git/diff-document/workspace-cache";
@@ -208,7 +209,7 @@ import { RenderProfile } from "@/utils/render-profiler";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
 import { useHasPullRequest, usePullRequestAutoAdd } from "@/panels/pull-request";
 
-const NO_SHEETS: readonly WorkspaceSheet[] = [];
+const NO_SHEETS: readonly SheetTab[] = [];
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
 const EMPTY_UI_TABS: WorkspaceTab[] = [];
 const EMPTY_WORKSPACE_SCRIPTS: WorkspaceDescriptor["scripts"] = [];
@@ -3552,14 +3553,15 @@ function WorkspaceScreenContent({
     composerFullscreen: useComposerTabFullscreen(workspacePanelKey, activeTabId),
   });
 
-  // The sheet is the column's last child, so it covers the compact header as a modal.
+  // Sheets opened from the compact column present inside it, so their panels read the workspace
+  // providers, and they cover the compact header as a modal.
   const workspaceCenterColumn = isMobile ? (
     <WorkspacePanelProviders
       launcher={newTabLauncher}
       workspaceKey={workspacePanelKey}
       tabIds={workspacePanelTabIds}
     >
-      <View style={styles.centerColumn}>
+      <SheetHostScope style={styles.centerColumn}>
         <FloatingHeaderLayout
           header={compactHeaderLayout.header}
           floating={compactHeaderLayout.floating}
@@ -3570,17 +3572,15 @@ function WorkspaceScreenContent({
             </StreamTopOverlayProvider>
           )}
         </FloatingHeaderLayout>
-        <StreamTopOverlayProvider value={0}>
-          <WorkspaceSheetHost
-            workspaceKey={persistenceKey}
-            serverId={normalizedServerId}
-            workspaceId={normalizedWorkspaceId}
-            isWorkspaceFocused={isRouteFocused}
-            buildContent={buildSheetPaneContentModel}
-            onCloseTab={handleCloseTabById}
-          />
-        </StreamTopOverlayProvider>
-      </View>
+        <SheetTabs
+          workspaceKey={persistenceKey}
+          serverId={normalizedServerId}
+          workspaceId={normalizedWorkspaceId}
+          isWorkspaceFocused={isRouteFocused}
+          buildContent={buildSheetPaneContentModel}
+          onCloseTab={handleCloseTabById}
+        />
+      </SheetHostScope>
     </WorkspacePanelProviders>
   ) : (
     <View style={styles.centerColumn}>
