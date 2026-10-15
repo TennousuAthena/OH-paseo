@@ -2,6 +2,8 @@
 
 ## 0.11.3 - 2026-10-15
 
+[Hoplite](https://hoplite.sh) joins Paseo as our first sponsor through the company sponsorship program. Hoplite builds cloud coding agents that turn tasks from GitHub, Linear, Slack and more into pull requests. Thank you to the Hoplite team for supporting Paseo.
+
 ### Added
 
 - Added Hoplite as an opt-in provider in the ACP provider catalog ([#6953](https://github.com/getpaseo/paseo/pull/6953) by [@odinglyn0](https://github.com/odinglyn0))
