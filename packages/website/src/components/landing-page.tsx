@@ -134,11 +134,11 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
             <ExtensibleSection />
             <FAQ />
             <PhilosophySection />
+            <SponsorsSection placement="page" />
             <SponsorSection />
-            <SponsorsSection />
           </div>
         </main>
-        <SiteFooter />
+        <SiteFooter sponsors={false} />
       </div>
     </CursorFieldProvider>
   );
