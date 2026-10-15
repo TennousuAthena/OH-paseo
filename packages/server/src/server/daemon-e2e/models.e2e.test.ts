@@ -199,10 +199,13 @@ test("bundled Hoplite requires a config entry and removal survives restart", asy
         hoplite: {
           enabled: true,
           command: [process.execPath, path.resolve(import.meta.dirname, "hoplite-fixture.cjs")],
-          env: { HOPLITE_TEST_RECORD: record },
+          env: { HOPLITE_TEST_RECORD: record, HOPLITE_TEST_CWD: root },
         },
       },
     });
+    const globalModels = await client.listProviderModels("hoplite");
+    expect(globalModels.error).toBeNull();
+    expect(globalModels.models).toEqual([]);
     await expect
       .poll(
         async () =>
@@ -211,9 +214,14 @@ test("bundled Hoplite requires a config entry and removal survives restart", asy
           )?.status,
       )
       .toBe("ready");
-    expect((await client.listProviderModels("hoplite")).models.map((model) => model.id)).toEqual([
-      "fixture-model",
-    ]);
+    const workspaceModels = await client.listProviderModels("hoplite", { cwd: root });
+    expect(workspaceModels.error).toBeNull();
+    expect(workspaceModels.models.map((model) => model.id)).toEqual(["fixture-model"]);
+    await client.refreshProvidersSnapshot({ providers: ["hoplite"] });
+    expect((await client.listProviderModels("hoplite")).models).toEqual([]);
+    expect(
+      (await client.listProviderModels("hoplite", { cwd: root })).models.map((model) => model.id),
+    ).toEqual(["fixture-model"]);
     const agent = await client.createAgent({
       provider: "hoplite",
       cwd: root,

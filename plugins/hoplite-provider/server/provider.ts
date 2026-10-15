@@ -11,6 +11,7 @@ export function createHopliteProvider(): ProviderRegistration {
       description: "Hoplite's coding agent through the local `hoplite acp` bridge",
       icon: "icon.svg",
       command: ["hoplite", "acp"],
+      acpOptions: { workspaceOnlyCatalog: true },
       transformers: [runPhaseTransformer],
     }),
   };

@@ -20,6 +20,13 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   let result = {};
   if (request.method === "initialize")
     result = { protocolVersion: 1, agentCapabilities: {}, authMethods: [] };
+  if (request.method === "session/new" && request.params.cwd !== process.env.HOPLITE_TEST_CWD) {
+    send({
+      id: request.id,
+      error: { code: -32602, message: "No Hoplite project for this directory" },
+    });
+    return;
+  }
   if (request.method === "session/new")
     result = {
       sessionId: "hoplite-fixture",

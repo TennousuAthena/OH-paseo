@@ -547,8 +547,13 @@ class AcpRuntime {
     return sessionCapabilities;
   }
 
-  async discover(cwd = process.cwd()): Promise<ProviderCatalog> {
-    const response = await this.call(this.connection.newSession({ cwd, mcpServers: [] }));
+  async discover(cwd?: string): Promise<ProviderCatalog> {
+    if (cwd === undefined && this.options.options.acpOptions?.workspaceOnlyCatalog) {
+      return { models: [], modes: [] };
+    }
+    const response = await this.call(
+      this.connection.newSession({ cwd: cwd ?? process.cwd(), mcpServers: [] }),
+    );
     this.nativeSessionId = response.sessionId;
     this.modes = response.modes;
     this.configOptions = response.configOptions ?? [];

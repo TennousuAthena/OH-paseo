@@ -272,6 +272,39 @@ lines.on("line", (line) => {
     }
   });
 
+  it("still reports initialization failures for workspace-only global discovery", async () => {
+    let unavailable = false;
+    const { connector } = connectorHarness({
+      handleRequest(instance, request) {
+        if (unavailable && request.method === "initialize") {
+          instance.reject(request, "Bridge unavailable");
+          return true;
+        }
+        return false;
+      },
+    });
+    const registration = runAcpProvider({
+      id: "workspace-acp",
+      label: "Workspace ACP",
+      connector,
+      acpOptions: { workspaceOnlyCatalog: true },
+    });
+    const connection = await registration.connect({ versions: [1], capabilities: [] });
+    const events: ProviderEvent[] = [];
+    connection.onEvent((event) => events.push(event));
+    try {
+      unavailable = true;
+      await connection.send({ type: "catalog", requestId: "global" });
+      expect(await waitForEvent(events, (event) => event.type === "request.failed")).toMatchObject({
+        requestId: "global",
+        error: { message: expect.stringContaining("Bridge unavailable") },
+      });
+      expect(events.some((event) => event.type === "catalog")).toBe(false);
+    } finally {
+      await connection.close();
+    }
+  });
+
   it("rejects connection cleanly when the ACP executable does not exist", async () => {
     const registration = runAcpProvider({
       id: "missing-acp",
