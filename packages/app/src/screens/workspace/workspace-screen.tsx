@@ -47,7 +47,7 @@ import { SplitContainer } from "@/components/split-container";
 import { RetainedPanel } from "@/components/retained-panel";
 import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/workspace/open-in-editor/button";
-import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
+import { WorkspaceScriptsButton } from "@/screens/workspace/scripts";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useNavigateToImportedAgent } from "@/hooks/use-import-session";
 import { useToast } from "@/contexts/toast-context";
@@ -1026,6 +1026,15 @@ function WorkspaceScreenContent({
       .prepareWorkspaceRoute(normalizedServerId, normalizedWorkspaceId)
       .catch(() => undefined);
   }, [normalizedServerId, normalizedWorkspaceId, workspaceDescriptor]);
+  // The focused workspace keeps its script status live even when no sidebar or viewed agent
+  // timeline demands the directory. Retained, hidden workspaces release it.
+  useEffect(() => {
+    if (!isRouteFocused || !normalizedServerId || !normalizedWorkspaceId) return;
+    return getHostRuntimeStore().acquireScriptStatusDemand(
+      normalizedServerId,
+      normalizedWorkspaceId,
+    );
+  }, [isRouteFocused, normalizedServerId, normalizedWorkspaceId]);
   const workspaceScripts = getWorkspaceScripts(workspaceDescriptor);
   const { handleRetryHost, handleManageHost, handleDismissMissingWorkspace } =
     useWorkspaceRouteActions(normalizedServerId);
@@ -3373,6 +3382,26 @@ function WorkspaceScreenContent({
       isWorkspaceHeaderSubtitleDistinct,
     ],
   );
+  const compactHeaderScripts = useMemo(
+    () => ({
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+      scripts: workspaceScripts,
+      liveTerminalIds,
+      onScriptTerminalStarted: handleScriptTerminalStarted,
+      onViewTerminal: handleViewScriptTerminal,
+      onOpenUrlInBrowserTab: handleOpenUrlInBrowserTab,
+    }),
+    [
+      normalizedServerId,
+      normalizedWorkspaceId,
+      workspaceScripts,
+      liveTerminalIds,
+      handleScriptTerminalStarted,
+      handleViewScriptTerminal,
+      handleOpenUrlInBrowserTab,
+    ],
+  );
   const compactWorkspaceHeader = useMemo(
     () =>
       isMobile ? (
@@ -3408,6 +3437,7 @@ function WorkspaceScreenContent({
           />
           <WorkspaceHeaderMenuMobile
             normalizedServerId={normalizedServerId}
+            scripts={compactHeaderScripts}
             currentBranchName={currentBranchName}
             showWorkspaceSetup={showWorkspaceSetup}
             showCreateBrowserTab={showCreateBrowserTab}
@@ -3426,6 +3456,7 @@ function WorkspaceScreenContent({
     [
       activeTabKey,
       canOpenImportSheet,
+      compactHeaderScripts,
       createTerminalDisabled,
       currentBranchName,
       explorerSidebarToggleAccessibilityState,
