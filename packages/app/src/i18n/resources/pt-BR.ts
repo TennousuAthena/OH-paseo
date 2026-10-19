@@ -543,6 +543,7 @@ export const ptBR: TranslationResources = {
       },
     },
     setup: {
+      updateHost: "Atualize o host para ver os detalhes da configuração do espaço de trabalho",
       descriptor: {
         label: "Configuração",
         completed: "Configuração concluída",

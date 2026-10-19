@@ -544,6 +544,7 @@ export const es: TranslationResources = {
       },
     },
     setup: {
+      updateHost: "Actualiza el host para ver los detalles de configuración del espacio de trabajo",
       descriptor: {
         label: "Configuración",
         completed: "Configuración completada",

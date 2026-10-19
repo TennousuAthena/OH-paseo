@@ -544,6 +544,7 @@ export const ja: TranslationResources = {
       },
     },
     setup: {
+      updateHost: "ワークスペースのセットアップ詳細を表示するにはホストを更新してください",
       descriptor: {
         label: "セットアップ",
         completed: "セットアップ完了",

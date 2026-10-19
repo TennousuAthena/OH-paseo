@@ -535,6 +535,7 @@ export const en = {
       },
     },
     setup: {
+      updateHost: "Update the host to view workspace setup details",
       descriptor: {
         label: "Setup",
         completed: "Setup completed",

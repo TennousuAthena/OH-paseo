@@ -543,6 +543,8 @@ export const fr: TranslationResources = {
       },
     },
     setup: {
+      updateHost:
+        "Mettez à jour l’hôte pour afficher les détails de configuration de l’espace de travail",
       descriptor: {
         label: "Configuration",
         completed: "Configuration terminée",

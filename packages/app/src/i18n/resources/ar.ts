@@ -538,6 +538,7 @@ export const ar: TranslationResources = {
       },
     },
     setup: {
+      updateHost: "حدّث المضيف لعرض تفاصيل إعداد مساحة العمل",
       descriptor: {
         label: "يثبت",
         completed: "اكتمل الإعداد",

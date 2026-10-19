@@ -538,6 +538,7 @@ export const zhCN: TranslationResources = {
       },
     },
     setup: {
+      updateHost: "更新主机以查看工作区设置详情",
       descriptor: {
         label: "Setup",
         completed: "Setup 已完成",

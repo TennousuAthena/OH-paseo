@@ -543,6 +543,7 @@ export const ru: TranslationResources = {
       },
     },
     setup: {
+      updateHost: "Обновите хост, чтобы просмотреть сведения о настройке рабочего пространства",
       descriptor: {
         label: "Настройка",
         completed: "Настройка завершена",

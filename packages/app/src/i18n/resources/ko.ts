@@ -539,6 +539,7 @@ export const ko: TranslationResources = {
       },
     },
     setup: {
+      updateHost: "작업 공간 설정 세부 정보를 보려면 호스트를 업데이트하세요",
       descriptor: {
         label: "설정",
         completed: "설정 완료",
