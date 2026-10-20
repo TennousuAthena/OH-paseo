@@ -3,7 +3,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { Text, View } from "react-native";
-import { StyleSheet, UnistylesRuntime, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
@@ -30,6 +30,25 @@ import type { LiveFileModel } from "./live-file/model";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { usePublishPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import type { Theme } from "@/styles/theme";
+
+// CodeMirror and native source rendering consume appearance as props. Subscribe at the
+// rendering leaf so theme updates reconfigure it without replacing the editor/model.
+const sourceAppearance = (theme: Theme) => ({
+  theme: {
+    colorScheme: theme.colorScheme,
+    background: theme.colors.surface0,
+    foreground: theme.colors.foreground,
+    cursor: theme.colors.terminal.cursor,
+    foregroundMuted: theme.colors.foregroundMuted,
+    border: theme.colors.border,
+    selection: theme.colors.terminal.selectionBackground,
+    monoFont: theme.fontFamily.mono,
+    codeFontSize: theme.fontSize.code,
+    syntax: theme.colors.syntax,
+  },
+});
+const ThemedFileEditorView = withUnistyles(FileEditorView, sourceAppearance);
+const ThemedFileSourceView = withUnistyles(FileSourceView, sourceAppearance);
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const foregroundMutedColorMapping = (theme: Theme) => ({
@@ -81,31 +100,14 @@ function ReadonlySource({
   location: WorkspaceFileLocation;
   navigationRevision: number;
 }) {
-  const theme = UnistylesRuntime.getTheme();
   const { t } = useTranslation();
-  const visualTheme = useMemo(
-    () => ({
-      colorScheme: theme.colorScheme,
-      background: theme.colors.surface0,
-      foreground: theme.colors.foreground,
-      cursor: theme.colors.terminal.cursor,
-      foregroundMuted: theme.colors.foregroundMuted,
-      border: theme.colors.border,
-      selection: theme.colors.terminal.selectionBackground,
-      monoFont: theme.fontFamily.mono,
-      codeFontSize: theme.fontSize.code,
-      syntax: theme.colors.syntax,
-    }),
-    [theme],
-  );
   return (
-    <FileSourceView
+    <ThemedFileSourceView
       content={preview.content ?? ""}
       filename={filename}
       location={location}
       navigationRevision={navigationRevision}
       size={preview.size}
-      theme={visualTheme}
       tooLargeMessage={t("panels.file.tooLargeToDisplay")}
     />
   );
@@ -511,34 +513,6 @@ function EditableFilePane({
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   const suspendPendingSave = useCallback(() => model.suspendAutosave(), [model]);
   usePublishPanelInstanceAttributes({ modified: snapshot.modified, suspendPendingSave });
-  const theme = UnistylesRuntime.getTheme();
-  const visualTheme = useMemo(
-    () => ({
-      colorScheme: theme.colorScheme,
-      background: theme.colors.surface0,
-      foreground: theme.colors.foreground,
-      cursor: theme.colors.terminal.cursor,
-      foregroundMuted: theme.colors.foregroundMuted,
-      border: theme.colors.border,
-      selection: theme.colors.terminal.selectionBackground,
-      monoFont: theme.fontFamily.mono,
-      codeFontSize: theme.fontSize.code,
-      syntax: theme.colors.syntax,
-    }),
-    [
-      theme.colors.border,
-      theme.colors.foreground,
-      theme.colors.foregroundMuted,
-      theme.colors.surface0,
-      theme.colors.syntax,
-      theme.colors.terminal.cursor,
-      theme.colors.terminal.selectionBackground,
-      theme.colorScheme,
-      theme.fontFamily.mono,
-      theme.fontSize.code,
-    ],
-  );
-
   useEffect(() => () => model.dispose(), [model]);
 
   const handleReload = useCallback(() => {
@@ -592,13 +566,12 @@ function EditableFilePane({
         onModeChange={onModeChange}
       />
       {showSource ? (
-        <FileEditorView
+        <ThemedFileEditorView
           model={model}
           filename={filename}
           location={location}
           navigationRevision={navigationRevision}
           vimEnabled={settings.vimKeybindings}
-          theme={visualTheme}
           onCursorChange={setCursor}
           onVimModeChange={handleVimModeChange}
         />
