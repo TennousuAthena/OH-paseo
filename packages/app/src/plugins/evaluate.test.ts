@@ -695,9 +695,10 @@ describe("evaluatePluginClientBundle", () => {
         `(function(require) {
       const shared = require("@getpaseo/plugin");
       const client = require("@getpaseo/plugin/client");
-      const { ExternalLink } = require("@getpaseo/plugin/client/ui");
+      const { ExternalLink, Loading } = require("@getpaseo/plugin/client/ui");
       if (typeof ExternalLink !== "function") throw new Error("ExternalLink");
-      for (const name of ["usePaseo", "useRpc", "useSettings", "useAgent", "useWorkspace", "openExternalUrl"]) {
+      if (typeof Loading !== "function") throw new Error("Loading");
+      for (const name of ["usePaseo", "useRpc", "useSettings", "useAgent", "useWorkspace", "openExternalUrl", "useFileText", "useFileBytes", "useFileUrl", "PluginFileConflictError", "PluginFileDeletedError"]) {
         if (name in shared || typeof client[name] !== "function") throw new Error(name);
       }
       if ("Icon" in shared || typeof shared.PluginAttachmentItemSchema.parse !== "function") throw new Error("shared exports");
@@ -811,4 +812,50 @@ it("binds imported getters to each originating installation across delayed callb
   ]);
   await first.cleanup();
   await second.cleanup();
+});
+
+describe("file panels", () => {
+  const panel =
+    '{ id: "pdf", title: "PDF", icon: "FileText", files: { extensions: ["pdf"] }, Component() { return null; } }';
+  it("registers a panel and removes it on cleanup", async () => {
+    const plugin = evaluatePluginClientBundle("files", bundle(`plugin.addFilePanel(${panel})`));
+    expect(plugin.filePanels.map(({ id, title, files }) => ({ id, title, files }))).toEqual([
+      { id: "pdf", title: "PDF", files: { extensions: ["pdf"] } },
+    ]);
+    await plugin.cleanup();
+    expect(plugin.filePanels).toEqual([]);
+  });
+  it.each([
+    ['files: { extensions: ["pdf"] }', 'files: { pattern: "*.pdf" }', "selector"],
+    ['files: { extensions: ["pdf"] }', 'files: { extensions: [".pdf"] }', "selector"],
+    ['files: { extensions: ["pdf"] }', 'files: { extensions: ["*"] }', "selector"],
+    ['files: { extensions: ["pdf"] }', 'files: { extensions: ["foo/bar"] }', "selector"],
+    ['files: { extensions: ["pdf"] }', "files: { extensions: [] }", "selector"],
+    ['files: { extensions: ["pdf"] }', 'files: { extensions: [], filenames: ["a/b"] }', "selector"],
+    ['id: "pdf"', 'id: "Bad"', "file panel id"],
+    ['title: "PDF"', 'title: " "', "title"],
+    ["Component() { return null; }", "Component: {}", "component"],
+    ['icon: "FileText"', 'icon: ""', "icon"],
+  ])("rejects invalid registration %s → %s", (from, to, error) => {
+    expect(() =>
+      evaluatePluginClientBundle(
+        "files",
+        bundle(`plugin.addFilePanel(${panel.replace(from, to)})`),
+      ),
+    ).toThrow(error);
+  });
+  it("accepts filename selectors and rejects duplicate IDs", () => {
+    const source = panel.replace(
+      'extensions: ["pdf"]',
+      'extensions: [], filenames: ["Dockerfile"]',
+    );
+    const plugin = evaluatePluginClientBundle("files", bundle(`plugin.addFilePanel(${source})`));
+    expect(plugin.filePanels[0]?.files).toEqual({ extensions: [], filenames: ["Dockerfile"] });
+    expect(() =>
+      evaluatePluginClientBundle(
+        "files",
+        bundle(`plugin.addFilePanel(${source}); plugin.addFilePanel(${source})`),
+      ),
+    ).toThrow("Duplicate file panel");
+  });
 });
