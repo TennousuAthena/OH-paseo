@@ -1,3 +1,4 @@
+import { verifyPluginTranslations } from "../support/helpers/plugin-translations";
 import { pluginRequirements } from "../support/helpers/plugin-fixture";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -166,3 +167,10 @@ async function playPluginAudio(page: Page, button: string, result: string) {
   await page.getByRole("button", { name: button, exact: true }).click();
   await expect(page.getByText(result, { exact: true })).toBeVisible();
 }
+
+test("plugin content and host labels follow app language without losing an open draft", async ({
+  page,
+}, info) => {
+  test.setTimeout(180_000);
+  await verifyPluginTranslations(page, info);
+});
