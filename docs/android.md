@@ -61,6 +61,22 @@ Gradle auto-fetches the platform/build-tools it needs once licenses are accepted
 
 ## Local build + install
 
+The locked `expo-modules-core@57.0.23` needs the patch installed by `npm install`.
+It backports
+[Expo's Activity-result launcher fix](https://github.com/expo/expo/pull/49634): changing
+font size or another unhandled configuration can otherwise disable image selection
+until the app process restarts. Rebuild the native app after changing this patch;
+a Metro reload cannot update it. Remove the patch when the installed
+`expo-modules-core` includes the fix.
+
+Run its native regression tests from `packages/app/android` after prebuild:
+
+```bash
+./gradlew :expo-modules-core:testDebugUnitTest \
+  --tests expo.modules.kotlin.activityresult.AppContextActivityResultRegistryRecreationTest \
+  --no-daemon --max-workers=1 -Dorg.gradle.parallel=false
+```
+
 From repo root:
 
 ```bash
