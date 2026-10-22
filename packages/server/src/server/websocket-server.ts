@@ -112,6 +112,7 @@ import {
 } from "./lifecycle-reasons.js";
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 
+import type { SecurityMode } from "@getpaseo/relay/e2ee";
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
 import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import { DirectorySyncService } from "./directory-sync/index.js";
@@ -133,6 +134,8 @@ export interface ExternalSocketMetadata {
   transport: "relay" | "hub";
   externalSessionKey?: string;
   relayConnectionId?: string;
+  /** Negotiated endpoint security for relay-carried sockets. */
+  securityMode?: SecurityMode;
   hubDaemonId?: string;
 }
 
@@ -160,6 +163,7 @@ interface WebSocketConnectionIdentity {
   userAgent?: string;
   remoteAddress?: string;
   relayConnectionId?: string;
+  securityMode?: SecurityMode;
   hubDaemonId?: string;
   clientId?: string;
   sessionId?: string;
@@ -1943,6 +1947,8 @@ export class VoiceAssistantWebSocketServer {
       features: {
         connectedHosts: true,
         hostMultiplexing: true,
+        // COMPAT(relayProtectedSecurity): added in v0.13.0, remove gate after 2027-04-21.
+        relayProtectedSecurity: true,
         usageSources: true,
         ownedSubscriptions: true,
         agentRequestReceipts: true,
@@ -2984,6 +2990,7 @@ function createWebSocketConnectionIdentity(
     ...(requestMetadata.userAgent ? { userAgent: requestMetadata.userAgent } : {}),
     ...(requestMetadata.remoteAddress ? { remoteAddress: requestMetadata.remoteAddress } : {}),
     ...(metadata?.relayConnectionId ? { relayConnectionId: metadata.relayConnectionId } : {}),
+    ...(metadata?.securityMode ? { securityMode: metadata.securityMode } : {}),
     ...(metadata?.hubDaemonId ? { hubDaemonId: metadata.hubDaemonId } : {}),
   };
 }
@@ -3002,6 +3009,7 @@ function toConnectionLogFields(identity: WebSocketConnectionIdentity): Record<st
     ...(identity.userAgent ? { userAgent: identity.userAgent } : {}),
     ...(identity.remoteAddress ? { remoteAddress: identity.remoteAddress } : {}),
     ...(identity.relayConnectionId ? { relayConnectionId: identity.relayConnectionId } : {}),
+    ...(identity.securityMode ? { securityMode: identity.securityMode } : {}),
     ...(identity.hubDaemonId ? { hubDaemonId: identity.hubDaemonId } : {}),
     ...(identity.clientId ? { clientId: identity.clientId } : {}),
     ...(identity.sessionId ? { sessionId: identity.sessionId } : {}),
