@@ -1,0 +1,6 @@
+{
+  "string": [
+    { "name": "dialog_cancel", "value": "取消" },
+    { "name": "dialog_confirm", "value": "确定" }
+  ]
+}

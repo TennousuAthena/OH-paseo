@@ -3,6 +3,8 @@
     { "name": "app_name", "value": "Paseo" },
     { "name": "module_desc", "value": "Paseo entry module" },
     { "name": "EntryAbility_desc", "value": "Paseo main ability" },
-    { "name": "EntryAbility_label", "value": "Paseo" }
+    { "name": "EntryAbility_label", "value": "Paseo" },
+    { "name": "dialog_cancel", "value": "Cancel" },
+    { "name": "dialog_confirm", "value": "Confirm" }
   ]
 }

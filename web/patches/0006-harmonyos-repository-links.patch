@@ -1,0 +1,89 @@
+--- a/packages/app/src/components/community-links.tsx
++++ b/packages/app/src/components/community-links.tsx
+@@ -6,6 +6,7 @@
+ import { GitHubIcon } from "@/components/icons/github-icon";
+ import { DiscordIcon } from "@/components/icons/discord-icon";
+ import { openExternalUrl } from "@/utils/open-external-url";
++import { HARMONYOS_REPOSITORY_URL } from "@/constants/harmonyos";
+ 
+ const renderGitHubIcon = (color: string) => <GitHubIcon color={color} size={14} />;
+ const renderDiscordIcon = (color: string) => <DiscordIcon color={color} size={14} />;
+@@ -21,6 +22,10 @@
+ 
+   const handleOpenDiscord = useCallback(() => {
+     void openExternalUrl("https://discord.gg/jz8T2uahpH");
++  }, []);
++
++  const handleOpenHarmonyOS = useCallback(() => {
++    void openExternalUrl(HARMONYOS_REPOSITORY_URL);
+   }, []);
+ 
+   return (
+@@ -52,6 +57,15 @@
+       >
+         Community
+       </Button>
++      <Button
++        variant="ghost"
++        size="sm"
++        leftIcon={renderGitHubIcon}
++        onPress={handleOpenHarmonyOS}
++        testID="community-links-harmonyos"
++      >
++        Paseo for HarmonyOS
++      </Button>
+     </View>
+   );
+ }
+@@ -59,6 +73,8 @@
+ const styles = StyleSheet.create(() => ({
+   row: {
+     flexDirection: "row",
++    flexWrap: "wrap",
++    maxWidth: "100%",
+     justifyContent: "center",
+     alignItems: "center",
+     gap: 0,
+--- a/packages/app/src/screens/settings-screen.tsx
++++ b/packages/app/src/screens/settings-screen.tsx
+@@ -81,6 +81,8 @@
+ import { Button } from "@/components/ui/button";
+ import { Switch } from "@/components/ui/switch";
+ import { CommunityLinks } from "@/components/community-links";
++import { HARMONYOS_REPOSITORY_URL } from "@/constants/harmonyos";
++import { openExternalUrl } from "@/utils/open-external-url";
+ import { SegmentedControl } from "@/components/ui/segmented-control";
+ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+ import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
+@@ -464,6 +466,9 @@
+ 
+ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSectionProps) {
+   const { t } = useTranslation();
++  const handleOpenHarmonyOS = useCallback(() => {
++    void openExternalUrl(HARMONYOS_REPOSITORY_URL);
++  }, []);
+   return (
+     <>
+       <SettingsSection title={t("settings.about.title")}>
+@@ -475,6 +480,17 @@
+             </View>
+             <Text style={styles.aboutValue}>{appVersionText}</Text>
+           </View>
++          <Pressable
++            style={[settingsStyles.row, settingsStyles.rowBorder]}
++            onPress={handleOpenHarmonyOS}
++            accessibilityRole="link"
++            testID="about-harmonyos-repository"
++          >
++            <View style={settingsStyles.rowContent}>
++              <Text style={settingsStyles.rowTitle}>Paseo for HarmonyOS</Text>
++              <Text style={settingsStyles.rowHint}>{HARMONYOS_REPOSITORY_URL}</Text>
++            </View>
++          </Pressable>
+           <WhatsNewRow />
+           {isDesktopApp ? <DesktopAppUpdateRow /> : null}
+         </View>
+--- /dev/null
++++ b/packages/app/src/constants/harmonyos.ts
+@@ -0,0 +1 @@
++export const HARMONYOS_REPOSITORY_URL = "https://github.com/TennousuAthena/OH-paseo";

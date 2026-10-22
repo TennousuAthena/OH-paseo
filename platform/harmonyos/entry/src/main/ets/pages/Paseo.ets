@@ -73,6 +73,32 @@ struct Paseo {
     } catch (_) { return false; }
   }
 
+  private confirmWebAction(event: OnConfirmEvent): boolean {
+    // ArkWeb has no default confirm UI; ignoring it silently returns false.
+    if (!this.isInternalLink(event.url)) {
+      event.result.handleCancel();
+      return true;
+    }
+    try {
+      this.getUIContext().showAlertDialog({
+        title: 'Paseo',
+        message: event.message,
+        primaryButton: {
+          value: $r('app.string.dialog_cancel'),
+          action: () => event.result.handleCancel()
+        },
+        secondaryButton: {
+          value: $r('app.string.dialog_confirm'),
+          action: () => event.result.handleConfirm()
+        },
+        cancel: () => event.result.handleCancel()
+      });
+    } catch (_) {
+      event.result.handleCancel();
+    }
+    return true;
+  }
+
   private interceptNavigation(request: WebResourceRequest): boolean {
     if (this.interceptScan(request)) return true;
     const target = request.getRequestUrl();
@@ -294,6 +320,7 @@ struct Paseo {
           // User-added LAN hosts can use ws://; the application shell stays bundled.
           .mixedMode(MixedMode.All)
           .multiWindowAccess(true)
+          .onConfirm((event) => this.confirmWebAction(event))
           .onWindowNew((event) => {
             // Reject the child WebView explicitly so window.open cannot hang ArkWeb.
             event.handler.setWebController(null!);

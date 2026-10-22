@@ -47,7 +47,15 @@ bash scripts/matebook-device.sh install artifacts/OH-Paseo-0.12.0-universal-rele
 bash scripts/matebook-device.sh launch
 ```
 
-产物位于 `artifacts/`，默认命名为 `universal`；可用 `bash scripts/build-hap.sh debug phone` 输出独立手机产物。清单支持 2in1/tablet/phone，功能验证进度以各设备报告为准。使用本机已有华为设备调试签名，release 构建模式不等于市场发布签名。Hvigor 默认使用 DevEco 自带 Node，避免系统 Node 26 的文件 API 兼容问题。
+产物位于 `artifacts/`，默认命名为 `universal`；可用 `bash scripts/build-hap.sh debug phone` 输出独立手机产物。清单支持 2in1/tablet/phone。默认输出使用本机设备调试签名，供已登记设备安装；release 构建模式不等于市场发布签名。Hvigor 默认使用 DevEco 自带 Node，避免系统 Node 26 的文件 API 兼容问题。
+
+上传 GitHub Release 时使用未签名产物：
+
+```sh
+bash scripts/build-hap.sh release universal unsigned
+```
+
+输出为 `artifacts/OH-Paseo-0.12.0-universal-release-unsigned.hap`，配套发布 SHA-256 校验文件。未签名 HAP 需自行配置签名后安装，公开发布不上传本机开发签名包。`release` 分支保存鸿蒙发布源码，GitHub Release 标签指向对应提交。
 
 首次打开直接显示 HAP 内置的 Paseo 欢迎界面，手机和平板可在欢迎页或“添加主机”中选择“扫描二维码”，调用鸿蒙系统扫码（含图库入口）添加加密中继主机；也可通过“直接连接”或“粘贴配对链接”添加主机。局域网验证填写 Host `DEVICE_ADDRESS`、端口 `6769`；主机配置由 Paseo 自身持久化。界面从 `paseo://app/` 加载，不依赖 daemon 提供网页。旧版远程网页 origin 的本地配置不会自动迁移，升级后需重新添加主机；远程任务数据仍在 daemon。公网、TLS、语音尚未验证。
 
