@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [[ -x "/Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw" ]]; then
+  # Hvigor uses fs.rmdir({ recursive: true }), removed by system Node 26.
+  # Keep builds on the Node runtime shipped with this DevEco installation.
+  if [[ -z "${NODE_HOME:-}" && -x "/Applications/DevEco-Studio.app/Contents/tools/node/bin/node" ]]; then
+    export NODE_HOME="/Applications/DevEco-Studio.app/Contents/tools/node"
+  fi
+  if [[ -z "${DEVECO_SDK_HOME:-}" && -d "/Applications/DevEco-Studio.app/Contents/sdk" ]]; then
+    export DEVECO_SDK_HOME="/Applications/DevEco-Studio.app/Contents/sdk"
+  fi
+  if [[ -z "${OHOS_BASE_SDK_HOME:-}" && -d "${HOME}/Library/OpenHarmony/Sdk" ]]; then
+    export OHOS_BASE_SDK_HOME="${HOME}/Library/OpenHarmony/Sdk"
+  elif [[ -z "${OHOS_BASE_SDK_HOME:-}" && -d "${HOME}/OpenHarmony/sdk" ]]; then
+    export OHOS_BASE_SDK_HOME="${HOME}/OpenHarmony/sdk"
+  fi
+  exec "/Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw" "$@"
+fi
+
+echo "Unable to locate hvigorw. Install DevEco Studio." >&2
+exit 127

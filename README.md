@@ -1,3 +1,5 @@
+> HarmonyOS 手机、平板、电脑适配与真机验证：[OH-Paseo](README.harmonyos.md)。
+
 <p align="center">
   <img src="packages/website/public/logo.svg" width="64" height="64" alt="Paseo logo">
 </p>

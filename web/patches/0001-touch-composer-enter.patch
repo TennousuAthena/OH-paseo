@@ -1,0 +1,48 @@
+diff --git a/packages/app/src/composer/input/input.tsx b/packages/app/src/composer/input/input.tsx
+index 2c104924c..8072f2e4b 100644
+--- a/packages/app/src/composer/input/input.tsx
++++ b/packages/app/src/composer/input/input.tsx
+@@ -28,7 +28,7 @@ import { useTranslation } from "react-i18next";
+ import { ICON_SIZE, type Theme } from "@/styles/theme";
+ import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
+ import { useDictation } from "@/hooks/use-dictation";
+-import { hasFinePointer } from "@/hooks/use-fine-pointer";
++import { hasFinePointer, useHasFinePointer } from "@/hooks/use-fine-pointer";
+ import { DictationOverlay } from "@/components/dictation-controls";
+ import { RealtimeVoiceOverlay } from "@/components/realtime-voice-overlay";
+ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+@@ -1245,6 +1245,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
+     const mode = resolveComposerInputMode(inputMode);
+     const { t } = useTranslation();
+     const isCompact = useIsCompactFormFactor();
++    const hasDesktopPointer = useHasFinePointer();
+     const { height: windowHeight } = useWindowDimensions();
+     const editingSession = useComposerEditingSession(inputMode, props.editingSession);
+     const isFullscreen = useComposerFullscreen(editingSession);
+@@ -1721,7 +1722,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
+     );
+ 
+     const shouldHandleWebKeyPress = isWeb;
+-    const shouldSubmitOnEnter = isWeb && !isCompact;
++    // Wide touch tablets still use a soft keyboard whose Return key inserts a newline.
++    const shouldSubmitOnEnter = isWeb && !isCompact && hasDesktopPointer;
+ 
+     const handleDesktopKeyPress = useCallback(
+       (event: WebTextInputKeyPressEvent) => {
+@@ -1956,7 +1958,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
+           submitLabel={submitLabel}
+           submitButtonTestID={submitButtonTestID}
+           buttonIconSize={buttonIconSize}
+-          sendKeys={DEFAULT_SEND_KEYS}
++          sendKeys={shouldSubmitOnEnter ? DEFAULT_SEND_KEYS : null}
+           sendTooltipLabel={sendTooltipLabel}
+         />
+       ),
+@@ -1976,6 +1978,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
+         submitButtonTestID,
+         buttonIconSize,
+         sendTooltipLabel,
++        shouldSubmitOnEnter,
+       ],
+     );
+     const textSurface = useMemo(

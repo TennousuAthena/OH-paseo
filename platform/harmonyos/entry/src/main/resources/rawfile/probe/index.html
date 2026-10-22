@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>OH-Paseo ArkWeb Probe</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: system-ui, sans-serif; margin: 24px; background:#0f172a; color:#e2e8f0; }
+  h1 { font-size: 18px; }
+  .row { margin: 10px 0; padding: 10px 12px; background:#1e293b; border-radius:8px; }
+  .ok { color:#4ade80; } .fail { color:#f87171; } .pending { color:#facc15; }
+  button { padding:8px 14px; border-radius:6px; border:0; background:#6366f1; color:#fff; font-size:14px; }
+  input { padding:8px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; width: 240px; }
+  #log { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; background:#020617; padding:12px; border-radius:8px; max-height: 320px; overflow:auto; }
+</style>
+</head>
+<body>
+<h1>ArkWeb P0 能力探针</h1>
+
+<div class="row">UA: <span id="ua"></span></div>
+
+<div class="row">
+  crypto.getRandomValues: <span id="crypto" class="pending">…</span><br>
+  WebCrypto subtle: <span id="subtle" class="pending">…</span>
+</div>
+
+<div class="row">
+  IndexedDB: <span id="idb" class="pending">…</span>
+  <button onclick="testIdb()">test read/write</button>
+  <span id="idbResult"></span>
+</div>
+
+<div class="row">
+  WebSocket: <span id="ws" class="pending">…</span>
+  <input id="wsUrl" placeholder="ws://host:port/echo" value="">
+  <button onclick="testWs()">connect</button>
+  <span id="wsResult"></span>
+</div>
+
+<div class="row">
+  Worker: <span id="worker" class="pending">…</span>
+  WASM: <span id="wasm" class="pending">…</span>
+</div>
+
+<div class="row">
+  中文 IME 输入测试：<input id="ime" placeholder="输入拼音，确认 Enter 不误发">
+  <div id="imeLog" style="font-size:12px;margin-top:6px"></div>
+</div>
+
+<div class="row">
+  localStorage: <span id="ls" class="pending">…</span>
+  fetch(file 自身 origin): <span id="origin"></span>
+</div>
+
+<div id="log"></div>
+
+<script>
+const log = m => { document.getElementById('log').textContent += m + "\n"; };
+const set = (id, ok, extra="") => {
+  const el = document.getElementById(id);
+  el.textContent = (ok === null ? "n/a" : ok ? "OK" : "FAIL") + (extra ? " — " + extra : "");
+  el.className = ok ? "ok" : "fail";
+};
+
+document.getElementById('ua').textContent = navigator.userAgent;
+document.getElementById('origin').textContent = location.origin + " | href=" + location.href;
+
+// crypto
+try {
+  const buf = new Uint8Array(16); crypto.getRandomValues(buf);
+  set('crypto', buf.some(b => b !== 0), Array.from(buf.slice(0,4)).map(b=>b.toString(16)).join(''));
+} catch(e){ set('crypto', false, e.message); }
+set('subtle', !!(crypto && crypto.subtle));
+
+// localStorage
+try { localStorage.setItem('probe','1'); set('ls', localStorage.getItem('probe')==='1'); }
+catch(e){ set('ls', false, e.message); }
+
+// IndexedDB
+set('idb', !!window.indexedDB);
+function testIdb(){
+  const r = indexedDB.open('probe',1);
+  r.onupgradeneeded = e => e.target.result.createObjectStore('kv');
+  r.onsuccess = e => {
+    const db = e.target.result;
+    const tx = db.transaction('kv','readwrite');
+    tx.objectStore('kv').put('hello','k1');
+    tx.oncomplete = () => {
+      const g = db.transaction('kv').objectStore('kv').get('k1');
+      g.onsuccess = () => { document.getElementById('idbResult').textContent = ' got "'+g.result+'"'; log('idb ok: '+g.result); };
+    };
+  };
+  r.onerror = e => { document.getElementById('idbResult').textContent = ' err '+e.target.error; };
+}
+
+// WebSocket availability (actual connect needs a server; we report constructor presence + attempt)
+set('ws', typeof WebSocket !== 'undefined');
+function testWs(){
+  const url = document.getElementById('wsUrl').value;
+  const out = document.getElementById('wsResult');
+  if(!url){ out.textContent=' enter url'; return; }
+  out.textContent = ' connecting…';
+  try {
+    const s = new WebSocket(url);
+    s.binaryType = 'arraybuffer';
+    s.onopen = () => { out.textContent=' open'; s.send('ping'); log('ws open '+url); };
+    s.onmessage = e => { out.textContent=' msg '+(typeof e.data)+(e.data instanceof ArrayBuffer?' '+e.data.byteLength+'B':''); log('ws msg '+e.data); s.close(); };
+    s.onerror = e => { out.textContent=' error'; log('ws error'); };
+    s.onclose = e => { log('ws close '+e.code); };
+  } catch(e){ out.textContent=' '+e.message; }
+}
+
+// Worker + WASM
+set('worker', typeof Worker !== 'undefined');
+try {
+  const w = new Worker(URL.createObjectURL(new Blob(['onmessage=e=>postMessage(e.data*2)'])));
+  w.onmessage = e => { log('worker replied '+e.data); w.terminate(); };
+  w.postMessage(21);
+} catch(e){ log('worker spawn fail '+e.message); }
+set('wasm', typeof WebAssembly !== 'undefined');
+if (typeof WebAssembly !== 'undefined') {
+  WebAssembly.instantiate(new Uint8Array([0,97,115,109,1,0,0,0])).then(
+    ()=>log('wasm instantiate ok'),
+    e=>log('wasm instantiate fail '+e.message));
+}
+
+// IME composition events
+const ime = document.getElementById('ime'), imeLog = document.getElementById('imeLog');
+['compositionstart','compositionupdate','compositionend','keydown'].forEach(ev =>
+  ime.addEventListener(ev, e => {
+    const d = `${ev}${e.isComposing?'[composing]':''} key=${e.key||''} data=${e.data||''}`;
+    imeLog.textContent = d + "\n" + imeLog.textContent.split("\n").slice(0,6).join("\n");
+  }));
+</script>
+</body>
+</html>

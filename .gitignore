@@ -98,3 +98,44 @@ app.json
 
 # Project-local Serena configuration and memories.
 .serena/
+
+# HarmonyOS local build/signing/probe files
+.DS_Store
+node_modules/
+oh_modules/
+.hvigor/
+.cxx/
+build/
+dist/
+*.hap
+*.app
+*.p7b
+*.p12
+local.properties
+upstream/paseo/
+certs/*.p12
+certs/*.csr
+certs/*.p7b
+certs/*.cer
+platform/harmonyos/.idea/
+runtime/vendor/
+runtime/verified-paseo/
+__pycache__/
+entry/build/
+wecode-cpp.db*
+.clangd
+.clang-tidy
+
+# Machine-specific signing config and native feasibility-probe binaries
+/platform/harmonyos/build-profile.json5
+/platform/harmonyos/entry/libs/
+
+/platform/harmonyos/entry/src/main/resources/rawfile/paseo/
+
+# Private validation evidence must stay out of this repository.
+/docs/evidence/
+/docs/qa-evidence/
+/packages/app/e2e/mobile/diff-tree/evidence/
+/docs/matebook-validation.md
+/docs/matepad-validation.md
+/docs/phone-validation.md

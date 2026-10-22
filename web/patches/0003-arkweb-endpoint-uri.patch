@@ -1,0 +1,157 @@
+diff --git a/packages/protocol/src/daemon-endpoints.test.ts b/packages/protocol/src/daemon-endpoints.test.ts
+index 3ac1c111a..deaa4ed4a 100644
+--- a/packages/protocol/src/daemon-endpoints.test.ts
++++ b/packages/protocol/src/daemon-endpoints.test.ts
+@@ -1,4 +1,4 @@
+-import { describe, expect, test } from "vitest";
++import { describe, expect, test, vi } from "vitest";
+ 
+ import {
+   buildDaemonWebSocketUrl,
+@@ -15,6 +15,37 @@ import {
+ } from "./daemon-endpoints.js";
+ 
+ describe("connection URI parsing", () => {
++  test("preserves ports without custom-scheme URL support", () => {
++    const NativeURL = globalThis.URL;
++    vi.stubGlobal(
++      "URL",
++      class extends NativeURL {
++        constructor(input: string | URL, base?: string | URL) {
++          if (/^(tcp|relay):/.test(String(input))) throw new Error("Opaque scheme");
++          super(input, base);
++        }
++      },
++    );
++    try {
++      for (const port of [80, 443, 6769]) {
++        const uri = `tcp://192.168.2.122:${port}?password=two+words`;
++        expect(serializeConnectionUriForStorage(parseConnectionUri(uri))).toBe(uri);
++        const relay = {
++          offer: {
++            v: 2 as const,
++            serverId: "test",
++            daemonPublicKeyB64: "abc+/=",
++            relay: { endpoint: `[::1]:${port}`, useTls: true },
++          },
++          password: "two words",
++        };
++        expect(parseRelayConnectionUri(serializeRelayConnectionUri(relay))).toEqual(relay);
++      }
++    } finally {
++      vi.unstubAllGlobals();
++    }
++  });
++
+   test("round-trips a tcp host and port", () => {
+     const parsed = parseConnectionUri("tcp://localhost:6767");
+ 
+diff --git a/packages/protocol/src/daemon-endpoints.ts b/packages/protocol/src/daemon-endpoints.ts
+index a4b72c941..20dfc2a83 100644
+--- a/packages/protocol/src/daemon-endpoints.ts
++++ b/packages/protocol/src/daemon-endpoints.ts
+@@ -19,6 +19,27 @@ export interface ParsedRelayConnectionUri {
+   password?: string;
+ }
+ 
++// ArkWeb treats unregistered schemes as opaque URLs. Parse endpoint authorities
++// through a standard scheme; choose one that preserves an explicit port 80.
++function endpointUrlInput(input: string, scheme: "tcp" | "relay"): string {
++  const prefix = new RegExp(`^${scheme}://`, "i");
++  if (!prefix.test(input)) throw new Error(`Invalid ${scheme} connection URI`);
++  const authority = input.slice(input.indexOf("//") + 2).split(/[/?#]/, 1)[0];
++  const transport = /:0*80$/.test(authority) ? "https:" : "http:";
++  return input.replace(new RegExp(`^${scheme}:`, "i"), transport);
++}
++
++function parseEndpointUri(input: string, scheme: "tcp" | "relay"): URL {
++  return new URL(endpointUrlInput(input, scheme));
++}
++
++function serializeEndpointUrl(url: URL): string {
++  return url
++    .toString()
++    .replace(/^https?:/, "tcp:")
++    .replace(/\/(?=[?#]|$)/, "");
++}
++
+ export function parseRelayConnectionUri(input: string): ParsedRelayConnectionUri {
+   const trimmed = input.trim();
+   const connectIndex = trimmed.indexOf("#connect=");
+@@ -28,11 +49,11 @@ export function parseRelayConnectionUri(input: string): ParsedRelayConnectionUri
+       : trimmed;
+   let url: URL;
+   try {
+-    url = new URL(uri);
++    url = parseEndpointUri(uri, "relay");
+   } catch {
+     throw new Error("Invalid relay connection URI");
+   }
+-  if (url.protocol !== "relay:" || !url.hostname || !url.port || url.username || url.password) {
++  if (!url.hostname || !url.port || url.username || url.password) {
+     throw new Error("Invalid relay connection URI");
+   }
+   const serverId = decodeURIComponent(url.pathname.slice(1));
+@@ -55,12 +76,15 @@ export function parseRelayConnectionUri(input: string): ParsedRelayConnectionUri
+ 
+ export function serializeRelayConnectionUri(parts: ParsedRelayConnectionUri): string {
+   const url = new URL(
+-    `relay://${parts.offer.relay.endpoint}/${encodeURIComponent(parts.offer.serverId)}`,
++    endpointUrlInput(
++      `relay://${parts.offer.relay.endpoint}/${encodeURIComponent(parts.offer.serverId)}`,
++      "relay",
++    ),
+   );
+   url.searchParams.set("key", parts.offer.daemonPublicKeyB64);
+   if (parts.offer.relay.useTls) url.searchParams.set("ssl", "true");
+   if (parts.password) url.searchParams.set("password", parts.password);
+-  return url.toString();
++  return url.toString().replace(/^https?:/, "relay:");
+ }
+ 
+ export type RelayRole = "server" | "client";
+@@ -139,16 +163,16 @@ export function parseConnectionUri(input: string): ParsedConnectionUri {
+     throw new Error("Connection URI is required");
+   }
+ 
++  if (!/^tcp:/i.test(trimmed)) {
++    throw new Error("Connection URI protocol must be tcp:");
++  }
+   let parsed: URL;
+   try {
+-    parsed = new URL(trimmed);
++    parsed = parseEndpointUri(trimmed, "tcp");
+   } catch {
+     throw new Error("Invalid connection URI");
+   }
+ 
+-  if (parsed.protocol !== "tcp:") {
+-    throw new Error("Connection URI protocol must be tcp:");
+-  }
+   if (!parsed.hostname) {
+     throw new Error("Connection URI host is required");
+   }
+@@ -173,7 +197,7 @@ export function parseConnectionUri(input: string): ParsedConnectionUri {
+ }
+ 
+ export function serializeConnectionUri(parts: ConnectionUriParts): string {
+-  return createConnectionUri(parts).toString();
++  return serializeEndpointUrl(createConnectionUri(parts));
+ }
+ 
+ export function serializeConnectionUriForStorage(parts: ParsedConnectionUri): string {
+@@ -181,12 +205,12 @@ export function serializeConnectionUriForStorage(parts: ParsedConnectionUri): st
+   if (parts.password) {
+     url.searchParams.set("password", parts.password);
+   }
+-  return url.toString();
++  return serializeEndpointUrl(url);
+ }
+ 
+ function createConnectionUri(parts: ConnectionUriParts): URL {
+   const hostPart = parts.isIpv6 ? `[${parts.host}]` : parts.host;
+-  const url = new URL(`tcp://${hostPart}:${parts.port}`);
++  const url = parseEndpointUri(`tcp://${hostPart}:${parts.port}`, "tcp");
+   if (parts.useTls) {
+     url.searchParams.set("ssl", "true");
+   }
