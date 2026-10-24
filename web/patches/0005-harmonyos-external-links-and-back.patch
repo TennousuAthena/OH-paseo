@@ -1,73 +1,6 @@
---- a/packages/app/src/constants/platform.ts
-+++ b/packages/app/src/constants/platform.ts
-@@ -35,6 +35,12 @@
- /** Development build/runtime — true in Metro dev bundles, false in production. */
- export const isDev = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
- 
-+/** The bundled HarmonyOS host, including PC where scanning is unavailable. */
-+export const isHarmonyApp =
-+  isWeb &&
-+  typeof window !== "undefined" &&
-+  (window as Window & { __PASEO_HARMONY_APP__?: boolean }).__PASEO_HARMONY_APP__ === true;
-+
- // ---------------------------------------------------------------------------
- // Electron detection (cached — only caches `true`, keeps checking if false
- // because the desktop bridge may load after initial module evaluation)
---- /dev/null
-+++ b/packages/app/src/components/harmonyos-navigation.tsx
-@@ -0,0 +1,52 @@
-+import { useEffect } from "react";
-+import { usePathname, useRouter } from "expo-router";
-+import { isHarmonyApp } from "@/constants/platform";
-+import { useIsCompactFormFactor } from "@/constants/layout";
-+import {
-+  dispatchTopWebOverlayKeyDown,
-+  hasActiveWebOverlay,
-+  hasOpenDomPopover,
-+} from "@/lib/overlay-root";
-+import { usePanelStore } from "@/stores/panel-store";
-+import { dispatchHarmonyBack } from "@/utils/harmonyos-back";
-+
-+/** One native Back press closes one surface or moves one level within Paseo. */
-+export function HarmonyNavigation() {
-+  const router = useRouter();
-+  const pathname = usePathname();
-+  const compact = useIsCompactFormFactor();
-+  useEffect(() => {
-+    if (!isHarmonyApp) return;
-+    const back = (event: Event) => {
-+      event.preventDefault();
-+      if (hasOpenDomPopover()) {
-+        const popovers = document.querySelectorAll<HTMLElement>(":popover-open");
-+        popovers[popovers.length - 1]?.hidePopover();
-+        return;
-+      }
-+      if (hasActiveWebOverlay()) {
-+        dispatchTopWebOverlayKeyDown(
-+          new KeyboardEvent("keydown", { key: "Escape", cancelable: true }),
-+        );
-+        return;
-+      }
-+      if (dispatchHarmonyBack()) return;
-+      const panels = usePanelStore.getState();
-+      if (compact && panels.mobilePanel.target !== "agent") {
-+        panels.showMobileAgent();
-+        return;
-+      }
-+      if (router.canGoBack()) {
-+        router.back();
-+        return;
-+      }
-+      // Cold settings/scanner deep links have no earlier history entry.
-+      if (pathname.startsWith("/settings") || pathname === "/pair-scan")
-+        router.replace("/open-project");
-+      // At an application root, consume Back; Home remains the way to leave.
-+    };
-+    window.addEventListener("paseo-system-back", back);
-+    return () => window.removeEventListener("paseo-system-back", back);
-+  }, [router, pathname, compact]);
-+  return null;
-+}
+diff --git a/packages/app/src/components/harmonyos-navigation.test.tsx b/packages/app/src/components/harmonyos-navigation.test.tsx
+new file mode 100644
+index 000000000..eb5139580
 --- /dev/null
 +++ b/packages/app/src/components/harmonyos-navigation.test.tsx
 @@ -0,0 +1,121 @@
@@ -192,6 +125,86 @@
 +    expect(event.defaultPrevented).toBe(false);
 +  });
 +});
+diff --git a/packages/app/src/components/harmonyos-navigation.tsx b/packages/app/src/components/harmonyos-navigation.tsx
+new file mode 100644
+index 000000000..4fe15c9b9
+--- /dev/null
++++ b/packages/app/src/components/harmonyos-navigation.tsx
+@@ -0,0 +1,52 @@
++import { useEffect } from "react";
++import { usePathname, useRouter } from "expo-router";
++import { isHarmonyApp } from "@/constants/platform";
++import { useIsCompactFormFactor } from "@/constants/layout";
++import {
++  dispatchTopWebOverlayKeyDown,
++  hasActiveWebOverlay,
++  hasOpenDomPopover,
++} from "@/lib/overlay-root";
++import { usePanelStore } from "@/stores/panel-store";
++import { dispatchHarmonyBack } from "@/utils/harmonyos-back";
++
++/** One native Back press closes one surface or moves one level within Paseo. */
++export function HarmonyNavigation() {
++  const router = useRouter();
++  const pathname = usePathname();
++  const compact = useIsCompactFormFactor();
++  useEffect(() => {
++    if (!isHarmonyApp) return;
++    const back = (event: Event) => {
++      event.preventDefault();
++      if (hasOpenDomPopover()) {
++        const popovers = document.querySelectorAll<HTMLElement>(":popover-open");
++        popovers[popovers.length - 1]?.hidePopover();
++        return;
++      }
++      if (hasActiveWebOverlay()) {
++        dispatchTopWebOverlayKeyDown(
++          new KeyboardEvent("keydown", { key: "Escape", cancelable: true }),
++        );
++        return;
++      }
++      if (dispatchHarmonyBack()) return;
++      const panels = usePanelStore.getState();
++      if (compact && panels.mobilePanel.target !== "agent") {
++        panels.showMobileAgent();
++        return;
++      }
++      if (router.canGoBack()) {
++        router.back();
++        return;
++      }
++      // Cold settings/scanner deep links have no earlier history entry.
++      if (pathname.startsWith("/settings") || pathname === "/pair-scan")
++        router.replace("/open-project");
++      // At an application root, consume Back; Home remains the way to leave.
++    };
++    window.addEventListener("paseo-system-back", back);
++    return () => window.removeEventListener("paseo-system-back", back);
++  }, [router, pathname, compact]);
++  return null;
++}
+diff --git a/packages/app/src/components/ui/isolated-bottom-sheet-modal/back-press.ts b/packages/app/src/components/ui/isolated-bottom-sheet-modal/back-press.ts
+index d8f58356d..6438d4e0e 100644
+--- a/packages/app/src/components/ui/isolated-bottom-sheet-modal/back-press.ts
++++ b/packages/app/src/components/ui/isolated-bottom-sheet-modal/back-press.ts
+@@ -1,4 +1,6 @@
+ import { BackHandler, Platform } from "react-native";
++import { isHarmonyApp } from "@/constants/platform";
++import { subscribeHarmonyBack } from "@/utils/harmonyos-back";
+ import type { BackPressSource } from "./visibility-tracker";
+ 
+ /**
+@@ -9,6 +11,7 @@ import type { BackPressSource } from "./visibility-tracker";
+  */
+ export const systemBackPress: BackPressSource = {
+   subscribe(onBackPress) {
++    if (isHarmonyApp) return subscribeHarmonyBack(onBackPress);
+     if (Platform.OS !== "android") return () => {};
+     const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+     return () => subscription.remove();
+diff --git a/packages/app/src/utils/harmonyos-back.ts b/packages/app/src/utils/harmonyos-back.ts
+new file mode 100644
+index 000000000..4eaba54f2
 --- /dev/null
 +++ b/packages/app/src/utils/harmonyos-back.ts
 @@ -0,0 +1,16 @@
@@ -211,38 +224,3 @@
 +  }
 +  return false;
 +}
---- a/packages/app/src/app/_layout.tsx
-+++ b/packages/app/src/app/_layout.tsx
-@@ -2,6 +2,7 @@
- import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
- import { useIsExplorerSidebarOpen } from "@/workspace-tabs/explorer-sidebar";
- import { ComposerEditingSessionsProvider } from "@/composer/editing-session";
-+import { HarmonyNavigation } from "@/components/harmonyos-navigation";
- import "@/styles/unistyles";
- import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
- import { PortalProvider } from "@gorhom/portal";
-@@ -948,6 +949,7 @@
-   return (
-     <MobilePanelsProvider>
-       <HorizontalScrollProvider>
-+        <HarmonyNavigation />
-         <OpenProjectListener />
-         <AgentNavigationListener />
-         <AppWithSidebar>
---- a/packages/app/src/components/ui/isolated-bottom-sheet-modal/back-press.ts
-+++ b/packages/app/src/components/ui/isolated-bottom-sheet-modal/back-press.ts
-@@ -1,4 +1,6 @@
- import { BackHandler, Platform } from "react-native";
-+import { isHarmonyApp } from "@/constants/platform";
-+import { subscribeHarmonyBack } from "@/utils/harmonyos-back";
- import type { BackPressSource } from "./visibility-tracker";
- 
- /**
-@@ -9,6 +11,7 @@
-  */
- export const systemBackPress: BackPressSource = {
-   subscribe(onBackPress) {
-+    if (isHarmonyApp) return subscribeHarmonyBack(onBackPress);
-     if (Platform.OS !== "android") return () => {};
-     const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
-     return () => subscription.remove();

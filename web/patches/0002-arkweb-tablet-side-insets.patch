@@ -1,14 +1,18 @@
 diff --git a/packages/app/src/app/_layout.tsx b/packages/app/src/app/_layout.tsx
-index 559726d7c..410356573 100644
+index 99022863f..df798f4e4 100644
 --- a/packages/app/src/app/_layout.tsx
 +++ b/packages/app/src/app/_layout.tsx
-@@ -1,4 +1,4 @@
+@@ -1,7 +1,8 @@
 -import { useSafeAreaInsets } from "react-native-safe-area-context";
 +import { useWorkspaceSafeAreaInsets } from "@/hooks/use-workspace-safe-area-insets";
  import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
  import { useIsExplorerSidebarOpen } from "@/workspace-tabs/explorer-sidebar";
  import { ComposerEditingSessionsProvider } from "@/composer/editing-session";
-@@ -471,7 +471,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
++import { HarmonyNavigation } from "@/components/harmonyos-navigation";
+ import { SheetHostScope } from "@/components/ui/isolated-bottom-sheet-modal";
+ import "@/styles/unistyles";
+ import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+@@ -352,7 +354,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
    const isDesktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
    const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
    const { width: windowWidth } = useWindowDimensions();
@@ -17,20 +21,28 @@ index 559726d7c..410356573 100644
    const viewportWidth = windowWidth - insets.left - insets.right;
  
    const cycleTheme = useCallback(() => {
+@@ -832,6 +834,7 @@ function AppShell() {
+   return (
+     <MobilePanelsProvider>
+       <HorizontalScrollProvider>
++        <HarmonyNavigation />
+         <OpenProjectListener />
+         <AgentNavigationListener />
+         <AppWithSidebar>
 diff --git a/packages/app/src/components/left-sidebar.tsx b/packages/app/src/components/left-sidebar.tsx
-index 6cf9e29eb..8b6ee792f 100644
+index dbc501b5c..67549e8fe 100644
 --- a/packages/app/src/components/left-sidebar.tsx
 +++ b/packages/app/src/components/left-sidebar.tsx
-@@ -20,7 +20,7 @@ import {
+@@ -19,7 +19,7 @@ import {
  import { Gesture } from "react-native-gesture-handler";
  import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
  import { scheduleOnRN } from "react-native-worklets";
 -import { useSafeAreaInsets } from "react-native-safe-area-context";
 +import { useWorkspaceSafeAreaInsets } from "@/hooks/use-workspace-safe-area-insets";
- import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
+ import { StyleSheet, useUnistyles } from "react-native-unistyles";
  import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
- import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
-@@ -136,7 +136,7 @@ interface DesktopSidebarProps extends SidebarSharedProps {
+ import { SidebarCloseButton } from "@/components/headers/sidebar-close-button";
+@@ -127,7 +127,7 @@ interface DesktopSidebarProps extends SidebarSharedProps {
  export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boolean }) {
    const { theme } = useUnistyles();
    const { t } = useTranslation();
@@ -39,7 +51,7 @@ index 6cf9e29eb..8b6ee792f 100644
    const isCompactLayout = useIsCompactFormFactor();
    const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
  
-@@ -680,7 +680,7 @@ function DesktopSidebar({
+@@ -649,7 +649,7 @@ function DesktopSidebar({
    const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
    const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
    const { width: windowWidth } = useWindowDimensions();
@@ -49,10 +61,10 @@ index 6cf9e29eb..8b6ee792f 100644
    const visibleSidebarWidth = resolveDesktopSidebarWidth({
      requestedWidth: sidebarWidth,
 diff --git a/packages/app/src/constants/platform.ts b/packages/app/src/constants/platform.ts
-index f70f78f6c..08dca4da9 100644
+index f70f78f6c..b751769af 100644
 --- a/packages/app/src/constants/platform.ts
 +++ b/packages/app/src/constants/platform.ts
-@@ -22,6 +22,13 @@ import { isElectronRuntime, isElectronRuntimeMac } from "@/desktop/host";
+@@ -22,4 +22,11 @@ import { isElectronRuntime, isElectronRuntimeMac } from "@/desktop/host";
  /** Browser or Electron — the JS runtime has access to the DOM. */
  export const isWeb = Platform.OS === "web";
  
@@ -64,8 +76,6 @@ index f70f78f6c..08dca4da9 100644
 +  /ArkWeb\//.test(navigator.userAgent);
 +
  /** iOS or Android — the JS runtime is React Native. */
- export const isNative = Platform.OS !== "web";
- 
 diff --git a/packages/app/src/hooks/use-workspace-safe-area-insets.ts b/packages/app/src/hooks/use-workspace-safe-area-insets.ts
 new file mode 100644
 index 000000000..32cb78209

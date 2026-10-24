@@ -1,6 +1,8 @@
+diff --git a/packages/app/src/components/community-links.tsx b/packages/app/src/components/community-links.tsx
+index bbecedc8d..3162263e6 100644
 --- a/packages/app/src/components/community-links.tsx
 +++ b/packages/app/src/components/community-links.tsx
-@@ -6,6 +6,7 @@
+@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
  import { GitHubIcon } from "@/components/icons/github-icon";
  import { DiscordIcon } from "@/components/icons/discord-icon";
  import { openExternalUrl } from "@/utils/open-external-url";
@@ -8,18 +10,18 @@
  
  const renderGitHubIcon = (color: string) => <GitHubIcon color={color} size={14} />;
  const renderDiscordIcon = (color: string) => <DiscordIcon color={color} size={14} />;
-@@ -21,6 +22,10 @@
- 
-   const handleOpenDiscord = useCallback(() => {
+@@ -23,6 +24,10 @@ export function CommunityLinks() {
      void openExternalUrl("https://discord.gg/jz8T2uahpH");
-+  }, []);
-+
-+  const handleOpenHarmonyOS = useCallback(() => {
-+    void openExternalUrl(HARMONYOS_REPOSITORY_URL);
    }, []);
  
++  const handleOpenHarmonyOS = useCallback(() => {
++    void openExternalUrl(HARMONYOS_REPOSITORY_URL);
++  }, []);
++
    return (
-@@ -52,6 +57,15 @@
+     <View style={styles.row}>
+       <Button
+@@ -52,6 +57,15 @@ export function CommunityLinks() {
        >
          Community
        </Button>
@@ -35,7 +37,7 @@
      </View>
    );
  }
-@@ -59,6 +73,8 @@
+@@ -59,6 +73,8 @@ export function CommunityLinks() {
  const styles = StyleSheet.create(() => ({
    row: {
      flexDirection: "row",
@@ -44,18 +46,27 @@
      justifyContent: "center",
      alignItems: "center",
      gap: 0,
+diff --git a/packages/app/src/constants/harmonyos.ts b/packages/app/src/constants/harmonyos.ts
+new file mode 100644
+index 000000000..95f53e969
+--- /dev/null
++++ b/packages/app/src/constants/harmonyos.ts
+@@ -0,0 +1 @@
++export const HARMONYOS_REPOSITORY_URL = "https://github.com/TennousuAthena/OH-paseo";
+diff --git a/packages/app/src/screens/settings-screen.tsx b/packages/app/src/screens/settings-screen.tsx
+index b90f5ccd2..5fec439ad 100644
 --- a/packages/app/src/screens/settings-screen.tsx
 +++ b/packages/app/src/screens/settings-screen.tsx
-@@ -81,6 +81,8 @@
+@@ -82,6 +82,8 @@ import { EditorSection } from "@/screens/settings/editor-section";
+ import { FilesSection } from "@/screens/settings/files-section";
  import { Button } from "@/components/ui/button";
- import { Switch } from "@/components/ui/switch";
  import { CommunityLinks } from "@/components/community-links";
 +import { HARMONYOS_REPOSITORY_URL } from "@/constants/harmonyos";
 +import { openExternalUrl } from "@/utils/open-external-url";
  import { SegmentedControl } from "@/components/ui/segmented-control";
  import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
  import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
-@@ -464,6 +466,9 @@
+@@ -442,6 +444,9 @@ interface AboutSectionProps {
  
  function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSectionProps) {
    const { t } = useTranslation();
@@ -65,10 +76,10 @@
    return (
      <>
        <SettingsSection title={t("settings.about.title")}>
-@@ -475,6 +480,17 @@
-             </View>
+@@ -454,6 +459,17 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
              <Text style={styles.aboutValue}>{appVersionText}</Text>
            </View>
+           <WhatsNewRow />
 +          <Pressable
 +            style={[settingsStyles.row, settingsStyles.rowBorder]}
 +            onPress={handleOpenHarmonyOS}
@@ -80,10 +91,6 @@
 +              <Text style={settingsStyles.rowHint}>{HARMONYOS_REPOSITORY_URL}</Text>
 +            </View>
 +          </Pressable>
-           <WhatsNewRow />
            {isDesktopApp ? <DesktopAppUpdateRow /> : null}
          </View>
---- /dev/null
-+++ b/packages/app/src/constants/harmonyos.ts
-@@ -0,0 +1 @@
-+export const HARMONYOS_REPOSITORY_URL = "https://github.com/TennousuAthena/OH-paseo";
+       </SettingsSection>

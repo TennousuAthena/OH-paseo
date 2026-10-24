@@ -6,12 +6,12 @@ import subprocess
 import shutil
 
 ROOT = Path(__file__).resolve().parent.parent
-source = ROOT / 'upstream/paseo/packages/app/dist'
+source = ROOT / 'runtime/verified-paseo/packages/app/dist'
 target = ROOT / 'platform/harmonyos/entry/src/main/resources/rawfile/paseo'
 if os.environ.get('OHPASEO_SKIP_WEB_BUILD') != '1':
-    subprocess.run(['bash', str(ROOT / 'scripts/apply-paseo-web-patches.sh')], check=True)
+    subprocess.run(['bash', str(ROOT / 'scripts/apply-paseo-web-patches.sh'), str(ROOT / 'runtime/verified-paseo')], check=True)
     subprocess.run(['npm', 'run', 'build:web', '--workspace=@getpaseo/app'],
-                   cwd=ROOT / 'upstream/paseo', check=True)
+                   cwd=ROOT / 'runtime/verified-paseo', check=True)
 if not (source / 'index.html').is_file():
     raise SystemExit('Build upstream first: npm run build:web --workspace=@getpaseo/app')
 if target.exists():

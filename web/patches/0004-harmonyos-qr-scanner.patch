@@ -1,18 +1,8 @@
---- a/packages/app/src/constants/platform.ts
-+++ b/packages/app/src/constants/platform.ts
-@@ -60,3 +60,9 @@
-   if (result) _isElectronMacCached = true;
-   return result;
- }
-+
-+/** Capability injected only into the bundled phone/tablet app by its native host. */
-+export const hasHarmonyScanner =
-+  isWeb &&
-+  typeof window !== "undefined" &&
-+  (window as Window & { __PASEO_HARMONY_SCAN__?: boolean }).__PASEO_HARMONY_SCAN__ === true;
+diff --git a/packages/app/src/app/pair-scan.tsx b/packages/app/src/app/pair-scan.tsx
+index 5d352140e..295a4976a 100644
 --- a/packages/app/src/app/pair-scan.tsx
 +++ b/packages/app/src/app/pair-scan.tsx
-@@ -9,9 +9,10 @@
+@@ -9,9 +9,10 @@ import type { BarcodeScanningResult, BarcodeSettings } from "expo-camera";
  import { getHostRuntimeStore } from "@/runtime/host-runtime";
  import { openPairScan } from "@/hosts/pair-scan-model";
  import { buildHostRootRoute, buildSettingsHostRoute } from "@/utils/host-routes";
@@ -24,11 +14,10 @@
  import { Button } from "@/components/ui/button";
  
  const styles = StyleSheet.create((theme) => ({
-@@ -186,6 +187,60 @@
-     () => [styles.helperText, { color: theme.colors.foreground }],
+@@ -187,6 +188,60 @@ export default function PairScanScreen() {
      [theme.colors.foreground],
    );
-+
+ 
 +  useEffect(() => {
 +    if (!hasHarmonyScanner || scanState.status !== "scanning") return;
 +    const controller = new AbortController();
@@ -82,9 +71,107 @@
 +      </View>
 +    );
 +  }
- 
++
    if (isWeb) {
      return (
+       <View style={styles.container}>
+diff --git a/packages/app/src/components/add-host-method-modal.tsx b/packages/app/src/components/add-host-method-modal.tsx
+index b97c529be..baf7fdcf6 100644
+--- a/packages/app/src/components/add-host-method-modal.tsx
++++ b/packages/app/src/components/add-host-method-modal.tsx
+@@ -5,7 +5,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
+ import { QrCode, Link2, ClipboardPaste, Terminal } from "lucide-react-native";
+ import { AdaptiveModalSheet, type SheetHeader } from "./adaptive-modal-sheet";
+ import { isFdroidBuild } from "@/constants/build-profile";
+-import { isNative } from "@/constants/platform";
++import { isNative, hasHarmonyScanner } from "@/constants/platform";
+ import { isElectronRuntime } from "@/desktop/host";
+ import type { Theme } from "@/styles/theme";
+ 
+@@ -118,7 +118,7 @@ export function AddHostMethodModal({
+         </Pressable>
+       ) : null}
+ 
+-      {isNative && !isFdroidBuild ? (
++      {(isNative || hasHarmonyScanner) && !isFdroidBuild ? (
+         <Pressable
+           style={styles.option}
+           onPress={handleScan}
+diff --git a/packages/app/src/components/welcome-screen.tsx b/packages/app/src/components/welcome-screen.tsx
+index 1b3cdbe23..91be130dd 100644
+--- a/packages/app/src/components/welcome-screen.tsx
++++ b/packages/app/src/components/welcome-screen.tsx
+@@ -24,7 +24,7 @@ import { buildOpenProjectRoute } from "@/utils/host-routes";
+ import { PaseoLogo } from "@/components/icons/paseo-logo";
+ import { openExternalUrl } from "@/utils/open-external-url";
+ import { isFdroidBuild } from "@/constants/build-profile";
+-import { isWeb, isNative } from "@/constants/platform";
++import { isWeb, isNative, hasHarmonyScanner } from "@/constants/platform";
+ import { isElectronRuntime } from "@/desktop/host";
+ 
+ interface WelcomeAction {
+@@ -215,7 +215,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
+   );
+ 
+   const actions: WelcomeAction[] =
+-    isWeb || isFdroidBuild
++    (isWeb && !hasHarmonyScanner) || isFdroidBuild
+       ? [
+           {
+             key: "direct-connection",
+diff --git a/packages/app/src/hosts/pair-scan-model.test.ts b/packages/app/src/hosts/pair-scan-model.test.ts
+index 0ca69b9d2..9d983d765 100644
+--- a/packages/app/src/hosts/pair-scan-model.test.ts
++++ b/packages/app/src/hosts/pair-scan-model.test.ts
+@@ -27,6 +27,23 @@ async function settled(scan: PairScanModel): Promise<void> {
+ }
+ 
+ describe("openPairScan", () => {
++  it("allows system scanner cancellation and invalid codes to be retried", async () => {
++    const { scan, imports, connected } = createScanner([
++      { status: "connected", serverId: "relay_host" },
++    ]);
++    scan.stopScanning();
++    expect(scan.getState()).toEqual({ status: "stopped", error: null });
++    scan.scanAgain();
++    scan.scan("https://example.com");
++    scan.stopScanning("Invalid pairing link");
++    expect(imports).toEqual([]);
++    expect(scan.getState()).toEqual({ status: "stopped", error: "Invalid pairing link" });
++    scan.scanAgain();
++    scan.scan("relay://relay.paseo.sh:443/server?key=test&ssl=true");
++    await settled(scan);
++    expect(connected).toEqual(["relay_host"]);
++  });
++
+   it("stops scanning after Cancel until the user scans again", async () => {
+     const { scan, imports } = createScanner([{ status: "cancelled" }, { status: "cancelled" }]);
+ 
+diff --git a/packages/app/src/hosts/pair-scan-model.ts b/packages/app/src/hosts/pair-scan-model.ts
+index 4dca38054..15308041f 100644
+--- a/packages/app/src/hosts/pair-scan-model.ts
++++ b/packages/app/src/hosts/pair-scan-model.ts
+@@ -21,6 +21,7 @@ export interface PairScanModel {
+   scan: (data: string) => void;
+   /** The user asked to scan again after an attempt ended. */
+   scanAgain: () => void;
++  stopScanning: (error?: string) => void;
+   /** The user closed the password prompt, which ends the attempt. */
+   closePassword: () => void;
+   close: () => void;
+@@ -79,6 +80,9 @@ export function openPairScan(deps: PairScanDependencies): PairScanModel {
+       if (!link) return;
+       void pair(link);
+     },
++    stopScanning(error) {
++      if (state.status === "scanning") publish({ status: "stopped", error: error ?? null });
++    },
+     scanAgain() {
+       if (state.status !== "stopped") return;
+       publish({ status: "scanning" });
+diff --git a/packages/app/src/utils/harmonyos-scan.ts b/packages/app/src/utils/harmonyos-scan.ts
+new file mode 100644
+index 000000000..593647900
 --- /dev/null
 +++ b/packages/app/src/utils/harmonyos-scan.ts
 @@ -0,0 +1,38 @@
@@ -126,89 +213,3 @@
 +    window.location.assign(`paseo://app/__native/scan?id=${id}`);
 +  });
 +}
---- a/packages/app/src/components/welcome-screen.tsx
-+++ b/packages/app/src/components/welcome-screen.tsx
-@@ -24,7 +24,7 @@
- import { PaseoLogo } from "@/components/icons/paseo-logo";
- import { openExternalUrl } from "@/utils/open-external-url";
- import { isFdroidBuild } from "@/constants/build-profile";
--import { isWeb, isNative } from "@/constants/platform";
-+import { isWeb, isNative, hasHarmonyScanner } from "@/constants/platform";
- import { isElectronRuntime } from "@/desktop/host";
- 
- interface WelcomeAction {
-@@ -215,7 +215,7 @@
-   );
- 
-   const actions: WelcomeAction[] =
--    isWeb || isFdroidBuild
-+    (isWeb && !hasHarmonyScanner) || isFdroidBuild
-       ? [
-           {
-             key: "direct-connection",
---- a/packages/app/src/components/add-host-method-modal.tsx
-+++ b/packages/app/src/components/add-host-method-modal.tsx
-@@ -5,7 +5,7 @@
- import { QrCode, Link2, ClipboardPaste, Terminal } from "lucide-react-native";
- import { AdaptiveModalSheet, type SheetHeader } from "./adaptive-modal-sheet";
- import { isFdroidBuild } from "@/constants/build-profile";
--import { isNative } from "@/constants/platform";
-+import { isNative, hasHarmonyScanner } from "@/constants/platform";
- import { isElectronRuntime } from "@/desktop/host";
- import type { Theme } from "@/styles/theme";
- 
-@@ -118,7 +118,7 @@
-         </Pressable>
-       ) : null}
- 
--      {isNative && !isFdroidBuild ? (
-+      {(isNative || hasHarmonyScanner) && !isFdroidBuild ? (
-         <Pressable
-           style={styles.option}
-           onPress={handleScan}
---- a/packages/app/src/hosts/pair-scan-model.ts
-+++ b/packages/app/src/hosts/pair-scan-model.ts
-@@ -21,6 +21,7 @@
-   scan: (data: string) => void;
-   /** The user asked to scan again after an attempt ended. */
-   scanAgain: () => void;
-+  stopScanning: (error?: string) => void;
-   /** The user closed the password prompt, which ends the attempt. */
-   closePassword: () => void;
-   close: () => void;
-@@ -79,6 +80,9 @@
-       if (!link) return;
-       void pair(link);
-     },
-+    stopScanning(error) {
-+      if (state.status === "scanning") publish({ status: "stopped", error: error ?? null });
-+    },
-     scanAgain() {
-       if (state.status !== "stopped") return;
-       publish({ status: "scanning" });
---- a/packages/app/src/hosts/pair-scan-model.test.ts
-+++ b/packages/app/src/hosts/pair-scan-model.test.ts
-@@ -27,6 +27,23 @@
- }
- 
- describe("openPairScan", () => {
-+  it("allows system scanner cancellation and invalid codes to be retried", async () => {
-+    const { scan, imports, connected } = createScanner([
-+      { status: "connected", serverId: "relay_host" },
-+    ]);
-+    scan.stopScanning();
-+    expect(scan.getState()).toEqual({ status: "stopped", error: null });
-+    scan.scanAgain();
-+    scan.scan("https://example.com");
-+    scan.stopScanning("Invalid pairing link");
-+    expect(imports).toEqual([]);
-+    expect(scan.getState()).toEqual({ status: "stopped", error: "Invalid pairing link" });
-+    scan.scanAgain();
-+    scan.scan("relay://relay.paseo.sh:443/server?key=test&ssl=true");
-+    await settled(scan);
-+    expect(connected).toEqual(["relay_host"]);
-+  });
-+
-   it("stops scanning after Cancel until the user scans again", async () => {
-     const { scan, imports } = createScanner([{ status: "cancelled" }, { status: "cancelled" }]);
- 
