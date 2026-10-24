@@ -163,6 +163,18 @@ OH-Paseo/
 
 ## 已知的坑(避免重踩)
 
+0. **`npm install` 后务必确认 `patch-package` 跑起来。** 上游在 `patches/` 里放了一个
+   `@gorhom+bottom-sheet+5.2.14.patch`，负责把 `BottomSheetModalInternalProvider` 从
+   `contexts/modal/internal` re-export 到包根。`SheetHostScope`(`_layout.tsx` 手机布局
+   必走)从包根 import 这个符号；补丁丢了时它等于 `undefined`,**整个 Paseo 直接白屏
+   `Minified React error #130`**。补丁丢失的常见原因:
+   - `runtime/verified-paseo` 快照直接复用 `upstream/paseo/node_modules`,跳过了
+     `postinstall`;上游那边的 node_modules 也必须在打补丁后状态
+   - patch 文件升级后旧 node_modules 应用失败,脚本会 `rm` 掉包让你重装——重装后
+     必须再跑 `postinstall`,否则又是无补丁状态
+   排查信号:`grep BottomSheetModalInternalProvider node_modules/@gorhom/bottom-sheet/lib/module/index.js`
+   应该有结果。没有就先 `PATH="$PWD/node_modules/.bin:$PATH" node scripts/postinstall-patches.mjs`。
+
 1. `compileSdkVersion` API 26 必须字符串 `"26.0.0"`
 2. SDK 组件布局:`<sdk>/<26.0.0>/<ets|js|native|...>`,且目录要可写
 3. ArkTS:不能匿名对象字面量当类型(需 `interface`),`router.pushUrl`/`getContext` 已 deprecated(仍可用,只告警)
