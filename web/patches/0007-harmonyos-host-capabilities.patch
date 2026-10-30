@@ -1,0 +1,79 @@
+diff --git a/packages/app/src/constants/platform.ts b/packages/app/src/constants/platform.ts
+index 08dca4da9..cbac08283 100644
+--- a/packages/app/src/constants/platform.ts
++++ b/packages/app/src/constants/platform.ts
+@@ -35,6 +35,18 @@ export const isNative = Platform.OS !== "web";
+ /** Development build/runtime — true in Metro dev bundles, false in production. */
+ export const isDev = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
+ 
++/** The bundled HarmonyOS host, including PC where scanning is unavailable. */
++export const isHarmonyApp =
++  isWeb &&
++  typeof window !== "undefined" &&
++  (window as Window & { __PASEO_HARMONY_APP__?: boolean }).__PASEO_HARMONY_APP__ === true;
++
++/** Capability injected only into the bundled phone/tablet app by its native host. */
++export const hasHarmonyScanner =
++  isWeb &&
++  typeof window !== "undefined" &&
++  (window as Window & { __PASEO_HARMONY_SCAN__?: boolean }).__PASEO_HARMONY_SCAN__ === true;
++
+ // ---------------------------------------------------------------------------
+ // Electron detection (cached — only caches `true`, keeps checking if false
+ // because the desktop bridge may load after initial module evaluation)
+diff --git a/packages/app/src/constants/platform.test.ts b/packages/app/src/constants/platform.test.ts
+new file mode 100644
+index 000000000..5ac7eb5f8
+--- /dev/null
++++ b/packages/app/src/constants/platform.test.ts
+@@ -0,0 +1,50 @@
++// @vitest-environment jsdom
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const runtime = vi.hoisted(() => ({ os: "web" }));
++vi.mock("react-native", () => ({
++  Platform: {
++    get OS() {
++      return runtime.os;
++    },
++  },
++}));
++vi.mock("@/desktop/host", () => ({
++  isElectronRuntime: () => false,
++  isElectronRuntimeMac: () => false,
++}));
++
++beforeEach(() => {
++  vi.resetModules();
++  runtime.os = "web";
++});
++
++afterEach(() => {
++  Reflect.deleteProperty(window, "__PASEO_HARMONY_APP__");
++  Reflect.deleteProperty(window, "__PASEO_HARMONY_SCAN__");
++});
++
++describe("HarmonyOS native host capabilities", () => {
++  it("keeps ordinary web clients outside the native host", async () => {
++    const platform = await import("./platform");
++    expect(platform.isHarmonyApp).toBe(false);
++    expect(platform.hasHarmonyScanner).toBe(false);
++  });
++
++  it.each([false, true])("reads the injected scanner capability: %s", async (scanner) => {
++    Object.defineProperty(window, "__PASEO_HARMONY_APP__", { value: true, configurable: true });
++    Object.defineProperty(window, "__PASEO_HARMONY_SCAN__", { value: scanner, configurable: true });
++    const platform = await import("./platform");
++    expect(platform.isHarmonyApp).toBe(true);
++    expect(platform.hasHarmonyScanner).toBe(scanner);
++  });
++
++  it("ignores injected flags outside the web runtime", async () => {
++    runtime.os = "android";
++    Object.defineProperty(window, "__PASEO_HARMONY_APP__", { value: true, configurable: true });
++    Object.defineProperty(window, "__PASEO_HARMONY_SCAN__", { value: true, configurable: true });
++    const platform = await import("./platform");
++    expect(platform.isHarmonyApp).toBe(false);
++    expect(platform.hasHarmonyScanner).toBe(false);
++  });
++});

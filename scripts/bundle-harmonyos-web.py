@@ -1,17 +1,31 @@
 #!/usr/bin/env python3
 """Package the verified Paseo web export into the offline HarmonyOS client."""
 from pathlib import Path
+import hashlib
+import json
 import os
 import subprocess
 import shutil
 
 ROOT = Path(__file__).resolve().parent.parent
-source = ROOT / 'runtime/verified-paseo/packages/app/dist'
+snapshot = ROOT / 'runtime/verified-paseo'
+source = snapshot / 'packages/app/dist'
 target = ROOT / 'platform/harmonyos/entry/src/main/resources/rawfile/paseo'
+metadata = {
+    'version': json.loads((snapshot / 'packages/app/package.json').read_text())['version'],
+    'commit': (snapshot / '.upstream-commit').read_text().strip(),
+    'patchesSha256': hashlib.sha256(b''.join(
+        patch.read_bytes() for patch in sorted((ROOT / 'web/patches').glob('*.patch'))
+    )).hexdigest(),
+}
+stamp = source / 'ohpaseo-build.json'
 if os.environ.get('OHPASEO_SKIP_WEB_BUILD') != '1':
-    subprocess.run(['bash', str(ROOT / 'scripts/apply-paseo-web-patches.sh'), str(ROOT / 'runtime/verified-paseo')], check=True)
+    subprocess.run(['bash', str(ROOT / 'scripts/apply-paseo-web-patches.sh'), str(snapshot)], check=True)
     subprocess.run(['npm', 'run', 'build:web', '--workspace=@getpaseo/app'],
-                   cwd=ROOT / 'runtime/verified-paseo', check=True)
+                   cwd=snapshot, check=True)
+    stamp.write_text(json.dumps(metadata, indent=2) + '\n')
+elif not stamp.is_file() or json.loads(stamp.read_text()) != metadata:
+    raise SystemExit('Web export is stale or unverified; rebuild without OHPASEO_SKIP_WEB_BUILD=1')
 if not (source / 'index.html').is_file():
     raise SystemExit('Build upstream first: npm run build:web --workspace=@getpaseo/app')
 if target.exists():

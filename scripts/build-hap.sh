@@ -7,6 +7,7 @@ SIGNING="${3:-signed}"
 case "$MODE" in debug|release) ;; *) echo 'Usage: build-hap.sh [debug|release] [artifact-target] [signed|unsigned]' >&2; exit 2 ;; esac
 case "$SIGNING" in signed|unsigned) ;; *) echo 'Invalid signing output: use signed or unsigned' >&2; exit 2 ;; esac
 [[ "$ARTIFACT_TARGET" =~ ^[a-z0-9-]+$ ]] || { echo 'Invalid artifact target' >&2; exit 2; }
+bash "$ROOT_DIR/scripts/prepare-paseo-snapshot.sh"
 VERSION="$(python3 "$ROOT_DIR/scripts/sync-app-version.py")"
 python3 "$ROOT_DIR/scripts/bundle-harmonyos-web.py"
 cd "$ROOT_DIR/platform/harmonyos"

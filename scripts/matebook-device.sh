@@ -18,7 +18,7 @@ case "${1:-status}" in
     device shell pidof moe.kiwi.ohpaseo || true
     ;;
   install)
-    VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT_DIR/upstream/paseo/packages/app/package.json")"
+    VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT_DIR/runtime/verified-paseo/packages/app/package.json")"
     HAP="${2:-$ROOT_DIR/artifacts/OH-Paseo-$VERSION-universal-debug.hap}"
     test -f "$HAP"
     # hdc can exit 0 even when Bundle Manager rejects the package.

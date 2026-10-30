@@ -1,6 +1,18 @@
 # OH-Paseo 交接文档
 
-## 接手后更新（2026-10-22）
+## 当前交接（2026-10-31）
+
+鸿蒙适配已跟进官方 **Paseo v0.14.0**，固定提交 `8c6de842a3157530c26a7a94c78a3d647fb96ce9`。按用户要求先在 MatePad Pro（WEB-W00）开发测试，已原位升级至调试版 `0.14.0 / 1000007`。手机与 PC 的完整回归仍待进行。
+
+用户随后要求安装到 HUAWEI Mate 80 Pro Max（SGT-AL10）。已用相同通用调试包原位覆盖手机上的 0.13.0，Bundle Manager 确认 `0.14.0 / 1000007`。启动命令因手机锁屏返回 `10106102`，待用户解锁后验证启动；不应关闭开发者模式或改动锁屏设置。PC 尚未安装本轮版本。
+
+用户已授权推送源码并发布 `harmonyos-v0.14.0`。沿用公开预览版及未签名 release HAP 的惯例，产物、校验和与验证范围统一见 [0.14 平板验证](paseo-0.14-tablet-validation.md#公开发布产物)。
+
+构建、版本同步和默认安装产物统一使用 `runtime/verified-paseo`。旧快照保留在 `runtime/verified-paseo-0.13.0`；不要复用旧版本依赖或生成文件。`upstream/paseo` 原有改动保留。构建准备与安装命令见 [README.harmonyos.md](../README.harmonyos.md)，本轮结果、产物与待办见 [0.14 平板验证](paseo-0.14-tablet-validation.md)。
+
+本轮补齐了旧补丁遗漏的鸿蒙宿主/扫码能力导出，修正输入框补丁以保留上游发送快捷键设置，并加入 Web 导出版本、提交及补丁摘要校验。后续升级必须从干净上游验证全部补丁；不能把旧快照中的手工修复当成补丁集的一部分。
+
+## 历史更新（2026-10-22，以下版本和运行进程信息不代表当前状态）
 
 平板新增外链系统浏览器打开和系统 Back 分层返回，已完成真机验证并安装 release 内部版本 1000003；手机按用户要求未动。用户随后在手机体验后确认发布，GitHub 公开包已覆盖为 1000003。见 [导航验证](navigation-validation.md)。用户要求插电平板保持常亮，当前保留常亮锁与 24 小时超时覆盖，后续不要默认恢复。
 
@@ -9,10 +21,6 @@
 最新通用 release 已覆盖上传到 GitHub `harmonyos-v0.12.0`，内部版本 1000003，包含内置界面、扫码、外链浏览器打开与系统返回修复。新包 SHA256：`5aca46cdf1fef0f509f48b7fd4ac66922604fc4d563959b84a6f1290f9e7d3e2`；扫码轮设备实测安装为内部编号 1000001；其后平板已继续升级至导航修复 1000003。
 
 版本跟随已落实：当前上游客户端 0.12.0 → 鸿蒙 versionName 0.12.0、versionCode 1000003。构建前 scripts/sync-app-version.py 自动同步，HAP 文件名也读取上游版本；重复构建不递增，版本变更递增内部编号。三台设备已升级并通过 bm dump 核实版本。最新产物 `artifacts/OH-Paseo-0.12.0-universal-release.hap`，SHA-256 `86cec16ed504e6f26b988277b91238b2cb6976080eace314ed117776714ae9ac`，包含此前主题和安全区修复。下文旧版本包哈希为历史证据。
-
-
-
-
 
 应用显示名和窗口标题已按用户要求改为 **Paseo**，应用及启动图标使用上游固定提交中的官方 PNG。包标识保留 `moe.kiwi.ohpaseo`，升级后原工作区正常恢复；来源见 [branding.md](branding.md)。
 
@@ -172,8 +180,8 @@ OH-Paseo/
      `postinstall`;上游那边的 node_modules 也必须在打补丁后状态
    - patch 文件升级后旧 node_modules 应用失败,脚本会 `rm` 掉包让你重装——重装后
      必须再跑 `postinstall`,否则又是无补丁状态
-   排查信号:`grep BottomSheetModalInternalProvider node_modules/@gorhom/bottom-sheet/lib/module/index.js`
-   应该有结果。没有就先 `PATH="$PWD/node_modules/.bin:$PATH" node scripts/postinstall-patches.mjs`。
+     排查信号:`grep BottomSheetModalInternalProvider node_modules/@gorhom/bottom-sheet/lib/module/index.js`
+     应该有结果。没有就先 `PATH="$PWD/node_modules/.bin:$PATH" node scripts/postinstall-patches.mjs`。
 
 1. `compileSdkVersion` API 26 必须字符串 `"26.0.0"`
 2. SDK 组件布局:`<sdk>/<26.0.0>/<ets|js|native|...>`,且目录要可写

@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def sync_version(root=ROOT):
-    source = root / 'upstream/paseo/packages/app/package.json'
+    source = root / 'runtime/verified-paseo/packages/app/package.json'
     version = json.loads(source.read_text())['version']
     if not isinstance(version, str) or not re.fullmatch(
         r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)'

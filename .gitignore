@@ -120,6 +120,7 @@ certs/*.cer
 platform/harmonyos/.idea/
 runtime/vendor/
 runtime/verified-paseo/
+runtime/verified-paseo-*/
 __pycache__/
 entry/build/
 wecode-cpp.db*
