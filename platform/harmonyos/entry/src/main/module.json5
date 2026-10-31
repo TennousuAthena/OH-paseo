@@ -22,6 +22,12 @@
           {
             "entities": ["entity.system.home"],
             "actions": ["ohos.want.action.home"]
+          },
+          {
+            "actions": ["action.ohos.push.listener"]
+          },
+          {
+            "actions": ["moe.kiwi.ohpaseo.PUSH_OPEN"]
           }
         ],
         "launchType": "singleton",

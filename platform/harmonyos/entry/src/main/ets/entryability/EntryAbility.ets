@@ -2,6 +2,7 @@ import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
+import { harmonyPush } from '../push/HarmonyPush';
 
 const DOMAIN = 0x0001;
 const TAG = 'OHPaseo';
@@ -9,6 +10,7 @@ const TAG = 'OHPaseo';
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, TAG, 'EntryAbility onCreate');
+    harmonyPush.initialize(this, want);
     webview.WebviewController.customizeSchemes([{
       schemeName: 'paseo',
       isSupportCORS: true,
@@ -18,6 +20,16 @@ export default class EntryAbility extends UIAbility {
       isCodeCacheSupported: true
     }]);
   }
+
+  onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    harmonyPush.receiveWant(want);
+  }
+
+  onForeground(): void { harmonyPush.setForeground(true); }
+
+  onBackground(): void { harmonyPush.setForeground(false); }
+
+  onDestroy(): void { harmonyPush.destroy(); }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     hilog.info(DOMAIN, TAG, 'onWindowStageCreate');

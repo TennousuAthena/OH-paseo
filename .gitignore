@@ -117,6 +117,9 @@ certs/*.p12
 certs/*.csr
 certs/*.p7b
 certs/*.cer
+certs/*.json
+**/harmonyos-push/service-account*.json
+/integrations/harmonyos-push/node_modules
 platform/harmonyos/.idea/
 runtime/vendor/
 runtime/verified-paseo/

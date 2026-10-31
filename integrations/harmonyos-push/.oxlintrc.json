@@ -1,0 +1,5 @@
+{
+  "plugins": ["typescript", "unicorn", "promise", "import"],
+  "categories": { "correctness": "error", "suspicious": "error" },
+  "rules": { "typescript/no-explicit-any": "error", "promise/always-return": "error" }
+}

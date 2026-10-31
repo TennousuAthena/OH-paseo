@@ -2,7 +2,7 @@
   "app": {
     "bundleName": "moe.kiwi.ohpaseo",
     "vendor": "OH-Paseo",
-    "versionCode": 1000007,
+    "versionCode": 1000008,
     "versionName": "0.14.0",
     "icon": "$media:paseo_icon",
     "label": "$string:app_name"

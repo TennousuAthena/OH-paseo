@@ -6,6 +6,7 @@ import { window, promptAction } from '@kit.ArkUI';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { scanBarcode, scanCore } from '@kit.ScanKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { harmonyPush } from '../push/HarmonyPush';
 
 const DOMAIN = 0x0005;
 const TAG = 'OHPaseoClient';
@@ -21,6 +22,8 @@ struct Paseo {
   private scanning: boolean = false;
   private backPending: boolean = false;
   private externalPending: boolean = false;
+  private unsubscribePush: (() => void) | null = null;
+  private pushRequests: string[] = [];
   private readonly scannerAvailable: boolean =
     (deviceInfo.deviceType === 'phone' || deviceInfo.deviceType === 'tablet') &&
     canIUse('SystemCapability.Multimedia.Scan.ScanBarcode');
@@ -31,11 +34,13 @@ struct Paseo {
   aboutToAppear(): void {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     webview.WebviewController.setWebDebuggingAccess(context.applicationInfo.debug);
+    this.unsubscribePush = harmonyPush.subscribe(() => this.emitPushChange());
   }
 
   aboutToDisappear(): void {
     this.clearLoadTimer();
     this.stopSystemBarSync();
+    this.unsubscribePush?.();
   }
 
   onPageShow(): void {
@@ -100,6 +105,7 @@ struct Paseo {
   }
 
   private interceptNavigation(request: WebResourceRequest): boolean {
+    if (this.interceptPush(request)) return true;
     if (this.interceptScan(request)) return true;
     const target = request.getRequestUrl();
     if (this.isInternalLink(target)) return false;
@@ -209,7 +215,7 @@ struct Paseo {
       }
       if (path === '__native/capabilities.js') {
         response.setResponseMimeType('text/javascript');
-        response.setResponseData(`window.__PASEO_HARMONY_APP__ = true; window.__PASEO_HARMONY_SCAN__ = ${this.scannerAvailable};`);
+        response.setResponseData(`window.__PASEO_HARMONY_APP__ = true; window.__PASEO_HARMONY_SCAN__ = ${this.scannerAvailable}; window.__PASEO_HARMONY_PUSH__ = ${harmonyPush.supported};`);
         response.setResponseCode(200);
         response.setReasonMessage('OK');
         return response;
@@ -250,6 +256,41 @@ struct Paseo {
       setTimeout(() => this.scanQr(match[1]), 0);
     }
     return true;
+  }
+
+  private interceptPush(request: WebResourceRequest): boolean {
+    const target = request.getRequestUrl();
+    if (!target.startsWith('paseo://app/__native/push')) return false;
+    const match = target.match(/^paseo:\/\/app\/__native\/push\?id=([a-f0-9-]{36})&action=(status|enable|takeTap|ackTap)(?:&tap=([a-zA-Z0-9%:_-]{1,260}))?$/);
+    if (request.isMainFrame() && match && !this.pushRequests.includes(match[1])) {
+      this.pushRequests.push(match[1]);
+      if (this.pushRequests.length > 128) this.pushRequests.shift();
+      setTimeout(() => this.handlePush(match[1], match[2], match[3] || ''), 0);
+    }
+    return true;
+  }
+
+  private async handlePush(id: string, action: string, tap: string): Promise<void> {
+    try {
+      const trusted = await this.controller.runJavaScript(`location.protocol === 'paseo:' && location.host === 'app'`);
+      if (trusted !== 'true') return;
+      let data: string = 'null';
+      if (action === 'status') data = JSON.stringify(await harmonyPush.refresh());
+      else if (action === 'enable') data = JSON.stringify(await harmonyPush.enable());
+      else if (action === 'takeTap') data = JSON.stringify(harmonyPush.takeTap());
+      else if (action === 'ackTap') harmonyPush.acknowledge(decodeURIComponent(tap));
+      await this.controller.runJavaScript(`if (location.protocol === 'paseo:' && location.host === 'app') {
+        window.dispatchEvent(new CustomEvent('paseo-push-result', {detail:{id:${JSON.stringify(id)},data:${data}}}));
+      }`);
+    } catch (_) { /* The requesting document may have closed. Requests time out in the page. */ }
+  }
+
+  private async emitPushChange(): Promise<void> {
+    try {
+      await this.controller.runJavaScript(`if (location.protocol === 'paseo:' && location.host === 'app') {
+        window.dispatchEvent(new Event('paseo-push-change'));
+      }`);
+    } catch (_) { /* Cold-start taps remain queued until the web router is ready. */ }
   }
 
   private async scanQr(id: string): Promise<void> {

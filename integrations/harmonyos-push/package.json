@@ -1,0 +1,21 @@
+{
+  "name": "ohpaseo-harmonyos-push",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --config .oxlintrc.json --disable-nested-config .",
+    "format": "oxfmt .",
+    "test": "tsx --test server/*.test.ts"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.14.0",
+    "@types/node": "^22.0.0",
+    "oxfmt": "0.46.0",
+    "oxlint": "1.61.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  }
+}
