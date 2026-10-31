@@ -17,11 +17,11 @@ OH-Paseo 的系统通知由 HarmonyOS Push Kit 接收。Mac/Linux 上的 `harmon
 1. 在华为开发者中心创建同包名 `moe.kiwi.ohpaseo` 的 HarmonyOS 应用，项目数据处理地区须与 Push Kit 支持范围一致。
 2. APP ID → 开放能力管理中开通“推送服务”。
 3. 更新签名 Profile：加入实际调试设备、使用与现有包相同的签名密钥，并生成含 Push Kit 权益的新 Profile。升级前核对 APP ID / app-identifier / 证书，避免通过卸载清空已有主机和会话数据。
-4. 凭证 → 项目级凭证 → 服务账号凭证，选择应用所在项目，并仅授予推送服务所需权限，下载 JSON 密钥。
+4. 凭证 → 项目级凭证 → 服务账号凭证，选择应用所在项目，并下载 JSON 密钥。当前控制台仅提供固定角色，无法单独授予 Push Kit；本项目已准备“开发”角色，生成持久密钥前需明确授权。
 5. 将 JSON 放在发送主机的 `~/.paseo/harmonyos-push/service-account.json`，目录权限 `700`、文件 `600`。不要放进 HAP、前端、仓库或日志。
 6. 配置推送消息自分类权益。默认 `MARKETING` 受华为默认日限额限制；`WORK` 只用于对应业务提醒分类权益获批后。开发验证可使用测试消息，不能把测试额度当作普通用户正式推送额度。
 
-本次创建的云端应用：APP ID `6917620548967175892`，项目 ID `101653523865516193`，项目名称 `OH-Paseo`。Push Kit 开关已开启。云端服务账号、签名迁移和实际云端到平板送达需完成联调后才算启用完成。
+本次创建的云端应用：APP ID `6917620548967175892`，项目 ID `101653523865516193`，项目名称 `OH-Paseo`。Push Kit 开关已开启，调试 Profile `OH-Paseo-Push-Debug` 已生成并下载，绑定当前 MatePad Pro。旧安装包的签名身份与该 Profile 不一致；原位升级被 Bundle Manager 拒绝（`9568332 install sign info inconsistent`），未卸载旧包。迁移前须获得私密数据备份与重装授权，再核验备份并恢复主机配对和设置。
 
 ## 主机安装
 
@@ -38,14 +38,16 @@ paseo plugin logs harmonyos-push
 
 服务账号文件会在调用时重新读取，替换密钥不要求重启。可选环境变量：
 
-| 变量 | 用途 |
-| --- | --- |
-| `OHPASEO_HUAWEI_SERVICE_ACCOUNT` | 服务账号 JSON 的绝对路径 |
-| `OHPASEO_PUSH_DATA_DIR` | 插件私有状态目录，隔离多个 daemon 时必须分别配置 |
-| `OHPASEO_PUSH_CATEGORY` | `MARKETING`（默认）或获批后的 `WORK` |
-| `OHPASEO_PUSH_TEST_MODE=1` | 开发环境将自动通知也标记为测试消息 |
+| 变量                             | 用途                                             |
+| -------------------------------- | ------------------------------------------------ |
+| `OHPASEO_HUAWEI_SERVICE_ACCOUNT` | 服务账号 JSON 的绝对路径                         |
+| `OHPASEO_PUSH_DATA_DIR`          | 插件私有状态目录，隔离多个 daemon 时必须分别配置 |
+| `OHPASEO_PUSH_CATEGORY`          | `MARKETING`（默认）或获批后的 `WORK`             |
+| `OHPASEO_PUSH_TEST_MODE=1`       | 开发环境将自动通知也标记为测试消息               |
 
 每台实际运行任务的主机均需安装插件并配置相应项目的服务账号。只给 Mac 配置不会自动覆盖另一台 Linux 主机。
+
+当前 Mac 已获授权启用全局插件并安装 `harmonyos-push`，状态为 `running`。配置热加载未重启主 daemon，原有停用插件仍保持停用。服务账号尚未生成，插件暂不能向华为发送通知。
 
 ## 验证
 
@@ -62,6 +64,6 @@ node --import ./runtime/verified-paseo/node_modules/tsx/dist/loader.mjs scripts/
 
 真机验收还须完成：允许通知并获取真实令牌、测试按钮收到通知、前台无重复通知、后台/锁屏完成与确认提醒、冷/热启动跳转、关闭通知后不再发送。不得用本地通知或注入测试 Want 代替云端送达结论。
 
-2026-10-31 开发验证：20 个前端用例、3 个签名/HTTP 用例、隔离 daemon 的插件加载/RPC/权限/完成/注销检查均通过，类型检查及 lint 通过。全部 8 个补丁可应用至干净 Paseo v0.14.0，结果与测试快照一致。调试 HAP 版本为 `0.14.0 (1000008)`，已原位安装至 MatePad Pro。首次真机检查确认系统支持 Push Kit，通知权限尚未授予；后续联调因平板锁屏与正式主机插件启用确认而待续。服务账号和新 Profile 尚未配置，尚无真实华为云送达结论。
+2026-10-31 开发验证：20 个前端用例、3 个签名/HTTP 用例、隔离 daemon 的插件加载/RPC/权限/完成/注销检查均通过，类型检查及 lint 通过。全部 8 个补丁可应用至干净 Paseo v0.14.0，结果与测试快照一致。MatePad Pro 已安装功能预览包 `0.14.0 (1000008)` 并允许系统通知；旧签名下真实 `getToken` 返回 `1000900010`（应用身份无效），尚无有效令牌。新 AGC Profile 的调试 HAP 已构建成功，待完成签名迁移、服务账号配置和云端送达验收。不得将旧签名包的权限成功或新包构建成功视为真实推送通过。
 
 官方参考：[Push Token](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/push-pushservice)、[服务账号鉴权](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/push-jwt-token)、[场景化消息请求](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/push-scenariozed-api-request-struct)。
