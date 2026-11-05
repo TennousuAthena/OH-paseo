@@ -1,5 +1,5 @@
 diff --git a/packages/app/src/composer/input/input.tsx b/packages/app/src/composer/input/input.tsx
-index 16acede7e..5baad9479 100644
+index 8cb8cd4c3..0cc1d4615 100644
 --- a/packages/app/src/composer/input/input.tsx
 +++ b/packages/app/src/composer/input/input.tsx
 @@ -30,7 +30,7 @@ import { ICON_SIZE, type Theme } from "@/styles/theme";
@@ -19,7 +19,7 @@ index 16acede7e..5baad9479 100644
      const { height: windowHeight } = useWindowDimensions();
      const editingSession = useComposerEditingSession(inputMode, props.editingSession);
      const isFullscreen = useComposerFullscreen(editingSession);
-@@ -1765,7 +1766,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
+@@ -1775,7 +1776,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
      );
  
      const shouldHandleWebKeyPress = isWeb;
@@ -29,7 +29,7 @@ index 16acede7e..5baad9479 100644
  
      const handleDesktopKeyPress = useCallback(
        (event: WebTextInputKeyPressEvent) => {
-@@ -2009,7 +2011,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
+@@ -2019,7 +2021,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
            submitLabel={submitLabel}
            submitButtonTestID={submitButtonTestID}
            buttonIconSize={buttonIconSize}
@@ -38,7 +38,7 @@ index 16acede7e..5baad9479 100644
            sendTooltipLabel={sendTooltipLabel}
          />
        ),
-@@ -2032,6 +2034,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
+@@ -2042,6 +2044,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
          buttonIconSize,
          sendShortcut,
          sendTooltipLabel,

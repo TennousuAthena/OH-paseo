@@ -98,7 +98,7 @@ index b97c529be..baf7fdcf6 100644
            style={styles.option}
            onPress={handleScan}
 diff --git a/packages/app/src/components/welcome-screen.tsx b/packages/app/src/components/welcome-screen.tsx
-index 1b3cdbe23..91be130dd 100644
+index 1231c0c9d..682a5a080 100644
 --- a/packages/app/src/components/welcome-screen.tsx
 +++ b/packages/app/src/components/welcome-screen.tsx
 @@ -24,7 +24,7 @@ import { buildOpenProjectRoute } from "@/utils/host-routes";

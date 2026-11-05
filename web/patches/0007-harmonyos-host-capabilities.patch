@@ -1,26 +1,3 @@
-diff --git a/packages/app/src/constants/platform.ts b/packages/app/src/constants/platform.ts
-index 08dca4da9..cbac08283 100644
---- a/packages/app/src/constants/platform.ts
-+++ b/packages/app/src/constants/platform.ts
-@@ -35,6 +35,18 @@ export const isNative = Platform.OS !== "web";
- /** Development build/runtime — true in Metro dev bundles, false in production. */
- export const isDev = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
- 
-+/** The bundled HarmonyOS host, including PC where scanning is unavailable. */
-+export const isHarmonyApp =
-+  isWeb &&
-+  typeof window !== "undefined" &&
-+  (window as Window & { __PASEO_HARMONY_APP__?: boolean }).__PASEO_HARMONY_APP__ === true;
-+
-+/** Capability injected only into the bundled phone/tablet app by its native host. */
-+export const hasHarmonyScanner =
-+  isWeb &&
-+  typeof window !== "undefined" &&
-+  (window as Window & { __PASEO_HARMONY_SCAN__?: boolean }).__PASEO_HARMONY_SCAN__ === true;
-+
- // ---------------------------------------------------------------------------
- // Electron detection (cached — only caches `true`, keeps checking if false
- // because the desktop bridge may load after initial module evaluation)
 diff --git a/packages/app/src/constants/platform.test.ts b/packages/app/src/constants/platform.test.ts
 new file mode 100644
 index 000000000..5ac7eb5f8
@@ -77,3 +54,26 @@ index 000000000..5ac7eb5f8
 +    expect(platform.hasHarmonyScanner).toBe(false);
 +  });
 +});
+diff --git a/packages/app/src/constants/platform.ts b/packages/app/src/constants/platform.ts
+index 08dca4da9..cbac08283 100644
+--- a/packages/app/src/constants/platform.ts
++++ b/packages/app/src/constants/platform.ts
+@@ -35,6 +35,18 @@ export const isNative = Platform.OS !== "web";
+ /** Development build/runtime — true in Metro dev bundles, false in production. */
+ export const isDev = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
+ 
++/** The bundled HarmonyOS host, including PC where scanning is unavailable. */
++export const isHarmonyApp =
++  isWeb &&
++  typeof window !== "undefined" &&
++  (window as Window & { __PASEO_HARMONY_APP__?: boolean }).__PASEO_HARMONY_APP__ === true;
++
++/** Capability injected only into the bundled phone/tablet app by its native host. */
++export const hasHarmonyScanner =
++  isWeb &&
++  typeof window !== "undefined" &&
++  (window as Window & { __PASEO_HARMONY_SCAN__?: boolean }).__PASEO_HARMONY_SCAN__ === true;
++
+ // ---------------------------------------------------------------------------
+ // Electron detection (cached — only caches `true`, keeps checking if false
+ // because the desktop bridge may load after initial module evaluation)

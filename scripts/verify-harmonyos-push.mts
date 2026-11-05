@@ -15,6 +15,9 @@ import { DaemonClient } from "../runtime/verified-paseo/packages/server/src/serv
 
 const directory = await mkdtemp(join(tmpdir(), "ohpaseo-plugin-runtime-"));
 const source = resolve("integrations/harmonyos-push");
+const appVersion: string = JSON.parse(
+  await readFile(resolve("runtime/verified-paseo/packages/app/package.json"), "utf8"),
+).version;
 const plugin = join(directory, "plugin");
 const privateDirectory = join(directory, "private");
 const captured: {
@@ -65,8 +68,8 @@ try {
       `new HuaweiSender({ endpoint: ${JSON.stringify(`http://127.0.0.1:${address.port}/messages:send`)},`,
     );
   await writeFile(join(plugin, "index.server.ts"), entry);
-  daemon = await createTestPaseoDaemon({ daemonVersion: "0.14.0", pluginsEnabled: true });
-  client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws`, appVersion: "0.14.0" });
+  daemon = await createTestPaseoDaemon({ daemonVersion: appVersion, pluginsEnabled: true });
+  client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws`, appVersion });
   await client.connect();
   await client.fetchAgents({ subscribe: {} });
   await client.installDirectoryPlugin(plugin);

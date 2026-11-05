@@ -1,23 +1,103 @@
-diff --git a/packages/app/src/push-notifications/index.web.ts b/packages/app/src/push-notifications/index.web.ts
---- a/packages/app/src/push-notifications/index.web.ts
-+++ b/packages/app/src/push-notifications/index.web.ts
-@@ -1,9 +1,11 @@
- import type { RevokePushNotificationsInput, StartPushNotificationsInput } from "./internal/types";
-+import { isHarmonyApp } from "@/constants/platform";
-+import { startHarmonySubscription, revokeHarmonySubscription } from "./harmony-subscriptions";
- 
--export function startPushNotifications(_input: StartPushNotificationsInput): () => void {
--  return () => undefined;
-+export function startPushNotifications(input: StartPushNotificationsInput): () => void {
-+  return isHarmonyApp ? startHarmonySubscription(input) : () => undefined;
- }
- 
--export async function revokePushNotifications(_input: RevokePushNotificationsInput): Promise<void> {
--  // Push notifications are native-only.
-+export async function revokePushNotifications(input: RevokePushNotificationsInput): Promise<void> {
-+  if (isHarmonyApp) await revokeHarmonySubscription(input);
- }
+diff --git a/packages/app/src/notification-open/source.web.test.ts b/packages/app/src/notification-open/source.web.test.ts
+new file mode 100644
+index 000000000..4f97f442e
+--- /dev/null
++++ b/packages/app/src/notification-open/source.web.test.ts
+@@ -0,0 +1,92 @@
++// @vitest-environment jsdom
++import { beforeEach, expect, it, vi } from "vitest";
++import type { NotificationTap } from "./source";
++
++const native = vi.hoisted(() => ({
++  tap: null as NotificationTap | null,
++  listeners: new Set<() => void>(),
++}));
++vi.mock("@/constants/platform", () => ({ isWeb: true }));
++vi.mock("@/push-notifications/harmony-bridge", () => ({
++  harmonyRequest: vi.fn(async () => null),
++  takeHarmonyTap: vi.fn(async () => native.tap),
++  subscribeHarmonyChange: (listener: () => void) => {
++    native.listeners.add(listener);
++    return () => native.listeners.delete(listener);
++  },
++}));
++import { harmonyRequest } from "@/push-notifications/harmony-bridge";
++import { createNotificationOpenSource } from "./source.web";
++import { createNotificationOpenRouter, WEB_NOTIFICATION_CLICK_EVENT } from "./model";
++const flush = async () => {
++  for (let i = 0; i < 15; i++) await Promise.resolve();
++};
++beforeEach(() => {
++  native.tap = null;
++  native.listeners.clear();
++  vi.clearAllMocks();
++});
++
++it("keeps a cold native tap pending until navigation is ready, then acknowledges it", async () => {
++  native.tap = { id: "harmony:cold", data: { serverId: "host", agentId: "agent" } };
++  let ready!: () => void;
++  const wait = new Promise<void>((resolve) => {
++    ready = resolve;
++  });
++  const openAgent = vi.fn();
++  const router = createNotificationOpenRouter({
++    source: createNotificationOpenSource(),
++    openAgent,
++    openRoute: vi.fn(),
++    openTerminal: vi.fn(),
++    whenReadyToNavigate: () => wait,
++  });
++  const stop = router.start();
++  try {
++    await flush();
++    expect(openAgent).not.toHaveBeenCalled();
++    expect(harmonyRequest).not.toHaveBeenCalled();
++    ready();
++    await flush();
++    expect(openAgent).toHaveBeenCalledExactlyOnceWith({ serverId: "host", agentId: "agent" });
++    expect(harmonyRequest).toHaveBeenCalledExactlyOnceWith("ackTap", "harmony:cold");
++  } finally {
++    stop();
++  }
++});
++
++it("deduplicates warm native taps and releases the native subscription", async () => {
++  const openAgent = vi.fn();
++  const router = createNotificationOpenRouter({
++    source: createNotificationOpenSource(),
++    openAgent,
++    openRoute: vi.fn(),
++    openTerminal: vi.fn(),
++    whenReadyToNavigate: async () => {},
++  });
++  const stop = router.start();
++  await flush();
++  native.tap = { id: "harmony:warm", data: { serverId: "host-2", agentId: "agent-2" } };
++  native.listeners.forEach((listener) => listener());
++  native.listeners.forEach((listener) => listener());
++  await flush();
++  stop();
++  expect(openAgent).toHaveBeenCalledExactlyOnceWith({ serverId: "host-2", agentId: "agent-2" });
++  expect(harmonyRequest).toHaveBeenCalledExactlyOnceWith("ackTap", "harmony:warm");
++  expect(native.listeners.size).toBe(0);
++});
++
++it("preserves ordinary web notification clicks and removes their event listener", async () => {
++  const onTap = vi.fn();
++  const stop = createNotificationOpenSource().subscribe(onTap);
++  const click = new CustomEvent(WEB_NOTIFICATION_CLICK_EVENT, {
++    cancelable: true,
++    detail: { data: { serverId: "web-host" } },
++  });
++  window.dispatchEvent(click);
++  stop();
++  window.dispatchEvent(click);
++  expect(click.defaultPrevented).toBe(true);
++  expect(onTap).toHaveBeenCalledTimes(1);
++  expect(harmonyRequest).not.toHaveBeenCalled();
++});
 diff --git a/packages/app/src/notification-open/source.web.ts b/packages/app/src/notification-open/source.web.ts
+index 31b9aef06..74d762dfd 100644
 --- a/packages/app/src/notification-open/source.web.ts
 +++ b/packages/app/src/notification-open/source.web.ts
 @@ -1,6 +1,11 @@
@@ -32,7 +112,7 @@ diff --git a/packages/app/src/notification-open/source.web.ts b/packages/app/src
  
  export function createNotificationOpenSource(): NotificationOpenSource {
    let nextId = 0;
-@@ -13,11 +18,26 @@
+@@ -13,11 +18,26 @@ export function createNotificationOpenSource(): NotificationOpenSource {
          onTap({ id: `web:${++nextId}`, data: event.detail?.data });
        }
        window.addEventListener(WEB_NOTIFICATION_CLICK_EVENT, receive);
@@ -55,52 +135,16 @@ diff --git a/packages/app/src/notification-open/source.web.ts b/packages/app/src
      async takeLaunchTap() {
 -      return null;
 +      return takeHarmonyTap().catch(() => null);
-     },
--    acknowledge() {},
++    },
 +    acknowledge(tap) {
 +      if (tap.id.startsWith("harmony:")) void harmonyRequest("ackTap", tap.id).catch(() => {});
-+    },
+     },
+-    acknowledge() {},
    };
  }
-diff --git a/packages/app/src/screens/settings-screen.tsx b/packages/app/src/screens/settings-screen.tsx
---- a/packages/app/src/screens/settings-screen.tsx
-+++ b/packages/app/src/screens/settings-screen.tsx
-@@ -89,6 +89,7 @@
- import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
- import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
- import { DesktopNotificationsSection } from "@/desktop/components/desktop-notifications-section";
-+import { HarmonyNotificationsSection } from "@/push-notifications/harmony-settings";
- import { BrowserDataSection } from "@/desktop/browser/settings/browser-data-section";
- import { IntegrationsSection } from "@/desktop/components/integrations-section";
- import { isElectronRuntime } from "@/desktop/host";
-@@ -147,7 +148,7 @@
-   useSettingsSidebarScroll,
- } from "@/navigation/settings-presentation";
- import { returnFromSettings, type SettingsView } from "@/navigation/settings-navigation";
--import { isWeb } from "@/constants/platform";
-+import { isWeb, isHarmonyApp } from "@/constants/platform";
- 
- // ---------------------------------------------------------------------------
- // View model
-@@ -218,7 +219,7 @@
-     labelKey: "settings.sections.notifications",
-     icon: Bell,
-     desktopOnly: true,
--    Content: DesktopNotificationsSection,
-+    Content: isHarmonyApp ? HarmonyNotificationsSection : DesktopNotificationsSection,
-   },
-   {
-     id: "permissions",
-@@ -232,6 +233,7 @@
- ];
- 
- function isSectionAvailable(item: SidebarSectionItem, isDesktopApp: boolean): boolean {
-+  if (item.id === "notifications" && isHarmonyApp) return true;
-   return (!item.desktopOnly || isDesktopApp) && (!item.webOnly || isWeb);
- }
- 
 diff --git a/packages/app/src/push-notifications/harmony-bridge.ts b/packages/app/src/push-notifications/harmony-bridge.ts
 new file mode 100644
+index 000000000..667ae8572
 --- /dev/null
 +++ b/packages/app/src/push-notifications/harmony-bridge.ts
 @@ -0,0 +1,61 @@
@@ -165,8 +209,339 @@ new file mode 100644
 +  const result = HarmonyTapSchema.safeParse(value);
 +  return result.success ? result.data : null;
 +}
+diff --git a/packages/app/src/push-notifications/harmony-settings.tsx b/packages/app/src/push-notifications/harmony-settings.tsx
+new file mode 100644
+index 000000000..e5b38d426
+--- /dev/null
++++ b/packages/app/src/push-notifications/harmony-settings.tsx
+@@ -0,0 +1,144 @@
++import { useCallback, useEffect, useState } from "react";
++import { Text, View } from "react-native";
++import { useHosts, useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
++import type { HostProfile } from "@/types/host-connection";
++import { Button } from "@/components/ui/button";
++import { Switch } from "@/components/ui/switch";
++import { Alert } from "@/components/ui/alert";
++import { SettingsSection } from "@/components/settings/headings/settings-section";
++import { settingsStyles } from "@/styles/settings";
++import { getHarmonyStatus, subscribeHarmonyChange } from "./harmony-bridge";
++import {
++  getHarmonySubscription,
++  subscribeHarmonySubscription,
++  setHarmonySubscription,
++  testHarmonyNotification,
++  revokeHarmonySubscription,
++} from "./harmony-subscriptions";
++
++function HostNotifications({ host }: { host: HostProfile }) {
++  const client = useHostRuntimeClient(host.serverId);
++  const connected = useHostRuntimeIsConnected(host.serverId);
++  const [, update] = useState(0);
++  const [pending, setPending] = useState(false);
++  const [message, setMessage] = useState("");
++  const [failed, setFailed] = useState(false);
++  useEffect(() => subscribeHarmonySubscription(() => update((value) => value + 1)), []);
++  const state = getHarmonySubscription(host.serverId);
++  const run = useCallback(
++    async (action: "enable" | "disable" | "test") => {
++      if (pending) return;
++      setPending(true);
++      setMessage("");
++      setFailed(false);
++      try {
++        if (action === "disable")
++          await revokeHarmonySubscription({ client, serverId: host.serverId });
++        else {
++          if (!client) throw new Error("请先连接此主机。");
++          const input = { client, serverId: host.serverId };
++          if (action === "test") setMessage(await testHarmonyNotification(input));
++          else await setHarmonySubscription(input, true);
++        }
++      } catch (error) {
++        setFailed(true);
++        setMessage(error instanceof Error ? error.message : "操作失败，请重试。");
++      } finally {
++        setPending(false);
++      }
++    },
++    [client, pending, host.serverId],
++  );
++  const changeEnabled = useCallback(
++    (enabled: boolean) => {
++      void run(enabled ? "enable" : "disable");
++    },
++    [run],
++  );
++  const sendTest = useCallback(() => {
++    void run("test");
++  }, [run]);
++  return (
++    <View style={settingsStyles.card}>
++      <View style={settingsStyles.row}>
++        <View style={settingsStyles.rowContent}>
++          <Text style={settingsStyles.rowTitle}>{host.label}</Text>
++          <Text style={settingsStyles.rowHint}>
++            {state?.message || (connected ? "开启此主机的任务完成和确认提醒。" : "等待主机连接。")}
++          </Text>
++        </View>
++        <Switch
++          value={state?.enabled ?? false}
++          onValueChange={changeEnabled}
++          disabled={pending || (!connected && !state?.enabled)}
++          accessibilityLabel={`${host.label} 消息推送`}
++        />
++      </View>
++      <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
++        <Text style={settingsStyles.rowHint}>
++          {pending ? "正在处理…" : "通过华为推送服务发送至本设备。"}
++        </Text>
++        <Button
++          variant="outline"
++          size="sm"
++          disabled={!connected || !state?.enabled || pending}
++          onPress={sendTest}
++        >
++          发送测试通知
++        </Button>
++      </View>
++      {message ? (
++        <Alert
++          size="sm"
++          variant={failed ? "error" : "success"}
++          title={failed ? "通知设置未完成" : "测试通知"}
++          description={message}
++        />
++      ) : null}
++    </View>
++  );
++}
++
++export function HarmonyNotificationsSection() {
++  const hosts = useHosts();
++  const [status, setStatus] = useState("正在检查系统通知权限…");
++  useEffect(() => {
++    let active = true;
++    const refresh = () => {
++      void getHarmonyStatus()
++        .then((value) => {
++          if (active)
++            setStatus(
++              value.error ||
++                (value.permission
++                  ? "系统通知权限已允许。"
++                  : "开启主机通知时，将请求系统通知权限。"),
++            );
++          return undefined;
++        })
++        .catch(() => {
++          if (active) setStatus("系统通知服务暂不可用，请重新进入此页。");
++        });
++    };
++    refresh();
++    const remove = subscribeHarmonyChange(refresh);
++    return () => {
++      active = false;
++      remove();
++    };
++  }, []);
++  return (
++    <SettingsSection title="鸿蒙消息推送">
++      <Text style={settingsStyles.rowHint}>
++        应用退到后台或锁屏后，接收任务完成和需要确认的提醒。点击通知可回到对应会话。通知不包含对话内容。
++      </Text>
++      <Text style={settingsStyles.rowHint}>{status}</Text>
++      {hosts.map((host) => (
++        <HostNotifications key={host.serverId} host={host} />
++      ))}
++      {hosts.length === 0 ? (
++        <Text style={settingsStyles.rowHint}>添加并连接主机后，可为此设备开启消息推送。</Text>
++      ) : null}
++    </SettingsSection>
++  );
++}
+diff --git a/packages/app/src/push-notifications/harmony-subscriptions.test.ts b/packages/app/src/push-notifications/harmony-subscriptions.test.ts
+new file mode 100644
+index 000000000..f5a8fd0df
+--- /dev/null
++++ b/packages/app/src/push-notifications/harmony-subscriptions.test.ts
+@@ -0,0 +1,174 @@
++import { afterEach, beforeEach, expect, it, vi } from "vitest";
++import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
++
++const mock = vi.hoisted(() => ({
++  storage: new Map<string, string>(),
++  listeners: new Set<() => void>(),
++  native: {
++    supported: true,
++    enabled: true,
++    permission: true,
++    installationId: "6b3d6928-30e6-43c0-a6a2-15c109e77451",
++    token: "huawei-only-token",
++    foreground: true,
++    error: "",
++  },
++}));
++vi.mock("@react-native-async-storage/async-storage", () => ({
++  default: {
++    getItem: vi.fn(async (key: string) => mock.storage.get(key) ?? null),
++    setItem: vi.fn(async (key: string, value: string) => {
++      mock.storage.set(key, value);
++    }),
++  },
++}));
++vi.mock("./harmony-bridge", () => ({
++  getHarmonyStatus: vi.fn(async () => mock.native),
++  subscribeHarmonyChange: (listener: () => void) => {
++    mock.listeners.add(listener);
++    return () => mock.listeners.delete(listener);
++  },
++}));
++import {
++  startHarmonySubscription,
++  setHarmonySubscription,
++  revokeHarmonySubscription,
++  getHarmonySubscription,
++} from "./harmony-subscriptions";
++import { getHarmonyStatus } from "./harmony-bridge";
++const flush = async () => {
++  for (let i = 0; i < 40; i++) await Promise.resolve();
++};
++function connection() {
++  let connected = true;
++  let listener = () => {};
++  const rpc = vi.fn(async () => ({ ready: true, message: "ready" }));
++  const client = {
++    get isConnected() {
++      return connected;
++    },
++    invokePluginRpc: rpc,
++    subscribeConnectionStatus: (fn: () => void) => {
++      listener = fn;
++      return () => {
++        listener = () => {};
++      };
++    },
++  } as unknown as DaemonClient;
++  return {
++    client,
++    rpc,
++    change(value: boolean) {
++      connected = value;
++      listener();
++    },
++  };
++}
++beforeEach(() => {
++  vi.useFakeTimers();
++  mock.storage.clear();
++  mock.listeners.clear();
++  mock.native.permission = true;
++  mock.native.token = "huawei-only-token";
++  mock.native.foreground = true;
++});
++afterEach(() => vi.useRealTimers());
++
++it("does not re-register a revoked device when a token refresh was already pending", async () => {
++  const { client, rpc } = connection();
++  const input = { client, serverId: "race-host" };
++  mock.storage.set("@paseo:harmony-push:race-host", JSON.stringify({ enabled: true }));
++  let complete!: (value: typeof mock.native) => void;
++  vi.mocked(getHarmonyStatus).mockImplementationOnce(
++    () =>
++      new Promise((resolve) => {
++        complete = resolve;
++      }),
++  );
++  const stop = startHarmonySubscription(input);
++  try {
++    await flush();
++    await revokeHarmonySubscription(input);
++    rpc.mockClear();
++    complete(mock.native);
++    await flush();
++    expect(rpc).not.toHaveBeenCalledWith("harmonyos-push", "device.register", expect.anything());
++    expect(getHarmonySubscription("race-host")?.enabled).toBe(false);
++  } finally {
++    stop();
++  }
++});
++
++it("requires per-host opt-in, updates rotated tokens/background state, and renews on reconnect", async () => {
++  const { client, rpc, change } = connection();
++  const input = { client, serverId: "test-host" };
++  const stop = startHarmonySubscription(input);
++  try {
++    await flush();
++    expect(rpc).not.toHaveBeenCalled();
++    await setHarmonySubscription(input, true);
++    expect(rpc).toHaveBeenCalledWith(
++      "harmonyos-push",
++      "device.register",
++      expect.objectContaining({
++        token: "huawei-only-token",
++        serverId: "test-host",
++        foreground: true,
++      }),
++    );
++    mock.native.token = "rotated-token";
++    mock.native.foreground = false;
++    mock.listeners.forEach((listener) => listener());
++    await flush();
++    expect(rpc).toHaveBeenLastCalledWith(
++      "harmonyos-push",
++      "device.register",
++      expect.objectContaining({ token: "rotated-token", foreground: false }),
++    );
++    change(false);
++    await flush();
++    rpc.mockClear();
++    change(true);
++    await flush();
++    expect(rpc).toHaveBeenCalledWith("harmonyos-push", "device.register", expect.anything());
++    mock.native.permission = false;
++    mock.listeners.forEach((listener) => listener());
++    await flush();
++    expect(rpc).toHaveBeenLastCalledWith("harmonyos-push", "device.revoke", {
++      installationId: mock.native.installationId,
++    });
++    expect(getHarmonySubscription("test-host")?.message).toContain("通知权限已关闭");
++  } finally {
++    stop();
++  }
++});
++
++it("persists offline revocation and retries it on reconnect without affecting other hosts", async () => {
++  const { client, rpc, change } = connection();
++  const input = { client, serverId: "offline-host" };
++  const stop = startHarmonySubscription(input);
++  try {
++    await flush();
++    await setHarmonySubscription(input, true);
++    change(false);
++    await flush();
++    rpc.mockClear();
++    await revokeHarmonySubscription(input);
++    expect(rpc).not.toHaveBeenCalled();
++    expect(JSON.parse(mock.storage.get("@paseo:harmony-push:offline-host")!)).toEqual({
++      enabled: false,
++      revoke: true,
++    });
++    change(true);
++    await flush();
++    expect(rpc).toHaveBeenLastCalledWith("harmonyos-push", "device.revoke", {
++      installationId: mock.native.installationId,
++    });
++    expect(JSON.parse(mock.storage.get("@paseo:harmony-push:offline-host")!)).toEqual({
++      enabled: false,
++    });
++    expect(mock.storage.has("@paseo:harmony-push:other-host")).toBe(false);
++  } finally {
++    stop();
++  }
++});
 diff --git a/packages/app/src/push-notifications/harmony-subscriptions.ts b/packages/app/src/push-notifications/harmony-subscriptions.ts
 new file mode 100644
+index 000000000..3c8057f8d
 --- /dev/null
 +++ b/packages/app/src/push-notifications/harmony-subscriptions.ts
 @@ -0,0 +1,194 @@
@@ -364,428 +739,61 @@ new file mode 100644
 +  if (!result.ready) throw new Error(result.message);
 +  return "华为已接受测试通知，请检查通知中心；实际送达以设备显示为准。";
 +}
-diff --git a/packages/app/src/push-notifications/harmony-subscriptions.test.ts b/packages/app/src/push-notifications/harmony-subscriptions.test.ts
-new file mode 100644
---- /dev/null
-+++ b/packages/app/src/push-notifications/harmony-subscriptions.test.ts
-@@ -0,0 +1,174 @@
-+import { afterEach, beforeEach, expect, it, vi } from "vitest";
-+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-+
-+const mock = vi.hoisted(() => ({
-+  storage: new Map<string, string>(),
-+  listeners: new Set<() => void>(),
-+  native: {
-+    supported: true,
-+    enabled: true,
-+    permission: true,
-+    installationId: "6b3d6928-30e6-43c0-a6a2-15c109e77451",
-+    token: "huawei-only-token",
-+    foreground: true,
-+    error: "",
-+  },
-+}));
-+vi.mock("@react-native-async-storage/async-storage", () => ({
-+  default: {
-+    getItem: vi.fn(async (key: string) => mock.storage.get(key) ?? null),
-+    setItem: vi.fn(async (key: string, value: string) => {
-+      mock.storage.set(key, value);
-+    }),
-+  },
-+}));
-+vi.mock("./harmony-bridge", () => ({
-+  getHarmonyStatus: vi.fn(async () => mock.native),
-+  subscribeHarmonyChange: (listener: () => void) => {
-+    mock.listeners.add(listener);
-+    return () => mock.listeners.delete(listener);
-+  },
-+}));
-+import {
-+  startHarmonySubscription,
-+  setHarmonySubscription,
-+  revokeHarmonySubscription,
-+  getHarmonySubscription,
-+} from "./harmony-subscriptions";
-+import { getHarmonyStatus } from "./harmony-bridge";
-+const flush = async () => {
-+  for (let i = 0; i < 40; i++) await Promise.resolve();
-+};
-+function connection() {
-+  let connected = true;
-+  let listener = () => {};
-+  const rpc = vi.fn(async () => ({ ready: true, message: "ready" }));
-+  const client = {
-+    get isConnected() {
-+      return connected;
-+    },
-+    invokePluginRpc: rpc,
-+    subscribeConnectionStatus: (fn: () => void) => {
-+      listener = fn;
-+      return () => {
-+        listener = () => {};
-+      };
-+    },
-+  } as unknown as DaemonClient;
-+  return {
-+    client,
-+    rpc,
-+    change(value: boolean) {
-+      connected = value;
-+      listener();
-+    },
-+  };
-+}
-+beforeEach(() => {
-+  vi.useFakeTimers();
-+  mock.storage.clear();
-+  mock.listeners.clear();
-+  mock.native.permission = true;
-+  mock.native.token = "huawei-only-token";
-+  mock.native.foreground = true;
-+});
-+afterEach(() => vi.useRealTimers());
-+
-+it("does not re-register a revoked device when a token refresh was already pending", async () => {
-+  const { client, rpc } = connection();
-+  const input = { client, serverId: "race-host" };
-+  mock.storage.set("@paseo:harmony-push:race-host", JSON.stringify({ enabled: true }));
-+  let complete!: (value: typeof mock.native) => void;
-+  vi.mocked(getHarmonyStatus).mockImplementationOnce(
-+    () =>
-+      new Promise((resolve) => {
-+        complete = resolve;
-+      }),
-+  );
-+  const stop = startHarmonySubscription(input);
-+  try {
-+    await flush();
-+    await revokeHarmonySubscription(input);
-+    rpc.mockClear();
-+    complete(mock.native);
-+    await flush();
-+    expect(rpc).not.toHaveBeenCalledWith("harmonyos-push", "device.register", expect.anything());
-+    expect(getHarmonySubscription("race-host")?.enabled).toBe(false);
-+  } finally {
-+    stop();
-+  }
-+});
-+
-+it("requires per-host opt-in, updates rotated tokens/background state, and renews on reconnect", async () => {
-+  const { client, rpc, change } = connection();
-+  const input = { client, serverId: "test-host" };
-+  const stop = startHarmonySubscription(input);
-+  try {
-+    await flush();
-+    expect(rpc).not.toHaveBeenCalled();
-+    await setHarmonySubscription(input, true);
-+    expect(rpc).toHaveBeenCalledWith(
-+      "harmonyos-push",
-+      "device.register",
-+      expect.objectContaining({
-+        token: "huawei-only-token",
-+        serverId: "test-host",
-+        foreground: true,
-+      }),
-+    );
-+    mock.native.token = "rotated-token";
-+    mock.native.foreground = false;
-+    mock.listeners.forEach((listener) => listener());
-+    await flush();
-+    expect(rpc).toHaveBeenLastCalledWith(
-+      "harmonyos-push",
-+      "device.register",
-+      expect.objectContaining({ token: "rotated-token", foreground: false }),
-+    );
-+    change(false);
-+    await flush();
-+    rpc.mockClear();
-+    change(true);
-+    await flush();
-+    expect(rpc).toHaveBeenCalledWith("harmonyos-push", "device.register", expect.anything());
-+    mock.native.permission = false;
-+    mock.listeners.forEach((listener) => listener());
-+    await flush();
-+    expect(rpc).toHaveBeenLastCalledWith("harmonyos-push", "device.revoke", {
-+      installationId: mock.native.installationId,
-+    });
-+    expect(getHarmonySubscription("test-host")?.message).toContain("通知权限已关闭");
-+  } finally {
-+    stop();
-+  }
-+});
-+
-+it("persists offline revocation and retries it on reconnect without affecting other hosts", async () => {
-+  const { client, rpc, change } = connection();
-+  const input = { client, serverId: "offline-host" };
-+  const stop = startHarmonySubscription(input);
-+  try {
-+    await flush();
-+    await setHarmonySubscription(input, true);
-+    change(false);
-+    await flush();
-+    rpc.mockClear();
-+    await revokeHarmonySubscription(input);
-+    expect(rpc).not.toHaveBeenCalled();
-+    expect(JSON.parse(mock.storage.get("@paseo:harmony-push:offline-host")!)).toEqual({
-+      enabled: false,
-+      revoke: true,
-+    });
-+    change(true);
-+    await flush();
-+    expect(rpc).toHaveBeenLastCalledWith("harmonyos-push", "device.revoke", {
-+      installationId: mock.native.installationId,
-+    });
-+    expect(JSON.parse(mock.storage.get("@paseo:harmony-push:offline-host")!)).toEqual({
-+      enabled: false,
-+    });
-+    expect(mock.storage.has("@paseo:harmony-push:other-host")).toBe(false);
-+  } finally {
-+    stop();
-+  }
-+});
-diff --git a/packages/app/src/push-notifications/harmony-settings.tsx b/packages/app/src/push-notifications/harmony-settings.tsx
-new file mode 100644
---- /dev/null
-+++ b/packages/app/src/push-notifications/harmony-settings.tsx
-@@ -0,0 +1,144 @@
-+import { useCallback, useEffect, useState } from "react";
-+import { Text, View } from "react-native";
-+import { useHosts, useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-+import type { HostProfile } from "@/types/host-connection";
-+import { Button } from "@/components/ui/button";
-+import { Switch } from "@/components/ui/switch";
-+import { Alert } from "@/components/ui/alert";
-+import { SettingsSection } from "@/components/settings/headings/settings-section";
-+import { settingsStyles } from "@/styles/settings";
-+import { getHarmonyStatus, subscribeHarmonyChange } from "./harmony-bridge";
-+import {
-+  getHarmonySubscription,
-+  subscribeHarmonySubscription,
-+  setHarmonySubscription,
-+  testHarmonyNotification,
-+  revokeHarmonySubscription,
-+} from "./harmony-subscriptions";
-+
-+function HostNotifications({ host }: { host: HostProfile }) {
-+  const client = useHostRuntimeClient(host.serverId);
-+  const connected = useHostRuntimeIsConnected(host.serverId);
-+  const [, update] = useState(0);
-+  const [pending, setPending] = useState(false);
-+  const [message, setMessage] = useState("");
-+  const [failed, setFailed] = useState(false);
-+  useEffect(() => subscribeHarmonySubscription(() => update((value) => value + 1)), []);
-+  const state = getHarmonySubscription(host.serverId);
-+  const run = useCallback(
-+    async (action: "enable" | "disable" | "test") => {
-+      if (pending) return;
-+      setPending(true);
-+      setMessage("");
-+      setFailed(false);
-+      try {
-+        if (action === "disable")
-+          await revokeHarmonySubscription({ client, serverId: host.serverId });
-+        else {
-+          if (!client) throw new Error("请先连接此主机。");
-+          const input = { client, serverId: host.serverId };
-+          if (action === "test") setMessage(await testHarmonyNotification(input));
-+          else await setHarmonySubscription(input, true);
-+        }
-+      } catch (error) {
-+        setFailed(true);
-+        setMessage(error instanceof Error ? error.message : "操作失败，请重试。");
-+      } finally {
-+        setPending(false);
-+      }
-+    },
-+    [client, pending, host.serverId],
-+  );
-+  const changeEnabled = useCallback(
-+    (enabled: boolean) => {
-+      void run(enabled ? "enable" : "disable");
-+    },
-+    [run],
-+  );
-+  const sendTest = useCallback(() => {
-+    void run("test");
-+  }, [run]);
-+  return (
-+    <View style={settingsStyles.card}>
-+      <View style={settingsStyles.row}>
-+        <View style={settingsStyles.rowContent}>
-+          <Text style={settingsStyles.rowTitle}>{host.label}</Text>
-+          <Text style={settingsStyles.rowHint}>
-+            {state?.message || (connected ? "开启此主机的任务完成和确认提醒。" : "等待主机连接。")}
-+          </Text>
-+        </View>
-+        <Switch
-+          value={state?.enabled ?? false}
-+          onValueChange={changeEnabled}
-+          disabled={pending || (!connected && !state?.enabled)}
-+          accessibilityLabel={`${host.label} 消息推送`}
-+        />
-+      </View>
-+      <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
-+        <Text style={settingsStyles.rowHint}>
-+          {pending ? "正在处理…" : "通过华为推送服务发送至本设备。"}
-+        </Text>
-+        <Button
-+          variant="outline"
-+          size="sm"
-+          disabled={!connected || !state?.enabled || pending}
-+          onPress={sendTest}
-+        >
-+          发送测试通知
-+        </Button>
-+      </View>
-+      {message ? (
-+        <Alert
-+          size="sm"
-+          variant={failed ? "error" : "success"}
-+          title={failed ? "通知设置未完成" : "测试通知"}
-+          description={message}
-+        />
-+      ) : null}
-+    </View>
-+  );
-+}
-+
-+export function HarmonyNotificationsSection() {
-+  const hosts = useHosts();
-+  const [status, setStatus] = useState("正在检查系统通知权限…");
-+  useEffect(() => {
-+    let active = true;
-+    const refresh = () => {
-+      void getHarmonyStatus()
-+        .then((value) => {
-+          if (active)
-+            setStatus(
-+              value.error ||
-+                (value.permission
-+                  ? "系统通知权限已允许。"
-+                  : "开启主机通知时，将请求系统通知权限。"),
-+            );
-+          return undefined;
-+        })
-+        .catch(() => {
-+          if (active) setStatus("系统通知服务暂不可用，请重新进入此页。");
-+        });
-+    };
-+    refresh();
-+    const remove = subscribeHarmonyChange(refresh);
-+    return () => {
-+      active = false;
-+      remove();
-+    };
-+  }, []);
-+  return (
-+    <SettingsSection title="鸿蒙消息推送">
-+      <Text style={settingsStyles.rowHint}>
-+        应用退到后台或锁屏后，接收任务完成和需要确认的提醒。点击通知可回到对应会话。通知不包含对话内容。
-+      </Text>
-+      <Text style={settingsStyles.rowHint}>{status}</Text>
-+      {hosts.map((host) => (
-+        <HostNotifications key={host.serverId} host={host} />
-+      ))}
-+      {hosts.length === 0 ? (
-+        <Text style={settingsStyles.rowHint}>添加并连接主机后，可为此设备开启消息推送。</Text>
-+      ) : null}
-+    </SettingsSection>
-+  );
-+}
-diff --git a/packages/app/src/notification-open/source.web.test.ts b/packages/app/src/notification-open/source.web.test.ts
-new file mode 100644
---- /dev/null
-+++ b/packages/app/src/notification-open/source.web.test.ts
-@@ -0,0 +1,92 @@
-+// @vitest-environment jsdom
-+import { beforeEach, expect, it, vi } from "vitest";
-+import type { NotificationTap } from "./source";
-+
-+const native = vi.hoisted(() => ({
-+  tap: null as NotificationTap | null,
-+  listeners: new Set<() => void>(),
-+}));
-+vi.mock("@/constants/platform", () => ({ isWeb: true }));
-+vi.mock("@/push-notifications/harmony-bridge", () => ({
-+  harmonyRequest: vi.fn(async () => null),
-+  takeHarmonyTap: vi.fn(async () => native.tap),
-+  subscribeHarmonyChange: (listener: () => void) => {
-+    native.listeners.add(listener);
-+    return () => native.listeners.delete(listener);
-+  },
-+}));
-+import { harmonyRequest } from "@/push-notifications/harmony-bridge";
-+import { createNotificationOpenSource } from "./source.web";
-+import { createNotificationOpenRouter, WEB_NOTIFICATION_CLICK_EVENT } from "./model";
-+const flush = async () => {
-+  for (let i = 0; i < 15; i++) await Promise.resolve();
-+};
-+beforeEach(() => {
-+  native.tap = null;
-+  native.listeners.clear();
-+  vi.clearAllMocks();
-+});
-+
-+it("keeps a cold native tap pending until navigation is ready, then acknowledges it", async () => {
-+  native.tap = { id: "harmony:cold", data: { serverId: "host", agentId: "agent" } };
-+  let ready!: () => void;
-+  const wait = new Promise<void>((resolve) => {
-+    ready = resolve;
-+  });
-+  const openAgent = vi.fn();
-+  const router = createNotificationOpenRouter({
-+    source: createNotificationOpenSource(),
-+    openAgent,
-+    openRoute: vi.fn(),
-+    openTerminal: vi.fn(),
-+    whenReadyToNavigate: () => wait,
-+  });
-+  const stop = router.start();
-+  try {
-+    await flush();
-+    expect(openAgent).not.toHaveBeenCalled();
-+    expect(harmonyRequest).not.toHaveBeenCalled();
-+    ready();
-+    await flush();
-+    expect(openAgent).toHaveBeenCalledExactlyOnceWith({ serverId: "host", agentId: "agent" });
-+    expect(harmonyRequest).toHaveBeenCalledExactlyOnceWith("ackTap", "harmony:cold");
-+  } finally {
-+    stop();
-+  }
-+});
-+
-+it("deduplicates warm native taps and releases the native subscription", async () => {
-+  const openAgent = vi.fn();
-+  const router = createNotificationOpenRouter({
-+    source: createNotificationOpenSource(),
-+    openAgent,
-+    openRoute: vi.fn(),
-+    openTerminal: vi.fn(),
-+    whenReadyToNavigate: async () => {},
-+  });
-+  const stop = router.start();
-+  await flush();
-+  native.tap = { id: "harmony:warm", data: { serverId: "host-2", agentId: "agent-2" } };
-+  native.listeners.forEach((listener) => listener());
-+  native.listeners.forEach((listener) => listener());
-+  await flush();
-+  stop();
-+  expect(openAgent).toHaveBeenCalledExactlyOnceWith({ serverId: "host-2", agentId: "agent-2" });
-+  expect(harmonyRequest).toHaveBeenCalledExactlyOnceWith("ackTap", "harmony:warm");
-+  expect(native.listeners.size).toBe(0);
-+});
-+
-+it("preserves ordinary web notification clicks and removes their event listener", async () => {
-+  const onTap = vi.fn();
-+  const stop = createNotificationOpenSource().subscribe(onTap);
-+  const click = new CustomEvent(WEB_NOTIFICATION_CLICK_EVENT, {
-+    cancelable: true,
-+    detail: { data: { serverId: "web-host" } },
-+  });
-+  window.dispatchEvent(click);
-+  stop();
-+  window.dispatchEvent(click);
-+  expect(click.defaultPrevented).toBe(true);
-+  expect(onTap).toHaveBeenCalledTimes(1);
-+  expect(harmonyRequest).not.toHaveBeenCalled();
-+});
+diff --git a/packages/app/src/push-notifications/index.web.ts b/packages/app/src/push-notifications/index.web.ts
+index 9aebb187d..b9ab746d7 100644
+--- a/packages/app/src/push-notifications/index.web.ts
++++ b/packages/app/src/push-notifications/index.web.ts
+@@ -1,9 +1,11 @@
+ import type { RevokePushNotificationsInput, StartPushNotificationsInput } from "./internal/types";
++import { isHarmonyApp } from "@/constants/platform";
++import { startHarmonySubscription, revokeHarmonySubscription } from "./harmony-subscriptions";
+ 
+-export function startPushNotifications(_input: StartPushNotificationsInput): () => void {
+-  return () => undefined;
++export function startPushNotifications(input: StartPushNotificationsInput): () => void {
++  return isHarmonyApp ? startHarmonySubscription(input) : () => undefined;
+ }
+ 
+-export async function revokePushNotifications(_input: RevokePushNotificationsInput): Promise<void> {
+-  // Push notifications are native-only.
++export async function revokePushNotifications(input: RevokePushNotificationsInput): Promise<void> {
++  if (isHarmonyApp) await revokeHarmonySubscription(input);
+ }
+diff --git a/packages/app/src/screens/settings-screen.tsx b/packages/app/src/screens/settings-screen.tsx
+index 6828d6e3a..ef826638e 100644
+--- a/packages/app/src/screens/settings-screen.tsx
++++ b/packages/app/src/screens/settings-screen.tsx
+@@ -89,6 +89,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
+ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+ import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
+ import { DesktopNotificationsSection } from "@/desktop/components/desktop-notifications-section";
++import { HarmonyNotificationsSection } from "@/push-notifications/harmony-settings";
+ import { BrowserDataSection } from "@/desktop/browser/settings/browser-data-section";
+ import { IntegrationsSection } from "@/desktop/components/integrations-section";
+ import { isElectronRuntime } from "@/desktop/host";
+@@ -147,7 +148,7 @@ import {
+   useSettingsSidebarScroll,
+ } from "@/navigation/settings-presentation";
+ import { returnFromSettings, type SettingsView } from "@/navigation/settings-navigation";
+-import { isNative, isWeb } from "@/constants/platform";
++import { isNative, isWeb, isHarmonyApp } from "@/constants/platform";
+ import { useOpenOnboarding } from "@/onboarding";
+ 
+ // ---------------------------------------------------------------------------
+@@ -219,7 +220,7 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
+     labelKey: "settings.sections.notifications",
+     icon: Bell,
+     desktopOnly: true,
+-    Content: DesktopNotificationsSection,
++    Content: isHarmonyApp ? HarmonyNotificationsSection : DesktopNotificationsSection,
+   },
+   {
+     id: "permissions",
+@@ -233,6 +234,7 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
+ ];
+ 
+ function isSectionAvailable(item: SidebarSectionItem, isDesktopApp: boolean): boolean {
++  if (item.id === "notifications" && isHarmonyApp) return true;
+   return (!item.desktopOnly || isDesktopApp) && (!item.webOnly || isWeb);
+ }
+ 

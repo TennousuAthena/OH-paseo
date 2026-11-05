@@ -1,5 +1,5 @@
 diff --git a/packages/app/src/app/_layout.tsx b/packages/app/src/app/_layout.tsx
-index 99022863f..df798f4e4 100644
+index 298178477..4484eb246 100644
 --- a/packages/app/src/app/_layout.tsx
 +++ b/packages/app/src/app/_layout.tsx
 @@ -1,7 +1,8 @@
@@ -12,7 +12,7 @@ index 99022863f..df798f4e4 100644
  import { SheetHostScope } from "@/components/ui/isolated-bottom-sheet-modal";
  import "@/styles/unistyles";
  import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
-@@ -352,7 +354,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
+@@ -383,7 +384,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
    const isDesktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
    const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
    const { width: windowWidth } = useWindowDimensions();
@@ -21,7 +21,7 @@ index 99022863f..df798f4e4 100644
    const viewportWidth = windowWidth - insets.left - insets.right;
  
    const cycleTheme = useCallback(() => {
-@@ -832,6 +834,7 @@ function AppShell() {
+@@ -868,6 +869,7 @@ function AppShell() {
    return (
      <MobilePanelsProvider>
        <HorizontalScrollProvider>
@@ -30,7 +30,7 @@ index 99022863f..df798f4e4 100644
          <AgentNavigationListener />
          <AppWithSidebar>
 diff --git a/packages/app/src/components/left-sidebar.tsx b/packages/app/src/components/left-sidebar.tsx
-index dbc501b5c..67549e8fe 100644
+index 983d142be..2479a8944 100644
 --- a/packages/app/src/components/left-sidebar.tsx
 +++ b/packages/app/src/components/left-sidebar.tsx
 @@ -19,7 +19,7 @@ import {
@@ -42,7 +42,7 @@ index dbc501b5c..67549e8fe 100644
  import { StyleSheet, useUnistyles } from "react-native-unistyles";
  import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
  import { SidebarCloseButton } from "@/components/headers/sidebar-close-button";
-@@ -127,7 +127,7 @@ interface DesktopSidebarProps extends SidebarSharedProps {
+@@ -122,7 +122,7 @@ interface DesktopSidebarProps extends SidebarSharedProps {
  export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boolean }) {
    const { theme } = useUnistyles();
    const { t } = useTranslation();
@@ -51,7 +51,7 @@ index dbc501b5c..67549e8fe 100644
    const isCompactLayout = useIsCompactFormFactor();
    const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
  
-@@ -649,7 +649,7 @@ function DesktopSidebar({
+@@ -644,7 +644,7 @@ function DesktopSidebar({
    const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
    const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
    const { width: windowWidth } = useWindowDimensions();
@@ -61,10 +61,10 @@ index dbc501b5c..67549e8fe 100644
    const visibleSidebarWidth = resolveDesktopSidebarWidth({
      requestedWidth: sidebarWidth,
 diff --git a/packages/app/src/constants/platform.ts b/packages/app/src/constants/platform.ts
-index f70f78f6c..b751769af 100644
+index f70f78f6c..08dca4da9 100644
 --- a/packages/app/src/constants/platform.ts
 +++ b/packages/app/src/constants/platform.ts
-@@ -22,4 +22,11 @@ import { isElectronRuntime, isElectronRuntimeMac } from "@/desktop/host";
+@@ -22,6 +22,13 @@ import { isElectronRuntime, isElectronRuntimeMac } from "@/desktop/host";
  /** Browser or Electron — the JS runtime has access to the DOM. */
  export const isWeb = Platform.OS === "web";
  
@@ -76,6 +76,8 @@ index f70f78f6c..b751769af 100644
 +  /ArkWeb\//.test(navigator.userAgent);
 +
  /** iOS or Android — the JS runtime is React Native. */
+ export const isNative = Platform.OS !== "web";
+ 
 diff --git a/packages/app/src/hooks/use-workspace-safe-area-insets.ts b/packages/app/src/hooks/use-workspace-safe-area-insets.ts
 new file mode 100644
 index 000000000..32cb78209

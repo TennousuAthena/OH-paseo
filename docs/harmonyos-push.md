@@ -27,7 +27,7 @@ AGC 签名 HAP 单独保留为 `artifacts/OH-Paseo-0.14.0-push-agc-debug.hap`，
 
 ## 主机安装
 
-插件依赖 Paseo 0.13–0.14 的公开 RPC 与生命周期 API。源码位于 `integrations/harmonyos-push`，只运行服务器入口；设置页随 OH-Paseo HAP 打包。
+插件兼容 Paseo 0.13–0.15 的公开 RPC 与生命周期 API，开发 SDK 跟随 0.15.2。源码位于 `integrations/harmonyos-push`，只运行服务器入口；设置页随 OH-Paseo HAP 打包。0.15.2 的隔离 daemon 已验证真实插件子进程、认证 RPC、权限/完成事件和注销；正式主机插件已热加载为 `running`，未重启 daemon。
 
 先检查主机的全局插件开关。只有在用户明确同意后才启用全局插件，因为 Paseo 插件是受信任的本机代码，具有 daemon 用户的系统权限。安装此插件不要求重启 daemon：
 
