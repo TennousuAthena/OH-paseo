@@ -42,3 +42,13 @@
 用户确认原主机离线是内网连接未打开，本轮保留原连接配置，不排查其工作区。用户要求不重复测试未改动部分，并已确认鸿蒙扫码正常；后续回归以本次变更影响范围为准，不追加扫码、系统返回等既有功能的验收。
 
 本地截图及元数据保存在 `docs/evidence/paseo-0.15.2-pc/`、`docs/evidence/paseo-0.15.2-tablet/`，不入库。构建沿用现有 SDK，仍有资源重名、废弃 API 与扫码能力告警。
+
+## 公开发布产物
+
+[harmonyos-v0.15.2](https://github.com/TennousuAthena/OH-paseo/releases/tag/harmonyos-v0.15.2) 沿用鸿蒙预览版发布方式，源码位于 `release` 分支和对应标签。
+
+- 文件：`OH-Paseo-0.15.2-universal-release-unsigned.hap`，版本 `0.15.2 / 1000009`，大小 `25,630,918` 字节。
+- SHA-256：`fb737351e32baa78aabeef4b93c442493474e3d730da0ed776b395945b8c9611`，配套提供 `SHA256SUMS.txt`。
+- 公开包为 release 模式未签名 HAP，安装前需自行签名；设备内部调试签名包不公开上传。
+- 已核实 `debug=false`，签名工具确认没有 HAP Signing Block。41 个 Web 文件与真机验证的调试包逐字节一致，版本、上游提交和补丁摘要一致。
+- release 模式 HAP 未另做设备安装回归；本次不重复未改动功能的设备测试。推送服务仍以 [配置状态](harmonyos-push.md) 中的实际验证范围为准。
