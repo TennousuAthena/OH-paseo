@@ -58,7 +58,7 @@ At the start of non-trivial work, list `docs/` and skim anything relevant to the
 | [docs/file-observation.md](docs/file-observation.md)                 | Recursive watcher ownership, Linux constraints, teardown invariants, and Parcel comparison                                     |
 | [docs/testing.md](docs/testing.md)                                   | TDD workflow, determinism, real dependencies over mocks, test organization                                                     |
 | [docs/qa.md](docs/qa.md)                                             | QA evidence bar for pull requests — platform matrix, version drift, performance, UI proof                                      |
-| [docs/paseo-0.15-validation.md](docs/paseo-0.15-validation.md)       | HarmonyOS 0.15.2 upgrade, MateBook/MatePad installation, and device verification                                               |
+| [docs/paseo-0.15-validation.md](docs/paseo-0.15-validation.md)       | HarmonyOS 0.15 series baselines, build artifacts, and verified device installation scopes                                      |
 | [docs/mobile-testing.md](docs/mobile-testing.md)                     | Maestro and mobile test workflows                                                                                              |
 | [docs/mobile-panels.md](docs/mobile-panels.md)                       | Compact left/center/right panel ownership, worklet motion, gesture revisions, and Fabric constraints                           |
 | [docs/explorer-sidebar.md](docs/explorer-sidebar.md)                 | Explorer sidebar, side-pane, and compact workspace sheet host contracts, lifecycle, placement, routing preferences             |

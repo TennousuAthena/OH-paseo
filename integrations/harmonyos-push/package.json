@@ -10,7 +10,7 @@
     "test": "tsx --test server/*.test.ts"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "0.15.2",
+    "@getpaseo/plugin": "0.15.4",
     "@types/node": "^22.0.0",
     "oxfmt": "0.46.0",
     "oxlint": "1.61.0",

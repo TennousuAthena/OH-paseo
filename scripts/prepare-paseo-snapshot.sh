@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 UPSTREAM="$ROOT_DIR/upstream/paseo"
 SNAPSHOT="$ROOT_DIR/runtime/verified-paseo"
-COMMIT=e896c05b09707e711a2324fcab7da84a0ae57291 # v0.15.2
+COMMIT=1c00b365c9e0b74c1580eba33d905d693125ae21 # v0.15.4
 if [[ -e "$SNAPSHOT" ]]; then
   if [[ -f "$SNAPSHOT/.upstream-commit" && "$(cat "$SNAPSHOT/.upstream-commit")" == "$COMMIT" ]]; then
     echo "Reusing existing source snapshot: $SNAPSHOT"

@@ -4,11 +4,11 @@
 
 当前阶段：**持续开发中**。MateBook Pro、MatePad Pro 和 Mate 80 Pro Max 的远程开发核心流程已于 2026-10-22 完成一轮真机验证。平板软键盘换行误发送、摄像头旁白边，以及手机安装和旋转问题已修复；界面和产品功能仍在迭代，尚未完成整体验收。代理、终端和项目文件运行在 Mac，鸿蒙设备运行客户端。
 
-当前适配基线为 **Paseo v0.15.2**（`e896c05b09707e711a2324fcab7da84a0ae57291`）。MateBook Pro 和 MatePad Pro 已原位升级到 `0.15.2 / 1000009`，本轮继续在平板开发调试。构建和版本号统一读取 `runtime/verified-paseo`，不读取有本地改动的参考工作树。
+当前适配基线为 **Paseo v0.15.4**（`1c00b365c9e0b74c1580eba33d905d693125ae21`），HAP 版本为 `0.15.4 / 1000010`。三台设备最后确认安装的版本仍为 `0.15.2 / 1000009`，本轮完成构建与升级影响范围内的检查。构建和版本号统一读取 `runtime/verified-paseo`，不读取有本地改动的参考工作树。
 
 - [路线决策 ADR 001](docs/adr-001-remote-arkweb-client.md)
 - [交接状态](docs/handoff.md)
-- [Paseo 0.15 电脑与平板验证](docs/paseo-0.15-validation.md)
+- [Paseo 0.15 系列适配与验证](docs/paseo-0.15-validation.md)
 - [Paseo 0.14 平板验证](docs/paseo-0.14-tablet-validation.md)
 - [历史开发计划](docs/development-plan.md)
 - [资料阅读与验证记录](docs/research-notes.md)
@@ -37,7 +37,7 @@ certs/               本地签名材料（不入库）
 ```sh
 mkdir -p upstream
 git clone https://github.com/getpaseo/paseo.git upstream/paseo
-git -C upstream/paseo fetch https://github.com/getpaseo/paseo.git refs/tags/v0.15.2:refs/tags/v0.15.2
+git -C upstream/paseo fetch https://github.com/getpaseo/paseo.git refs/tags/v0.15.4:refs/tags/v0.15.4
 bash scripts/prepare-paseo-snapshot.sh
 npm --prefix runtime/verified-paseo ci
 cp platform/harmonyos/build-profile.example.json5 platform/harmonyos/build-profile.json5
@@ -48,7 +48,7 @@ cp platform/harmonyos/build-profile.example.json5 platform/harmonyos/build-profi
 ```sh
 bash scripts/build-hap.sh debug
 bash scripts/build-hap.sh release
-HDC_TARGET=平板调试地址 HDC_EXPECTED_MODEL=WEB-W00 bash scripts/matebook-device.sh install artifacts/OH-Paseo-0.15.2-universal-debug.hap
+HDC_TARGET=平板调试地址 HDC_EXPECTED_MODEL=WEB-W00 bash scripts/matebook-device.sh install artifacts/OH-Paseo-0.15.4-universal-debug.hap
 HDC_TARGET=平板调试地址 HDC_EXPECTED_MODEL=WEB-W00 bash scripts/matebook-device.sh launch
 ```
 
@@ -60,7 +60,7 @@ HDC_TARGET=平板调试地址 HDC_EXPECTED_MODEL=WEB-W00 bash scripts/matebook-d
 bash scripts/build-hap.sh release universal unsigned
 ```
 
-输出为 `artifacts/OH-Paseo-0.15.2-universal-release-unsigned.hap`，配套发布 SHA-256 校验文件。未签名 HAP 需自行配置签名后安装，公开发布不上传本机开发签名包。`release` 分支保存鸿蒙发布源码，GitHub Release 标签指向对应提交。
+输出为 `artifacts/OH-Paseo-0.15.4-universal-release-unsigned.hap`，配套发布 SHA-256 校验文件。未签名 HAP 需自行配置签名后安装，公开发布不上传本机开发签名包。`release` 分支保存鸿蒙发布源码，GitHub Release 标签指向对应提交。
 
 首次打开直接显示 HAP 内置的 Paseo 欢迎界面，手机和平板可在欢迎页或“添加主机”中选择“扫描二维码”，调用鸿蒙系统扫码（含图库入口）添加加密中继主机；也可通过“直接连接”或“粘贴配对链接”添加主机。局域网验证填写 Host `DEVICE_ADDRESS`、端口 `6769`；主机配置由 Paseo 自身持久化。界面从 `paseo://app/` 加载，不依赖 daemon 提供网页。旧版远程网页 origin 的本地配置不会自动迁移，升级后需重新添加主机；远程任务数据仍在 daemon。公网、TLS、语音尚未验证。
 
