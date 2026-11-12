@@ -14,7 +14,15 @@
 - 更新后的 Claude 模型测试文件共 105 项通过，覆盖模型发现、最低 CLI 版本和默认推理选项等逻辑；测试使用受控版本与模型发现结果，不调用真实模型。
 - App 与可选推送插件类型检查通过，模型改动文件与插件 lint 通过。插件开发 SDK 跟随 0.15.4，生命周期/RPC 实现未变，不重复隔离运行回归。
 - 离线 Web、签名调试 HAP 和未签名 release HAP 构建成功。两种 HAP 均确认版本、上游提交、补丁摘要和 phone/tablet/2in1 设备类型；release 包为 `debug=false`，没有 HAP Signing Block，也未混入签名材料或服务账号。
-- 两种 HAP 的 41 个 Web 文件逐字节一致，校验文件为 `artifacts/SHA256SUMS-0.15.4.txt`。本轮未发布新的 GitHub Release。
+- 两种 HAP 的 41 个 Web 文件逐字节一致，本地校验文件为 `artifacts/SHA256SUMS-0.15.4.txt`；公开附件的校验文件仅列出未签名 release 包。
+
+### 0.15.4 公开发布产物
+
+[harmonyos-v0.15.4](https://github.com/TennousuAthena/OH-paseo/releases/tag/harmonyos-v0.15.4) 沿用鸿蒙预览版发布方式，源码位于 `release` 分支和对应标签。
+
+- 附件为 `OH-Paseo-0.15.4-universal-release-unsigned.hap` 和 `SHA256SUMS.txt`；HAP 大小 25,630,918 字节，SHA-256 为 `d9246895dac1328416197b5fe4602abf658fc4231f7ac55a72b8568caaeddf0a`。
+- 公开包为未签名 release HAP，安装前需自行签名；内部设备调试签名包不公开上传。官方签名检查记录确认没有 HAP Signing Block，包内未混入签名材料或服务账号。
+- 设备验证使用同版调试包，公开包的 41 个 Web 文件与其逐字节一致，验证范围见下方。此 fork 的 `release` 分支没有对应 GitHub Actions CI 运行，发布依据为已记录的定向检查、构建和真机验证。
 
 ### 平板端到端验证
 
